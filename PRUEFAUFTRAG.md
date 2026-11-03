@@ -788,6 +788,37 @@ Abnahme: Unit `kalender-todo` (Schreibweisen wie im Familienkalender, ganzer Tit
 Sachen Tafel herrichten“ → nach dem Abgleich genau eine Aufgabe „Sachen Tafel herrichten“, wichtig, Ina zugeordnet, Notiz
 mit Kalendername; als erledigt markiert → nächster Abgleich legt nichts neu an und öffnet nichts wieder.
 
+## Nachtrag B27 (03.11.): Nächtliche Automatik – Fehler beheben
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B27.1 ArbitrageOne Einkäufe (PurchaseOrders .xls) und Lagerbestand (.xlsx): „Falsche Art … erkannt wurde ‚Bericht/Tabelle‘“ | ❌ (Abruf übergab die Art, der Import prüfte trotzdem mit der allgemeinen Erkennung; Kopfzeile nur in Zeile 1, wenige Spaltennamen) | ✅ | **Art fest**: Dateien aus dem Abruf werden ohne Typerkennung verarbeitet (`nachArt` in `src/lib/datei-import/service.ts`, `UploadOptionen.art` in `src/lib/uploads/service.ts`). **Lesen**: Kopfzeile wird in den ersten 25 Zeilen gesucht (Titel-/Leerzeilen davor), HTML-„.xls“ wird gelesen, viele weitere Spaltennamen (Bestelldatum/Order Date, Bestellmenge/Quantity Ordered, Einzelpreis/Unit Price, PO Number …), Lagerbestand auch mit Spalte „Menge“ (`kopfzeile`, `aoFormatSuchen`, `einkaeufeAus`, `lagerbestandAus` in `src/lib/arbitrageone/logic.ts`; `parseArbitrageOne`). **Manuelle Uploads**: zusätzlich Dateiname (Lagerbestand/PurchaseOrders) + Spalten. Passt es trotzdem nicht, nennt der Fehler die **gefundenen Spaltennamen** (nur Namen, keine Werte) |
+| B27.1 Fehlgeschlagene Importe vom 02./03.11. nachverarbeiten | ❌ | ✅ | **Automatisch**: stündlich (und vor dem Nachtlauf) einmal je fehlgeschlagenem ArbitrageOne-Import (Einkäufe, Lagerbestand, letzte 14 Tage) mit der Datei aus der Ablage (`aoFehlimporteNachverarbeiten`). **Von Hand**: Anbindungen → Importe „Erneut verarbeiten“ (`importErneutVerarbeiten`; dieselbe Datei schon importiert → nichts doppelt). `import_status` zeigt `erneut_verarbeitbar`, `nachverarbeitet_am` und den alten Fehler im Ergebnis. Neue Spalte `datei_importe.nachverarbeitet_am` (Migration 0123) |
+| B27.2 BQool-Vergleich / Inventory Reimbursement: „Timeout 120000ms“ ohne Bild und Seite | ❌ | ✅ | Nach dem Klick: **Datei**, **Dialog** (breiter erkannt: role=dialog, aria-modal, Bootstrap/MUI/Vuetify/React-Modal/SweetAlert; leere Felder werden gefüllt: Marktplatz „alle“, Zeitraum = letzter Monat bzw. Stichtag heute, Radio „letzter Monat“) oder **„Export wird erstellt“** → Export-Liste bis 10 Min. alle 30 s neu laden und die neue Datei holen. **5 Min. je Schritt.** Bei jedem Fehler **Bildschirmfoto + Seite + Seitentitel** (`/import/debug/…`, 7 Tage, nur Inhaber) im Lauf-Ergebnis verlinkt (`herunterladen`, `ausExportListe`, `dialogAusfuellen` in `src/lib/arbitrageone/abruf.ts`). Ein Export-Fehler stoppt die übrigen nicht (wie bisher) |
+| B27.2 Reimbursement lief am Dienstag | ❌ (nie geglückt → täglich nachgeholt) | ✅ | Zeitplan „wöchentlich montags“ nur noch montags; „monatlich am 1.“ am 1., bei Fehlschlag bis zum 7. nachholen; „Jetzt abholen“ geht immer (`exportFaellig`) |
+| B27.3 sellerboard-Kostenimport ohne Anmeldung | 🟡 (stand als Fehlertext im Lauf) | ✅ | „übersprungen (nicht eingerichtet) – Importdatei liegt unter Anbindungen → Importe“, Export-Zeile bleibt ok; echte Fehler der Weitergabe bleiben Fehler |
+| B27.4 sellerboard „Produkte 30 Tage (Hebel)“: NOT_WARMED mitten im Lesen | ❌ (Meldung „warmed data … expired“ wurde nicht erkannt, nur ein Versuch) | ✅ | Erkennung erweitert (`src/lib/sellerboard/warm.ts`); `dashboard_period` mit denselben Argumenten erneut (wartet auf „preparing“), **dieselbe Seite** nochmal, bis 3 Versuche je Seite, gelesene Seiten bleiben (`tablePages`; auch Gewinn je SKU im Monat). Jeder Schritt höchstens 20 Min. (gibt die Sperre wieder frei) |
+| B27.4 Abrufe entkoppeln | 🟡 (Gewinn je Produkt und Tag + Verlust-Stopp nur im täglichen großen Abgleich) | ✅ | **Gewinn je Produkt und Tag + Verlust-Stopp** laufen eigenständig **alle 3 Std.** mit eigener Sperre und eigenem Fehlerstand (`syncSellerboard(…, "tage")`, Zeitplan im Hintergrund-Takt) – ein Fehler in „Produkte 30 Tage“ hält sie nicht auf |
+| B27.4 Zeitplan-Anzeige „wird beim nächsten Lauf erfasst“ | ❌ | ✅ | Zeitplan je sellerboard-Abruf fest eingetragen (Verkauf 30 Min., Bestand/Sendungen/Hebel-Aufgaben 4 Std., Produkte/Monatswerte/Fixkosten/30 Tage/Keepa täglich, Tage + Verlust-Stopp 3 Std.) – `anbindungen_status` nennt den nächsten Lauf (`ABRUF_PLAN` in `src/lib/today/abruf-plan.ts`) |
+| B27.5 Alter Abruf „Call-Archiv (Discord)“ in `nur_probleme` | ❌ | ✅ | als **„abgelöst“** markiert (durch Live-Kanal und Sicherheitsnetz 06:00) – nie „über 2 Tage alt“, nicht unter `nur_probleme`, auf der Anbindungen-Seite „abgelöst durch …“ (`ABGELOESTE_ABRUFE`). Nichts gelöscht |
+| B27.6 Lauf-Ergebnis lesbar | ❌ (Playwright-Logs mit Trennlinien) | ✅ | Je Export eine Zeile **Name · Status (ok/übersprungen/Fehler) · Kurztext · Bildschirmfoto** (Anbindungen und `anbindungen_status.arbitrageone.letzter_lauf.ergebnis`); Rohmeldung nur im Detail (`fehler_details` bzw. beim Darüberfahren) (`kurzFehler`, `laufZeilen`) |
+
+Abnahme (Test): Unit `b27-automatik` (PurchaseOrders als HTML-.xls mit Titelzeile → Einkauf + EK je SKU, englische
+Spalten, Lagerbestand mit „Menge“, unbekanntes Format nennt Spalten, Playwright-Timeout → „keine Datei nach 120 s“,
+Zeilen je Export, NOT_WARMED-Erkennung) und `arbitrageone` (montags/bis zum 7.); e2e `b27-automatik`: Nachbau mit
+PurchaseOrders-.xls (Titelzeile), Lagerbestand-.xlsx („Menge“), BQool „wird erstellt“ → aus „Meine Exporte“ geholt,
+Reimbursement über Dialog mit Pflichtfeldern, AccountOne ohne Reaktion → Fehler mit Bildschirmfoto (PNG abrufbar) und
+Seite; sellerboard-Weitergabe ohne Anmeldung = übersprungen; `anbindungen_status` mit Zeilen je Export und Details;
+alter fehlgeschlagener Lagerbestand → „Erneut verarbeiten“ → fertig, `import_status` zeigt `nachverarbeitet_am` und den
+alten Fehler; sellerboard-Abruf mit festem Zeitplan, altes Call-Archiv „abgelöst“ und nicht unter `nur_probleme`.
+Regression: arbitrageone, datei-import, uploads, ek-import, b24-automatik, bqool-dateien, b25, b21-calls-live,
+amazon-berichte, b20-einkauf, geschaeft, teil2, b19-rest (alle bestanden), Unit 2119 bestanden.
+
+Abnahme live (nach dem Update, nicht hier prüfbar): Lauf 04.11. 05:30 → Einkäufe und Lagerbestand „fertig“ mit Zeilen;
+BQool-Vergleich und Reimbursement entweder importiert oder Fehler **mit Bildschirmfoto und Seite**; `anbindungen_status
+(nur_probleme)` ohne NOT_WARMED und ohne altes Call-Archiv; „Gewinn je Produkt und Tag“ mit Erfolg vom 04.11.; die
+Importe vom 02./03.11. sind innerhalb einer Stunde nach dem Update nachverarbeitet (oder Fehler mit Spaltennamen).
+
 ## BQool-Upload: „Keine Erfolgsmeldung“, obwohl es geklappt hat (Befund 02.11., DE/FR/IT/ES)
 
 | Punkt | vorher | nachher | Fundstelle |
@@ -935,6 +966,10 @@ Lesend: `amazon_faelle`, `amazon_fall`, `anruf_aufgaben`, `auto_status`, `bqool_
 `mail_markieren`,
 `privat_eintrag_aendern` (B16), `privat_eintrag_anlegen`, `privat_eintrag_loeschen` (B16), `rechtsfall_mail_entwurf`,
 `va_nachricht`, `verlust_ausnahme`.
+
+Geändert (B27): `anbindungen_status` (`arbitrageone.letzter_lauf.ergebnis` = Zeilen je Export, `fehler_details` mit
+Rohmeldung/Bildschirmfoto/Seite, Abrufe mit `abgeloest`, sellerboard mit festem Zeitplan), `import_status`
+(`erneut_verarbeitbar`, `nachverarbeitet_am`, `herkunft`). Keine neuen Werkzeuge.
 
 Geändert: `wissen` und `calls_durchsuchen` (Herkunft `chat|call`), `ueberblick` (Rechtsfristen in 7 Tagen, privat nur
 Anzahl), `kalender` (privat nur „Termin außer Haus“), `posteingang` (Vorschlag, Termin-Mails), `anbindungen_status`,
@@ -1185,3 +1220,10 @@ nie in Chats oder Mails.
 81. **„To do Ludwig: …“ im Familienkalender**: Deine Frau (oder du) schreibt einfach „To do Ludwig: …“ in den Titel –
     beim nächsten Abgleich (spätestens nach 14 Minuten) steht es als wichtige Aufgabe in deiner Liste und kommt als Push.
     Geht auch „ToDo für Ludwig – …“. Für deine Frau genauso mit ihrem Vornamen, wenn sie ein eigenes Konto hat.
+82. **B27 nach dem Update prüfen**: Unter Anbindungen → ArbitrageOne → Importe sollten die Einkäufe/Lagerbestand vom
+    02./03.11. innerhalb einer Stunde „fertig“ sein (sonst „Erneut verarbeiten“; steht dort ein Fehler, nennt er jetzt die
+    gefundenen Spaltennamen – dann kurz schicken). Am 04.11. nach 05:30 den Lauf ansehen: BQool-Vergleich und
+    Reimbursement haben entweder eine Datei oder einen Fehler **mit Bildschirmfoto** – das Bild zeigt, wo ArbitrageOne
+    hängt (z. B. Dialog oder „Export wird erstellt“). Reimbursement läuft nur montags, also erst am 09.11. im Nachtlauf
+    (oder „Jetzt abholen“). sellerboard-Kostenimport bleibt „übersprungen“, bis die Anmeldung unter Anbindungen →
+    sellerboard eingetragen ist.

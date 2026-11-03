@@ -102,7 +102,8 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await ao({ ohne: ["lagerbestand"], dateien: { einkaeufe: `ASIN;SKU;Kaufdatum;Menge;EK netto\n${A1};${S1};${tt(heute)};1;12,50\n` } });
       await Promise.all([page.waitForURL(/ao=teilweise/, { timeout: 180_000 }), page.getByTestId("ao-jetzt").click()]);
       await expect(page.getByTestId("ao-meldung")).toContainText("nicht alle Exporte");
-      await expect(page.getByTestId("ao-lauf").first()).toContainText("Lagerbestand: Fehler");
+      // B27.6: je Export eine Zeile „Name · Status · Kurztext“
+      await expect(page.getByTestId("ao-lauf").first().getByTestId("ao-lauf-export").filter({ hasText: "Lagerbestand" })).toContainText("Fehler");
       const [aufgabe] = await sql<{ title: string }>("select title from tasks where tenant_id = $1 and system_key = 'automatik-arbitrageone-exporte' and status = 'open'", [T]);
       expect(aufgabe.title).toContain("Lagerbestand");
 

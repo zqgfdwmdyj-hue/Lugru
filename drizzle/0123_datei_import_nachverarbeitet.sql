@@ -1,0 +1,1 @@
+ALTER TABLE "datei_importe" ADD COLUMN "nachverarbeitet_am" timestamp with time zone;

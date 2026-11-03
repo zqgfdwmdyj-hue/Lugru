@@ -175,7 +175,11 @@ export async function runScheduledJobs(force = false) {
         if (due(`${t}:sb-daily`, 1435)) startSellerboardSync(t, "alles");
         else if (due(`${t}:sb-stock`, 239)) startSellerboardSync(t, "bestand");
         else if (due(`${t}:sb-sales`, 29)) startSellerboardSync(t, "verkauf");
+        // B27.4: Gewinn je Produkt und Tag + Verlust-Stopp eigenständig alle 3 Std. (eigene Sperre, eigener Fehlerstand).
+        if (due(`${t}:sb-tage`, 179)) startSellerboardSync(t, "tage");
       }
+      // B27.1: fehlgeschlagene ArbitrageOne-Importe (Einkäufe, Lagerbestand) einmal mit der verbesserten Verarbeitung nachholen.
+      if (await has("arbitrageone_web")) if (force || due(`${t}:ao-nachverarbeiten`, 59)) await step(t, "ArbitrageOne: fehlgeschlagene Importe nachverarbeiten", async () => (await import("@/lib/datei-import/service")).aoFehlimporteNachverarbeiten(t));
       // Paletten-Lager: Erinnerungen (freie Zeit endet, lange Standzeit) und Monatsaufstellungen am Monatsanfang.
       if (force || due(`${t}:pallets`, 59)) {
         await step(t, "Paletten-Erinnerungen", () => refreshPalletReminders(t, todayIso()));

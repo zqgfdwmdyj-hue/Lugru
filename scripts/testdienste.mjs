@@ -847,10 +847,13 @@ const AO_STANDARD = {
   accountone: "marketplace_article_nr;article_nr;ek_netto_euro\nB0AOTEST01;AOT_TEST_01;10,00\n",
 };
 const AO_NAMEN = { einkaeufe: "Einkaeufe.csv", lagerbestand: "Lagerbestand_Stichtag.csv", sellerboard: "ArbitrageOne_Sellerboard_Export.csv", bqool: "ArbitrageOne_BQool_Export.txt", reimbursement: "Inventory_Reimbursement.txt", accountone: "AccountOne_COG_NEU.csv" };
-const ao = { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [] };
+// B27: je Export ein Verhalten („async“ = Export wird erst erstellt und steht nach 3 s in „Meine Exporte“, „dialogfelder“ =
+// Dialog mit Marktplatz + Zeitraum als Pflichtfelder, „nichts“ = Knopf ohne Reaktion), eigene Dateinamen und Binärdateien
+// (base64, z. B. .xlsx).
+const ao = { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [], modus: {}, namen: {}, binaer: {}, angefordert: {} };
 function aoNachbau(req, res, url, body) {
   const seite = /^\/web-arbitrageone\/([a-z]+)/.exec(url.pathname)?.[1];
-  if (seite !== "export" && seite !== "datei") return false;
+  if (seite !== "export" && seite !== "datei" && seite !== "anfordern") return false;
   if (!(req.headers.cookie ?? "").includes("sid=ok-arbitrageone")) {
     res.writeHead(302, { Location: "/web-arbitrageone/login" });
     res.end();
@@ -864,12 +867,33 @@ function aoNachbau(req, res, url, body) {
       return true;
     }
     ao.downloads.push({ key, at: new Date().toISOString() });
-    res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${AO_NAMEN[key]}"` });
-    res.end(ao.dateien[key]);
+    res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${ao.namen[key] ?? AO_NAMEN[key]}"` });
+    res.end(ao.binaer[key] ? Buffer.from(ao.binaer[key], "base64") : ao.dateien[key]);
     return true;
   }
-  const karte = (key, titel, knopf) => (ao.ohne.has(key) ? "" : `<section class="card"><h3>${titel}</h3><p>Export für ${titel}</p>${knopf}</section>`);
+  if (seite === "anfordern") {
+    ao.angefordert[url.pathname.split("/")[3]] = Date.now();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end('{"ok":true}');
+    return true;
+  }
   const link = (key, text = "Download") => `<a href="/web-arbitrageone/datei/${key}">${text}</a>`;
+  const knopfFuer = (key, normal) => {
+    const m = ao.modus[key];
+    if (m === "nichts") return '<button type="button">Exportieren</button>';
+    if (m === "async") return `<button type="button" onclick="fetch('/web-arbitrageone/anfordern/${key}',{method:'POST'}).then(()=>{document.getElementById('meldung').textContent='Export wird erstellt – die Datei steht gleich unter „Meine Exporte“.'})">Exportieren</button>`;
+    if (m === "dialogfelder") return `<button type="button" onclick="document.getElementById('dlg-${key}').showModal()">Exportieren</button>`;
+    return normal;
+  };
+  const karte = (key, titel, knopf) => (ao.ohne.has(key) ? "" : `<section class="card"><h3>${titel}</h3><p>Export für ${titel}</p>${knopfFuer(key, knopf)}</section>`);
+  const dialoge = Object.entries(ao.modus)
+    .filter(([, m]) => m === "dialogfelder")
+    .map(([key]) => `<dialog id="dlg-${key}"><p>Zeitraum und Marktplatz wählen</p><select id="mp-${key}"><option value="">Bitte wählen</option><option value="de">Amazon DE</option><option value="alle">Alle Marktplätze</option></select><input type="date" id="von-${key}"><input type="date" id="bis-${key}"><p id="fehler-${key}"></p><button type="button" onclick="if(document.getElementById('mp-${key}').value==='alle'&&document.getElementById('von-${key}').value&&document.getElementById('bis-${key}').value){location.href='/web-arbitrageone/datei/${key}'}else{document.getElementById('fehler-${key}').textContent='Bitte alle Felder ausfüllen'}">Exportieren</button></dialog>`)
+    .join("");
+  // „Meine Exporte“: angeforderte Exporte sind nach 3 s fertig
+  const liste = Object.entries(ao.angefordert)
+    .map(([key, at]) => `<tr><td>${ao.namen[key] ?? AO_NAMEN[key]}</td><td>${Date.now() - at > 3000 ? link(key) : "in Bearbeitung"}</td></tr>`)
+    .join("");
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(`<!doctype html><html><body><nav><a href="/einkaeufe">Einkäufe</a> <a href="/lager">Lagerbestand</a></nav><main><h1>Export (Testnachbau)</h1>
 ${karte("einkaeufe", "Einkäufe", '<button type="button" onclick="document.getElementById(\'dlg\').showModal()">Exportieren</button>')}
@@ -881,6 +905,8 @@ ${karte("bqool", "BQool", link("bqool"))}
 ${karte("reimbursement", "Inventory Reimbursement", link("reimbursement"))}
 <section class="card"><h3>AccountOne COG</h3><a href="/web-arbitrageone/datei/accountone-alt">Download</a></section>
 ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
+<p id="meldung"></p>${dialoge}
+<section><h2>Meine Exporte</h2><table>${liste}</table></section>
 </main></body></html>`);
   return true;
 }
@@ -900,8 +926,11 @@ http
     if (url.pathname === "/__web") return send(200, webUploads);
     if (url.pathname === "/__ao" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(ao, { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [] });
+      if (b.zuruecksetzen) Object.assign(ao, { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [], modus: {}, namen: {}, binaer: {}, angefordert: {} });
       for (const [k, v] of Object.entries(b.dateien ?? {})) ao.dateien[k] = String(v);
+      Object.assign(ao.modus, b.modus ?? {});
+      Object.assign(ao.namen, b.namen ?? {});
+      Object.assign(ao.binaer, b.binaer ?? {});
       if (Array.isArray(b.ohne)) ao.ohne = new Set(b.ohne);
       return send(200, { ok: true });
     }

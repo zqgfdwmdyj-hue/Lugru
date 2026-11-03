@@ -51,9 +51,13 @@ export function wochenMontag(jetzt: Date): string {
  * Monatlich: seit dem 1. nicht. Fehlgeschlagene Läufe holen am nächsten Tag nach (es zählt nur der Erfolg).
  */
 export function exportFaellig(takt: AoTakt, letzterErfolg: Date | null, jetzt = new Date()): boolean {
+  const heute = tagBerlin(jetzt);
+  // B27.2: Zeitplan „wöchentlich montags“ – nur montags (vorher holte ein nie geglückter Export jeden Tag nach);
+  // „monatlich am 1.“ – am 1., bei Fehlschlag bis zum 7. nachholen.
+  if (takt === "woechentlich" && wochentagBerlin(jetzt) !== 1) return false;
+  if (takt === "monatlich" && Number(heute.slice(8, 10)) > 7) return false;
   if (!letzterErfolg) return true;
   const zuletzt = tagBerlin(letzterErfolg);
-  const heute = tagBerlin(jetzt);
   if (takt === "taeglich") return zuletzt < heute;
   if (takt === "woechentlich") return zuletzt < wochenMontag(jetzt);
   return zuletzt < `${heute.slice(0, 7)}-01`;
@@ -85,17 +89,17 @@ export const normSpalte = (h: unknown) =>
     .trim();
 
 const SP = {
-  asin: ["asin"],
+  asin: ["asin", "amazon asin", "asin de"],
   sku: ["seller sku", "sku", "msku", "haendler sku", "merchant sku"],
-  datum: ["kaufdatum", "einkaufsdatum", "bestelldatum", "kauf datum", "einkauf datum", "purchase date", "order date", "datum", "date"],
-  menge: ["menge eingekauft", "menge", "anzahl", "stueck", "stk", "einkaufsmenge", "gekaufte menge", "quantity", "qty", "units"],
-  ek: ["ek netto mit vsk", "ek netto", "ek netto standard", "ek netto euro", "einkaufspreis netto", "netto ek", "ek pro stueck", "stueckpreis netto", "einzelpreis netto", "preis netto", "einkaufspreis", "ek", "unit cost", "cost", "cog"],
-  lieferant: ["lieferant", "shop", "haendler", "supplier", "bezugsquelle", "quelle", "verkaeufer", "store", "source"],
-  rechnung: ["rechnungsnummer", "rechnungs nr", "rechnung nr", "rechnung", "bestellnummer", "bestell nr", "order id", "order number", "invoice", "invoice number", "belegnummer"],
+  datum: ["kaufdatum", "einkaufsdatum", "bestelldatum", "kauf datum", "einkauf datum", "purchase date", "order date", "po date", "purchase order date", "bestellt am", "gekauft am", "eingekauft am", "einkauf am", "date of purchase", "datum der bestellung", "datum", "date"],
+  menge: ["menge eingekauft", "menge", "anzahl", "stueck", "stk", "einkaufsmenge", "gekaufte menge", "bestellmenge", "bestellte menge", "menge bestellt", "stueckzahl", "einheiten", "quantity", "qty", "units", "ordered quantity", "quantity ordered", "qty ordered", "units ordered", "purchased quantity", "purchase quantity"],
+  ek: ["ek netto mit vsk", "ek netto", "ek netto standard", "ek netto euro", "ek netto pro stueck", "ek pro stueck", "ek pro einheit", "ek preis", "einkaufspreis netto", "einkaufspreis pro stueck", "netto ek", "stueckpreis netto", "einzelpreis netto", "netto einzelpreis", "preis netto", "einkaufspreis", "einzelpreis", "stueckpreis", "ek", "unit cost", "unit price", "unit price net", "price per unit", "cost per unit", "purchase price", "buy price", "buy cost", "cost", "cog"],
+  lieferant: ["lieferant", "lieferant name", "shop", "shop name", "haendler", "supplier", "vendor", "bezugsquelle", "quelle", "verkaeufer", "store", "source"],
+  rechnung: ["rechnungsnummer", "rechnungs nr", "rechnung nr", "rechnung", "bestellnummer", "bestell nr", "auftragsnummer", "order id", "order number", "po number", "purchase order number", "purchase order", "invoice", "invoice number", "belegnummer"],
   titel: ["produktname", "titel", "produkt", "artikelname", "artikel", "product name", "title", "name"],
   waehrung: ["waehrung", "currency"],
-  bestand: ["lagerbestand", "bestand", "bestand stichtag", "menge auf lager", "auf lager", "stueck auf lager", "lagermenge", "verfuegbar", "stock", "on hand", "quantity on hand"],
-  wert: ["lagerwert", "bestandswert", "warenwert", "gesamtwert", "wert", "value", "stock value"],
+  bestand: ["lagerbestand", "bestand", "bestand stichtag", "bestand gesamt", "gesamtbestand", "physischer bestand", "menge auf lager", "anzahl auf lager", "auf lager", "stueck auf lager", "lagermenge", "verfuegbare menge", "verfuegbarer bestand", "verfuegbar", "stock", "in stock", "on hand", "quantity on hand", "quantity in stock", "available", "inventory"],
+  wert: ["lagerwert", "bestandswert", "warenwert", "gesamtwert", "wert", "value", "stock value", "inventory value"],
   lagerort: ["lagerort", "lager", "standort", "warehouse", "lagerplatz"],
   stichtag: ["stichtag", "stand", "datum stichtag"],
 } as const;
@@ -115,6 +119,46 @@ function spalte(kopf: string[], namen: readonly string[]): number {
 }
 
 export type AoFormat = "einkaeufe" | "lagerbestand" | "accountone" | "sellerboard";
+
+/**
+ * B27.1: Zeile mit den Spaltennamen suchen – Exporte haben oft Titel-, Datums- oder Leerzeilen davor. Geprüft werden
+ * die ersten 25 Zeilen; ohne Treffer bleibt es bei Zeile 1 (wie bisher).
+ */
+export function kopfzeile(table: unknown[][], passt: (zeile: unknown[]) => boolean): number {
+  for (let i = 0; i < Math.min(25, table.length); i++) if (passt(table[i] ?? [])) return i;
+  return 0;
+}
+
+/** Tabelle ab der Kopfzeile (Zeilen davor weg). */
+export const abKopfzeile = (table: unknown[][], passt: (zeile: unknown[]) => boolean): unknown[][] => {
+  const i = kopfzeile(table, passt);
+  return i ? table.slice(i) : table;
+};
+
+/** Spaltennamen der wahrscheinlichen Kopfzeile (für Fehlermeldungen; nur Namen, keine Werte). */
+export function spaltenNamen(table: unknown[][]): string[] {
+  const i = kopfzeile(table, (z) => z.filter((x) => typeof x === "string" && x.trim() && !/^[\d.,\s€%-]+$/.test(x)).length >= 3);
+  return (table[i] ?? []).map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 30);
+}
+
+/** Welches ArbitrageOne-Format, auch wenn die Spaltennamen nicht in Zeile 1 stehen? Dazu die Tabelle ab der Kopfzeile. */
+export function aoFormatSuchen(table: unknown[][]): { format: AoFormat; tabelle: unknown[][] } | null {
+  for (let i = 0; i < Math.min(25, table.length); i++) {
+    const f = aoFormat(table[i] ?? []);
+    if (f) return { format: f, tabelle: i ? table.slice(i) : table };
+  }
+  return null;
+}
+
+/** Spalten für Einkäufe (ASIN + Datum + Menge) bzw. Lagerbestand (ASIN/SKU + Bestand oder Menge) vorhanden? */
+export const hatEinkaufSpalten = (zeile: unknown[]) => {
+  const k = zeile.map(normSpalte);
+  return spalte(k, SP.asin) > -1 && spalte(k, SP.datum) > -1 && spalte(k, SP.menge) > -1;
+};
+export const hatBestandSpalten = (zeile: unknown[]) => {
+  const k = zeile.map(normSpalte);
+  return (spalte(k, SP.asin) > -1 || spalte(k, SP.sku) > -1) && (spalte(k, SP.bestand) > -1 || spalte(k, SP.menge) > -1);
+};
 
 /** Welches ArbitrageOne-Format? null = keines davon. */
 export function aoFormat(headers: unknown[]): AoFormat | null {
@@ -138,7 +182,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 export type AoEinkauf = { asin: string; sku: string | null; titel: string | null; kaufdatum: string; menge: number; ekNetto: number | null; waehrung: string | null; lieferant: string | null; rechnung: string | null };
 
 /** Einkäufe (auch die eigene Vorlage mit Kaufdatum + Menge): je Zeile ein Einkauf. Ohne ASIN, Datum oder Menge → übersprungen. */
-export function einkaeufeAus(table: unknown[][]): { zeilen: AoEinkauf[]; uebersprungen: number } {
+export function einkaeufeAus(roh: unknown[][]): { zeilen: AoEinkauf[]; uebersprungen: number } {
+  const table = abKopfzeile(roh, hatEinkaufSpalten);
   if (!table.length) return { zeilen: [], uebersprungen: 0 };
   const k = table[0].map(normSpalte);
   const c = { asin: spalte(k, SP.asin), sku: spalte(k, SP.sku), datum: spalte(k, SP.datum), menge: spalte(k, SP.menge), ek: spalte(k, SP.ek), lieferant: spalte(k, SP.lieferant), rechnung: spalte(k, SP.rechnung), titel: spalte(k, SP.titel), waehrung: spalte(k, SP.waehrung) };
@@ -178,10 +223,13 @@ export function stichtagAus(dateiname: string, spaltenWert: unknown, heute: stri
   return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : heute;
 }
 
-export function lagerbestandAus(table: unknown[][], dateiname: string, heute: string): { stichtag: string; zeilen: AoBestand[]; uebersprungen: number } {
+export function lagerbestandAus(roh: unknown[][], dateiname: string, heute: string): { stichtag: string; zeilen: AoBestand[]; uebersprungen: number } {
+  const table = abKopfzeile(roh, hatBestandSpalten);
   if (!table.length) return { stichtag: heute, zeilen: [], uebersprungen: 0 };
   const k = table[0].map(normSpalte);
-  const c = { asin: spalte(k, SP.asin), sku: spalte(k, SP.sku), titel: spalte(k, SP.titel), menge: spalte(k, SP.bestand), ek: spalte(k, SP.ek), wert: spalte(k, SP.wert), lagerort: spalte(k, SP.lagerort), stichtag: spalte(k, SP.stichtag) };
+  // Bestand: eigene Spalte, sonst „Menge“ (Lagerbestand je Einkauf/Charge).
+  const bestand = spalte(k, SP.bestand);
+  const c = { asin: spalte(k, SP.asin), sku: spalte(k, SP.sku), titel: spalte(k, SP.titel), menge: bestand > -1 ? bestand : spalte(k, SP.menge), ek: spalte(k, SP.ek), wert: spalte(k, SP.wert), lagerort: spalte(k, SP.lagerort), stichtag: spalte(k, SP.stichtag) };
   const get = (r: unknown[], i: number) => (i >= 0 ? r[i] : undefined);
   const body = table.slice(1);
   const stichtag = stichtagAus(dateiname, body.length ? get(body[0], c.stichtag) : undefined, heute);
@@ -279,7 +327,40 @@ export function bqoolVergleichText(v: { abweichend: number; jeArt: Record<BqAbwe
 }
 
 /** Zusammenfassung eines Abruf-Laufs für Anbindungen und Aufgabe. */
-export type AoExportErgebnis = { key: AoExportKey; titel: string; ok: boolean; datei?: string; importId?: string; text: string };
+export type AoExportErgebnis = {
+  key: AoExportKey;
+  titel: string;
+  ok: boolean;
+  datei?: string;
+  importId?: string;
+  /** Kurztext (eine Zeile, ohne Browser-Protokoll). */
+  text: string;
+  /** B27.2: bei Fehlern Bildschirmfoto (/import/debug/…), Seite (ohne Abfrageteil) und Seitentitel. */
+  bild?: string;
+  seite?: string;
+  seitentitel?: string;
+  /** B27.6: Rohmeldung (nur im Detail). */
+  roh?: string;
+};
+
+/**
+ * B27.6: Fehlermeldung für die Übersicht kürzen – erste Zeile, ohne Playwright-Protokoll („=== logs ===“,
+ * „Call log:“, Trennlinien); Zeitüberschreitungen als „keine Datei nach x s“.
+ */
+export function kurzFehler(roh: string): string {
+  const erste = roh.split(/\n|={3,}|Call log:/)[0].replace(/^(page|locator|download)\.[a-zA-Z]+:\s*/, "").trim();
+  const t = /Timeout (\d+)ms exceeded/i.exec(erste);
+  if (t) {
+    const sek = Math.round(Number(t[1]) / 1000);
+    return /waitForEvent\("download"\)|download/i.test(roh) ? `keine Datei nach ${sek} s` : `Zeitüberschreitung nach ${sek} s`;
+  }
+  return erste.slice(0, 200) || "Fehler";
+}
+
+/** B27.6: je Export eine Zeile „Name · Status (ok/übersprungen/Fehler) · Kurztext · Bildschirmfoto“. */
+export function laufZeilen(e: { titel: string; ok: boolean; text: string; bild?: string; uebersprungen?: boolean }[]): string[] {
+  return e.map((x) => `${x.titel} · ${x.uebersprungen ? "übersprungen" : x.ok ? "ok" : "Fehler"} · ${x.text}${x.bild ? ` · Bildschirmfoto ${x.bild}` : ""}`);
+}
 
 export function laufText(e: AoExportErgebnis[]): string {
   if (!e.length) return "Nichts fällig.";

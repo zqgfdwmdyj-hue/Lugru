@@ -34,7 +34,7 @@ const importLink = defineTool({
 const importStatusTool = defineTool({
   name: "import_status",
   title: "Datei-Import: Stand und Ergebnis",
-  description: "Stand eines Datei-Imports (wartet_auf_datei | verarbeitet | fertig | fehler) mit Fortschritt und – wenn fertig – Ergebnis je Art: beim Amazon-Transaktionsbericht Zeitraum, Marktplätze, Zeilen, Abrechnungen, Summen je Typ, Auszahlungen (Übertrag) und was sich im System geändert hat (neu / bereits vorhanden, Abrechnungen ergänzt); beim Kontoauszug Kontostand und Buchungen; bei der EK-Liste neu/geändert/gleich mit Link; beim USt-Bericht der Block je Periode; bei Lagergebühren Monate, Länder, Anzahl ASINs, davon übergroß, teuerste ASINs und Abgleich mit Abrechnung/sellerboard.",
+  description: "Stand eines Datei-Imports (wartet_auf_datei | verarbeitet | fertig | fehler) mit Fortschritt und – wenn fertig – Ergebnis je Art: beim Amazon-Transaktionsbericht Zeitraum, Marktplätze, Zeilen, Abrechnungen, Summen je Typ, Auszahlungen (Übertrag) und was sich im System geändert hat (neu / bereits vorhanden, Abrechnungen ergänzt); beim Kontoauszug Kontostand und Buchungen; bei der EK-Liste neu/geändert/gleich mit Link; beim USt-Bericht der Block je Periode; bei Lagergebühren Monate, Länder, Anzahl ASINs, davon übergroß, teuerste ASINs und Abgleich mit Abrechnung/sellerboard. Fehlgeschlagen mit noch vorhandener Datei: erneut_verarbeitbar (Inhaber: Anbindungen → Importe „Erneut verarbeiten“; ArbitrageOne-Einkäufe/Lagerbestand werden einmal automatisch nachverarbeitet – nachverarbeitet_am).",
   area: null,
   ownerOnly: true,
   write: false,

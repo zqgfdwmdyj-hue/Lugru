@@ -151,3 +151,17 @@ export async function bqoolUploadBestaetigenAction(formData: FormData) {
   revalidatePath("/repricer/bqool");
   redirect("/anbindungen#importe-exporte");
 }
+
+/** B27.1: fehlgeschlagenen Import mit derselben Datei erneut verarbeiten („Erneut verarbeiten“) – nur der Inhaber. */
+export async function importErneutAction(formData: FormData) {
+  const session = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+  let meldung = "fehler:Import nicht gefunden.";
+  if (/^[0-9a-f-]{36}$/i.test(id)) {
+    const { importErneutVerarbeiten } = await import("@/lib/datei-import/service");
+    const r = await importErneutVerarbeiten(session.tenantId, id);
+    meldung = `${r.ok ? "ok" : "fehler"}:${r.ok ? "Erneut verarbeitet: " : "Erneut verarbeiten fehlgeschlagen: "}${r.text}`;
+  }
+  revalidatePath("/anbindungen");
+  redirect(`/anbindungen?${new URLSearchParams({ erneut: meldung.slice(0, 400) }).toString()}#importe-arbitrageone`);
+}

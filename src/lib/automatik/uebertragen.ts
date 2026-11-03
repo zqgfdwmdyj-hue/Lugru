@@ -34,9 +34,10 @@ export async function anSellerboardUebertragen(tenantId: string, ekImportId: str
  * ArbitrageOne-Nachtlauf: die sellerboard-Datei von ArbitrageOne unverändert an sellerboard weiterreichen (nicht neu
  * bauen). Nur wenn in der ArbitrageOne-Anbindung „an sellerboard weiterreichen: ja“ steht.
  */
-export async function anSellerboardDateiUebertragen(tenantId: string, datei: { name: string; bytes: Uint8Array }): Promise<{ ok: boolean; text: string }> {
+export async function anSellerboardDateiUebertragen(tenantId: string, datei: { name: string; bytes: Uint8Array }): Promise<{ ok: boolean; text: string; uebersprungen?: boolean }> {
   const z = await getIntegration(tenantId, "sellerboard_web");
-  if (!z?.email || !z.password || !z.importUrl) return { ok: false, text: "sellerboard-Anmeldung für die Automatik fehlt (Anbindungen → sellerboard – Anmeldung) – Datei liegt unter Anbindungen → Importe." };
+  // B27.3: nicht eingerichtet ist kein Fehler – „übersprungen“, die Datei liegt unter Anbindungen → Importe.
+  if (!z?.email || !z.password || !z.importUrl) return { ok: false, uebersprungen: true, text: "übersprungen (nicht eingerichtet) – Importdatei liegt unter Anbindungen → Importe" };
   const typ = /\.xlsx$/i.test(datei.name) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.csv$/i.test(datei.name) ? "text/csv" : "application/vnd.ms-excel";
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport (ArbitrageOne-Datei)", aufgabeKey: "automatik-sellerboard-arbitrageone", link: "/anbindungen?p=arbitrageone_web#arbitrageone_web" }, async (page, log) => {
     await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);

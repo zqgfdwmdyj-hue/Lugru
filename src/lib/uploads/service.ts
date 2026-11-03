@@ -19,7 +19,12 @@ import { artNachEndung, endung, istBqoolDatei, istPdf, istZip, jsonArt, pdfArt, 
 // Art (z. B. Kontoauszüge nur mit Bereich „Geld“). Private Kontoauszüge gehören in den Privatbereich, nicht hierher.
 
 export type UploadErgebnis = { datei: string; art: UploadArt | null; artText: string; ok: boolean; text: string; hinweise: string[]; link: string | null; /** Zahlen für den Datei-Import (nicht gespeichert). */ details?: Record<string, unknown> };
-export type UploadOptionen = { firma: string | null; saldo: number | null };
+export type UploadOptionen = {
+  firma: string | null;
+  saldo: number | null;
+  /** B27.1: Art steht schon fest (z. B. ArbitrageOne-Abruf weiß, welchen Export er geladen hat) – keine Erkennung. */
+  art?: UploadArt;
+};
 
 const MAX = 25 * 1024 * 1024;
 
@@ -45,10 +50,15 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
     try {
       const { readSheet } = await import("@/lib/imports/arbitrageone");
       const { aoFormat } = await import("@/lib/arbitrageone/logic");
+      const { aoFormatSuchen, hatBestandSpalten, hatEinkaufSpalten, kopfzeile } = await import("@/lib/arbitrageone/logic");
       const t = readSheet(bytes);
-      const f = t.length ? aoFormat(t[0]) : null;
+      // B27.1: Kopfzeile auch unter Titel-/Leerzeilen suchen; Dateiname hilft bei Lagerbestand und PurchaseOrders.
+      const f = t.length ? (aoFormatSuchen(t)?.format ?? aoFormat(t[0])) : null;
+      const n = name.toLowerCase();
+      if (/lagerbestand|inventory|bestand/.test(n) && t.length && hatBestandSpalten(t[kopfzeile(t, hatBestandSpalten)] ?? [])) return "ao_lagerbestand";
       if (f === "sellerboard" || f === "einkaeufe") return "ek_liste";
       if (f === "lagerbestand") return "ao_lagerbestand";
+      if (/purchase.?orders?|einkaeufe|einkäufe/.test(n) && t.length && hatEinkaufSpalten(t[kopfzeile(t, hatEinkaufSpalten)] ?? [])) return "ek_liste";
     } catch {
       // kein ArbitrageOne-Format – weiter unten erkennen
     }
@@ -115,7 +125,10 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
       const { readSheet } = await import("@/lib/imports/arbitrageone");
       const { aoLagerbestandSpeichern } = await import("@/lib/arbitrageone/service");
       const l = await aoLagerbestandSpeichern(session.tenantId, name, readSheet(bytes), todayIso(), null);
-      if (!l) return { ok: false, text: "Lagerbestand erkannt, aber keine Zeilen mit SKU/ASIN und Menge.", hinweise: [] };
+      if (!l) {
+        const { spaltenNamen } = await import("@/lib/arbitrageone/logic");
+        return { ok: false, text: `Lagerbestand: keine Zeilen mit SKU/ASIN und Bestand/Menge gefunden. Gefundene Spalten: ${spaltenNamen(readSheet(bytes)).join(", ") || "keine"}.`, hinweise: [] };
+      }
       return { ok: true, text: `Lagerbestand ${l.stichtag}: ${l.zeilen} Artikel, ${l.stueck.toLocaleString("de-DE")} Stück, Lagerwert ${l.lagerwert.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${l.abgleich?.abweichend ? ` · ${l.abgleich.abweichend} SKUs weichen vom eigenen Lager ab` : ""}.`, hinweise: l.ohneWert ? [`${l.ohneWert} Zeilen ohne Wert/EK – Lagerwert unvollständig.`] : [], details: { lagerbestand: l } };
     }
     case "amazon_business":
@@ -166,7 +179,7 @@ async function protokoll(session: Session, e: UploadErgebnis, groesse: number) {
 /** Eine Datei: erkennen, Rechte prüfen, verarbeiten, protokollieren. ZIPs werden ausgepackt (eine Ebene). */
 export async function dateiHochladen(session: Session, name: string, bytes: Uint8Array, o: UploadOptionen): Promise<UploadErgebnis[]> {
   if (bytes.length > MAX) return [await mitProtokoll(session, { datei: name, art: null, artText: "–", ok: false, text: "Größer als 25 MB.", hinweise: [], link: null }, bytes.length)];
-  const art = await dateiArt(name, bytes);
+  const art = o.art ?? (await dateiArt(name, bytes));
   if (art === "zip") {
     const inhalt = leseZip(bytes, { maxEintraege: 200 });
     // Lauter Transkripte (Call-Export) → als ein Sammel-Import ins Call-Archiv

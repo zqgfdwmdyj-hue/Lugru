@@ -35,6 +35,8 @@ export const dateiImporte = pgTable(
     herkunft: text("herkunft", { enum: ["claude", "arbitrageone"] }).notNull().default("claude"),
     /** Bei ArbitrageOne: welcher Export (einkaeufe, lagerbestand, sellerboard, bqool, reimbursement, accountone). */
     quelleExport: text("quelle_export"),
+    /** B27.1: zuletzt „Erneut verarbeiten“ (von Hand oder automatisch nach einem Fehler) – je Import höchstens einmal automatisch. */
+    nachverarbeitetAm: timestamp("nachverarbeitet_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("datei_importe_token_uq").on(t.tokenHash), index("datei_importe_tenant_idx").on(t.tenantId, t.createdAt), index("datei_importe_hash_idx").on(t.tenantId, t.sha256)],

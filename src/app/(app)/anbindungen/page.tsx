@@ -6,16 +6,16 @@ import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
 import { landVonId } from "@/lib/amazon-markt/logic";
-import { aoJetztAbholenAction, bqoolUploadBestaetigenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
+import { aoJetztAbholenAction, bqoolUploadBestaetigenAction, importErneutAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { aoImporte, aoLaeufe } from "@/lib/arbitrageone/abruf";
-import { AO_EXPORTE } from "@/lib/arbitrageone/logic";
+import { AO_EXPORTE, kurzFehler } from "@/lib/arbitrageone/logic";
 import { TestButton } from "./test-button";
 import { SellerboardCard } from "./sellerboard-card";
 import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
 import { ordnerName } from "@/lib/mail/ordner";
 import { postfachStand } from "@/lib/mail/status";
 import { discordLiveStatus } from "@/lib/discord/gateway";
-import { ABRUF_PLAN, ABRUFE_JE_ANBINDUNG, naechsterText } from "@/lib/today/abruf-plan";
+import { ABGELOESTE_ABRUFE, ABRUF_PLAN, ABRUFE_JE_ANBINDUNG, naechsterText } from "@/lib/today/abruf-plan";
 
 /** Anmeldung per OAuth für Postfächer – nur optional („Erweitert“); Standard ist IMAP mit App-Passwort. */
 const OAUTH_POSTFACH = new Set(["google", "microsoft"]);
@@ -47,9 +47,9 @@ function berichtName(t: string) {
 const AO_MSG: Record<string, string> = { ok: "ArbitrageOne: alle Exporte abgeholt und verarbeitet.", teilweise: "ArbitrageOne: nicht alle Exporte geklappt – siehe Liste und Aufgabe.", fehler: "ArbitrageOne-Abruf fehlgeschlagen – siehe Liste und Aufgabe." };
 const AO_STATUS: Record<string, string> = { laeuft: "läuft", ok: "ok", teilweise: "teilweise", fehler: "Fehler" };
 
-export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string; ao?: string }> }) {
+export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string; ao?: string; erneut?: string }> }) {
   const session = await requireOwner();
-  const { p, sellerboard, amz, n, ao } = await searchParams;
+  const { p, sellerboard, amz, n, ao, erneut } = await searchParams;
   const status = await integrationStatus(session.tenantId);
   const [reports, postfach, jobs, live, bqExporte, aoL, aoI] = await Promise.all([
     db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
@@ -73,7 +73,8 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
     .map((j) => {
       const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
       const letzter = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
-      return { name: j.name, plan, letzter, fehler: j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? j.lastError : null, naechster: naechsterText(plan, letzter, jetzt) };
+      const abgeloest = ABGELOESTE_ABRUFE[j.name];
+      return { name: j.name, plan, letzter, fehler: !abgeloest && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? j.lastError : null, naechster: abgeloest ? "–" : naechsterText(plan, letzter, jetzt), abgeloest };
     })
     .sort((a, b) => Number(b.plan?.ausloeser === "live") - Number(a.plan?.ausloeser === "live") || Number(/discord/i.test(b.name)) - Number(/discord/i.test(a.name)) || a.name.localeCompare(b.name));
   const discordAbrufe = abrufe.filter((a) => /discord|call/i.test(a.name));
@@ -81,7 +82,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
   const abrufZeile = (a: (typeof abrufe)[number]) => (
     <tr key={a.name} data-testid="abruf-zeile">
       <td>{a.name}</td>
-      <td className="small">{a.plan?.text ?? "Zeitplan: wird beim nächsten Lauf erfasst"}</td>
+      <td className="small">{a.abgeloest ? <span className="muted" data-testid="abruf-abgeloest">{a.abgeloest}</span> : (a.plan?.text ?? "Zeitplan: wird beim nächsten Lauf erfasst")}</td>
       <td className="small num">{zeit(a.letzter) ?? "–"}{a.fehler && <div style={{ color: "var(--danger)" }}>Fehler: {a.fehler.slice(0, 160)}</div>}</td>
       <td className="small">{a.naechster}</td>
     </tr>
@@ -177,6 +178,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           </div>
           <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")}. Gleiche Datei zweimal wird übersprungen.</div>
           {ao && AO_MSG[ao] && <div className={`notice ${ao === "ok" ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-meldung">{AO_MSG[ao]}</div>}
+          {erneut && <div className={`notice ${erneut.startsWith("ok:") ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-erneut-meldung">{erneut.replace(/^(ok|fehler):/, "").slice(0, 300)}</div>}
           {aoL.length > 0 && (
             <table className="table small" data-testid="ao-laeufe">
               <thead><tr><th>Zeitpunkt</th><th>Auslöser</th><th>Status</th><th>Ergebnis</th></tr></thead>
@@ -186,7 +188,23 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                     <td className="num">{zeit(l.createdAt)}</td>
                     <td>{l.ausloeser === "zeitplan" ? "täglich 05:30" : "Jetzt abholen"}</td>
                     <td>{l.status === "ok" ? <span className="tag tag-ok">ok</span> : <span style={{ color: l.status === "laeuft" ? undefined : "var(--danger)" }}>{AO_STATUS[l.status]}</span>}</td>
-                    <td>{l.fehler ? <span style={{ color: "var(--danger)" }}>{l.fehler}</span> : l.ergebnis.length ? l.ergebnis.map((x) => `${x.titel}: ${x.ok ? x.text : `Fehler – ${x.text}`}`).join(" · ") : "Nichts fällig"}</td>
+                    <td>
+                      {l.fehler ? (
+                        <span style={{ color: "var(--danger)" }}>{kurzFehler(l.fehler)}</span>
+                      ) : l.ergebnis.length ? (
+                        // B27.6: je Export eine Zeile – Name · Status · Kurztext · Bildschirmfoto; Rohmeldung beim Darüberfahren
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {l.ergebnis.map((x) => (
+                            <li key={x.key} data-testid="ao-lauf-export" title={x.ok ? undefined : (x.roh ?? x.text)}>
+                              <strong>{x.titel}</strong> · {x.ok ? <span className="tag tag-ok">ok</span> : <span style={{ color: "var(--danger)" }}>Fehler</span>} · {x.ok ? x.text : kurzFehler(x.text)}
+                              {x.bild && <> · <a href={x.bild} target="_blank" rel="noreferrer" data-testid="ao-lauf-bild">Bildschirmfoto</a>{x.seite ? <span className="muted"> ({x.seitentitel || x.seite})</span> : null}</>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        "Nichts fällig"
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -203,7 +221,16 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                       <td className="num">{zeit(x.am)}</td>
                       <td>{AO_EXPORTE.find((a) => a.key === x.quelle)?.titel ?? x.quelle}</td>
                       <td style={{ overflowWrap: "anywhere" }}>{x.dateiname}</td>
-                      <td>{x.status === "fehler" ? <span style={{ color: "var(--danger)" }}>{x.fehler}</span> : x.bereits ? "bereits importiert – nichts doppelt" : <>{e.text ?? "verarbeitet"}{e.link && <> · <a href={e.link}>ansehen</a></>}</>}</td>
+                      <td>
+                        {x.status === "fehler" ? <span style={{ color: "var(--danger)" }}>{x.fehler}</span> : x.bereits ? "bereits importiert – nichts doppelt" : <>{e.text ?? "verarbeitet"}{e.link && <> · <a href={e.link}>ansehen</a></>}</>}
+                        {x.nachverarbeitetAm && x.status !== "fehler" && <span className="small muted"> · erneut verarbeitet {zeit(x.nachverarbeitetAm)}</span>}
+                        {x.status === "fehler" && x.datei && (
+                          <form action={importErneutAction} style={{ display: "inline", marginLeft: 6 }}>
+                            <input type="hidden" name="id" value={x.id} />
+                            <button type="submit" className="btn btn-small" data-testid="ao-import-erneut">Erneut verarbeiten</button>
+                          </form>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}

@@ -63,7 +63,21 @@ export const aoAccountoneCog = pgTable(
   (t) => [uniqueIndex("ao_accountone_cog_uq").on(t.tenantId, t.monat)],
 );
 
-export type AoLaufErgebnis = { key: string; titel: string; ok: boolean; datei?: string; importId?: string; text: string };
+export type AoLaufErgebnis = {
+  key: string;
+  titel: string;
+  ok: boolean;
+  datei?: string;
+  importId?: string;
+  text: string;
+  /** B27.2/B27.6: bei Fehlern Bildschirmfoto, Seite, Seitentitel und die Rohmeldung (nur im Detail). */
+  bild?: string;
+  seite?: string;
+  seitentitel?: string;
+  roh?: string;
+  /** B27.3: Export bewusst nicht ausgeführt (z. B. nicht eingerichtet) – kein Fehler. */
+  uebersprungen?: boolean;
+};
 
 export const aoLaeufe = pgTable(
   "ao_laeufe",

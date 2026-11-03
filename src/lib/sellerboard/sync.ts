@@ -3,6 +3,7 @@ import { and, count, eq, inArray, like, lt, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { recordJob } from "@/lib/today/jobs";
+import { isNotWarmed, WARM_VERSUCHE_JE_SEITE } from "./warm";
 import { jobEnded, jobStarted } from "@/lib/perf";
 import { syncClaims } from "@/lib/claims/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
@@ -17,7 +18,8 @@ import { refreshVerlustTasks } from "@/lib/money/verlust-service";
 // „bestand“ = zusätzlich Bestand + Sendungen (alle 4 Std.), „alles“ zusätzlich Produkte/EK, Monatswerte,
 // Gewinn je SKU, Fixkosten und der 30-Tage-Verlauf (täglich). Läuft im Hintergrund, je Mandant einmal.
 
-export type SyncScope = "verkauf" | "bestand" | "alles";
+/** „tage“ (B27.4): Gewinn je Produkt und Tag + Verlust-Stopp – eigener Zeitplan (alle 3 Std.) und eigene Sperre. */
+export type SyncScope = "verkauf" | "bestand" | "alles" | "tage";
 const running = new Set<string>();
 const chunks = <T,>(a: T[], n = 300) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 /** Doppelte Einträge (gleiche sellerboard-ID auf zwei Seiten) – der letzte gilt; sonst scheitert das Upsert. */
@@ -168,14 +170,8 @@ async function syncMonths(t: string, now: Date) {
   let skuRows = 0;
   for (const p of periods.slice(-2)) {
     await sbCall(t, "dashboard_period", { periods: [{ start: p.start, end: p.end }] });
-    const rows: ReturnType<typeof mapSkuRows> = [];
-    let total = Infinity;
-    for (let page = 1; (page - 1) * 35 < total && page <= 120; page++) {
-      const reply = await sbCall(t, "dashboard_table", { entry_type: "product", period_start: p.start, period_end: p.end, page, count: 35 });
-      total = Number(reply.total ?? 0);
-      rows.push(...mapSkuRows(reply));
-      if (!((reply.result as unknown[] | undefined) ?? []).length) break;
-    }
+    // B27.4: abgelaufener Zeitraum mitten im Lesen → nachwärmen und dieselbe Seite wiederholen.
+    const rows = mapSkuRows(await tablePages(t, "amazon", { entry_type: "product", period_start: p.start, period_end: p.end }, 35, 120));
     const merged = new Map<string, (typeof rows)[number]>();
     for (const r of rows) {
       const cur = merged.get(r.sku);
@@ -294,23 +290,26 @@ async function syncSales(t: string, now: Date, withHistory: boolean) {
   return { channels: channels.length, days };
 }
 
-const isNotWarmed = (e: unknown) => /NOT_WARMED|not warmed/i.test(e instanceof Error ? e.message : String(e));
-
-/** Alle Seiten einer Dashboard-Tabelle; ist der Zeitraum nicht (mehr) vorbereitet, einmal nachwärmen. */
+/**
+ * Alle Seiten einer Dashboard-Tabelle. Ist der Zeitraum nicht (mehr) vorbereitet: dashboard_period mit denselben
+ * Argumenten erneut (sbCall wartet auf „preparing“), dann dieselbe Seite noch einmal – bis 3 Versuche je Seite;
+ * die schon gelesenen Seiten bleiben.
+ */
 async function tablePages(t: string, channel: SbChannel, args: Record<string, unknown> & { period_start: number; period_end: number }, count: number, maxPages: number) {
   const rows: Record<string, unknown>[] = [];
   let total = Infinity;
-  let warmed = false;
+  let versuche = 0;
   for (let page = 1; page <= maxPages && (page - 1) * count < total; ) {
     let reply: Record<string, unknown>;
     try {
       reply = await sbCall(t, TOOLS[channel].table, { ...args, page, count });
     } catch (e) {
-      if (!isNotWarmed(e) || warmed) throw e;
+      if (!isNotWarmed(e) || versuche >= WARM_VERSUCHE_JE_SEITE) throw e;
+      versuche++;
       await sbCall(t, TOOLS[channel].period, { periods: [{ start: args.period_start, end: args.period_end }] });
-      warmed = true;
       continue;
     }
+    versuche = 0;
     const list = (reply.result as Record<string, unknown>[] | undefined) ?? [];
     total = Number(reply.total ?? list.length);
     rows.push(...list);
@@ -410,30 +409,46 @@ async function syncEbayUnits(t: string, ranges: { start: number; end: number; fr
   return n;
 }
 
+/** B27.4: höchstens so lange je Schritt – ein hängender Abruf gibt die Sperre wieder frei. */
+const SCHRITT_MS = Number(process.env.SB_SCHRITT_MS) || 20 * 60_000;
+
+/** Sperre je Gruppe: Verkauf/Bestand/alles teilen sich Daten, „tage“ läuft unabhängig daneben. */
+const sperre = (tenantId: string, scope: SyncScope) => `${tenantId}:${scope === "tage" ? "tage" : "haupt"}`;
+
 /** Ein Abgleich (wartet bis fertig). Fehler eines Teils halten die anderen nicht auf. */
 export async function syncSellerboard(tenantId: string, scope: SyncScope = "alles") {
   if (!(await sbConnected(tenantId))) return { skipped: true };
-  if (running.has(tenantId)) return { skipped: true };
-  running.add(tenantId);
+  const key = sperre(tenantId, scope);
+  if (running.has(key)) return { skipped: true };
+  running.add(key);
   const now = new Date();
   const counts: Record<string, number> = {};
   const errors: string[] = [];
+  const { ABRUF_PLAN } = await import("@/lib/today/abruf-plan");
   const step = async (name: string, fn: () => Promise<void>) => {
     const t0 = Date.now();
     const job = `sellerboard: ${name}`;
     jobStarted(job);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await fn();
-      void recordJob(tenantId, job, null, Date.now() - t0);
+      await Promise.race([fn(), new Promise<never>((_, nein) => (timer = setTimeout(() => nein(new Error(`Zeitüberschreitung nach ${Math.round(SCHRITT_MS / 60_000)} Min. – beim nächsten Lauf erneut.`)), SCHRITT_MS)))]);
+      void recordJob(tenantId, job, null, Date.now() - t0, ABRUF_PLAN[job] ?? null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`${name}: ${msg}`);
-      void recordJob(tenantId, job, msg, Date.now() - t0);
+      void recordJob(tenantId, job, msg, Date.now() - t0, ABRUF_PLAN[job] ?? null);
     } finally {
+      clearTimeout(timer);
       jobEnded(job);
     }
   };
   try {
+    // B27.4: Gewinn je Produkt und Tag + Verlust-Stopp unabhängig vom großen Abgleich (alle 3 Std.).
+    if (scope === "tage") {
+      await step("Gewinn je Produkt und Tag", async () => void (counts.produktTage = await syncSkuDays(tenantId, now)));
+      await step("Verlust-Stopp", async () => void (counts.verlust = await refreshVerlustTasks(tenantId, todayIso())));
+      return { skipped: false, counts, errors };
+    }
     if (scope !== "verkauf") await writeConn(tenantId, { config: { syncing: scope === "alles" ? "Abgleich läuft (alles) …" : "Abgleich läuft (Bestand) …" } });
     const conn = await readConn(tenantId);
     if (!conn?.config.accountId || conn.config.hasEbay === undefined) await step("Konto", () => identifyAccount(tenantId));
@@ -456,8 +471,6 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
       await step("Fixkosten", async () => void (counts.fixkosten = await syncFixCosts(tenantId)));
       await step("Produkte 30 Tage (Hebel)", async () => void (counts.hebelProdukte = await syncSkuStats(tenantId, now)));
       await step("Keepa Buy Box (Hebel)", async () => void (counts.keepa = await syncHebelKeepa(tenantId)));
-      await step("Gewinn je Produkt und Tag", async () => void (counts.produktTage = await syncSkuDays(tenantId, now)));
-      await step("Verlust-Stopp", async () => void (counts.verlust = await refreshVerlustTasks(tenantId, todayIso())));
     }
     if (scope === "alles" || scope === "bestand") await step("Hebel-Aufgaben", async () => void (counts.hebel = await refreshHebelTasks(tenantId)));
     // Fehlmengen aus den Sendungen gleich als Ansprüche prüfen.
@@ -465,10 +478,10 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
     await writeConn(tenantId, { config: { syncing: null, lastSyncAt: new Date().toISOString(), lastSyncError: errors.length ? errors.join(" · ").slice(0, 800) : null, lastCounts: { ...((await readConn(tenantId))?.config.lastCounts ?? {}), ...counts } } });
     return { skipped: false, counts, errors };
   } catch (e) {
-    await writeConn(tenantId, { config: { syncing: null, lastSyncError: e instanceof Error ? e.message : String(e) } }).catch(() => undefined);
+    if (scope !== "tage") await writeConn(tenantId, { config: { syncing: null, lastSyncError: e instanceof Error ? e.message : String(e) } }).catch(() => undefined);
     throw e;
   } finally {
-    running.delete(tenantId);
+    running.delete(key);
   }
 }
 
@@ -477,4 +490,4 @@ export function startSellerboardSync(tenantId: string, scope: SyncScope) {
   void syncSellerboard(tenantId, scope).catch((e) => console.error("[sellerboard]", e instanceof Error ? e.message : e));
 }
 
-export const sellerboardSyncRunning = (tenantId: string) => running.has(tenantId);
+export const sellerboardSyncRunning = (tenantId: string) => running.has(`${tenantId}:haupt`) || running.has(`${tenantId}:tage`);

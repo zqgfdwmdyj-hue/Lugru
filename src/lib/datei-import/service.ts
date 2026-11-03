@@ -13,7 +13,7 @@ import { formatVorschlag, spaltenProtokoll, vorschlagText } from "@/lib/reports/
 import { transaktionsAuswertung } from "@/lib/reports/transaktionen";
 import { readTable } from "@/lib/tabular";
 import { dateiArt, dateiHochladen } from "@/lib/uploads/service";
-import { UPLOAD_ART } from "@/lib/uploads/erkennen";
+import { UPLOAD_ART, type UploadArt } from "@/lib/uploads/erkennen";
 import { AUFBEWAHRUNG_TAGE, GUELTIG_MIN, IMPORT_ARTEN, landUndZeitraumAus, MAX_MB, sichererName, uploadPruefen, type ImportArt } from "./logic";
 
 // Datei-Import über den Claude-Konnektor: Einmal-Adresse → PUT → Verarbeitung im Hintergrund mit demselben Code wie
@@ -122,8 +122,8 @@ export async function importVerarbeiten(id: string): Promise<void> {
   }
 }
 
-async function zentral(session: Session, name: string, bytes: Uint8Array) {
-  const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null });
+async function zentral(session: Session, name: string, bytes: Uint8Array, art?: UploadArt) {
+  const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null, art });
   if (!r) throw new ImportFehler("Die Datei konnte nicht verarbeitet werden.");
   if (!r.ok) throw new ImportFehler(r.text);
   return r;
@@ -203,10 +203,12 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
 
   // Übrige Arten mit eigener Upload-Erkennung (Kontoauszug, Amex, EK-Liste, USt-Bericht).
   if ("upload" in def && def.upload) {
-    const erkannt = await dateiArt(name, bytes);
+    // B27.1: Dateien aus dem ArbitrageOne-Abruf – der Abruf weiß, welchen Export er geladen hat: Art fest, keine Erkennung.
+    const fest = h.herkunft === "arbitrageone";
+    const erkannt = fest ? def.upload : await dateiArt(name, bytes);
     if (erkannt !== def.upload) throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
     await fortschritt(30);
-    const r = await zentral(session, name, bytes);
+    const r = await zentral(session, name, bytes, fest ? def.upload : undefined);
     const basis = { art, text: r.text, hinweise: r.hinweise, link: r.link };
     // ArbitrageOne-Abruf: EK-Zeilen ohne Warnung gleich übernehmen (Nachtlauf ohne Handarbeit), Rest zur Prüfung.
     if (art === "ek_liste" && h.herkunft === "arbitrageone") {
@@ -313,8 +315,61 @@ export async function importStatus(tenantId: string, id: string) {
     upload_gueltig_bis: a.status === "wartet_auf_datei" ? a.gueltigBis.toISOString() : undefined,
     fehler_text: a.fehlerText ?? (abgelaufen ? "Upload-Adresse abgelaufen, ohne dass eine Datei kam – bitte mit import_link eine neue anfordern." : undefined),
     bereits_importiert: a.bereitsImportId ? true : undefined,
+    herkunft: a.herkunft,
+    // B27.1: fehlgeschlagen und Datei noch da → unter Anbindungen → Importe „Erneut verarbeiten“ (Inhaber).
+    erneut_verarbeitbar: a.status === "fehler" && Boolean(a.ablage) ? true : undefined,
+    nachverarbeitet_am: a.nachverarbeitetAm?.toISOString() ?? undefined,
     ergebnis: a.ergebnis ?? undefined,
   };
+}
+
+/**
+ * B27.1: Fehlgeschlagenen Import mit derselben Datei (aus der verschlüsselten Ablage) erneut verarbeiten – nach einem
+ * Fix oder wenn eine Einstellung fehlte. Ist dieselbe Datei inzwischen erfolgreich importiert, wird nichts doppelt
+ * gebucht („bereits importiert“). Nichts wird gelöscht; der alte Fehler steht danach im Ergebnis.
+ */
+export async function importErneutVerarbeiten(tenantId: string, id: string): Promise<{ ok: boolean; status: string; text: string }> {
+  const [a] = await db.select().from(D).where(and(eq(D.tenantId, tenantId), eq(D.id, id)));
+  if (!a) return { ok: false, status: "fehlt", text: "Import nicht gefunden." };
+  if (a.status !== "fehler") return { ok: false, status: a.status, text: "Nur fehlgeschlagene Importe lassen sich erneut verarbeiten." };
+  if (!a.ablage) return { ok: false, status: a.status, text: "Die Datei liegt nicht mehr vor (nach der Aufbewahrungszeit gelöscht) – bitte neu hochladen bzw. abholen." };
+  const vorher = a.fehlerText;
+  const jetzt = new Date();
+  if (a.sha256) {
+    const [schon] = await db
+      .select({ id: D.id, fertigAm: D.fertigAm })
+      .from(D)
+      .where(and(eq(D.tenantId, tenantId), eq(D.sha256, a.sha256), eq(D.status, "fertig"), ne(D.id, a.id), sql`${D.bereitsImportId} is null`))
+      .limit(1);
+    if (schon) {
+      await db.update(D).set({ status: "fertig", fortschritt: 100, fertigAm: jetzt, fehlerText: null, bereitsImportId: schon.id, nachverarbeitetAm: jetzt, ergebnis: { bereits_importiert: true, erster_import_id: schon.id, erneut_verarbeitet: { am: jetzt.toISOString(), vorheriger_fehler: vorher } } }).where(eq(D.id, a.id));
+      return { ok: true, status: "fertig", text: "Dieselbe Datei ist inzwischen importiert – nichts doppelt gebucht." };
+    }
+  }
+  await db.update(D).set({ status: "verarbeitet", fortschritt: 5, fehlerText: null, fertigAm: null, nachverarbeitetAm: jetzt }).where(eq(D.id, a.id));
+  await importVerarbeiten(a.id);
+  const [x] = await db.select({ status: D.status, fehler: D.fehlerText, ergebnis: D.ergebnis }).from(D).where(eq(D.id, a.id));
+  if (x?.status === "fertig") {
+    await db.update(D).set({ ergebnis: { ...(x.ergebnis ?? {}), erneut_verarbeitet: { am: jetzt.toISOString(), vorheriger_fehler: vorher } } }).where(eq(D.id, a.id));
+    return { ok: true, status: "fertig", text: String((x.ergebnis as { text?: string } | null)?.text ?? "verarbeitet") };
+  }
+  return { ok: false, status: x?.status ?? "fehler", text: x?.fehler ?? "Verarbeitung fehlgeschlagen" };
+}
+
+/**
+ * B27.1: Nach dem Fix einmal automatisch nachverarbeiten: fehlgeschlagene ArbitrageOne-Importe (Einkäufe, Lagerbestand)
+ * der letzten 14 Tage, die noch nie nachverarbeitet wurden – älteste zuerst (neuere Stände gewinnen).
+ */
+export async function aoFehlimporteNachverarbeiten(tenantId: string): Promise<{ id: string; dateiname: string; ok: boolean; text: string }[]> {
+  const rows = await db
+    .select({ id: D.id, dateiname: D.dateiname })
+    .from(D)
+    .where(and(eq(D.tenantId, tenantId), eq(D.herkunft, "arbitrageone"), eq(D.status, "fehler"), isNotNull(D.ablage), sql`${D.nachverarbeitetAm} is null`, sql`${D.art} in ('ek_liste', 'ao_lagerbestand')`, sql`${D.createdAt} > now() - interval '14 days'`))
+    .orderBy(D.createdAt)
+    .limit(20);
+  const out: { id: string; dateiname: string; ok: boolean; text: string }[] = [];
+  for (const r of rows) out.push({ id: r.id, dateiname: r.dateiname, ...(await importErneutVerarbeiten(tenantId, r.id)) });
+  return out;
 }
 
 /** Werkzeug 3: letzte Importe mit Kurzfassung. */

@@ -37,6 +37,10 @@ export const E2E_ENV: Record<string, string> = {
   NEXT_TELEMETRY_DISABLED: "1",
   // B24: Wartezeit auf das Anmeldeformular der Browser-Automatik (live 60 s)
   AUTOMATIK_WARTEN_MS: "5000",
+  // B27.2: Wartezeiten des ArbitrageOne-Abrufs (live 5 Min. je Schritt, Export-Liste 10 Min. alle 30 s)
+  AO_SCHRITT_MS: "8000",
+  AO_LISTE_MS: "30000",
+  AO_LISTE_TAKT_MS: "2000",
   // Fotos/Videos der Retouren-Station (verschlüsselt) – eigener Ordner nur für die Prüfungen
   MEDIA_DIR: process.env.E2E_MEDIA_DIR || `${process.cwd()}/.e2e-medien`,
 };

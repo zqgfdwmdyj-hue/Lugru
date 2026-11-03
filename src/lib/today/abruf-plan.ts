@@ -23,6 +23,25 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "Lugru Deals: eigene Käufe": { ausloeser: "zeitplan", text: "Zeitplan: alle 6 Std. (sellerboard-SKUs, Chargen, Bestellungen)", minuten: 360 },
   "Amazon: Versandbestätigung": { ausloeser: "zeitplan", text: "Zeitplan: stündlich", minuten: 60 },
   "ArbitrageOne: Exporte abholen": { ausloeser: "zeitplan", text: "Auslöser: täglich 05:30 (Einkäufe, Lagerbestand, sellerboard-COG, BQool-Vergleich; montags Reimbursement; am 1. AccountOne COG)", taeglichUm: "05:30" },
+  "ArbitrageOne: fehlgeschlagene Importe nachverarbeiten": { ausloeser: "zeitplan", text: "Zeitplan: stündlich (je fehlgeschlagenem Import einmal)", minuten: 60 },
+  // B27.4: sellerboard – Zeitplan fest eingetragen (vorher „wird beim nächsten Lauf erfasst“).
+  "sellerboard: Verkauf (Amazon + eBay)": { ausloeser: "zeitplan", text: "Zeitplan: alle 30 Min.", minuten: 30 },
+  "sellerboard: FBA-Bestand": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
+  "sellerboard: FBA-Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
+  "sellerboard: Hebel-Aufgaben": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
+  "sellerboard: Ansprüche aus Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
+  "sellerboard: Produkte & EK": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
+  "sellerboard: Monatswerte & Gewinn je SKU": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
+  "sellerboard: Fixkosten": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
+  "sellerboard: Produkte 30 Tage (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
+  "sellerboard: Keepa Buy Box (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
+  "sellerboard: Gewinn je Produkt und Tag": { ausloeser: "zeitplan", text: "Zeitplan: alle 3 Std. (unabhängig vom großen Abgleich)", minuten: 180 },
+  "sellerboard: Verlust-Stopp": { ausloeser: "zeitplan", text: "Zeitplan: alle 3 Std. (nach „Gewinn je Produkt und Tag“)", minuten: 180 },
+};
+
+/** B27.5: Abrufe, die durch neuere ersetzt sind – nie „veraltet“, nicht unter „nur Probleme“. */
+export const ABGELOESTE_ABRUFE: Record<string, string> = {
+  "Call-Archiv (Discord)": "abgelöst durch „Call-Archiv (Discord live)“ und „Call-Archiv (Discord, Sicherheitsnetz)“ (täglich 06:00)",
 };
 
 /** B25.12: Text für einen Abstand in Minuten (Hintergrund-Takt alle 5 Min.: 4 → 5, 59 → 60, 1435 → täglich). */

@@ -1,6 +1,6 @@
 import "server-only";
 import { discordLiveStatus } from "@/lib/discord/gateway";
-import { ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
+import { ABGELOESTE_ABRUFE, ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
 import { and, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -323,7 +323,9 @@ export const anbindungenStatus = defineTool({
         const fehlerAktuell = Boolean(j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt));
         // Einmalige Schritte (z. B. sellerboard-Konto erkennen) laufen nur beim Einrichten – nie „veraltet“.
         const einmalig = EINMALIGE_ABRUFE.has(j.name);
-        const alt = !einmalig && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
+        // B27.5: abgelöste Abrufe (z. B. altes Call-Archiv) sind nie „veraltet“ und stehen nicht unter „nur Probleme“.
+        const abgeloest = ABGELOESTE_ABRUFE[j.name];
+        const alt = !einmalig && !abgeloest && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
         const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
         const letzterLauf = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
         return {
@@ -332,9 +334,10 @@ export const anbindungenStatus = defineTool({
           naechster_lauf: naechsterText(plan, letzterLauf),
           letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie",
           einmalig: einmalig ? "nur beim Einrichten nötig – kein Hinweis auf alte Daten" : undefined,
-          fehler: fehlerAktuell ? (j.lastError ?? "Fehler").slice(0, 300) : undefined,
-          fehler_seit: fehlerAktuell ? (berlinDateTime(j.lastErrorAt) ?? undefined) : undefined,
-          hinweis: fehlerAktuell ? ABRUF_HINWEIS[j.name] : undefined,
+          abgeloest: abgeloest || undefined,
+          fehler: fehlerAktuell && !abgeloest ? (j.lastError ?? "Fehler").slice(0, 300) : undefined,
+          fehler_seit: fehlerAktuell && !abgeloest ? (berlinDateTime(j.lastErrorAt) ?? undefined) : undefined,
+          hinweis: fehlerAktuell && !abgeloest ? ABRUF_HINWEIS[j.name] : undefined,
           ueber_2_tage_alt: alt || undefined,
         };
       })
@@ -367,7 +370,16 @@ export const anbindungenStatus = defineTool({
             const [l] = await aoLaeufe(t, 1);
             const plan = ABRUF_PLAN["ArbitrageOne: Exporte abholen"];
             const letzterPlan = (await aoLaeufe(t, 10)).find((x) => x.ausloeser === "zeitplan")?.createdAt ?? null;
-            return { ausloeser: plan.text, naechster_lauf: naechsterText(plan, letzterPlan), letzter_lauf: l ? { am: berlinDateTime(l.createdAt), status: l.status, ergebnis: l.fehler ?? (l.ergebnis.map((x) => `${x.titel}: ${x.ok ? x.text : `Fehler – ${x.text}`}`).join(" · ") || "Nichts fällig") } : "noch keiner", details: "importe" };
+            // B27.6: je Export eine Zeile „Name · Status · Kurztext · Bildschirmfoto“; Rohmeldung nur im Detail.
+            const { kurzFehler, laufZeilen } = await import("@/lib/arbitrageone/logic");
+            const zeilen = l ? laufZeilen(l.ergebnis.map((x) => ({ ...x, text: x.ok ? x.text : kurzFehler(x.text), bild: x.bild ? abs(ctx, x.bild) : undefined }))) : [];
+            const fehlerDetails = l ? l.ergebnis.filter((x) => !x.ok).map((x) => ({ export: x.titel, rohmeldung: (x.roh ?? x.text).slice(0, 600), bildschirmfoto: x.bild ? abs(ctx, x.bild) : undefined, seite: x.seite, seitentitel: x.seitentitel })) : [];
+            return {
+              ausloeser: plan.text,
+              naechster_lauf: naechsterText(plan, letzterPlan),
+              letzter_lauf: l ? { am: berlinDateTime(l.createdAt), status: l.status, ergebnis: l.fehler ? [`Abgebrochen · ${kurzFehler(l.fehler)}`] : zeilen.length ? zeilen : ["Nichts fällig"], fehler_details: fehlerDetails.length ? fehlerDetails : undefined } : "noch keiner",
+              details: "importe",
+            };
           })()
         : undefined,
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),

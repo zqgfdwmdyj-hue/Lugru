@@ -98,7 +98,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Delegation | Anrufe (im Tagesplan) `/kalender/tagesplan?anrufe=1` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Wissen & Calls | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Wissen & Calls | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
-| Privat | Übersicht `/privat` | ○ 0/8 Abläufe | – | 2 |
+| Privat | Übersicht `/privat` | ○ 0/10 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -446,6 +446,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Abendritual als Abfolge „zweimal Streicheln, danach Massage“ | die nächsten Abende im Voraus: S, S, M, S, S, M | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Familienkalender: „To do Ina: …“ → wichtige Aufgabe | genau eine Aufgabe (wichtig, Ina, Frist = Termintag); erledigt bleibt erledigt | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
+| B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten | Einkäufe/Lagerbestand verarbeitet; BQool aus der Export-Liste, Reimbursement über den Dialog; Fehler je Export mit Bild + Seite; sellerboard „übersprungen“; alter Fehlimport → fertig | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
+| B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst | „alle 3 Std.“ statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
 | BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“ | Hinweis/Server-Annahme = hochgeladen, JSON-Ablehnung = Fehler; nichts erkannt = gelb + normale Aufgabe; „hat geklappt“ → von Hand bestätigt, Status fertig, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `bqool-upload-erkennung.spec.ts` |
 | Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin) | „nur Tom“ → blockt nicht, steht unter „Blockt nicht“, Kapazität steigt; zurückholen und ↺ gehen; Kalender-Tagesliste gleich; To-do-Termine blocken nicht | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel | Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
@@ -549,7 +551,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (119 Abläufe + Oberfläche auf 107 Seiten): 0 bestanden, 0 fehlgeschlagen, 119 nicht gelaufen.
+**Automatisch** (121 Abläufe + Oberfläche auf 107 Seiten): 0 bestanden, 0 fehlgeschlagen, 121 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -641,6 +643,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Übersicht: Abendritual als Abfolge „zweimal Streicheln, danach Massage“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familienkalender: „To do Ina: …“ → wichtige Aufgabe – im letzten Lauf nicht gelaufen
+- ○ Übersicht: B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten – im letzten Lauf nicht gelaufen
+- ○ Übersicht: B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst – im letzten Lauf nicht gelaufen
 - ○ Übersicht: BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin) – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel – im letzten Lauf nicht gelaufen

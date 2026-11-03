@@ -13,15 +13,20 @@ describe("Takt: wann ist ein Export fällig?", () => {
     expect(exportFaellig("taeglich", berlin("2026-11-01T23:59:00+01:00"), jetzt)).toBe(true);
     expect(exportFaellig("taeglich", berlin("2026-11-02T00:10:00+01:00"), jetzt)).toBe(false);
   });
-  it("wöchentlich montags – fehlgeschlagener Montag wird Dienstag nachgeholt", () => {
+  it("wöchentlich nur montags (B27.2: Dienstag lief Reimbursement trotzdem)", () => {
     expect(wochenMontag(berlin("2026-11-04T10:00:00+01:00"))).toBe("2026-11-02");
     expect(wochenMontag(berlin("2026-11-08T23:00:00+01:00"))).toBe("2026-11-02"); // Sonntag gehört zur Woche ab Montag
     expect(exportFaellig("woechentlich", berlin("2026-10-26T06:00:00+01:00"), berlin("2026-11-02T05:31:00+01:00"))).toBe(true);
+    expect(exportFaellig("woechentlich", null, berlin("2026-11-02T05:31:00+01:00"))).toBe(true);
     expect(exportFaellig("woechentlich", berlin("2026-11-02T05:35:00+01:00"), berlin("2026-11-05T05:31:00+01:00"))).toBe(false);
-    expect(exportFaellig("woechentlich", berlin("2026-10-27T06:00:00+01:00"), berlin("2026-11-03T05:31:00+01:00"))).toBe(true);
+    // Dienstag: nicht mehr – auch nicht, wenn es noch nie geklappt hat (Knopf „Jetzt abholen“ geht immer)
+    expect(exportFaellig("woechentlich", berlin("2026-10-27T06:00:00+01:00"), berlin("2026-11-03T05:31:00+01:00"))).toBe(false);
+    expect(exportFaellig("woechentlich", null, berlin("2026-11-03T05:31:00+01:00"))).toBe(false);
   });
-  it("monatlich am 1. – sonst nachholen, bis es einmal im Monat geklappt hat", () => {
+  it("monatlich am 1. – bei Fehlschlag bis zum 7. nachholen", () => {
     expect(exportFaellig("monatlich", berlin("2026-10-01T05:40:00+02:00"), berlin("2026-11-01T05:31:00+01:00"))).toBe(true);
+    expect(exportFaellig("monatlich", berlin("2026-10-01T05:40:00+02:00"), berlin("2026-11-06T05:31:00+01:00"))).toBe(true);
+    expect(exportFaellig("monatlich", berlin("2026-10-01T05:40:00+02:00"), berlin("2026-11-08T05:31:00+01:00"))).toBe(false);
     expect(exportFaellig("monatlich", berlin("2026-11-01T05:40:00+01:00"), berlin("2026-11-15T05:31:00+01:00"))).toBe(false);
     expect(accountoneMonat(berlin("2026-11-01T05:31:00+01:00"))).toBe("2026-10");
     expect(accountoneMonat(berlin("2027-01-01T05:31:00+01:00"))).toBe("2026-12");
@@ -31,7 +36,8 @@ describe("Takt: wann ist ein Export fällig?", () => {
     const heute = berlin("2026-11-03T05:32:00+01:00");
     const alleHeute = Object.fromEntries(AO_EXPORTE.map((e) => [e.key, heute]));
     expect(faelligeExporte(alleHeute, jetzt).map((e) => e.key)).toEqual([]);
-    expect(faelligeExporte({}, jetzt).map((e) => e.key)).toEqual(["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement", "accountone"]);
+    expect(faelligeExporte({}, jetzt).map((e) => e.key)).toEqual(["einkaeufe", "lagerbestand", "sellerboard", "bqool", "accountone"]); // Reimbursement nur montags
+    expect(faelligeExporte({}, berlin("2026-11-02T05:31:00+01:00")).map((e) => e.key)).toContain("reimbursement");
     expect(faelligeExporte(alleHeute, jetzt, { alle: true }).length).toBe(6);
     expect(faelligeExporte({}, jetzt, { nur: ["lagerbestand"] }).map((e) => e.key)).toEqual(["lagerbestand"]);
     expect(AO_EXPORTE.find((e) => e.key === "bqool")!.art).toBe("ao_bqool_vergleich");

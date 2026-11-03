@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { aoFormat, einkaeufeAus } from "@/lib/arbitrageone/logic";
+import { abKopfzeile, aoFormat, einkaeufeAus, spaltenNamen } from "@/lib/arbitrageone/logic";
 import { parseAmount, parseDate } from "@/lib/numbers";
 
 // Liest die Exporte aus Arbitrage One. Erkannt werden:
@@ -77,8 +77,16 @@ export function readSheet(data: ArrayBuffer | Uint8Array): unknown[][] {
   });
 }
 
-export function parseArbitrageOne(table: unknown[][]): ParsedImport {
-  if (table.length === 0) throw new ImportFormatError("Die Datei ist leer.");
+/** Kopfzeile eines der bekannten Formate (AccountOne, Vorlage, sellerboard, ArbitrageOne-Export)? */
+const bekannteKopfzeile = (zeile: unknown[]) => {
+  const h = zeile.map(norm);
+  return (h.includes("marketplace_article_nr") && h.includes("article_nr")) || h.includes("seller sku") || h.includes("fnsku") || (h.includes("asin") && h.includes("sku") && h.includes("cost")) || aoFormat(zeile) !== null;
+};
+
+export function parseArbitrageOne(roh: unknown[][]): ParsedImport {
+  if (roh.length === 0) throw new ImportFormatError("Die Datei ist leer.");
+  // B27.1: Titel-/Leerzeilen vor den Spaltennamen überspringen.
+  const table = abKopfzeile(roh, bekannteKopfzeile);
   const headers = table[0].map(norm);
   const body = table.slice(1);
   const skipped: ParsedImport["skipped"] = [];
@@ -138,7 +146,7 @@ export function parseArbitrageOne(table: unknown[][]): ParsedImport {
     };
   } else {
     throw new ImportFormatError(
-      "Format nicht erkannt. Unterstützt: Arbitrage-One-Export für Sellerboard, AccountOne COG, Einkäufe oder die eigene Vorlage mit ASIN/Seller SKU/FNSKU.",
+      `Format nicht erkannt. Unterstützt: Arbitrage-One-Export für Sellerboard, AccountOne COG, Einkäufe oder die eigene Vorlage mit ASIN/Seller SKU/FNSKU. Gefundene Spalten: ${spaltenNamen(roh).join(", ") || "keine"}.`,
     );
   }
 
