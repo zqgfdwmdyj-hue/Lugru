@@ -13,10 +13,13 @@ export type DcNachricht = {
   attachments?: { id: string; filename: string; url: string; content_type?: string; size?: number }[];
   reactions?: { emoji: { name: string | null }; count: number; me?: boolean }[];
   thread?: { id: string };
+  /** Systemnachricht „… hat einen Thread begonnen“ (type 18): channel_id = der neue Thread. */
+  message_reference?: { channel_id?: string; message_id?: string };
   embeds?: { title?: string; url?: string; description?: string; fields?: { name: string; value: string }[]; footer?: { text?: string } }[];
 };
 
 export type DcDatei = { name: string; daten: Buffer; typ: string };
+export type DcThread = { id: string; name?: string; parent_id?: string; owner_id?: string; thread_metadata?: { archived?: boolean; create_timestamp?: string } };
 
 const BASIS = () => (process.env.DISCORD_API_BASE_URL || "https://discord.com/api/v10").replace(/\/$/, "");
 /** Nachricht ohne Push-Benachrichtigung (Ruhezeit). */
@@ -96,6 +99,10 @@ export function discord(token: string) {
       }
       return alle;
     },
+    /** Aktive Threads des Servers (alle Kanäle) – zum Finden von Threads, die die VA selbst angelegt hat. */
+    aktiveThreads: (guildId: string) => anfrage<{ threads: DcThread[] }>("GET", `/guilds/${encodeURIComponent(guildId)}/threads/active`),
+    /** Archivierte öffentliche Threads eines Kanals (neueste zuerst). */
+    archivierteThreads: (kanalId: string, limit = 50) => anfrage<{ threads: DcThread[] }>("GET", `/channels/${encodeURIComponent(kanalId)}/threads/archived/public?limit=${Math.min(100, Math.max(1, limit))}`),
     nachricht: (kanalId: string, id: string) => anfrage<DcNachricht>("GET", `/channels/${encodeURIComponent(kanalId)}/messages/${encodeURIComponent(id)}`),
     /** Die neuesten Nachrichten (höchstens 100, mit Reaktionen) – für das Nachziehen der Reaktionen frischer Posts. */
     neueste: (kanalId: string, limit = 100) => anfrage<DcNachricht[]>("GET", `/channels/${encodeURIComponent(kanalId)}/messages?limit=${Math.min(100, Math.max(1, limit))}`),

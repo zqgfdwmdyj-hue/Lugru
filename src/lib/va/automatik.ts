@@ -12,7 +12,8 @@ import { echterFall } from "@/lib/amazon-faelle/logic";
 import * as L from "./logic";
 import { datum } from "./sprache";
 import { uebersetzen } from "./uebersetzen";
-import { alsDeutsch, anhaengeSpeichern, anleitungEnglisch, dateiZeilen, rechnungenFuer, rueckfrage, schonDa, vaKonfig, vaZustaendigSetzen, type Ctx, type ThreadRow } from "./service";
+import { alsDeutsch, anhaengeSpeichern, anleitungEnglisch, bitteImThread, dateiZeilen, kiBitte, rechnungenFuer, rueckfrage, schonDa, vaKonfig, vaZustaendigSetzen, type Ctx, type ThreadRow } from "./service";
+import { BOT } from "./sprache";
 
 // VA-Automatik (B18): Ansprüche automatisch an die VA (eigener Thread mit Paket, Erinnerungen 7/3/1 Tage vor der
 // Frist um 09:00 VA-Zeit, am Fristtag Info an Ludwig, abgelaufen → Liste an Ludwig), Fälle der Fall-Zentrale je
@@ -292,12 +293,33 @@ export async function fallAutomatik(tenantId: string, v: Vorgang, jetzt = new Da
 // ---- Antworten der VA in Anspruchs- und Sammel-Threads -----------------------------------------------------
 
 /** Nachricht der VA in einem Anspruchs- oder Sammel-Thread. Liefert den neuen Thread-Status. */
+/**
+ * Bitte oder „bereits erstattet“ im Anspruchs-Thread (auch beim einmaligen Nachholen): Rechnungen zum Anspruch
+ * (ASIN/SKU) schickt das System selbst; „bereits erstattet“ wird Ludwigs Aufgabe „Anspruch prüfen“. Liefert den neuen
+ * Thread-Status bzw. null, wenn nichts zu tun war.
+ */
+export async function anspruchBitte(c: Ctx, th: ThreadRow, o: { roh: string; text: string; nachrichtId: string | null }, claim?: typeof C.$inferSelect): Promise<ThreadRow["status"] | null> {
+  const cl = claim ?? (th.claimId ? (await db.select().from(C).where(and(eq(C.tenantId, c.t), eq(C.id, th.claimId))))[0] : undefined);
+  const titel = `Anspruch „${cl?.title ?? "?"}“`;
+  const link = cl ? `/ansprueche/${cl.id}` : undefined;
+  const erst = L.bereitsErstattet(o.roh);
+  if (erst) {
+    if (o.nachrichtId) await db.update(VN).set({ art: "info" }).where(and(eq(VN.tenantId, c.t), eq(VN.id, o.nachrichtId)));
+    await rueckfrage(c, th, `${o.text}${erst.erstattungsId ? `\n\nErstattungs-ID laut VA: ${erst.erstattungsId}` : ""}\n\nBitte in Seller Central prüfen und den Anspruch als erstattet abschließen (wird nicht automatisch geändert).`, o.nachrichtId, null, { titel: `Anspruch prüfen – laut VA schon erstattet: ${cl?.title ?? "?"}`, botText: BOT[c.sprache].erstattetNotiert(erst.erstattungsId), link });
+    return "rueckfrage";
+  }
+  if (L.threadAntwortArt(o.roh) !== "rueckfrage" && !L.bedarfAusText(o.roh).rechnung) return null;
+  if (o.nachrichtId) await db.update(VN).set({ art: "rueckfrage" }).where(and(eq(VN.tenantId, c.t), eq(VN.id, o.nachrichtId)));
+  return bitteImThread(c, th, { roh: o.roh, text: o.text, nachrichtId: o.nachrichtId, titel, kennung: { asin: cl?.asin ?? null, sku: cl?.sku ?? null }, link });
+}
+
 export async function automatikAntwort(c: Ctx, th: ThreadRow, m: DcNachricht): Promise<ThreadRow["status"]> {
   if (await schonDa(c.t, m.id)) return th.status;
   c.z.nachrichten++;
   const roh = (m.content ?? "").trim();
   const dateien = await anhaengeSpeichern(c.t, m);
-  const art = roh ? L.threadAntwortArt(roh) : "notiz";
+  let art = roh ? L.threadAntwortArt(roh) : "notiz";
+  if (art === "notiz" && th.art === "anspruch" && !L.bereitsErstattet(roh) && !A.fallnummerInAntwort(roh) && (await kiBitte(c, roh))) art = "rueckfrage";
   const de = await alsDeutsch(c.t, roh);
   const text = de.text;
   const [row] = await db
@@ -309,6 +331,11 @@ export async function automatikAntwort(c: Ctx, th: ThreadRow, m: DcNachricht): P
 
   if (th.art === "anspruch") {
     const [cl] = th.claimId ? await db.select().from(C).where(and(eq(C.tenantId, c.t), eq(C.id, th.claimId))) : [];
+    // „already reimbursed (reimbursement id …)“: notieren, Ludwig prüft und schließt (nie automatisch abschließen).
+    if (L.bereitsErstattet(roh)) {
+      if (cl && (text || dateien.length)) await db.insert(CE).values({ tenantId: c.t, claimId: cl.id, action: "Notiz der VA (Discord)", note: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null].filter(Boolean).join("\n").slice(0, 4000) });
+      return (await anspruchBitte(c, th, { roh, text: text || "(Datei)", nachrichtId: row?.id ?? null }, cl)) ?? th.status;
+    }
     const fall = A.fallnummerInAntwort(roh);
     if (cl && fall) {
       const r = await markiereEingereicht(c.t, cl.id, { fallnummer: fall, notiz: text ? text.slice(0, 500) : null, userId: null, via: "VA (Discord)" });
@@ -321,10 +348,7 @@ export async function automatikAntwort(c: Ctx, th: ThreadRow, m: DcNachricht): P
       await sag(A.TEXT_EN.fallnummerFehlt);
       return th.status;
     }
-    if (art === "rueckfrage") {
-      await rueckfrage(c, th, text || "(Datei)", row?.id ?? null, `Anspruch „${cl?.title ?? "?"}“`);
-      return "rueckfrage";
-    }
+    if (art === "rueckfrage") return (await anspruchBitte(c, th, { roh, text: text || "(Datei)", nachrichtId: row?.id ?? null }, cl)) ?? "rueckfrage";
     if (cl && (text || dateien.length)) await db.insert(CE).values({ tenantId: c.t, claimId: cl.id, action: "Notiz der VA (Discord)", note: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null].filter(Boolean).join("\n").slice(0, 4000) });
     return th.status;
   }

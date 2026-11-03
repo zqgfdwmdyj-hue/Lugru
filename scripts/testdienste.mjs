@@ -179,7 +179,8 @@ function kiAnswer(req, b) {
   if (/Ordne die Nachricht der Assistenz/.test(text) && !stale) {
     const n = (/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "").trim();
     const asin = /\b(B0[A-Z0-9]{8})\b/.exec(n)?.[1] ?? null;
-    const marke = asin ? /([A-ZÄÖÜ][\wäöüß]+)\s+B0[A-Z0-9]{8}/.exec(n)?.[1] ?? null : null;
+    const vorAsin = asin ? /([A-ZÄÖÜ][\wäöüß]+)\s+B0[A-Z0-9]{8}/.exec(n)?.[1] ?? null : null;
+    const marke = vorAsin && !/^B0[A-Z0-9]{8}$/.test(vorAsin) ? vorAsin : null;
     const sendung = /\b(FBA[0-9A-Z]{6,12})\b/.exec(n)?.[1] ?? null;
     let o;
     if (/rechnung|invoice/i.test(n)) o = { art: "bitte", titel: `Rechnung ${[marke, asin].filter(Boolean).join(" ")}`.trim(), faellig: null, anfrage: { typ: "rechnung", asin, sku: null, marke, lieferant: null, sendung: null, auftrag: null, suchtext: null }, aufgabe: null };
@@ -396,8 +397,17 @@ function wsLesen(sock, puffer) {
   }
   sock.rest = buf;
 }
+// Thread im Nachbau anlegen (Bot über die API oder VA über /__discord-va/thread).
+function dcThread(id, name, k, owner, archiviert = false) {
+  const th = { id, name: String(name ?? "").slice(0, 100), type: 11, parent_id: k.id, guild_id: k.guild_id, owner_id: owner, thread_metadata: { archived: archiviert, create_timestamp: new Date().toISOString() } };
+  dcVa.kanaele.set(th.id, th);
+  return th;
+}
+
 function discordVa(req, p, url, body) {
   if (p === "/discord-api/users/@me") return [200, { id: DC_BOT, username: "Seller-Bot (Test)", bot: true }];
+  const gilde = /^\/discord-api\/guilds\/(\d+)\/threads\/active$/.exec(p);
+  if (gilde && req.method === "GET") return [200, { threads: [...dcVa.kanaele.values()].filter((x) => x.type === 11 && x.guild_id === gilde[1] && !x.thread_metadata?.archived), members: [] }];
   const t = /^\/discord-api\/channels\/(\d+)(\/.*)?$/.exec(p);
   if (!t) return null;
   const k = dcKanal(t[1]);
@@ -406,17 +416,14 @@ function discordVa(req, p, url, body) {
   if (!rest) return [200, k];
   if (rest === "/threads" && req.method === "POST") {
     const b = JSON.parse(body || "{}");
-    const th = { id: dcId(), name: String(b.name ?? "").slice(0, 100), type: 11, parent_id: k.id, guild_id: k.guild_id };
-    dcVa.kanaele.set(th.id, th);
-    return [201, th];
+    return [201, dcThread(dcId(), b.name, k, DC_BOT)];
   }
+  if (rest === "/threads/archived/public" && req.method === "GET") return [200, { threads: [...dcVa.kanaele.values()].filter((x) => x.type === 11 && x.parent_id === k.id && x.thread_metadata?.archived), members: [], has_more: false }];
   const ausNachricht = /^\/messages\/(\d+)\/threads$/.exec(rest);
   if (ausNachricht && req.method === "POST") {
     if (dcVa.kanaele.has(ausNachricht[1])) return [400, { message: "A thread has already been created for this message", code: 160004 }];
     const b = JSON.parse(body || "{}");
-    const th = { id: ausNachricht[1], name: String(b.name ?? "").slice(0, 100), type: 11, parent_id: k.id, guild_id: k.guild_id };
-    dcVa.kanaele.set(th.id, th);
-    return [201, th];
+    return [201, dcThread(ausNachricht[1], b.name, k, DC_BOT)];
   }
   if (rest === "/messages" && req.method === "POST") {
     let b;
@@ -1003,6 +1010,23 @@ http
       const anh = b.anhang ? [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: b.anhang.groesse ?? String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }] : [];
       if (b.anhang) dcVa.anhaenge.set(b.anhang.name, String(b.anhang.inhalt ?? ""));
       return send(200, dcNachricht(String(b.kanal), { id: String(b.autor ?? DC_VA), username: "VA (Test)" }, String(b.text ?? ""), anh));
+    }
+    // Die VA legt selbst einen Thread im Kanal an („… hat einen Thread begonnen“): Systemnachricht (Typ 18) im Kanal
+    // mit Verweis auf den Thread, dann ihre Nachricht(en) im Thread. ohneSystemnachricht: nur über die Thread-Liste
+    // zu finden; archiviert: in der Liste der archivierten Threads.
+    if (url.pathname === "/__discord-va/thread" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      const k = dcKanal(String(b.kanal));
+      if (!k) return send(404, { fehler: "Kanal unbekannt" });
+      const va = { id: String(b.autor ?? DC_VA), username: "VA (Test)" };
+      const th = dcThread(dcId(), b.name, k, va.id, !!b.archiviert);
+      if (!b.ohneSystemnachricht) {
+        const sys = { id: dcId(), channel_id: k.id, type: 18, content: th.name, timestamp: new Date().toISOString(), author: va, attachments: [], reactions: [], message_reference: { channel_id: th.id, guild_id: k.guild_id } };
+        dcVa.nachrichten.push(sys);
+      }
+      const texte = Array.isArray(b.texte) ? b.texte : b.text != null ? [b.text] : [];
+      const msgs = texte.map((t) => dcNachricht(th.id, va, String(t)));
+      return send(200, { thread: th, nachrichten: msgs });
     }
     // ProfitPath-Bot: Meldung mit Embed (Titel, Amazon-Link, Felder) in einen Kanal (IDs mit „8“ am Anfang).
     if (url.pathname === "/__discord-va/profitpath" && req.method === "POST") {

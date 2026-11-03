@@ -22,6 +22,8 @@ export const vaThreads = pgTable(
     /** Sammel-Thread: Einträge mit Nummer (#1, #2 …). */
     eintraege: jsonb("eintraege").$type<VaSammelEintrag[]>().notNull().default([]),
     threadId: text("thread_id").notNull(),
+    /** Name des Threads, wenn die VA ihn selbst angelegt hat (z. B. „INVOICE FOR REEVALUATION“) – Kontext für die Einordnung. */
+    titel: text("titel"),
     /** Aufgaben-Nachricht des Bots (✅/❓-Reaktionen) bzw. Nachricht der VA. */
     startNachrichtId: text("start_nachricht_id"),
     /** Zuletzt gelesene Nachricht im Thread. */
@@ -84,6 +86,8 @@ export const vaStand = pgTable("va_stand", {
   letzterFehler: text("letzter_fehler"),
   /** Letzte „Daily overview“ (einmal je Tag in VA-Zeit; „neu seit“ zählt ab hier). */
   uebersichtAm: timestamp("uebersicht_am", { withTimezone: true }),
+  /** Einmaliges Nachholen (Befund 03.11.): Antworten der letzten 14 Tage, die nur als Notiz gespeichert wurden. */
+  nachgeprueftAm: timestamp("nachgeprueft_am", { withTimezone: true }),
 });
 
 /**

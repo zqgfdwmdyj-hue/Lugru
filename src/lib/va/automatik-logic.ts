@@ -148,7 +148,8 @@ export function feiertageAusText(text: string): string[] {
  * 8–12 Ziffern, ohne Kennwort nur 10–12 Ziffern (keine Bestellnummer 123-1234567-1234567, keine Mengen/Beträge).
  */
 export function fallnummerInAntwort(text: string): string | null {
-  const t = text.replace(/<@!?\d+>|<#\d+>/g, " ");
+  // Erstattungs-IDs („reimbursement id 1234567890“) sind keine Fallnummern (Befund 03.11.).
+  const t = text.replace(/<@!?\d+>|<#\d+>/g, " ").replace(/reimburse?ment\s*(?:-?id|no\.?|number|nr\.?)?\s*[:#-]?\s*\d{6,15}/gi, " ");
   const mit = /(?:case|fall|ticket|claim)\s*(?:-?id|no\.?|number|nummer|nr\.?)?\s*[:#-]?\s*(\d{8,12})(?!\d)/i.exec(t) ?? /#\s?(\d{8,12})(?!\d)/.exec(t);
   if (mit) return mit[1];
   const ohne = /(?<![\d.,-])(\d{10,12})(?![\d.,-]?\d)/.exec(t);

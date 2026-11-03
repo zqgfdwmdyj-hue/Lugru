@@ -19,8 +19,9 @@ test.describe("Apple Watch", () => {
     const [{ id: INH }] = await sql<{ id: string }>("select id from users where email = 'inhaber'");
     const token = `mk_aw${m}${"x".repeat(24)}`;
     await sql("insert into api_tokens (tenant_id, user_id, name, zweck, token_hash, anfang) values ($1, $2, $3, 'mobil', $4, $5)", [T, INH, `Watch ${m}`, createHash("sha256").update(token).digest("hex"), token.slice(0, 7)]);
-    // Meldungen mit Bezug aus früheren Prüfungen (z. B. Amazon-ToDo-Aufgabe) nicht mit „Erledigt“ verwechseln.
-    await sql("delete from meldungen where tenant_id = $1 and user_id = $2 and bezug is not null", [T, INH]);
+    // Meldungen aus früheren Prüfungen (Amazon-ToDo-Aufgabe, Amazon-Fall mit Link zur Aufgabe …) nicht mit „Erledigt“
+    // verwechseln: „Erledigt“ bezieht sich auf den neuesten Push der letzten 24 Std.
+    await sql("delete from meldungen where tenant_id = $1 and user_id = $2 and (bezug is not null or created_at > now() - interval '1 day')", [T, INH]);
     await anmelden(page, "inhaber");
     const watch = async (befehl: string, text?: string): Promise<{ status: number; ms: number; r: Watch }> => {
       const t0 = Date.now();

@@ -9,9 +9,9 @@ import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { publicUrl } from "@/lib/public-url";
 import { berlinMidnight } from "@/lib/today/service";
-import { anhangLaden, discord, DiscordFehler, type DcDatei, type DcNachricht } from "./discord";
+import { anhangLaden, discord, DiscordFehler, type DcDatei, type DcNachricht, type DcThread } from "./discord";
 import * as L from "./logic";
-import { BOT, notizFuerSprache, type Sprache } from "./sprache";
+import { BOT, datum, notizFuerSprache, type Sprache } from "./sprache";
 import { uebersetzen, vaSprache } from "./uebersetzen";
 
 // VA über Discord: Aufgabe zuweisen → eigener Thread (Anleitung, Anhänge, Erwähnung der VA); Abgleich alle 30 s:
@@ -191,7 +191,8 @@ export async function beiZuweisung(tenantId: string, taskId: string, userId: str
 export type Ctx = { t: string; cfg: VaCfg; dc: ReturnType<typeof discord>; va: Session | null; s: Awaited<ReturnType<typeof vaEinstellungen>>["s"]; heute: string; zeit: string; ruhe: boolean; jetzt: Date; z: Zaehler; sprache: Sprache; manuell: boolean };
 export type Zaehler = { nachrichten: number; erledigt: number; rueckfragen: number; auto: number; erinnerungen: number; anVa: number; verpasst: number; fehler: string[] };
 
-const vonVa = (cfg: VaCfg, m: DcNachricht) => m.author?.id === cfg.vaDiscordId && !m.author.bot && (m.type === undefined || m.type === 0 || m.type === 19);
+const vonVaAutor = (cfg: VaCfg, m: DcNachricht) => m.author?.id === cfg.vaDiscordId && !m.author.bot;
+const vonVa = (cfg: VaCfg, m: DcNachricht) => vonVaAutor(cfg, m) && (m.type === undefined || m.type === 0 || m.type === 19);
 const zeitVon = (m: DcNachricht) => (m.timestamp ? new Date(m.timestamp) : new Date());
 
 let laeuft = new Set<string>();
@@ -212,7 +213,9 @@ export async function vaAbgleich(tenantId: string, jetzt = new Date(), o: { manu
   const c: Ctx = { t: tenantId, cfg, dc: discord(cfg.botToken), va, s, heute: lok.datum, zeit: lok.zeit, ruhe, jetzt, z: { nachrichten: 0, erledigt: 0, rueckfragen: 0, auto: 0, erinnerungen: 0, anVa: 0, verpasst: 0, fehler: [] }, sprache: await vaSprache(tenantId, va?.userId ?? null), manuell: Boolean(o.manuell) };
   try {
     await kanalAbgleichen(c);
+    await threadsEntdecken(c);
     await threadsAbgleichen(c);
+    await nachpruefen(c);
     if (!ruhe) await erinnern(c);
     await (await import("./automatik")).automatikTakt(c);
     await db.insert(schema.vaStand).values({ tenantId, letzterAbgleich: new Date(), letzterFehler: c.z.fehler[0] ?? null }).onConflictDoUpdate({ target: schema.vaStand.tenantId, set: { letzterAbgleich: new Date(), letzterFehler: c.z.fehler[0] ?? null } });
@@ -245,6 +248,12 @@ async function kanalAbgleichen(c: Ctx) {
   } else neu = await c.dc.neue(c.cfg.kanalId, cursor);
   for (const m of neu) {
     if (BigInt(m.id) > BigInt(cursor)) cursor = m.id;
+    // „… hat einen Thread begonnen“: Die VA legt selbst einen Thread an (Befund 03.11.: „INVOICE FOR REEVALUATION“) –
+    // die eigentliche Nachricht steht im Thread, nicht im Kanal. Thread merken, seine Nachrichten werden gelesen.
+    if (m.type === 18 && vonVaAutor(c.cfg, m) && m.message_reference?.channel_id) {
+      await vaThreadMerken(c, m.message_reference.channel_id, (m.content ?? "").trim() || null).catch((e) => c.z.fehler.push(e instanceof Error ? e.message : String(e)));
+      continue;
+    }
     if (!vonVa(c.cfg, m)) continue;
     try {
       await kanalNachricht(c, m, null);
@@ -253,6 +262,45 @@ async function kanalAbgleichen(c: Ctx) {
     }
   }
   await db.insert(schema.vaStand).values({ tenantId: c.t, kanalCursor: cursor }).onConflictDoUpdate({ target: schema.vaStand.tenantId, set: { kanalCursor: cursor } });
+}
+
+/**
+ * Thread der VA merken (selbst angelegt). Ist er an einer schon bekannten Nachricht der VA entstanden (Thread-ID =
+ * Nachrichten-ID), gehört er zu deren Aufgabe für Ludwig. Gelesen wird ab der ersten Nachricht.
+ */
+async function vaThreadMerken(c: Ctx, threadId: string, titel: string | null): Promise<boolean> {
+  const [vn] = await db.select({ ludwigTaskId: VN.ludwigTaskId }).from(VN).where(and(eq(VN.tenantId, c.t), eq(VN.discordId, threadId))).limit(1);
+  const r = await db
+    .insert(VT)
+    .values({ tenantId: c.t, art: "vom_va", taskId: vn?.ludwigTaskId ?? null, threadId, titel: titel?.slice(0, 100) ?? null, startNachrichtId: null, cursor: "0", status: "offen" })
+    .onConflictDoNothing()
+    .returning({ id: VT.id });
+  return r.length > 0;
+}
+
+const gildeJeKanal = new Map<string, string>();
+const erstelltAm = (t: DcThread) => (t.thread_metadata?.create_timestamp ? Date.parse(t.thread_metadata.create_timestamp) : Number((BigInt(t.id) >> 22n) + 1420070400000n));
+
+/**
+ * Threads, die die VA im VA-Kanal selbst angelegt hat und die das System noch nicht kennt (aktive und archivierte,
+ * letzte 14 Tage) – fängt auch Threads ab, deren Hinweis im Kanal schon vor dem Update gelesen war.
+ */
+async function threadsEntdecken(c: Ctx) {
+  let gilde = gildeJeKanal.get(c.cfg.kanalId);
+  try {
+    if (!gilde) {
+      gilde = (await c.dc.kanal(c.cfg.kanalId)).guild_id;
+      if (gilde) gildeJeKanal.set(c.cfg.kanalId, gilde);
+    }
+    const grenze = c.jetzt.getTime() - 14 * 86_400_000;
+    const [aktiv, archiv] = await Promise.all([gilde ? c.dc.aktiveThreads(gilde) : { threads: [] as DcThread[] }, c.dc.archivierteThreads(c.cfg.kanalId)]);
+    const kandidaten = [...aktiv.threads, ...archiv.threads].filter((t) => t.parent_id === c.cfg.kanalId && t.owner_id === c.cfg.vaDiscordId && erstelltAm(t) >= grenze);
+    if (!kandidaten.length) return;
+    const bekannt = new Set((await db.select({ id: VT.threadId }).from(VT).where(and(eq(VT.tenantId, c.t), inArray(VT.threadId, kandidaten.map((k) => k.id))))).map((r) => r.id));
+    for (const t of kandidaten) if (!bekannt.has(t.id)) await vaThreadMerken(c, t.id, t.name ?? null);
+  } catch (e) {
+    c.z.fehler.push(`Threads der VA finden: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 export async function schonDa(t: string, discordId: string) {
@@ -324,6 +372,9 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
   if (de.original) e.titel = (await uebersetzen(c.t, e.titel, "de")).text.slice(0, 80);
   const basis = { tenantId: c.t, discordId: m.id, kanalId: imThread?.threadId ?? c.cfg.kanalId, threadId: imThread?.threadId ?? null, von: "va" as const, text: text || "(Datei)", original: de.original, sprache: de.sprache, anfrage: e.anfrage, dateiIds: dateien.map((d) => d.id), gesendetAm: zeitVon(m) };
 
+  // Klare Bitte um Rechnung/Liefernachweis nie als Info ablegen, auch wenn die KI es anders einordnet.
+  const bedarf = L.bedarfAusText(roh);
+  if (e.art !== "bitte" && e.art !== "frage" && (bedarf.rechnung || bedarf.nachweis)) e.art = "bitte";
   if (e.art === "smalltalk") {
     await db.insert(VN).values({ ...basis, art: "smalltalk" }).onConflictDoNothing();
     return;
@@ -335,19 +386,37 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
     return;
   }
 
-  // Bitte/Frage: zuerst selbst beantworten, wenn es Daten aus dem System sind.
+  // Hat die VA aus ihrer Nachricht selbst schon einen Thread gemacht, dort antworten (sonst lehnt Discord ab).
+  const eigenerThread = imThread?.threadId ?? m.thread?.id ?? null;
+  // Bitte/Frage: zuerst selbst beantworten, wenn es Daten aus dem System sind (auch mehrere Rechnungen auf einmal).
   let gefunden: string | null = null;
+  let restText: string | null = null;
+  let offenDe: string | null = null;
+  if (!e.anfrage && (bedarf.rechnung || bedarf.nachweis)) e.anfrage = { typ: "rechnung", asin: null, sku: null, marke: null, lieferant: null, sendung: null, auftrag: null, suchtext: null };
   if (e.anfrage) {
-    const r = await autoAntwort(c, e.anfrage, roh).catch((x) => ({ ok: false as const, gefunden: `Fehler beim Suchen: ${x instanceof Error ? x.message : String(x)}` }));
+    const r: Auto = await autoAntwort(c, e.anfrage, roh).catch((x) => ({ ok: false as const, gefunden: `Fehler beim Suchen: ${x instanceof Error ? x.message : String(x)}` }));
     if (r.ok) {
-      const threadId = imThread?.threadId ?? (await c.dc.threadAnNachricht(c.cfg.kanalId, m.id, L.threadName(e.titel))).id;
+      const threadId = eigenerThread ?? (await c.dc.threadAnNachricht(c.cfg.kanalId, m.id, L.threadName(e.titel))).id;
       const antwortId = await c.dc.senden(threadId, r.text, { still: c.ruhe, dateien: r.dateien });
-      await db.insert(VN).values({ ...basis, threadId, art: e.art, autoBeantwortet: true, antwort: r.text.slice(0, 4000), beantwortetAm: new Date() }).onConflictDoNothing();
-      if (!imThread) await db.insert(VT).values({ tenantId: c.t, art: "vom_va", taskId: null, threadId, startNachrichtId: m.id, cursor: antwortId, status: "erledigt", erledigtAm: new Date() }).onConflictDoNothing();
-      c.z.auto++;
-      return;
+      if (!r.rest) {
+        await db.insert(VN).values({ ...basis, threadId, art: e.art, autoBeantwortet: true, antwort: r.text.slice(0, 4000), beantwortetAm: new Date() }).onConflictDoNothing();
+        if (!imThread) await db.insert(VT).values({ tenantId: c.t, art: "vom_va", taskId: null, threadId, startNachrichtId: m.id, cursor: antwortId, status: "erledigt", erledigtAm: new Date() }).onConflictDoNothing();
+        else await db.update(VT).set({ status: "erledigt", erledigtAm: new Date() }).where(and(eq(VT.tenantId, c.t), eq(VT.id, imThread.id)));
+        c.z.auto++;
+        if (r.info) await vaRueckfragePush(c.t, "🧾 VA: Rechnung automatisch geschickt", r.info, false);
+        return;
+      }
+      // Teilweise beantwortet (z. B. Rechnung für eine von drei ASINs): Rest geht an Ludwig.
+      gefunden = `Automatisch geschickt: ${r.info ?? "–"}\nNoch offen: ${r.rest.de}`;
+      restText = BOT[c.sprache].restBeiLudwig(c.sprache === "de" ? r.rest.de : r.rest.en);
+      offenDe = r.rest.de;
+    } else {
+      gefunden = r.gefunden;
+      if (r.rest) {
+        restText = BOT[c.sprache].restBeiLudwig(c.sprache === "de" ? r.rest.de : r.rest.en);
+        offenDe = r.rest.de;
+      }
     }
-    gefunden = r.gefunden;
   }
 
   // Sonst: Aufgabe „vom VA“ für Ludwig (Frist aus dem Text oder nächster Werktag) mit Erinnerung.
@@ -357,7 +426,7 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
     .values({
       tenantId: c.t,
       systemKey: `va-nachricht:${m.id}`,
-      title: `VA: ${e.titel}`.slice(0, 200),
+      title: `VA: ${e.titel}${offenDe ? ` – offen: ${offenDe}` : ""}`.slice(0, 200),
       notes: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Delegation → VA (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
       dueDate: faellig,
       priority: "normal",
@@ -366,10 +435,10 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
     })
     .onConflictDoNothing()
     .returning({ id: T.id });
-  let threadId = imThread?.threadId ?? null;
+  let threadId = eigenerThread;
   try {
     if (!threadId) threadId = (await c.dc.threadAnNachricht(c.cfg.kanalId, m.id, L.threadName(e.titel))).id;
-    const hinweis = await c.dc.senden(threadId, BOT[c.sprache].angekommen, { still: true });
+    const hinweis = await c.dc.senden(threadId, restText ?? BOT[c.sprache].angekommen, { still: true });
     if (!imThread) await db.insert(VT).values({ tenantId: c.t, art: "vom_va", taskId: lt?.id ?? null, threadId, startNachrichtId: m.id, cursor: hinweis, status: "offen" }).onConflictDoNothing();
     else if (lt) await db.update(VT).set({ taskId: lt.id, status: "offen", erledigtAm: null }).where(and(eq(VT.tenantId, c.t), eq(VT.id, imThread.id)));
   } catch (x) {
@@ -418,12 +487,14 @@ async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null
   const neu = await c.dc.neue(th.threadId, th.cursor ?? th.startNachrichtId ?? "0");
   let cursor = th.cursor;
   let status = th.status;
+  // Thread der VA ohne Aufgabe (selbst angelegt bzw. automatisch beantwortet): alle neuen Nachrichten zusammen als
+  // eine Anfrage (sonst würde jede Zeile eine eigene Aufgabe), mit dem Thread-Namen als Kontext.
+  const anfrage: DcNachricht[] = [];
   for (const m of neu) {
     cursor = m.id;
     if (!vonVa(c.cfg, m)) continue;
     if (th.art === "vom_va" && !th.taskId) {
-      // Folgefrage in einem automatisch beantworteten Thread – wie eine neue Nachricht behandeln.
-      await kanalNachricht(c, m, { id: th.id, threadId: th.threadId });
+      if (!(await schonDa(c.t, m.id))) anfrage.push(m);
       continue;
     }
     if (th.art === "anspruch" || th.art === "sammel") {
@@ -432,6 +503,12 @@ async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null
       continue;
     }
     status = await threadNachricht(c, { ...th, status }, m, taskTitle);
+  }
+  if (anfrage.length) {
+    const erste = anfrage[0];
+    const neuThread = (th.cursor ?? "0") === "0";
+    const inhalt = [neuThread && th.titel ? `${th.titel}:` : null, ...anfrage.map((x) => (x.content ?? "").trim()).filter(Boolean)].filter(Boolean).join("\n");
+    await kanalNachricht(c, { ...erste, content: inhalt, attachments: anfrage.flatMap((x) => x.attachments ?? []), thread: undefined }, { id: th.id, threadId: th.threadId });
   }
   if (cursor !== th.cursor) await db.update(VT).set({ cursor }).where(eq(VT.id, th.id));
   if (th.art !== "aufgabe" || status === "erledigt") return;
@@ -458,7 +535,9 @@ async function threadNachricht(c: Ctx, th: ThreadRow, m: DcNachricht, taskTitle:
   c.z.nachrichten++;
   const roh = (m.content ?? "").trim();
   const dateien = await anhaengeSpeichern(c.t, m);
-  const art = roh ? L.threadAntwortArt(roh) : "notiz";
+  let art = roh ? L.threadAntwortArt(roh) : "notiz";
+  // Unklar (keine Frage, keine erkennbare Bitte): KI fragen, ob die VA etwas braucht.
+  if (art === "notiz" && th.art === "aufgabe" && (await kiBitte(c, roh))) art = "rueckfrage";
   const de = await alsDeutsch(c.t, roh);
   const text = de.text;
   const [row] = await db
@@ -481,11 +560,91 @@ async function threadNachricht(c: Ctx, th: ThreadRow, m: DcNachricht, taskTitle:
     await alsErledigt(c, th, text);
     return "erledigt";
   }
-  if (art === "rueckfrage") {
-    await rueckfrage(c, th, text, row?.id ?? null, taskTitle);
-    return "rueckfrage";
-  }
+  if (art === "rueckfrage") return bitteImThread(c, th, { roh, text, nachrichtId: row?.id ?? null, titel: taskTitle, kennung: { asin: L.bedarfAusText(taskTitle ?? "").asins[0] ?? null, sku: null } });
   return th.status;
+}
+
+/** KI-Einschätzung für unklare Antworten im Thread: bittet/fragt die VA nach etwas? (Ohne KI: nein.) */
+export async function kiBitte(c: Ctx, roh: string): Promise<boolean> {
+  if (roh.length < 12) return false;
+  const ai = (await getIntegration(c.t, "anthropic")) as { apiKey?: string } | null;
+  if (!ai?.apiKey) return false;
+  const e = await einordnen(c.t, roh, [], c.heute).catch(() => null);
+  return e?.art === "bitte" || e?.art === "frage";
+}
+
+type RechnungsAntwort = { text: string; dateien: DcDatei[]; geschickt: string[]; fehlt: string[] };
+
+/** Rechnungen zu mehreren ASINs (bzw. einer SKU/Marke/Lieferant) sammeln – höchstens 10 Dateien je Antwort. */
+async function rechnungenSammeln(c: Ctx, z: { asins: string[]; sku: string | null; marke: string | null; lieferant: string | null }): Promise<RechnungsAntwort> {
+  const ziele: { asin: string | null; sku: string | null; marke: string | null; lieferant: string | null }[] = z.asins.length ? z.asins.slice(0, 10).map((asin) => ({ asin, sku: null, marke: null, lieferant: null })) : [{ asin: null, sku: z.sku, marke: z.marke, lieferant: z.lieferant }];
+  const zeilen: string[] = [];
+  const dateiIds = new Set<string>();
+  const geschickt: string[] = [];
+  const fehlt: string[] = [];
+  for (const ziel of ziele) {
+    const r = await rechnungenFuer(c.t, ziel, c.heute);
+    if (!r.wofuer) continue;
+    if (!r.liste.length) {
+      fehlt.push(r.wofuer);
+      continue;
+    }
+    geschickt.push(r.wofuer);
+    for (const x of r.liste.slice(0, 3)) {
+      if (x.fileId && dateiIds.size < 10) dateiIds.add(x.fileId);
+      zeilen.push(`• ${r.wofuer}: ${x.invoiceDate ? datum(x.invoiceDate, c.sprache) : "–"} · ${x.vendor ?? "–"} · ${BOT[c.sprache].nr} ${x.invoiceNumber ?? "–"}${x.fileName ? ` · ${x.fileName}` : ""}`);
+    }
+  }
+  const files = dateiIds.size
+    ? await db.select({ name: schema.files.name, typ: schema.files.mimeType, size: schema.files.size, data: schema.files.data }).from(schema.files).where(and(eq(schema.files.tenantId, c.t), inArray(schema.files.id, [...dateiIds])))
+    : [];
+  const dateien = files.filter((f) => f.size <= 8 * 1024 * 1024).map((f) => ({ name: f.name, typ: f.typ, daten: Buffer.from(f.data) }));
+  const text = geschickt.length ? [BOT[c.sprache].rechnungenGeschickt(zeilen.length, geschickt.join(", ")), ...zeilen.slice(0, 12)].join("\n") : "";
+  return { text, dateien, geschickt, fehlt };
+}
+
+const REST_EN: Record<string, string> = { nachweis: "proof of delivery (POD / delivery note)", keineKennung: "invoice (no ASIN/SKU recognised – which product?)", keinRecht: "invoice (not shared automatically – setting)" };
+const REST_DE: Record<string, string> = { nachweis: "Liefernachweis (POD/Lieferschein)", keineKennung: "Rechnung (keine ASIN/SKU erkannt)", keinRecht: "Rechnung (Einstellung: VA darf Einkaufsrechnungen nicht sehen)" };
+
+/**
+ * Die VA bittet in einem Aufgaben- oder Anspruchs-Thread um etwas (Befund 03.11.). Rechnungen schickt das System
+ * selbst (ASINs aus dem Text, sonst die des Anspruchs/der Aufgabe); was fehlt (Rechnung nicht im System,
+ * Liefernachweis, Entscheidung) geht als Rückfrage an Ludwig – mit Aufgabe, Push und Hinweis im Thread.
+ */
+export async function bitteImThread(c: Ctx, th: ThreadRow, o: { roh: string; text: string; nachrichtId: string | null; titel: string | null; kennung: { asin: string | null; sku: string | null }; link?: string }): Promise<ThreadRow["status"]> {
+  const b = L.bedarfAusText(o.roh);
+  const rest: string[] = [];
+  let geschickt: string[] = [];
+  if (b.rechnung) {
+    if (!c.s.darfEinkaufsrechnungen) rest.push("keinRecht");
+    else {
+      const asins = b.asins.length ? b.asins : o.kennung.asin ? [o.kennung.asin] : [];
+      const sku = asins.length ? null : o.kennung.sku;
+      if (!asins.length && !sku) rest.push("keineKennung");
+      else {
+        const r = await rechnungenSammeln(c, { asins, sku, marke: null, lieferant: null });
+        if (r.geschickt.length) {
+          await c.dc.senden(th.threadId, r.text, { still: c.ruhe, dateien: r.dateien }).catch((e) => c.z.fehler.push(e instanceof Error ? e.message : String(e)));
+          geschickt = r.geschickt;
+          if (o.nachrichtId) await db.update(VN).set({ antwort: r.text.slice(0, 4000), beantwortetAm: new Date() }).where(and(eq(VN.tenantId, c.t), eq(VN.id, o.nachrichtId)));
+        }
+        rest.push(...r.fehlt.map((f) => `rechnung:${f}`));
+      }
+    }
+  }
+  if (b.nachweis) rest.push("nachweis");
+  // Nur Rechnungen gewünscht und alle gefunden: erledigt ohne Aufgabe – Ludwig bekommt nur eine kurze Info.
+  if (geschickt.length && !rest.length) {
+    if (o.nachrichtId) await db.update(VN).set({ autoBeantwortet: true }).where(and(eq(VN.tenantId, c.t), eq(VN.id, o.nachrichtId)));
+    c.z.auto++;
+    await vaRueckfragePush(c.t, "🧾 VA: Rechnung automatisch geschickt", `${(o.titel ?? "").slice(0, 60)} – ${geschickt.join(", ")}`, false);
+    return th.status;
+  }
+  const restDe = rest.map((r) => (r.startsWith("rechnung:") ? `Rechnung ${r.slice(9)} (nicht im System)` : REST_DE[r] ?? r));
+  const restEn = rest.map((r) => (r.startsWith("rechnung:") ? `invoice for ${r.slice(9)} (not in the system)` : REST_EN[r] ?? r));
+  const notiz = [o.text, geschickt.length ? `Automatisch geschickt: Rechnungen für ${geschickt.join(", ")}` : null, restDe.length ? `Noch offen: ${restDe.join("; ")}` : null].filter(Boolean).join("\n\n");
+  await rueckfrage(c, th, notiz, o.nachrichtId, o.titel, { botText: geschickt.length || rest.length ? BOT[c.sprache].restBeiLudwig(c.sprache === "de" ? (restDe.join("; ") || "deine Frage") : (restEn.join("; ") || "your question")) : undefined, link: o.link });
+  return "rueckfrage";
 }
 
 /** Aufgabe aus der Fall-Zentrale (amazon-fall:<id>): nennt die VA eine Fallnummer, steht der Vorgang auf „eingereicht“. */
@@ -507,22 +666,23 @@ async function alsErledigt(c: Ctx, th: ThreadRow, text: string | null) {
   await c.dc.senden(th.threadId, BOT[c.sprache].erledigtDanke(Boolean(text)), { still: true }).catch(() => "");
 }
 
-export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: string | null, taskTitle: string | null) {
+export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: string | null, taskTitle: string | null, o: { botText?: string; titel?: string; link?: string } = {}) {
   await db.update(VT).set({ status: "rueckfrage" }).where(eq(VT.id, th.id));
   const key = `va-rueckfrage:${nachrichtId ?? `${th.id}:reaktion`}`;
   const [lt] = await db
     .insert(T)
-    .values({ tenantId: c.t, systemKey: key, title: `Rückfrage VA: ${taskTitle ?? "Aufgabe"}`.slice(0, 200), notes: `${text}\n\nAntwort unter Delegation → VA (Discord); sie erscheint im Thread der VA.`, dueDate: c.heute, priority: "normal", category: "eigene", link: "/delegation/va" })
+    .values({ tenantId: c.t, systemKey: key, title: (o.titel ?? `Rückfrage VA: ${taskTitle ?? "Aufgabe"}`).slice(0, 200), notes: `${text}\n\nAntwort unter Delegation → VA (Discord); sie erscheint im Thread der VA.`, dueDate: c.heute, priority: "normal", category: "eigene", link: o.link ?? "/delegation/va" })
     .onConflictDoNothing()
     .returning({ id: T.id });
   if (nachrichtId && lt) await db.update(VN).set({ ludwigTaskId: lt.id }).where(and(eq(VN.tenantId, c.t), eq(VN.id, nachrichtId)));
   else if (!nachrichtId && lt)
     await db.insert(VN).values({ tenantId: c.t, discordId: `reaktion:${th.id}`, kanalId: th.threadId, threadId: th.threadId, von: "va", text: "❓ (Reaktion)", art: "rueckfrage", taskId: th.taskId, ludwigTaskId: lt.id, gesendetAm: new Date() }).onConflictDoNothing();
   c.z.rueckfragen++;
-  await c.dc.senden(th.threadId, BOT[c.sprache].rueckfrageBeiLudwig, { still: true }).catch(() => "");
+  await c.dc.senden(th.threadId, o.botText ?? BOT[c.sprache].rueckfrageBeiLudwig, { still: true }).catch(() => "");
   const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
-  const dc = await notifyDiscord(c.t, `❓ Rückfrage der VA zu „${taskTitle ?? "Aufgabe"}“: ${text.slice(0, 300)}`).catch(() => false);
-  await vaRueckfragePush(c.t, `❓ VA-Rückfrage: ${(taskTitle ?? "Aufgabe").slice(0, 40)}`, text, dc);
+  const kopf = o.titel ?? `Rückfrage VA: ${taskTitle ?? "Aufgabe"}`;
+  const dc = await notifyDiscord(c.t, `❓ ${kopf}: ${text.slice(0, 300)}`).catch(() => false);
+  await vaRueckfragePush(c.t, `❓ ${kopf.replace(/^Rückfrage VA: /, "VA-Rückfrage: ").slice(0, 60)}`, text, dc);
   // SMS (B13, falls eingerichtet): nur bei Rückfragen zu wichtigen Aufgaben – ohne den Text der VA.
   if (lt && th.taskId) {
     const [orig] = await db.select({ priority: T.priority }).from(T).where(and(eq(T.tenantId, c.t), eq(T.id, th.taskId)));
@@ -531,6 +691,40 @@ export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtI
       await smsMelden(c.t, { art: "va", kern: `VA-Rückfrage zu „${(taskTitle ?? "Aufgabe").slice(0, 60)}“`, schluessel: `va:${key}`, bezug: `task:${lt.id}`, codes: ["SPÄTER", "OK"] }).catch(() => null);
     }
   }
+}
+
+/**
+ * Einmal nach dem Update (Befund 03.11.): Antworten der VA der letzten 14 Tage in Aufgaben- und Anspruchs-Threads,
+ * die nur als Notiz gespeichert wurden, aber eine Bitte/Frage sind (z. B. „i need invoice …“), nachholen – Rechnungen
+ * schicken, Rest als Rückfrage an Ludwig. Höchstens 30.
+ */
+async function nachpruefen(c: Ctx) {
+  const [st] = await db.select({ am: schema.vaStand.nachgeprueftAm }).from(schema.vaStand).where(eq(schema.vaStand.tenantId, c.t));
+  if (st?.am) return;
+  const seit = new Date(c.jetzt.getTime() - 14 * 86_400_000);
+  const rows = await db
+    .select({ vn: VN, th: VT, taskTitle: T.title })
+    .from(VN)
+    .innerJoin(VT, and(eq(VT.tenantId, VN.tenantId), eq(VT.threadId, VN.threadId)))
+    .leftJoin(T, eq(T.id, VT.taskId))
+    .where(and(eq(VN.tenantId, c.t), eq(VN.von, "va"), eq(VN.art, "notiz"), isNull(VN.ludwigTaskId), gte(VN.createdAt, seit), inArray(VT.art, ["anspruch", "aufgabe"])))
+    .orderBy(VN.createdAt)
+    .limit(30);
+  for (const r of rows) {
+    const roh = r.vn.original ?? r.vn.text;
+    try {
+      if (r.th.art === "anspruch") {
+        const { anspruchBitte } = await import("./automatik");
+        await anspruchBitte(c, r.th, { roh, text: r.vn.text, nachrichtId: r.vn.id });
+      } else if (L.threadAntwortArt(roh) === "rueckfrage") {
+        await db.update(VN).set({ art: "rueckfrage" }).where(eq(VN.id, r.vn.id));
+        await bitteImThread(c, r.th, { roh, text: r.vn.text, nachrichtId: r.vn.id, titel: r.taskTitle, kennung: { asin: L.bedarfAusText(r.taskTitle ?? "").asins[0] ?? null, sku: null } });
+      }
+    } catch (e) {
+      c.z.fehler.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  await db.insert(schema.vaStand).values({ tenantId: c.t, nachgeprueftAm: new Date() }).onConflictDoUpdate({ target: schema.vaStand.tenantId, set: { nachgeprueftAm: new Date() } });
 }
 
 async function erinnern(c: Ctx) {
@@ -555,11 +749,22 @@ async function erinnern(c: Ctx) {
 
 // ---- Automatische Antworten -------------------------------------------------------------------------------
 
-type Auto = { ok: true; text: string; dateien: DcDatei[] } | { ok: false; gefunden: string | null };
+type Auto = { ok: true; text: string; dateien: DcDatei[]; info?: string; rest?: { de: string; en: string } } | { ok: false; gefunden: string | null; rest?: { de: string; en: string } };
 
 async function autoAntwort(c: Ctx, a: L.Einordnung["anfrage"] & object, text: string): Promise<Auto> {
   if (a.typ === "rechnung") {
     if (!c.s.darfEinkaufsrechnungen) return { ok: false, gefunden: "Einstellung: VA darf Einkaufsrechnungen nicht sehen." };
+    // Mehrere ASINs in einer Nachricht („I need these invoices … B0… B0… B0…“): je ASIN suchen, Fehlendes an Ludwig.
+    const b = L.bedarfAusText(text);
+    const asins = [...new Set([a.asin, ...b.asins].filter((x): x is string => Boolean(x)))];
+    if (asins.length > 1 || b.nachweis) {
+      const r = await rechnungenSammeln(c, { asins, sku: a.sku, marke: a.marke, lieferant: a.lieferant });
+      const ohneKennung = b.rechnung && !asins.length && !a.sku && !a.marke && !a.lieferant;
+      const restDe = [...r.fehlt.map((f) => `Rechnung ${f} (nicht im System)`), ...(ohneKennung ? [REST_DE.keineKennung] : []), ...(b.nachweis ? [REST_DE.nachweis] : [])];
+      const restEn = [...r.fehlt.map((f) => `invoice for ${f} (not in the system)`), ...(ohneKennung ? [REST_EN.keineKennung] : []), ...(b.nachweis ? [REST_EN.nachweis] : [])];
+      if (!r.geschickt.length) return { ok: false, gefunden: restDe.length ? `Offen: ${restDe.join("; ")}` : "Keine ASIN, SKU, Marke oder Lieferant erkannt.", rest: restDe.length ? { de: restDe.join("; "), en: restEn.join("; ") } : undefined };
+      return { ok: true, text: r.text, dateien: r.dateien, info: r.geschickt.join(", "), rest: restDe.length ? { de: restDe.join("; "), en: restEn.join("; ") } : undefined };
+    }
     const r = await rechnungenFuer(c.t, a, c.heute);
     if (!r.wofuer) return { ok: false, gefunden: "Keine ASIN, SKU, Marke oder Lieferant erkannt." };
     if (!r.liste.length) return { ok: false, gefunden: `Keine Rechnung zu ${r.wofuer} gefunden.` };
@@ -569,7 +774,7 @@ async function autoAntwort(c: Ctx, a: L.Einordnung["anfrage"] & object, text: st
       : [];
     const dateien = files.filter((f) => f.size <= 8 * 1024 * 1024).map((f) => ({ name: f.name, typ: f.typ, daten: Buffer.from(f.data) }));
     const zeilen = r.liste.map((x) => ({ datum: x.invoiceDate, lieferant: x.vendor, nummer: x.invoiceNumber, datei: x.fileName }));
-    return { ok: true, text: L.rechnungenText(r.wofuer, zeilen, dateien.length, c.sprache), dateien };
+    return { ok: true, text: L.rechnungenText(r.wofuer, zeilen, dateien.length, c.sprache), dateien, info: r.wofuer };
   }
   if (!c.va) return { ok: false, gefunden: "Kein Konto der VA hinterlegt (Anbindung → „Konto der VA“) – ohne ihre Rechte keine automatische Antwort." };
   const such = a.sendung ?? a.auftrag ?? a.asin ?? a.sku ?? a.suchtext ?? a.marke ?? null;

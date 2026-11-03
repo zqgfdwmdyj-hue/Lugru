@@ -843,6 +843,64 @@ Claude-Werkzeuge: keine neuen oder geänderten Werkzeuge in diesem Bauauftrag �
    50 × 50 mm auf dem QL-800 nur, wenn das Paket für 100 × 100 mm zu klein ist.
 7. Optional iPhone-Kurzbefehl „Label erstellen“ fürs Teilen-Menü einrichten (Anleitung auf der Label-Seite).
 
+## VA in Discord: Fragen und Bitten kamen nicht an (Befund 03.11., Screenshot #va)
+
+Befund: Die VA hat in Threads gefragt bzw. um Rechnungen und Liefernachweise gebeten. Im Tool kam nichts an, es gab
+keine Meldung, und Rechnungen wurden nicht automatisch in den Kanal geschickt.
+
+Ursachen:
+1. **Threads, die die VA selbst anlegt** („INVOICE FOR REEVALUATION“, „NEED PROOF DELIVERY ORDER & INVOICE …“), wurden
+   nie gelesen. Im Kanal steht davon nur die Systemnachricht „… hat einen Thread begonnen“ (Discord-Typ 18), und die
+   wurde übersprungen.
+2. **Bitten mitten im Satz** („Hi, the sourcing cost not approved yet, i need invoice …“) galten in Aufgaben- und
+   Anspruchs-Threads als Notiz. Erkannt wurden nur „?“ oder ein Satzanfang wie „can you / please“.
+3. **In Anspruchs-Threads** wurde nie selbst nach Rechnungen gesucht; im Kanal nur nach einer ASIN je Nachricht.
+4. **„already … reimbursement id …“** wurde nicht erkannt; die Erstattungs-ID hätte sogar als Fallnummer gelten können.
+5. **Kein Nachholen:** Was einmal als Notiz gespeichert war, blieb liegen.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Threads der VA lesen | ❌ | ✅ | Systemnachricht „Thread begonnen“ → Thread gemerkt (`vaThreadMerken`). Zusätzlich holt jeder Abgleich die Liste der aktiven und archivierten Threads im VA-Kanal (Besitzer = VA, letzte 14 Tage, `threadsEntdecken`). Alle Nachrichten der VA im neuen Thread werden zusammen mit dem Thread-Titel als **eine** Anfrage gelesen. `src/lib/va/service.ts`, `src/lib/va/discord.ts` (`aktiveThreads`, `archivierteThreads`), Spalte `va_threads.titel` (Migration 0126) |
+| Bitte mitten im Satz erkennen | 🟡 | ✅ | Erkannt werden u. a. „i need“, „please send/provide“, „kindly“, „could you“, „waiting for“, „not approved yet“, „ich brauche“: `threadAntwortArt` und `bedarfAusText` in `src/lib/va/logic.ts`. Bei unklaren Antworten fragt die KI, ob es eine Bitte/Frage ist (`kiBitte`). Eine klare Bitte um Rechnung oder Nachweis wird nie als Info abgelegt |
+| Rechnungen automatisch in den Thread | 🟡 (nur Kanal, eine ASIN) | ✅ | Mehrere ASINs auf einmal, sonst die ASIN/SKU des Anspruchs bzw. der Aufgabe: `rechnungenSammeln`, `bitteImThread` (`src/lib/va/service.ts`), `anspruchBitte` (`src/lib/va/automatik.ts`). Höchstens 10 Dateien je Antwort. Nur wenn „VA darf Einkaufsrechnungen sehen“ an ist |
+| Was fehlt, geht an Ludwig | ❌ | ✅ | Gemeint sind: Rechnung nicht im System, Liefernachweis/POD, Entscheidung. Ludwig bekommt eine Aufgabe, einen Push „VA-Rückfrage“ und Discord. Die Aufgabe nennt das Fehlende im Titel („… – offen: Rechnung B0… (nicht im System)“) und verlinkt den Anspruch. Im Thread steht „📌 Still open: … – it is with Ludwig“. Ludwigs Antwort aus „Delegation → VA“ erscheint im Thread |
+| „already reimbursed / reimbursement id …“ | 🐞 (Erstattungs-ID konnte als Fallnummer gelten) | ✅ | Ludwig bekommt die Aufgabe „Anspruch prüfen – laut VA schon erstattet: …“ mit Erstattungs-ID und Link. Dazu kommen eine Notiz am Anspruch und eine Bestätigung an die VA. **Der Status wird nicht automatisch geändert.** `bereitsErstattet` (`logic.ts`); `fallnummerInAntwort` ignoriert Erstattungs-IDs (`automatik-logic.ts`) |
+| Einmal nachholen | ❌ | ✅ | Beim ersten Abgleich nach dem Update. Nachgeholt werden Notizen der VA aus Aufgaben- und Anspruchs-Threads, die eine Bitte sind (letzte 14 Tage, höchstens 30; `nachpruefen`, Zeitpunkt in `va_stand.nachgeprueft_am`). Threads, die die VA in den letzten 14 Tagen selbst angelegt hat, findet die Thread-Liste |
+| Infos ohne Bitte | ✅ | ✅ | Ein Beispiel ist „FNSKU ist laut Removal-Seite schon angekommen“. Solche Infos landen als Notiz am Anspruch bzw. an der Aufgabe, ohne neue Aufgabe |
+
+**Abnahme** (automatisch, erfundene Daten): `e2e/va-anfragen.spec.ts`
+
+1. Eigener Thread der VA mit zwei ASINs: Die Rechnung der einen geht in den Thread, die andere wird Aufgabe und Push.
+2. „i need invoice“ im Anspruchs-Thread:
+   - Rechnung im System: Sie geht automatisch in den Thread, ohne Aufgabe, mit Info-Push.
+   - Keine Rechnung: Ludwig bekommt eine Aufgabe mit Link zum Anspruch.
+3. „already … reimbursement id 1234567890“: Ludwig bekommt „Anspruch prüfen“. Der Anspruch bleibt „vorgemerkt“, ohne
+   Fallnummer.
+4. Threads ohne Hinweis im Kanal (aktiv und archiviert) werden gefunden. POD plus Rechnung ohne ASIN wird eine Aufgabe.
+5. Eine alte Notiz wird einmal nachgeholt, beim zweiten Abgleich nicht mehr.
+
+Unit-Tests: `tests/va-anfragen.test.ts`.
+
+Regression grün: va-discord, va-automatik, va-sprache, amazon-faelle, b20-faelle, push-handy, apple-watch,
+recht-discord, deal-eingang, lugru-deals, b21-calls-live, deal-wert, familie-watch. Den apple-watch-Test habe ich
+angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil sonst ein Push aus der Prüfung davor als
+„neuester“ galt.
+
+**Claude-Werkzeuge:** keine neuen oder geänderten, daher kein `notifications/tools/list_changed`. `va_nachrichten` und
+`va_aufgaben` zeigen die neuen Anfragen wie bisher.
+
+**To-dos für Ludwig:**
+1. Server aktualisieren: `bash /opt/seller-system/deploy/update.sh` (Migration 0126 läuft beim Start).
+2. Die Rechte des Bots im VA-Kanal prüfen: „Kanal ansehen“, „Nachrichtenverlauf lesen“, „Nachrichten in Threads
+   senden“ und „Dateien anhängen“. Sonst sieht er die Threads der VA nicht. Fehler zeigt „Delegation → VA“ als „Threads
+   der VA finden: …“.
+3. Unter Anbindung VA muss „VA darf Einkaufsrechnungen sehen“ an sein, sonst geht jede Rechnungsbitte an dich.
+4. Nach dem Update einmal „Jetzt abgleichen“ unter Delegation → VA drücken. Das holt die Anfragen aus dem Screenshot
+   nach:
+   - Rechnungen, die im System sind, gehen sofort in die Threads der VA.
+   - Für den Rest bekommst du Aufgaben.
+5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
+
 ## Nachtrag B27 (03.11.): Nächtliche Automatik – Fehler beheben
 
 | Punkt | vorher | nachher | Fundstelle |

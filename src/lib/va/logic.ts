@@ -62,12 +62,47 @@ export function aufgabenText(a: { titel: string; faellig: string | null; priorit
 const NEIN = /\b(nicht|noch nicht|kein|keine|nie|not|not yet|never)\s+(\w+\s+){0,2}(erledigt|fertig|gemacht|done|finished|completed)\b/i;
 const ERLEDIGT = /(✅|☑️|✔️|\b(erledigt|fertig|done|ist raus|hab ich gemacht|habe ich gemacht|abgeschlossen|finished|completed|all set)\b)/i;
 
-/** Antwort der VA im Aufgaben-Thread: erledigt, Rückfrage oder Notiz. */
+/**
+ * Die VA bittet um etwas – auch mitten im Satz („Hi, … i need invoice for …“, „please send the POD“, „kindly provide“,
+ * „waiting for your invoice“). Befund 03.11.: solche Antworten standen nur als Notiz am Anspruch, Ludwig erfuhr nichts.
+ */
+const BITTE =
+  /\b(i need|we need|i would need|need (the|an?|these|this|your|some|more|proof|invoice|invoices|pod)|please (send|provide|share|upload|give|forward|attach|check|confirm|approve|advise|help)|pls (send|provide|share|check)|kindly (send|provide|share|check|advise)|can you (send|provide|share|check|give|help)|could you|would you|waiting for (your|the|an?)|i(?:'| a)m waiting|is (missing|required)|are (missing|required)|not approved yet|ich brauche|brauche (die|eine|den|das)|bitte (schick|send|gib|um)|kannst du|könntest du)\b/i;
+
+/** Antwort der VA im Aufgaben-/Anspruchs-Thread: erledigt, Rückfrage (Frage oder Bitte) oder Notiz. */
 export function threadAntwortArt(text: string): "erledigt" | "rueckfrage" | "notiz" {
   const t = text.trim();
   if (/❓|\?\s*$|\?\s/.test(t) || /^(wie|was|wo|wann|warum|wieso|welche[rsn]?|soll|sollen|kann|darf|muss|brauche|gibt es|how|what|where|when|why|which|should|shall|can|could|may|must|do i|do you|is there|are there|i need)\b/i.test(t)) return "rueckfrage";
-  if (ERLEDIGT.test(t) && !NEIN.test(t)) return "erledigt";
+  if (BITTE.test(t)) return "rueckfrage";
+  if (ERLEDIGT.test(t) && !NEIN.test(t) && !bereitsErstattet(t)) return "erledigt";
   return "notiz";
+}
+
+/** Was die VA konkret braucht: Rechnung(en), Liefernachweis (POD/Lieferschein); dazu ASINs/FNSKUs und Sendung. */
+export type Bedarf = { rechnung: boolean; nachweis: boolean; asins: string[]; fnskus: string[]; sendung: string | null };
+
+export function bedarfAusText(text: string): Bedarf {
+  const t = text.replace(/<@!?\d+>/g, " ");
+  const asins = [...new Set([...t.matchAll(/\b(B0[A-Z0-9]{8})\b/gi)].map((m) => m[1].toUpperCase()))];
+  const fnskus = [...new Set([...t.matchAll(/\b(X00[A-Z0-9]{7})\b/gi)].map((m) => m[1].toUpperCase()))];
+  return {
+    rechnung: /\b(invoices?|rechnung(en)?|einkaufsrechnung(en)?|proof of purchase|sourcing (cost|document|proof)|receipt)\b/i.test(t),
+    nachweis: /\b(proof of delivery|pod|delivery (order|note|proof|receipt)|lieferschein|liefernachweis|zustellnachweis|bill of lading|bol)\b/i.test(t),
+    asins,
+    fnskus,
+    sendung: /\b(FBA[0-9A-Z]{6,12})\b/i.exec(t)?.[1]?.toUpperCase() ?? null,
+  };
+}
+
+/**
+ * Meldet die VA, dass der Anspruch schon erstattet ist („already be done with first reimbursement id 1234567890“)?
+ * Liefert die Erstattungs-ID (falls genannt) – die ist keine Fallnummer.
+ */
+export function bereitsErstattet(text: string): { erstattungsId: string | null } | null {
+  const t = text.replace(/<@!?\d+>/g, " ");
+  const id = /reimburse?ment\s*(?:-?id|no\.?|number|nr\.?)?\s*[:#-]?\s*(\d{6,15})/i.exec(t)?.[1] ?? null;
+  const signal = /\b(already (been |be )?(reimbursed|refunded|paid|done|approved|credited)|reimburse?ment id|was reimbursed|got reimbursed|bereits erstattet|schon erstattet|wurde (bereits |schon )?erstattet)\b/i.test(t);
+  return signal ? { erstattungsId: id } : null;
 }
 
 /** Reaktionen an der Aufgaben-Nachricht (ohne die des Bots). */
