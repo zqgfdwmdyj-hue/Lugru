@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beobachtungTeile, beobachtungText, letzteSitzung, rueckblickZeitraum, zeitraumVorschlaege, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
+import { beobachtungTeile, beobachtungText, jeWoche, letzteSitzung, rueckblickZeitraum, zeitraumVorschlaege, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
 
 // Wochenrückblick privat (B16) und Therapie-Bogen – erfundene Namen und Einträge.
 
@@ -126,5 +126,24 @@ describe("Rückblick: frei gewählter Zeitraum", () => {
   });
   it("Schnellauswahl", () => {
     expect(zeitraumVorschlaege(H).map((v) => [v.von, v.bis])).toEqual([["2026-10-03", H], ["2026-08-03", H], ["2026-01-01", H]]);
+  });
+});
+
+describe("Nähe / Intimität je Kalenderwoche", () => {
+  it("jede Woche des Zeitraums, auch ohne Eintrag; Tage außerhalb zählen nicht", () => {
+    // November 2026: Mo 02.11. = KW 45; der 01.11. (So) gehört zu KW 44.
+    const tage = ["2026-10-31", "2026-11-01", "2026-11-03", "2026-11-05", "2026-11-19", "2026-12-01"];
+    expect(jeWoche(tage, "2026-11-01", "2026-11-30")).toEqual([
+      { kw: 44, anzahl: 1 },
+      { kw: 45, anzahl: 2 },
+      { kw: 46, anzahl: 0 },
+      { kw: 47, anzahl: 1 },
+      { kw: 48, anzahl: 0 },
+      { kw: 49, anzahl: 0 },
+    ]);
+  });
+  it("Jahreswechsel und leerer Zeitraum", () => {
+    expect(jeWoche(["2026-12-31", "2027-01-04"], "2026-12-28", "2027-01-10")).toEqual([{ kw: 53, anzahl: 1 }, { kw: 1, anzahl: 1 }]);
+    expect(jeWoche(["2026-11-03"], "2026-11-10", "2026-11-01")).toEqual([]);
   });
 });

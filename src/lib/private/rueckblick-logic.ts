@@ -99,6 +99,24 @@ export function kalenderwoche(iso: string): number {
   return 1 + Math.round(((d.getTime() - erster.getTime()) / 86_400_000 - 3 + ((erster.getUTCDay() + 6) % 7)) / 7);
 }
 
+/**
+ * Anzahl je Kalenderwoche (Mo–So) im Zeitraum von–bis, älteste zuerst – z. B. „Nähe / Intimität“ im Rückblick
+ * aufgegliedert. Jede Woche des Zeitraums erscheint, auch ohne Eintrag (anzahl 0); Tage außerhalb zählen nicht.
+ */
+export function jeWoche(tage: string[], von: string, bis: string): { kw: number; anzahl: number }[] {
+  if (von > bis) return [];
+  const montag = (iso: string) => plusT(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const wochen: { mo: string; kw: number; anzahl: number }[] = [];
+  for (let mo = montag(von); mo <= bis; mo = plusT(mo, 7)) wochen.push({ mo, kw: kalenderwoche(mo), anzahl: 0 });
+  for (const t of tage) {
+    const tag = t.slice(0, 10);
+    if (tag < von || tag > bis) continue;
+    const w = wochen.find((x) => x.mo === montag(tag));
+    if (w) w.anzahl++;
+  }
+  return wochen.map(({ kw, anzahl }) => ({ kw, anzahl }));
+}
+
 /** B22.1: Wochen zur Auswahl (Mo–So, die laufende bis heute), neueste zuerst. `bis` = letzter Tag der Woche. */
 export function wochenAuswahl(heute: string, anzahl = 12): { label: string; von: string; bis: string }[] {
   const mo = plusT(heute, -((new Date(`${heute}T12:00:00Z`).getUTCDay() + 6) % 7));

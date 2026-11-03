@@ -176,6 +176,18 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     await page.getByTestId("rb-zurueck-monat").click();
     await expect(page).toHaveURL(/monat=/);
 
+    // Nähe / Intimität je Kalenderwoche (ohne Datum): zwei Einträge im Abstand von einer Woche, dazwischen leere Wochen
+    const n1 = plus(HEUTE, -430);
+    const n2 = plus(n1, 7);
+    for (const tag of [n1, n2]) expect(JSON.parse(await mcp.call("privat_eintrag_anlegen", { art: "intim", person: "beide", wert: 4, tag })).ok).toBe(true);
+    await page.goto(`/privat/rueckblick?von=${plus(n1, -1)}&bis=${plus(n1, 15)}`);
+    await expect(page.getByTestId("rb-naehe")).toContainText("Nähe / Intimität: 2×");
+    const wochen = (await page.getByTestId("rb-naehe-wochen").innerText()).trim();
+    expect(wochen).toMatch(/^— KW \d+: (1×|–)( · KW \d+: (1×|–)){2,3}$/);
+    expect(wochen.match(/1×/g)).toHaveLength(2);
+    expect(wochen).toContain("–");
+    expect(wochen).not.toMatch(/\d{2}\.\d{2}\./);
+
     // Wochenrückblick: 7 Tage bis zu einem frei gewählten Tag (weiter zurück als die 12 Wochen der Auswahl)
     await page.goto("/privat/rueckblick/woche");
     await page.getByTestId("woche-bis").fill(t2);
