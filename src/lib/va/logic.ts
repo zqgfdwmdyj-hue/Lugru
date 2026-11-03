@@ -95,6 +95,19 @@ export function bedarfAusText(text: string): Bedarf {
 }
 
 /**
+ * Was offen ist, kurz für den Titel einer Aufgabe: Bei vielen fehlenden Rechnungen nur deren Anzahl
+ * („5 Rechnungen nicht im System; Liefernachweis …“) statt einer abgeschnittenen Liste. Die volle Liste steht in der Notiz.
+ */
+export function offenKurz(offen: string, max = 90): string {
+  if (offen.length <= max) return offen;
+  const teile = offen.split("; ").filter(Boolean);
+  const fehlend = teile.filter((t) => /^Rechnung \S+ \(nicht im System\)$/.test(t));
+  const rest = teile.filter((t) => !fehlend.includes(t));
+  const kurz = [fehlend.length ? `${fehlend.length} ${fehlend.length === 1 ? "Rechnung" : "Rechnungen"} nicht im System` : null, ...rest].filter(Boolean).join("; ");
+  return kurz.length <= max ? kurz : `${kurz.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
  * Meldet die VA, dass der Anspruch schon erstattet ist („already be done with first reimbursement id 1234567890“)?
  * Liefert die Erstattungs-ID (falls genannt) – die ist keine Fallnummer.
  */

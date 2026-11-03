@@ -426,7 +426,7 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
     .values({
       tenantId: c.t,
       systemKey: `va-nachricht:${m.id}`,
-      title: `VA: ${e.titel}${offenDe ? ` – offen: ${offenDe}` : ""}`.slice(0, 200),
+      title: `VA: ${e.titel}${offenDe ? ` – offen: ${L.offenKurz(offenDe)}` : ""}`.slice(0, 200),
       notes: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Delegation → VA (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
       dueDate: faellig,
       priority: "normal",

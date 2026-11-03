@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bedarfAusText, bereitsErstattet, threadAntwortArt } from "@/lib/va/logic";
+import { bedarfAusText, bereitsErstattet, offenKurz, threadAntwortArt } from "@/lib/va/logic";
 import { fallnummerInAntwort } from "@/lib/va/automatik-logic";
 
 // Befund 03.11.: Bitten der VA mitten im Satz, eigene Threads, „bereits erstattet“ – erfundene Kennungen.
@@ -43,5 +43,19 @@ describe("Bereits erstattet", () => {
   it("Fallnummer bleibt erkannt", () => {
     expect(fallnummerInAntwort("case 12345678901 submitted, reimbursement id 1234567890")).toBe("12345678901");
     expect(bereitsErstattet("case submitted 12345678901")).toBeNull();
+  });
+});
+
+describe("Offenes kurz im Aufgabentitel", () => {
+  it("kurz bleibt unverändert", () => {
+    expect(offenKurz("Rechnung B0TEST0001 (nicht im System)")).toBe("Rechnung B0TEST0001 (nicht im System)");
+  });
+  it("viele fehlende Rechnungen → Anzahl, Rest bleibt; nie mitten im Wort abgeschnitten", () => {
+    const viele = ["B0TEST0001", "B0TEST0002", "B0TEST0003", "B0TEST0004", "B0TEST0005"].map((a) => `Rechnung ${a} (nicht im System)`);
+    expect(offenKurz([...viele, "Liefernachweis (POD/Lieferschein)"].join("; "))).toBe("5 Rechnungen nicht im System; Liefernachweis (POD/Lieferschein)");
+    expect(offenKurz(viele.join("; "))).toBe("5 Rechnungen nicht im System");
+    const lang = offenKurz(["x".repeat(60), "y".repeat(60)].join("; "));
+    expect(lang.length).toBeLessThanOrEqual(90);
+    expect(lang.endsWith("…")).toBe(true);
   });
 });
