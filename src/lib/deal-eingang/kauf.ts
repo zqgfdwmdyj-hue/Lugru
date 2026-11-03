@@ -283,6 +283,7 @@ export async function kaufVorbereitetPruefen(tenantId: string, jetzt = new Date(
         text: `${(z?.titel ?? z?.angebot.name ?? "Deal").slice(0, 50)}: Kauf vorbereitet am ${wann} (${e.kaufVorbereitetMenge ?? "?"} Stk${e.kauf?.shop ? `, ${e.kauf.shop}` : ""}) – in sellerboard noch keine passende SKU. Gekauft? Dann eintragen, sonst verwerfen.`,
         link: `/deal-eingang/${e.id}#gekauft`,
         aktionen: [{ aktion: "gekauft", titel: "Gekauft …", link: `/deal-eingang/${e.id}?zeile=${z?.nr ?? ""}#gekauft` }, { aktion: "details", titel: "Details", link: `/deal-eingang/${e.id}` }],
+        art: "deal",
       });
       await db.update(E).set({ kaufErinnertAm: jetzt }).where(eq(E.id, e.id));
       erinnert++;

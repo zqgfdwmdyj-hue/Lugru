@@ -10,7 +10,10 @@ import { todayIso } from "@/lib/dates";
 
 const MAX_JE_STUNDE = 6;
 
-export async function aufgabeMelden(tenantId: string, t: { id: string; title: string; dueDate?: string | null; link?: string | null }): Promise<boolean> {
+/** Amazon-Aufgaben mit Priorität „critical“ (Sperrung, Listing deaktiviert, Zahlung abgelehnt, Kontozustand) = „Amazon kritisch“ (kommt auch in der Ruhezeit). */
+const AMAZON_KRITISCH = /amazon/i;
+
+export async function aufgabeMelden(tenantId: string, t: { id: string; title: string; dueDate?: string | null; link?: string | null; category?: string | null }): Promise<boolean> {
   const M = schema.meldungen;
   const [{ n }] = await db
     .select({ n: sql<number>`count(distinct ${M.bezug}->>'id')::int` })
@@ -29,6 +32,7 @@ export async function aufgabeMelden(tenantId: string, t: { id: string; title: st
       text: `${frist ? `Frist ${frist}. ` : ""}${kuerzenAuf(t.title, 70)} – an der Watch „Erledigt“ sagen, wenn fertig.`,
       link: t.link ?? "/",
       bezug: { art: "aufgabe", id: t.id, titel: t.title },
+      ...(AMAZON_KRITISCH.test(t.category ?? "") ? { art: "amazon_kritisch" as const, kritisch: true } : { art: "aufgabe_wichtig" as const }),
     },
     { ohneDiscord: true },
   );

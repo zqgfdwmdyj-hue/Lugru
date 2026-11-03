@@ -14,6 +14,8 @@ import { ARBEITSZEIT_STANDARD, type Arbeitszeit } from "@/lib/tagesplan/logic";
 import type { PrepPosten } from "@/lib/shipping/prep";
 import { GLOSSAR_STANDARD } from "@/lib/va/sprache";
 import { VA_REGEL_STANDARD, type VaZiel } from "@/lib/va/automatik-logic";
+import type { MeldePrefs } from "@/lib/push/logic";
+import { VERSAND_PREISE_STANDARD } from "@/lib/versand-label/logic";
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   inbound_shortage: "Fehlt beim Wareneingang",
@@ -197,6 +199,10 @@ export const DEFAULT_SETTINGS = {
   /** Tagesplan: Arbeitszeit je Wochentag (Mo–Fr 9–17 Uhr), je Person abweichend; Aufgaben der nächsten 2 Tage vorziehen. */
   tagesplan: { arbeitszeit: ARBEITSZEIT_STANDARD, personen: {} as Record<string, Arbeitszeit>, vorziehen: 2 },
   amazonBusiness: { stufen: [3, 10, 25], rabatte: [3, 5, 8], minGewinn: 1 },
+  /** Push aufs Handy: je Person (leer = alle Arten an, Ruhezeit 22–6 Uhr). */
+  benachrichtigungen: { personen: {} as Record<string, MeldePrefs> },
+  /** DHL-Label aus Chat: zweiter Absender und Preisliste (Standard: DHL-Geschäftskunden-Listenpreise netto, bitte anpassen). */
+  versandLabel: { absender2: null as null | NonNullable<TenantSettings["shipper"]>, preise: VERSAND_PREISE_STANDARD as Record<string, number> },
   /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
   liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0, wareneinkaufPlanen: true },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
@@ -264,6 +270,8 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },
     amazonBusiness: { ...d.amazonBusiness, ...(s.amazonBusiness ?? {}) },
+    benachrichtigungen: { personen: { ...(s.benachrichtigungen?.personen ?? {}) } },
+    versandLabel: { absender2: s.versandLabel?.absender2 ?? null, preise: { ...d.versandLabel.preise, ...(s.versandLabel?.preise ?? {}) } },
     liquiditaet: { ...d.liquiditaet, ...(s.liquiditaet ?? {}) },
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },

@@ -1,20 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { abonnieren, pushMoeglich } from "@/lib/push/client";
 
 // Push-Meldungen auf diesem Gerät ein-/ausschalten (installierte App bzw. Browser mit Service Worker).
 
-const zuBytes = (b64: string) => {
-  const s = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64.length % 4)) % 4));
-  return Uint8Array.from(s, (c) => c.charCodeAt(0));
-};
-
-export function PushSchalter({ text = "Push auf diesem Gerät" }: { text?: string }) {
+export function PushSchalter({ text = "Push auf diesem Gerät", onAenderung }: { text?: string; onAenderung?: (an: boolean) => void }) {
   const [stand, setStand] = useState<"pruefen" | "geht_nicht" | "aus" | "an" | "blockiert">("pruefen");
   const [fehler, setFehler] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return setStand("geht_nicht");
+    if (!pushMoeglich()) return setStand("geht_nicht");
     if (Notification.permission === "denied") return setStand("blockiert");
     navigator.serviceWorker.ready
       .then((r) => r.pushManager.getSubscription())
@@ -25,14 +21,11 @@ export function PushSchalter({ text = "Push auf diesem Gerät" }: { text?: strin
   async function einschalten() {
     setFehler(null);
     try {
-      if ((await Notification.requestPermission()) !== "granted") return setStand("blockiert");
-      const reg = await navigator.serviceWorker.ready;
-      const { publicKey } = (await (await fetch("/api/push/abo")).json()) as { publicKey: string };
-      const abo = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: zuBytes(publicKey) });
-      const r = await fetch("/api/push/abo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: abo.endpoint, geraet: navigator.userAgent.slice(0, 120) }) });
-      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error ?? "Speichern fehlgeschlagen");
+      await abonnieren();
       setStand("an");
+      onAenderung?.(true);
     } catch (e) {
+      if (Notification.permission === "denied") setStand("blockiert");
       setFehler(e instanceof Error ? e.message : String(e));
     }
   }
@@ -45,6 +38,7 @@ export function PushSchalter({ text = "Push auf diesem Gerät" }: { text?: strin
       await abo.unsubscribe();
     }
     setStand("aus");
+    onAenderung?.(false);
   }
 
   if (stand === "pruefen") return null;

@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, users } from "./core";
 import { encryptedText } from "./encrypted";
 
@@ -17,6 +17,11 @@ export const pushAbos = pgTable(
     geraet: text("geraet"),
     createdAt: createdAt(),
     fehlerAm: timestamp("fehler_am", { withTimezone: true }),
+    /** Fehlversuche in Folge – ab 3 gilt das Abo als abgelaufen (wird beim nächsten Öffnen der App neu angefordert). */
+    fehlerAnzahl: integer("fehler_anzahl").notNull().default(0),
+    abgelaufenAm: timestamp("abgelaufen_am", { withTimezone: true }),
+    /** Letzte erfolgreiche Übergabe an den Push-Dienst. */
+    okAm: timestamp("ok_am", { withTimezone: true }),
   },
   (t) => [uniqueIndex("push_abos_endpoint_uq").on(t.endpoint), index("push_abos_user_idx").on(t.tenantId, t.userId)],
 );
@@ -36,6 +41,22 @@ export const meldungen = pgTable(
     aktionen: jsonb("aktionen").$type<{ aktion: string; titel: string; link: string }[] | null>(),
     /** Worauf sich die Meldung bezieht (Apple Watch „Erledigt“ schließt genau das; 24 Std. gemerkt). */
     bezug: jsonb("bezug").$type<{ art: "aufgabe" | "amazon_todo"; id: string; titel: string } | null>(),
+    /** Art der Meldung (Einstellungen → Benachrichtigungen, je Art an/aus) und ob sie in der Ruhezeit durchkommt. */
+    art: text("art").notNull().default("sonstiges"),
+    kritisch: boolean("kritisch").notNull().default(false),
+    /**
+     * Protokoll: gesendet | fehlgeschlagen | kein_geraet | zurueckgehalten (Ruhezeit, kommt morgens) | ausgeschaltet
+     * (Art aus) | ausgeliefert (morgens nachgereicht).
+     */
+    zustand: text("zustand").notNull().default("gesendet"),
+    pushGesendet: integer("push_gesendet").notNull().default(0),
+    pushFehler: integer("push_fehler").notNull().default(0),
+    /** Discord parallel: true = gesendet, false = nicht gesendet (Fehler/nicht eingerichtet), null = nicht vorgesehen (privat). */
+    discord: boolean("discord"),
+    /** Das Gerät hat die Meldung abgeholt (Service Worker nach dem Anstoß) = zugestellt. */
+    zugestelltAm: timestamp("zugestellt_am", { withTimezone: true }),
+    /** Nur für den Test-Push: genau dieses Abo. */
+    nurAboId: uuid("nur_abo_id"),
     createdAt: createdAt(),
   },
   (t) => [index("meldungen_user_idx").on(t.tenantId, t.userId, t.createdAt)],

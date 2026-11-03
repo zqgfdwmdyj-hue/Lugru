@@ -38,7 +38,7 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
     { aktion: "hoch", titel: "👍", link: `/deal-eingang/${e.id}?daumen=hoch#bewerten` },
     { aktion: "runter", titel: "👎", link: `/deal-eingang/${e.id}?daumen=runter#bewerten` },
   ];
-  const r = await melden(tenantId, an, { titel: `${titel}${kauf?.nr ? ` · Nr. ${kauf.nr}` : ""}`, text, link: kauf?.link ?? `/deal-eingang/${e.id}`, aktionen: kauf?.aktionen ?? bewerten });
+  const r = await melden(tenantId, an, { titel: `${titel}${kauf?.nr ? ` · Nr. ${kauf.nr}` : ""}`, text, link: kauf?.link ?? `/deal-eingang/${e.id}`, aktionen: kauf?.aktionen ?? bewerten, art: "deal" });
   await db.update(E).set({ pushAm: new Date() }).where(eq(E.id, e.id));
   // SMS (B13, falls eingerichtet): nur grüne Deals, deren Gewinn (empfohlene Menge × Gewinn/Stück) über der Schwelle liegt.
   if (e.ampel === "gruen" && !o.update) {

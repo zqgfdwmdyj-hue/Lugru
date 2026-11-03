@@ -195,6 +195,10 @@ export type TenantSettings = {
     tesla?: { vin?: string; vorheizen?: boolean; vorheizMin?: number; zielTemp?: number; heimLat?: number | null; heimLon?: number | null };
   };
   bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
+  /** Push aufs Handy: je Person Arten an/aus und Ruhezeit (Standard 22–6 Uhr, nur „kritisch“ kommt durch). */
+  benachrichtigungen?: { personen?: Record<string, { aus?: string[]; ruheVon?: string; ruheBis?: string }> };
+  /** DHL-Label aus Chat: zweiter Absender, Preisliste (€ je Produkt/Gewichtsklasse) für das Protokoll. */
+  versandLabel?: { absender2?: Address; preise?: Record<string, number> };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
   /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */

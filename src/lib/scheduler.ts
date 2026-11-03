@@ -186,6 +186,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
         await step(t, "Paletten-Sendungen", () => refreshShipments(t, todayIso()));
       }
+      // Push aufs Handy: morgens nach der Ruhezeit Morgenbericht + was über Nacht zurückgehalten wurde (je Person einmal am Tag).
+      if (force || due(`${t}:push-morgen`, 9)) await step(t, "Push: Morgenbericht und Nachts Zurückgehaltenes", async () => (await import("@/lib/push/service")).morgenAuslieferung(t));
       // Termine im Privatkalender: Vorabend-Erinnerung mit Abfahrt (nur Push an den Inhaber, ab der eingestellten Uhrzeit).
       if (force || due(`${t}:vorabend`, 29)) await step(t, "Termin-Erinnerung (Vorabend)", async () => (await import("@/lib/private/termin-mail-service")).vorabendErinnerung(t));
       // Handy & Tesla: Verspätungs-Entwurf (alle 5 Min., nur mit Tesla), Fahrten fürs Fahrtenbuch (stündlich),

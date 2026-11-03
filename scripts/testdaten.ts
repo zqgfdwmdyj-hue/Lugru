@@ -97,6 +97,8 @@ for (const k of KONTEN) {
   users[k.login] = u.id;
   await db.insert(schema.memberships).values({ tenantId: T, userId: u.id, role: k.role, areas: k.areas, readOnly: k.readOnly, privateAccess: k.privateAccess, privateScope: k.privateScope });
 }
+// Push aufs Handy: in den Testdaten keine Ruhezeit (Prüfungen laufen tagsüber und nachts) – die Ruhezeit-Prüfung setzt ihre eigene.
+await db.execute(sql`update tenants set settings = settings || ${JSON.stringify({ benachrichtigungen: { personen: Object.fromEntries(Object.values(users).map((id) => [id, { ruheVon: "00:00", ruheBis: "00:00" }])) } })}::jsonb where id = ${T}`);
 
 // 4) Anbindungen mit Fantasie-Zugängen – zeigen in der Testumgebung auf die Testdienste
 const integ = async (provider: string, config: Record<string, string>, secrets: Record<string, string>) =>

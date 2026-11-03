@@ -54,7 +54,7 @@ export async function upsertSystemTask(
   // Neue wichtige Aufgabe → Push an den Inhaber (Apple Watch: „Erledigt“ schließt genau diese). Nicht aus einer
   // laufenden Transaktion heraus (die Aufgabe könnte noch zurückgerollt werden).
   if (r?.neu && task.priority === "critical" && conn === db) {
-    const t = { id: r.id, title: task.title, dueDate: task.dueDate ?? null, link: task.link ?? null };
+    const t = { id: r.id, title: task.title, dueDate: task.dueDate ?? null, link: task.link ?? null, category: task.category ?? null };
     void import("@/lib/push/aufgabe").then((m) => m.aufgabeMelden(tenantId, t)).catch(() => null);
   }
 }

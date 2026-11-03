@@ -940,8 +940,11 @@ http
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);
     // Web-Push-Dienst (Nachbau): nimmt Anstöße an, merkt sich Adresse und VAPID-Kopf.
+    // Adressen mit „/push/kaputt-“ antworten 500 (Fehlversuch), mit „/push/weg-“ 410 (Abo beim Dienst gelöscht).
     if (url.pathname.startsWith("/push/") && req.method === "POST") {
       pushes.push({ at: new Date().toISOString(), pfad: url.pathname, vapid: String(req.headers.authorization ?? "").startsWith("vapid t="), laenge: body.length });
+      if (url.pathname.startsWith("/push/kaputt-")) return send(500, "kaputt");
+      if (url.pathname.startsWith("/push/weg-")) return send(410, "weg");
       return send(201, "");
     }
     if (url.pathname === "/__push") return send(200, pushes);

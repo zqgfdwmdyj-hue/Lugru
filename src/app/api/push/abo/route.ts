@@ -1,15 +1,18 @@
 import { getSession } from "@/lib/auth/session";
-import { aboLoeschen, aboSpeichern, vapid } from "@/lib/push/service";
+import { aboLoeschen, aboSpeichern, aboStand, vapid } from "@/lib/push/service";
 
-// Push-Abo der installierten App: GET = öffentlicher VAPID-Schlüssel, POST = Abo speichern, DELETE = abmelden.
+// Push-Abo der installierten App: GET = öffentlicher VAPID-Schlüssel (mit ?endpoint= auch der Stand des Abos:
+// ok / abgelaufen / unbekannt → beim Öffnen neu anfordern), POST = Abo speichern, DELETE = abmelden.
 // Nur angemeldet (Sitzung); gespeichert wird nur die Adresse des Push-Dienstes – Meldungen gehen ohne Inhalt raus.
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const s = await getSession();
   if (!s) return Response.json({ error: "Nicht angemeldet." }, { status: 401 });
-  return Response.json({ publicKey: (await vapid()).publicKey });
+  const endpoint = new URL(request.url).searchParams.get("endpoint");
+  const stand = endpoint && endpoint.length <= 2000 ? (await aboStand(s.tenantId, s.userId, endpoint)).stand : null;
+  return Response.json({ publicKey: (await vapid()).publicKey, stand }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {

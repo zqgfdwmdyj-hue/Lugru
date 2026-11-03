@@ -378,7 +378,15 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
   await db.insert(VN).values({ ...basis, threadId, art: e.art, ludwigTaskId: lt?.id ?? null }).onConflictDoNothing();
   c.z.rueckfragen++;
   const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
-  await notifyDiscord(c.t, `📨 VA ${e.art === "frage" ? "fragt" : "bittet"}: ${e.titel}`).catch(() => false);
+  const dc = await notifyDiscord(c.t, `📨 VA ${e.art === "frage" ? "fragt" : "bittet"}: ${e.titel}`).catch(() => false);
+  await vaRueckfragePush(c.t, `📨 VA ${e.art === "frage" ? "fragt" : "bittet"}`, e.titel, dc);
+}
+
+/** VA-Rückfrage auch als Push aufs Handy (Art „VA-Rückfrage“); Discord lief schon – nur fürs Protokoll vermerkt. */
+async function vaRueckfragePush(tenantId: string, titel: string, text: string, discord: boolean) {
+  const { melden } = await import("@/lib/push/service");
+  const inhaber = (await db.select({ userId: schema.memberships.userId }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, tenantId), eq(schema.memberships.role, "owner")))).map((r) => r.userId);
+  await melden(tenantId, inhaber, { titel, text: text.slice(0, 300), link: "/delegation/va", art: "va_rueckfrage" }, { discordSchon: discord }).catch(() => null);
 }
 
 async function threadsAbgleichen(c: Ctx) {
@@ -513,7 +521,8 @@ export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtI
   c.z.rueckfragen++;
   await c.dc.senden(th.threadId, BOT[c.sprache].rueckfrageBeiLudwig, { still: true }).catch(() => "");
   const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
-  await notifyDiscord(c.t, `❓ Rückfrage der VA zu „${taskTitle ?? "Aufgabe"}“: ${text.slice(0, 300)}`).catch(() => false);
+  const dc = await notifyDiscord(c.t, `❓ Rückfrage der VA zu „${taskTitle ?? "Aufgabe"}“: ${text.slice(0, 300)}`).catch(() => false);
+  await vaRueckfragePush(c.t, `❓ VA-Rückfrage: ${(taskTitle ?? "Aufgabe").slice(0, 40)}`, text, dc);
   // SMS (B13, falls eingerichtet): nur bei Rückfragen zu wichtigen Aufgaben – ohne den Text der VA.
   if (lt && th.taskId) {
     const [orig] = await db.select({ priority: T.priority }).from(T).where(and(eq(T.tenantId, c.t), eq(T.id, th.taskId)));

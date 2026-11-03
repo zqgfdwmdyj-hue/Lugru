@@ -869,6 +869,13 @@
       "when": 1793696729100,
       "tag": "0123_datei_import_nachverarbeitet",
       "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1793699756199,
+      "tag": "0124_push_protokoll",
+      "breakpoints": true
     }
   ]
 }

@@ -13,9 +13,13 @@ self.addEventListener("fetch", (e) => {
 });
 
 // Push ohne Inhalt: Meldung beim Seller-System abholen (mit Anmeldung) und anzeigen; Klick öffnet den Link.
+// Mit der eigenen Abo-Adresse (Test-Push nur für dieses Gerät; Abholen = „zugestellt“ im Protokoll).
 self.addEventListener("push", (e) => {
   e.waitUntil(
-    fetch("/api/push/neueste", { credentials: "include", cache: "no-store" })
+    self.registration.pushManager
+      .getSubscription()
+      .catch(() => null)
+      .then((abo) => fetch("/api/push/neueste" + (abo ? "?endpoint=" + encodeURIComponent(abo.endpoint) : ""), { credentials: "include", cache: "no-store" }))
       .then((r) => r.json())
       .catch(() => ({ titel: "Seller-System", text: "Neue Meldung – bitte öffnen.", link: "/" }))
       .then((m) => {

@@ -21,6 +21,7 @@ import { ReadOnlyBanner } from "./read-only-banner";
 import { LockedBanner } from "./locked-banner";
 import { AssistantBar } from "./assistant-bar";
 import { TestBanner } from "./test-banner";
+import { PushPruefen } from "./push-pruefen";
 
 /**
  * Gemeinsamer Rahmen für Geschäft und Privat: linke Seitenleiste (gleich in beiden Bereichen, im Privatbereich sind die
@@ -89,6 +90,7 @@ export async function AppShell({ session, bereich, children }: { session: Sessio
           <TopBar favorites={favorites} canFavorite={!session.readOnly} glocke={glocke} name={name} firma={session.tenantName} owner={session.role === "owner" && !session.readOnly} abmelden={abmelden} serverSuche={session.role === "owner" || session.areas === null} privatBereich={privatBereich} {...access} />
           {assistant?.enabled && assistant.hasKey && <AssistantBar name={name} />}
           {session.readOnly && <Suspense fallback={null}><ReadOnlyBanner /></Suspense>}
+          {!session.readOnly && <PushPruefen />}
           {!privatBereich && <Suspense fallback={null}><LockedBanner /></Suspense>}
           {!privatBereich && <AreaTabs {...access} />}
           {children}
