@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { avgOf, careOverview, dateStats, diaryReport, intimStats, kidsOverview, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type ObservationEntry, type ReflexionEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
+import { avgOf, careOverview, happened, dateStats, diaryReport, intimStats, kidsOverview, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type ObservationEntry, type ReflexionEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import type { CalKind, TouchEntry } from "@/lib/private/kalender";
 import { KindDot } from "../kalender/items";
 import { PrintButton } from "@/components/print-button";
-import { jeWoche, rueckblickZeitraum, zeitraumVorschlaege } from "@/lib/private/rueckblick-logic";
+import { jeWoche, rueckblickZeitraum, wochentageJeWoche, zeitraumVorschlaege } from "@/lib/private/rueckblick-logic";
 import { MonthNav, PrivatHead, dmy, hoursLabel, monthLabel } from "../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
@@ -55,6 +55,10 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   const ds = dateStats(dates.map((e) => e.data).filter((e) => drin(e.day)), "", end);
   const ko = kidsOverview(kids.map((e) => e.data).filter((e) => drin(e.day)), "");
   const so = kidsOverview(sleep.map((e) => e.data).filter((e) => drin(e.day)), "");
+  // Ausgeschlafen: an welchen Wochentagen, je Kalenderwoche und Person (nur was stattgefunden hat).
+  const schlafTage = (p: "a" | "b") => wochentageJeWoche(sleep.map((e) => e.data).filter((e) => e.person === p && happened(e)).map((e) => e.day), von, end);
+  const schlafWochen = { a: schlafTage("a"), b: schlafTage("b") };
+  const wochenText = (w: { kw: number; tage: string[] }[]) => w.map((x) => `KW ${x.kw}: ${x.tage.length ? x.tage.join(", ") : "–"}`).join(" · ");
   const to = kidsOverview(timeout.map((e) => e.data).filter((e) => drin(e.day)), "");
   const careDone = { a: 0, b: 0 };
   for (const t of care) for (const d of t.data.done ?? []) if (drin(d.day)) careDone[d.by]++;
@@ -130,6 +134,20 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
             <Row label="Familienaufgaben als erledigt eingetragen" a={careDone.a ? `${careDone.a}×` : "nicht erfasst"} b={careDone.b ? `${careDone.b}×` : "nicht erfasst"} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
           </tbody>
         </table>
+        {so.totals.a.count + so.totals.b.count > 0 && (
+          <div className="small" data-testid="rb-ausschlafen-tage">
+            <div className="rb-li"><KindDot kind="ausschlafen" /> Ausgeschlafen – Wochentage je Woche:</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {(["a", "b"] as const)
+                .filter((p) => so.totals[p].count > 0)
+                .map((p) => (
+                  <li key={p} data-testid={`rb-ausschlafen-${p}`}>
+                    {name[p]}: {wochenText(schlafWochen[p])}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
 
         <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Therapie-Aufgaben</h3>
         <div className="small">{tasksDone} {zeitraumWort} erledigt bzw. abgehakt · {tasksOpen} offen</div>

@@ -188,6 +188,14 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     expect(wochen).toContain("–");
     expect(wochen).not.toMatch(/\d{2}\.\d{2}\./);
 
+    // Ausgeschlafen mit Wochentagen je Woche: Sa + So in der ersten, Mi in der zweiten Woche (Person a)
+    const tagNr = (iso: string) => (new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7;
+    const mo = plus(n1, -tagNr(n1) + 21);
+    for (const tag of [plus(mo, 5), plus(mo, 6), plus(mo, 9)]) expect(JSON.parse(await mcp.call("privat_zeit", { art: "ausschlafen", person: "a", tag, von: "07:00", bis: "10:00", status: "stattgefunden" })).ok).toBe(true);
+    await page.goto(`/privat/rueckblick?von=${mo}&bis=${plus(mo, 13)}`);
+    await expect(page.getByTestId("rb-ausschlafen-a")).toHaveText(/: KW \d+: Sa, So · KW \d+: Mi$/);
+    await expect(page.getByTestId("rb-ausschlafen-b")).toHaveCount(0);
+
     // Wochenrückblick: 7 Tage bis zu einem frei gewählten Tag (weiter zurück als die 12 Wochen der Auswahl)
     await page.goto("/privat/rueckblick/woche");
     await page.getByTestId("woche-bis").fill(t2);

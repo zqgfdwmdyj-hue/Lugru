@@ -843,15 +843,17 @@ Claude-Werkzeuge: keine neuen oder geänderten Werkzeuge in diesem Bauauftrag �
    50 × 50 mm auf dem QL-800 nur, wenn das Paket für 100 × 100 mm zu klein ist.
 7. Optional iPhone-Kurzbefehl „Label erstellen“ fürs Teilen-Menü einrichten (Anleitung auf der Label-Seite).
 
-## Privat-Rückblick: Nähe / Intimität je Woche (Wunsch 03.11.)
+## Privat-Rückblick: Nähe / Intimität je Woche, Ausgeschlafen mit Wochentagen (Wünsche 03./04.11.)
 
 | Punkt | vorher | nachher | Fundstelle |
 |---|---|---|---|
 | „Nähe / Intimität: 4×“ nach Wochen aufgliedern, ohne genaues Datum | ❌ (nur Summe) | ✅ | Hinter der Summe steht je Kalenderwoche des Monats bzw. Zeitraums die Anzahl, z. B. „— KW 44: 1× · KW 45: 2× · KW 46: – · KW 47: 1×“. Wochen ohne Eintrag zeigen „–“. Gilt auch für den Druck und das PDF. `jeWoche` in `src/lib/private/rueckblick-logic.ts`, Anzeige in `src/app/(privat)/privat/rueckblick/page.tsx` |
+| Ausgeschlafen mit Wochentagen | ❌ (nur Anzahl und Stunden je Person) | ✅ | Unter der Tabelle „Erfasste Zeiten“ steht je Person, an welchen Wochentagen ausgeschlafen wurde, nach Kalenderwoche, z. B. „KW 45: Sa, So · KW 46: – · KW 47: Mi“. Gezählt wird nur, was stattgefunden hat, wie in der Tabelle. Eine Person ohne Eintrag fehlt in der Liste. `wochentageJeWoche` in `src/lib/private/rueckblick-logic.ts` |
 
 **Abnahme:** `tests/privat-rueckblick.test.ts` prüft Wochen ohne Eintrag, Tage außerhalb des Zeitraums und den
 Jahreswechsel. `e2e/privat-rueckblick.spec.ts` prüft zwei Einträge im Abstand einer Woche: Summe 2×, je Woche 1× bzw.
-„–“, kein Datum. Keine neuen Claude-Werkzeuge.
+„–“, kein Datum. Für Ausgeschlafen prüft es Sa und So in der einen Woche und Mi in der nächsten, nur für die Person
+mit Einträgen. Keine neuen Claude-Werkzeuge.
 
 ## VA in Discord: Fragen und Bitten kamen nicht an (Befund 03.11., Screenshot #va)
 

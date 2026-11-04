@@ -117,6 +117,23 @@ export function jeWoche(tage: string[], von: string, bis: string): { kw: number;
   return wochen.map(({ kw, anzahl }) => ({ kw, anzahl }));
 }
 
+const WOCHENTAG = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+/**
+ * Wochentage je Kalenderwoche im Zeitraum von–bis (z. B. „Ausgeschlafen“ im Rückblick): je Woche die Wochentage der
+ * Einträge in Datumsfolge („Sa, So“), ein Tag mit zwei Einträgen zweimal. Wochen ohne Eintrag mit leerer Liste.
+ */
+export function wochentageJeWoche(tage: string[], von: string, bis: string): { kw: number; tage: string[] }[] {
+  const zaehl = jeWoche([], von, bis);
+  const montag = (iso: string) => plusT(iso, -((new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const erster = von > bis ? null : montag(von);
+  const wochen = zaehl.map((w) => ({ kw: w.kw, tage: [] as string[] }));
+  for (const t of tage.map((x) => x.slice(0, 10)).filter((x) => x >= von && x <= bis).sort()) {
+    const i = Math.round((Date.parse(`${montag(t)}T12:00:00Z`) - Date.parse(`${erster}T12:00:00Z`)) / (7 * 86_400_000));
+    wochen[i]?.tage.push(WOCHENTAG[(new Date(`${t}T12:00:00Z`).getUTCDay() + 6) % 7]);
+  }
+  return wochen;
+}
+
 /** B22.1: Wochen zur Auswahl (Mo–So, die laufende bis heute), neueste zuerst. `bis` = letzter Tag der Woche. */
 export function wochenAuswahl(heute: string, anzahl = 12): { label: string; von: string; bis: string }[] {
   const mo = plusT(heute, -((new Date(`${heute}T12:00:00Z`).getUTCDay() + 6) % 7));

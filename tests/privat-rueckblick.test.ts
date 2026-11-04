@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beobachtungTeile, beobachtungText, jeWoche, letzteSitzung, rueckblickZeitraum, zeitraumVorschlaege, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
+import { beobachtungTeile, beobachtungText, jeWoche, letzteSitzung, wochentageJeWoche, rueckblickZeitraum, zeitraumVorschlaege, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
 
 // Wochenrückblick privat (B16) und Therapie-Bogen – erfundene Namen und Einträge.
 
@@ -145,5 +145,24 @@ describe("Nähe / Intimität je Kalenderwoche", () => {
   it("Jahreswechsel und leerer Zeitraum", () => {
     expect(jeWoche(["2026-12-31", "2027-01-04"], "2026-12-28", "2027-01-10")).toEqual([{ kw: 53, anzahl: 1 }, { kw: 1, anzahl: 1 }]);
     expect(jeWoche(["2026-11-03"], "2026-11-10", "2026-11-01")).toEqual([]);
+  });
+});
+
+describe("Ausgeschlafen: Wochentage je Kalenderwoche", () => {
+  it("Wochentage in Datumsfolge je Woche, leere Wochen, Tage außerhalb zählen nicht", () => {
+    // November 2026: So 01.11. = KW 44, Sa 07.11./So 08.11. = KW 45, Mi 18.11. = KW 47
+    const tage = ["2026-11-08", "2026-10-31", "2026-11-01", "2026-11-07", "2026-11-18", "2026-12-05"];
+    expect(wochentageJeWoche(tage, "2026-11-01", "2026-11-30")).toEqual([
+      { kw: 44, tage: ["So"] },
+      { kw: 45, tage: ["Sa", "So"] },
+      { kw: 46, tage: [] },
+      { kw: 47, tage: ["Mi"] },
+      { kw: 48, tage: [] },
+      { kw: 49, tage: [] },
+    ]);
+  });
+  it("zwei Einträge am selben Tag zählen zweimal; leerer Zeitraum", () => {
+    expect(wochentageJeWoche(["2026-11-07", "2026-11-07"], "2026-11-02", "2026-11-08")).toEqual([{ kw: 45, tage: ["Sa", "Sa"] }]);
+    expect(wochentageJeWoche(["2026-11-07"], "2026-11-10", "2026-11-01")).toEqual([]);
   });
 });
