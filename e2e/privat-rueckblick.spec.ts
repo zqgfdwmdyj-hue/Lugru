@@ -176,16 +176,20 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     await page.getByTestId("rb-zurueck-monat").click();
     await expect(page).toHaveURL(/monat=/);
 
-    // Nähe / Intimität je Kalenderwoche (ohne Datum): zwei Einträge im Abstand von einer Woche, dazwischen leere Wochen
+    // Nähe / Intimität: Wochentage je Kalenderwoche (ohne Datum), wie Ausgeschlafen – zwei Einträge im Abstand von
+    // einer Woche (gleicher Wochentag), dazwischen bzw. danach leere Wochen
+    const WT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
     const n1 = plus(HEUTE, -430);
     const n2 = plus(n1, 7);
+    const wt = WT[(new Date(`${n1}T12:00:00Z`).getUTCDay() + 6) % 7];
     for (const tag of [n1, n2]) expect(JSON.parse(await mcp.call("privat_eintrag_anlegen", { art: "intim", person: "beide", wert: 4, tag })).ok).toBe(true);
     await page.goto(`/privat/rueckblick?von=${plus(n1, -1)}&bis=${plus(n1, 15)}`);
     await expect(page.getByTestId("rb-naehe")).toContainText("Nähe / Intimität: 2×");
     const wochen = (await page.getByTestId("rb-naehe-wochen").innerText()).trim();
-    expect(wochen).toMatch(/^— KW \d+: (1×|–)( · KW \d+: (1×|–)){2,3}$/);
-    expect(wochen.match(/1×/g)).toHaveLength(2);
+    expect(wochen).toMatch(/^— KW \d+: (Mo|Di|Mi|Do|Fr|Sa|So|–)( · KW \d+: (Mo|Di|Mi|Do|Fr|Sa|So|–)){2,3}$/);
+    expect(wochen.match(new RegExp(`: ${wt}(?= ·|$)`, "g"))).toHaveLength(2);
     expect(wochen).toContain("–");
+    expect(wochen).not.toContain("×");
     expect(wochen).not.toMatch(/\d{2}\.\d{2}\./);
 
     // Ausgeschlafen mit Wochentagen je Woche: Sa + So in der ersten, Mi in der zweiten Woche (Person a)

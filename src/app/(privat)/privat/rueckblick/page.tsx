@@ -5,7 +5,7 @@ import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/serv
 import type { CalKind, TouchEntry } from "@/lib/private/kalender";
 import { KindDot } from "../kalender/items";
 import { PrintButton } from "@/components/print-button";
-import { jeWoche, rueckblickZeitraum, wochentageJeWoche, zeitraumVorschlaege } from "@/lib/private/rueckblick-logic";
+import { rueckblickZeitraum, wochentageJeWoche, zeitraumVorschlaege } from "@/lib/private/rueckblick-logic";
 import { MonthNav, PrivatHead, dmy, hoursLabel, monthLabel } from "../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
@@ -50,8 +50,8 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   const touchCount = (k: TouchEntry["kind"], st: TouchEntry["status"]) => inMonth.filter((t) => t.kind === k && t.status === st).length;
   // Die Monats-Auswertungen bekommen nur die Einträge des Zeitraums; Präfix "" = alle davon zählen.
   const ist = intimStats(intim.map((e) => e.data).filter((e) => drin(e.day)), "", end);
-  // Nähe je Kalenderwoche (ohne genaues Datum), damit Pausen und Häufungen im Monat sichtbar werden.
-  const naeheWochen = jeWoche(intim.map((e) => e.data.day), von, end);
+  // Nähe: Wochentage je Kalenderwoche (wie Ausgeschlafen), damit Pausen und Häufungen sichtbar werden.
+  const naeheWochen = wochentageJeWoche(intim.map((e) => e.data.day), von, end);
   const ds = dateStats(dates.map((e) => e.data).filter((e) => drin(e.day)), "", end);
   const ko = kidsOverview(kids.map((e) => e.data).filter((e) => drin(e.day)), "");
   const so = kidsOverview(sleep.map((e) => e.data).filter((e) => drin(e.day)), "");
@@ -112,9 +112,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
         <h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Als Paar</h3>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
           <li className="rb-li" data-testid="rb-naehe"><KindDot kind="naehe" /> Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong>
-            {ist.inMonth > 0 && naeheWochen.length > 1 && (
-              <span data-testid="rb-naehe-wochen"> — {naeheWochen.map((w) => `KW ${w.kw}: ${w.anzahl ? `${w.anzahl}×` : "–"}`).join(" · ")}</span>
-            )}
+            {ist.inMonth > 0 && <span data-testid="rb-naehe-wochen"> — {wochenText(naeheWochen)}</span>}
           </li>
           <li className="rb-li"><KindDot kind="paarzeit" /> Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
           <li data-testid="rb-danke">💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
