@@ -15,3 +15,4 @@ next-env.d.ts
 
 # AdelPrep FTP-Zugang
 /adelprep/.env
+/adelprep/public/version.txt

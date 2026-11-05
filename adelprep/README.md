@@ -11,7 +11,11 @@ Statische Seite für das Prepcenter AdelPrep der Wittmann & Grunert GmbH. Unabh�
 | `public/AdelPrep_Preisliste.pdf` | Flyer zum Herunterladen |
 | `public/fonts/` | Schriften, lokal eingebunden (keine Google-Verbindung) |
 
-## Hochladen
+## Hochladen unter Windows (Doppelklick)
+
+Ordner `adelprep` auf den PC holen (GitHub → Code → Download ZIP, oder das ZIP aus dem Chat), dann `Hochladen.bat` doppelklicken. Alles Weitere steht in `LIESMICH.txt`. Das Skript nutzt WinSCP mit FTPS, lädt nur geänderte Dateien hoch, löscht nichts, sichert beim ersten Mal `public_html` und prüft danach, ob adelprep.de den neuen Stand zeigt (über `version.txt`). Zugangsdaten liegen verschlüsselt unter `%APPDATA%\AdelPrep`.
+
+## Hochladen unter Linux / macOS
 
 **Mit einem Befehl** (Linux, macOS, Git Bash unter Windows):
 

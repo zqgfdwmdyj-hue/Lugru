@@ -1,0 +1,41 @@
+﻿AdelPrep-Website hochladen (Windows)
+====================================
+
+Was in diesem Ordner liegt
+--------------------------
+  Hochladen.bat              Doppelklick: zeigt die Änderungen, fragt nach und lädt hoch
+  Testlauf.bat               Doppelklick: zeigt nur, was hochgeladen würde. Lädt nichts hoch.
+  Zugangsdaten-aendern.bat   FTP-Zugang neu eingeben (z. B. nach Passwortwechsel)
+  public\                    Die Website. Genau dieser Inhalt kommt nach public_html.
+  werkzeug\hochladen.ps1     Das eigentliche Upload-Skript
+
+Einmalig einrichten
+-------------------
+1. In konsoleH bei adelprep.de die FTP-Zugangsdaten nachsehen
+   (Server wie wwwXXX.your-server.de, Benutzername, Passwort).
+2. Hochladen.bat doppelklicken.
+   - Fehlt WinSCP (kostenloses Upload-Programm), bietet das Skript die Installation an.
+   - Server, Benutzername und Passwort eingeben. Die Verbindung wird sofort getestet.
+     Nur wenn sie klappt, werden die Daten gespeichert.
+   - Beim ersten Mal wird der komplette Inhalt von public_html auf deinen PC gesichert,
+     bevor irgendetwas hochgeladen wird.
+3. Danach siehst du die Liste der Dateien, die neu oder geändert sind.
+   Mit "j" bestätigen, dann wird hochgeladen.
+4. Zum Schluss prüft das Skript, ob adelprep.de wirklich den neuen Stand zeigt.
+
+Ab dann: nur noch Hochladen.bat doppelklicken.
+
+Sicherheit
+----------
+- Es wird nur FTPS verwendet (verschlüsselt). Unverschlüsseltes FTP ist nicht möglich.
+- Auf dem Server wird nie etwas gelöscht. Es werden nur neue oder geänderte Dateien übertragen.
+- Die Zugangsdaten liegen verschlüsselt unter %APPDATA%\AdelPrep\zugang.xml.
+  Nur dein Windows-Benutzer auf diesem PC kann sie lesen. Sie liegen weder in diesem
+  Ordner noch auf dem Webspace.
+- Sicherung, Protokoll (upload.log) und Zugang liegen alle in %APPDATA%\AdelPrep.
+  (Im Explorer oben %APPDATA%\AdelPrep eintippen.)
+
+Falls Windows warnt
+-------------------
+"Der Computer wurde durch Windows geschützt": auf "Weitere Informationen" und
+"Trotzdem ausführen" klicken. Das kommt bei Dateien aus dem Internet einmalig vor.
