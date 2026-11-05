@@ -299,7 +299,7 @@ async function personFuer(tenantId: string, userId: string | null): Promise<stri
   return o?.id ?? null;
 }
 
-export type Gekauft = { menge: number; preis: number | null; nr?: number | null; weg: "knopf" | "mail" | "sprache" | "claude" | "sms"; ref?: string | null; bestellnr?: string | null; shop?: string | null };
+export type Gekauft = { menge: number; preis: number | null; nr?: number | null; weg: "knopf" | "mail" | "sprache" | "claude" | "sms"; ref?: string | null; bestellnr?: string | null; shop?: string | null; /** B28.5: von Hand gewählter Lieferant (Name). */ lieferant?: string | null };
 
 /**
  * Deal als gekauft markieren (Menge, Preis netto je Stück). Legt die Einkaufs-Bestellung als „bestellt“ an (bzw. setzt
@@ -336,8 +336,8 @@ export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userI
   } else {
     if (!person) return { bestellungId: null, zeile: zeile.nr };
     // B28.5: Lieferant aus Einstellungen → Deal-Quellen (z. B. Quelle „Konrad“ → Lieferant mit Mailadresse)
-    const dl = g.shop ? null : await import("./bestellmail").then((b) => b.lieferantFuerDeal(tenantId, e.quelle)).catch(() => null);
-    poId = await P.createPurchaseOrder(tenantId, person, { supplier: g.shop ?? dl?.name ?? e.quelle ?? "Deal-Eingang", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage), notes: `Aus dem Deal-Eingang (${g.weg === "mail" ? "Bestellbestätigung" : "gekauft"}).` });
+    const dl = g.shop || g.lieferant ? null : await import("./bestellmail").then((b) => b.lieferantFuerDeal(tenantId, e.quelle, e.weg, e.rohtext)).catch(() => null);
+    poId = await P.createPurchaseOrder(tenantId, person, { supplier: g.shop ?? g.lieferant ?? dl?.name ?? e.quelle ?? "Deal-Eingang", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage), notes: `Aus dem Deal-Eingang (${g.weg === "mail" ? "Bestellbestätigung" : "gekauft"}).` });
     await P.addItem(tenantId, poId, { asin: zeile.asin, quantity: g.menge, unitCostGross: r2(preis * 1.19), title: zeile.titel ?? zeile.angebot.name });
     for (const i of altItems.filter((x) => x.asin === zeile.asin)) await P.removeItem(tenantId, i.id);
   }

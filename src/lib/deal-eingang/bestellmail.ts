@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSettings } from "@/lib/settings";
-import { adresseAusAbsender, bestellmailFuerAntwort, bestellmailText, lieferantFuerQuelle, rechnungErkannt, sendungsnummerAus, type BestellFirma, type DealLieferant } from "./bestellmail-logic";
+import { adresseAusAbsender, bestellmailFuerAntwort, bestellmailText, lieferantFuerQuelle, quelleFuerSuche, rechnungErkannt, sendungsnummerAus, type BestellFirma, type DealLieferant } from "./bestellmail-logic";
 import { DealEingangFehler } from "./service";
 
 // B28.5 Bestellmail an den Lieferanten: Entwurf beim „Gekauft“ (Seite oder deal_gekauft), Senden nur per Klick,
@@ -24,8 +24,19 @@ export async function dealLieferanten(tenantId: string): Promise<DealLieferant[]
   return rows;
 }
 
-export async function lieferantFuerDeal(tenantId: string, quelle: string | null): Promise<DealLieferant | null> {
-  return lieferantFuerQuelle(quelle, await dealLieferanten(tenantId));
+export async function lieferantFuerDeal(tenantId: string, quelle: string | null, weg?: string | null, rohtext?: string | null): Promise<DealLieferant | null> {
+  return lieferantFuerQuelle(quelleFuerSuche(quelle, weg, rohtext), await dealLieferanten(tenantId));
+}
+
+/**
+ * Lieferant von Hand am Deal gewählt (Auswahl am Gekauft-Knopf, wenn die Quelle fehlt oder nicht passt). Hat der Deal
+ * noch keine Quelle, wird der Name des Lieferanten als Quelle eingetragen – dann passt es beim nächsten Mal von selbst.
+ */
+export async function lieferantWaehlen(tenantId: string, dealId: string, supplierId: string): Promise<DealLieferant> {
+  const l = (await dealLieferanten(tenantId)).find((x) => x.supplierId === supplierId);
+  if (!l) throw new DealEingangFehler("Lieferant nicht gefunden – unter Deal-Eingang → Deal-Quellen anlegen.");
+  await db.update(E).set({ quelle: l.name }).where(and(eq(E.tenantId, tenantId), eq(E.id, dealId), sql`coalesce(trim(${E.quelle}), '') = ''`));
+  return l;
 }
 
 /** Deal-Quelle speichern bzw. ändern (Lieferant wird bei Bedarf angelegt). */
@@ -57,12 +68,13 @@ async function firmaFuer(tenantId: string): Promise<BestellFirma> {
  * Entwurf der Bestellmail für einen gekauften Deal anlegen (bzw. einen offenen Entwurf neu füllen). Ohne Lieferant mit
  * Mailadresse: Fehler mit Hinweis auf Einstellungen → Deal-Quellen. Gesendet wird hier nichts.
  */
-export async function bestellmailEntwurf(tenantId: string, dealId: string, userId: string | null, o: { nr?: number | null } = {}): Promise<{ id: string; an: string }> {
+export async function bestellmailEntwurf(tenantId: string, dealId: string, userId: string | null, o: { nr?: number | null; supplierId?: string | null } = {}): Promise<{ id: string; an: string }> {
   const [e] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, dealId)));
   if (!e) throw new DealEingangFehler("Eingang nicht gefunden.");
   if (e.status !== "gekauft" || !e.gekauftMenge) throw new DealEingangFehler("Erst als gekauft speichern (Menge, Preis) – dann die Bestellmail.");
-  const l = await lieferantFuerDeal(tenantId, e.quelle);
-  if (!l?.email) throw new DealEingangFehler(`Kein Lieferant mit Mailadresse für die Quelle „${e.quelle ?? "–"}“ – unter Deal-Eingang → Einstellungen → Deal-Quellen eintragen.`);
+  const l = o.supplierId ? await lieferantWaehlen(tenantId, dealId, o.supplierId) : await lieferantFuerDeal(tenantId, e.quelle, e.weg, e.rohtext);
+  if (!l) throw new DealEingangFehler(e.quelle ? `Kein Lieferant für die Quelle „${e.quelle}“ – am Gekauft-Knopf den Lieferanten wählen oder unter Deal-Eingang → Deal-Quellen als Stichwort eintragen.` : "Der Deal hat keine Quelle – am Gekauft-Knopf den Lieferanten wählen.");
+  if (!l.email) throw new DealEingangFehler(`Für ${l.name} ist keine Mailadresse hinterlegt – unter Deal-Eingang → Deal-Quellen eintragen.`);
   const z = (o.nr ? e.zeilen.find((x) => x.nr === o.nr) : null) ?? e.zeilen.filter((x) => x.asin).sort((a, b) => (a.ampel === "gruen" ? -1 : 0) - (b.ampel === "gruen" ? -1 : 0))[0] ?? e.zeilen[0];
   const preis = e.gekauftPreis ?? z?.ekNetto ?? z?.angebot.ek ?? 0;
   const { betreff, text } = bestellmailText({

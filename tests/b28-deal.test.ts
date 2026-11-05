@@ -3,7 +3,7 @@ import { DAUMEN_GRUENDE_HOCH, type DealMerkmale } from "@/db/tables/deal-eingang
 import { freischaltungLink, landKennzahlen, margeBrutto, maxEkMarge, realeMarge } from "@/lib/deal-eingang/logic";
 import { szenarioRechnen, verkaeufeBeiPreis, verkaeufeHinweis, type PreisTag } from "@/lib/deal-eingang/szenario-logic";
 import { dealWert, eigenesLabel, grundAusAntwort, grundBeitraege, grundFrageText, lernBericht, type HistorieDeal } from "@/lib/deal-eingang/wert-logic";
-import { adresseAusAbsender, bestellmailFuerAntwort, bestellmailText, lieferantFuerQuelle, rechnungErkannt, sendungsnummerAus, type DealLieferant } from "@/lib/deal-eingang/bestellmail-logic";
+import { adresseAusAbsender, bestellmailFuerAntwort, bestellmailText, lieferantFuerQuelle, quelleFuerSuche, rechnungErkannt, sendungsnummerAus, type DealLieferant } from "@/lib/deal-eingang/bestellmail-logic";
 import { kaufText } from "@/lib/deal-eingang/kauf-logic";
 import { MARKTPLAETZE, standAusKeepa, verkaeufeAusRang } from "@/lib/keepa/auswertung";
 
@@ -155,6 +155,14 @@ describe("B28.5 Bestellmail", () => {
     expect(lieferantFuerQuelle("test-whatsapp deals", [L])?.supplierId).toBe("s1");
     expect(lieferantFuerQuelle("ProfitPath", [L])).toBeNull();
     expect(lieferantFuerQuelle(null, [L])).toBeNull();
+  });
+  it("Deal ohne Quelle: geteilt/Kurzbefehl ohne Shop-Link gilt als „WhatsApp“, sonst keine Zuordnung", () => {
+    expect(quelleFuerSuche("Herr Test", "teilen", "")).toBe("Herr Test");
+    expect(quelleFuerSuche(null, "teilen", "B0TEST0001 Testpfanne 25,00 netto")).toBe("WhatsApp");
+    expect(quelleFuerSuche(null, "kurzbefehl", "Angebot https://wa.me/490000000")).toBe("WhatsApp");
+    expect(quelleFuerSuche(null, "teilen", "https://www.amazon.de/dp/B0TEST0001")).toBeNull();
+    expect(quelleFuerSuche(null, "manuell", "B0TEST0001 25,00 netto")).toBeNull();
+    expect(lieferantFuerQuelle(quelleFuerSuche(null, "teilen", "B0TEST0001"), [L])?.supplierId).toBe("s1");
   });
   it("Mailtext: Artikel mit ASIN, Verpackung, 84 × 25 € netto, Adresse, Rechnung mit EAN, Sendungsnummer", () => {
     const m = bestellmailText({

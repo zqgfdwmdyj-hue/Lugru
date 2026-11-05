@@ -17,6 +17,18 @@ export type DealLieferant = {
 
 const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
 
+/**
+ * Wonach der Lieferant gesucht wird: die Quelle des Deals; ohne Quelle gilt ein über das Teilen-Menü bzw. den
+ * Kurzbefehl geteilter Deal als „WhatsApp“ (so kommen die Händler-Angebote an).
+ */
+export function quelleFuerSuche(quelle: string | null | undefined, weg?: string | null, rohtext?: string | null): string | null {
+  if (quelle?.trim()) return quelle;
+  if (weg !== "teilen" && weg !== "kurzbefehl") return null;
+  // Mit Shop-/Amazon-Link im Text ist es ein Online-Kauf, kein Händler-Angebot aus WhatsApp.
+  const shopLink = [...(rohtext ?? "").matchAll(/https?:\/\/([^\s/<>"')\]]+)/gi)].some((m) => !/(^|\.)(wa\.me|whatsapp\.com)$/i.test(m[1]));
+  return shopLink ? null : "WhatsApp";
+}
+
 /** Lieferant zur Quelle eines Deals: Stichwort, Name oder Ansprechpartner kommt in der Quelle vor (längster Treffer gewinnt). */
 export function lieferantFuerQuelle(quelle: string | null | undefined, liste: DealLieferant[]): DealLieferant | null {
   const q = norm(quelle);

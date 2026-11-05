@@ -303,7 +303,7 @@ export const dealGekauftTool = defineTool({
   name: "deal_gekauft",
   title: "Deal als gekauft markieren",
   description:
-    "Markiert einen Deal-Eingang als gekauft (Menge, Preis netto je Stück): legt die Einkaufs-Bestellung als „bestellt“ an, Wareneingang und Rechnung werden erwartet. Kauft NICHTS ein – nur erfassen, was Ludwig selbst gekauft hat. Optional verpackung (lose/eingeschweisst/originalkarton) und ean_abweichend (dann FNSKU-Etikett nötig). bestellmail (Standard an, wenn zur Quelle ein Lieferant mit Mailadresse unter Deal-Quellen steht): legt nur den ENTWURF der Bestellmail an den Lieferanten an – gesendet wird erst, wenn Ludwig auf der Deal-Seite „Senden“ klickt. Einzeln bestätigen. Nur auf ausdrücklichen Wunsch.",
+    "Markiert einen Deal-Eingang als gekauft (Menge, Preis netto je Stück): legt die Einkaufs-Bestellung als „bestellt“ an, Wareneingang und Rechnung werden erwartet. Kauft NICHTS ein – nur erfassen, was Ludwig selbst gekauft hat. Optional verpackung (lose/eingeschweisst/originalkarton) und ean_abweichend (dann FNSKU-Etikett nötig). lieferant (Name/Mail aus den Deal-Quellen), wenn die Quelle fehlt. bestellmail (Standard an, wenn zur Quelle ein Lieferant mit Mailadresse unter Deal-Quellen steht oder lieferant angegeben ist): legt nur den ENTWURF der Bestellmail an den Lieferanten an – gesendet wird erst, wenn Ludwig auf der Deal-Seite „Senden“ klickt. Einzeln bestätigen. Nur auf ausdrücklichen Wunsch.",
   area: "dealeingang",
   write: true,
   stufe: "gelb",
@@ -315,12 +315,19 @@ export const dealGekauftTool = defineTool({
     verpackung: z.enum(["lose", "eingeschweisst", "originalkarton"]).optional(),
     ean_abweichend: z.boolean().optional().describe("true = EAN der Ware weicht von der Amazon-EAN ab (FNSKU-Etikett nötig)"),
     bestellmail: z.boolean().optional().describe("Entwurf der Bestellmail an den Lieferanten anlegen (Standard: ja, wenn Lieferant mit Mailadresse bekannt). Wird NIE automatisch gesendet."),
+    lieferant: z.string().max(200).optional().describe("Lieferant aus den Deal-Quellen (Name oder Mailadresse), wenn die Quelle des Deals fehlt oder nicht passt"),
   }),
   summary: (i) => `Deal gekauft: ${i.menge} Stk${i.preis ? ` zu ${i.preis.toFixed(2).replace(".", ",")} € netto` : ""}${i.bestellmail === false ? "" : " + Entwurf Bestellmail (falls Lieferant bekannt)"}`,
   run: async (ctx, i) => {
     const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
     try {
-      const r = await alsGekauft(ctx.session.tenantId, i.deal_id, { menge: i.menge, preis: i.preis ?? null, nr: i.nr ?? null, weg: "claude" }, ctx.session.userId);
+      const B = await import("@/lib/deal-eingang/bestellmail");
+      const alle = await B.dealLieferanten(ctx.session.tenantId);
+      const such = i.lieferant?.trim().toLowerCase();
+      const gewaehlt = such ? (alle.find((l) => l.name.toLowerCase() === such || l.email?.toLowerCase() === such) ?? alle.find((l) => l.name.toLowerCase().includes(such))) : null;
+      if (such && !gewaehlt) return { text: `Lieferant „${i.lieferant}“ nicht in den Deal-Quellen. Vorhanden: ${alle.map((l) => l.name).join(", ") || "keine"}.`, isError: true };
+      if (gewaehlt) await B.lieferantWaehlen(ctx.session.tenantId, i.deal_id, gewaehlt.supplierId);
+      const r = await alsGekauft(ctx.session.tenantId, i.deal_id, { menge: i.menge, preis: i.preis ?? null, nr: i.nr ?? null, weg: "claude", lieferant: gewaehlt?.name ?? null }, ctx.session.userId);
       const E = schema.dealEingaenge;
       if (i.verpackung !== undefined || i.ean_abweichend !== undefined) {
         await db.update(E).set({ ...(i.verpackung ? { verpackung: i.verpackung } : {}), ...(i.ean_abweichend !== undefined ? { eanAbweichend: i.ean_abweichend } : {}) }).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
@@ -328,13 +335,14 @@ export const dealGekauftTool = defineTool({
       // B28.5: nur Entwurf – gesendet wird erst mit „Senden“ auf der Deal-Seite.
       let bestellmail: { entwurf: boolean; an?: string; hinweis: string } | undefined;
       if (i.bestellmail !== false) {
-        const B = await import("@/lib/deal-eingang/bestellmail");
-        const [e] = await db.select({ quelle: E.quelle }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
-        const l = await B.lieferantFuerDeal(ctx.session.tenantId, e?.quelle ?? null);
+        const [e] = await db.select({ quelle: E.quelle, weg: E.weg, rohtext: E.rohtext }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
+        const l = gewaehlt ?? (await B.lieferantFuerDeal(ctx.session.tenantId, e?.quelle ?? null, e?.weg, e?.rohtext));
         if (l?.email) {
-          const m = await B.bestellmailEntwurf(ctx.session.tenantId, i.deal_id, ctx.session.userId, { nr: r.zeile }).catch((x: unknown) => ({ fehler: x instanceof Error ? x.message : String(x) }));
+          const m = await B.bestellmailEntwurf(ctx.session.tenantId, i.deal_id, ctx.session.userId, { nr: r.zeile, supplierId: l.supplierId }).catch((x: unknown) => ({ fehler: x instanceof Error ? x.message : String(x) }));
           bestellmail = "fehler" in m ? { entwurf: false, hinweis: m.fehler } : { entwurf: true, an: m.an, hinweis: "Nur Entwurf – Ludwig prüft und klickt auf der Deal-Seite „Senden“." };
-        } else if (i.bestellmail === true) bestellmail = { entwurf: false, hinweis: `Kein Lieferant mit Mailadresse für die Quelle „${e?.quelle ?? "–"}“ – unter Deal-Eingang → Deal-Quellen eintragen.` };
+        } else if (i.bestellmail === true || alle.some((x) => x.email)) {
+          bestellmail = { entwurf: false, hinweis: `Kein passender Lieferant für die Quelle „${e?.quelle ?? "–"}“. Mit „lieferant“ wählen (${alle.filter((x) => x.email).map((x) => x.name).join(", ") || "keine Deal-Quellen mit Mailadresse"}).` };
+        }
       }
       return {
         text: JSON.stringify({ ok: true, menge: i.menge, angebot_nr: r.zeile, bestellung: r.bestellungId ? abs(ctx, `/einkauf/${r.bestellungId}`) : null, hinweis: r.bestellungId ? "Bestellung „bestellt“ – Wareneingang und Rechnung werden erwartet." : undefined, fnsku_etikett_noetig: i.ean_abweichend ? true : undefined, bestellmail, link: abs(ctx, `/deal-eingang/${i.deal_id}${bestellmail?.entwurf ? "#bestellmail" : ""}`) }),

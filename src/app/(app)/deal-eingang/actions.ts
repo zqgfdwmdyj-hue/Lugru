@@ -146,16 +146,20 @@ export async function gekauftAction(fd: FormData) {
   const preis = parseAmount(fd.get("preis"));
   const nr = Number(fd.get("nr")) || null;
   let ziel: string;
+  // B28.5: von Hand gewählter Lieferant (wenn die Quelle fehlt oder nicht passt)
+  const supplierId = /^[0-9a-f-]{36}$/i.test(String(fd.get("lieferant") ?? "")) ? String(fd.get("lieferant")) : null;
   try {
     const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
-    const r = await alsGekauft(s.tenantId, id, { menge, preis, nr, weg: "knopf" }, s.userId);
+    const B = await import("@/lib/deal-eingang/bestellmail");
+    const gewaehlt = supplierId ? await B.lieferantWaehlen(s.tenantId, id, supplierId) : null;
+    const r = await alsGekauft(s.tenantId, id, { menge, preis, nr, weg: "knopf", lieferant: gewaehlt?.name ?? null }, s.userId);
     await wareSpeichern(s.tenantId, id, fd);
     let text = `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.`;
     // B28.5: Bestellmail an den Lieferanten – nur Entwurf; gesendet wird erst mit „Senden“.
     if (fd.get("bestellmail") === "1") {
-      const { bestellmailEntwurf } = await import("@/lib/deal-eingang/bestellmail");
+      const { bestellmailEntwurf } = B;
       try {
-        const m = await bestellmailEntwurf(s.tenantId, id, s.userId, { nr: r.zeile });
+        const m = await bestellmailEntwurf(s.tenantId, id, s.userId, { nr: r.zeile, supplierId });
         text += ` Entwurf der Bestellmail an ${m.an} – bitte prüfen und senden.`;
       } catch (e) {
         text += ` Bestellmail: ${e instanceof DealEingangFehler ? e.message : lesbarerFehler(e)}`;
@@ -199,7 +203,8 @@ export async function bestellmailEntwurfAction(fd: FormData) {
   let m: string;
   try {
     const { bestellmailEntwurf } = await import("@/lib/deal-eingang/bestellmail");
-    const r = await bestellmailEntwurf(s.tenantId, id, s.userId);
+    const lieferant = String(fd.get("lieferant") ?? "");
+    const r = await bestellmailEntwurf(s.tenantId, id, s.userId, { supplierId: /^[0-9a-f-]{36}$/i.test(lieferant) ? lieferant : null });
     m = `Entwurf der Bestellmail an ${r.an} – bitte prüfen und senden.`;
   } catch (e) {
     m = e instanceof DealEingangFehler ? e.message : `Kein Entwurf – ${lesbarerFehler(e)}`;

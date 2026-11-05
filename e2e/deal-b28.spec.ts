@@ -10,6 +10,11 @@ const zeilen = async (id: string) => (await sql<{ zeilen: Zeile[] }>("select zei
 const GRUND_LAND = "In einem Land (FR/IT/ES …) kein oder nur 1 Angebot";
 
 test.describe("B28 Deal-Eingang: Marge, Preis-Szenario, Gründe bei 👍, Bestellmail", () => {
+  // Die erfundenen Pfannen-Deals wieder entfernen: Sie würden sonst in späteren Prüfungen (deal-wert) als „ähnliche
+  // eigene Deals“ zählen und die Lugru-Deals verdrängen.
+  test.afterAll(async () => {
+    await sql("delete from deal_eingaenge where zeilen::text like '%B0PFANNE%'");
+  });
   test("Abnahmen 1–5", async ({ page, browser, baseURL }) => {
     test.setTimeout(300_000);
     const m = marke();
@@ -180,6 +185,32 @@ test.describe("B28 Deal-Eingang: Marge, Preis-Szenario, Gründe bei 👍, Bestel
     const gek = JSON.parse(await mcp.call("deal_gekauft", { deal_id: idC, menge: 10, preis: 30, verpackung: "originalkarton" }));
     expect(gek.bestellmail).toMatchObject({ entwurf: true, an: mail });
     expect((await sql<{ status: string }>("select status from deal_bestellmails where deal_id = $1", [idC])).map((x) => x.status)).toEqual(["entwurf"]);
+    expect((await sql("select 1 from test_mails where \"to\" like $1", [`${mail}%`])).length).toBe(1);
+
+    // Befund 05.11.: Deal ohne Quelle (mit Shop-Link, also kein WhatsApp-Angebot) → kein Lieferant erkannt.
+    // Lieferant am Gekauft-Knopf wählen → Entwurf an ihn; der Name wird als Quelle gespeichert.
+    const r4 = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE05 Testpfanne 20 cm (erfunden) 15,00 netto ab 20 Stk https://shop.example.test/pfanne-${m}` }, maxRedirects: 0 });
+    const idD = /\/deal-eingang\/([0-9a-f-]{36})/.exec(r4.headers().location ?? "")![1];
+    await fertig(idD);
+    expect((await sql<{ q: string | null }>("select quelle q from deal_eingaenge where id = $1", [idD]))[0].q).toBeNull();
+    await page.goto(`/deal-eingang/${idD}#gekauft`);
+    await expect(page.getByTestId("de-lieferant-hinweis")).toContainText("Der Deal hat keine Quelle");
+    const formD = page.getByTestId("de-gekauft-form");
+    await expect(formD.getByTestId("de-bestellmail-schalter")).toBeEnabled();
+    await expect(formD.getByTestId("de-bestellmail-schalter")).not.toBeChecked();
+    await formD.locator('input[name="menge"]').fill("20");
+    await formD.getByTestId("de-lieferant-wahl").selectOption({ label: lieferant });
+    await formD.getByTestId("de-bestellmail-schalter").check();
+    await Promise.all([aktion(page), page.getByTestId("de-gekauft-knopf").click()]);
+    await expect(page.getByRole("status")).toContainText(`Entwurf der Bestellmail an ${mail}`);
+    expect((await sql<{ q: string | null }>("select quelle q from deal_eingaenge where id = $1", [idD]))[0].q).toBe(lieferant);
+    expect((await sql<{ an: string; status: string }>("select an, status from deal_bestellmails where deal_id = $1", [idD]))[0]).toEqual({ an: mail, status: "entwurf" });
+    // Claude: deal_gekauft mit „lieferant“, wenn die Quelle fehlt
+    const r5 = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE06 Testpfanne 16 cm (erfunden) 12,00 netto ab 20 Stk https://shop.example.test/klein-${m}` }, maxRedirects: 0 });
+    const idE = /\/deal-eingang\/([0-9a-f-]{36})/.exec(r5.headers().location ?? "")![1];
+    await fertig(idE);
+    const gekE = JSON.parse(await mcp.call("deal_gekauft", { deal_id: idE, menge: 20, preis: 12, lieferant: mail }));
+    expect(gekE.bestellmail).toMatchObject({ entwurf: true, an: mail });
     expect((await sql("select 1 from test_mails where \"to\" like $1", [`${mail}%`])).length).toBe(1);
   });
 });

@@ -11,7 +11,7 @@ import { formatEuro } from "@/lib/numbers";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
 import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction, wareAction, bestellmailEntwurfAction, bestellmailAction } from "../actions";
 import { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH, DEAL_VERPACKUNG, VERPACKUNG_TEXT } from "@/db/tables/deal-eingang";
-import { bestellmailsFuerDeal, lieferantFuerDeal } from "@/lib/deal-eingang/bestellmail";
+import { bestellmailsFuerDeal, dealLieferanten, lieferantFuerDeal } from "@/lib/deal-eingang/bestellmail";
 import { angebotsLink } from "@/lib/deal-eingang/kauf-logic";
 import { kaufVorschlag } from "@/lib/deal-eingang/kauf";
 import { kaufNrGueltig } from "@/lib/deal-eingang/shop-logic";
@@ -57,7 +57,20 @@ export default async function DealEingangDetail({ params, searchParams }: { para
   const kauf = vorschlag?.kauf ?? null;
   const nrGueltig = e.kaufNr && kaufNrGueltig(e.kauf?.am) ? e.kaufNr : null;
   // B28.5: Lieferant zur Quelle (Einstellungen → Deal-Quellen) und Bestellmails am Deal
-  const [lieferant, bestellmails] = await Promise.all([lieferantFuerDeal(session.tenantId, e.quelle).catch(() => null), bestellmailsFuerDeal(session.tenantId, e.id).catch(() => [])]);
+  const [lieferant, bestellmails, alleLieferanten] = await Promise.all([lieferantFuerDeal(session.tenantId, e.quelle, e.weg, e.rohtext).catch(() => null), bestellmailsFuerDeal(session.tenantId, e.id).catch(() => []), dealLieferanten(session.tenantId).catch(() => [])]);
+  // Auswahl am Gekauft-Knopf: erkannter Lieferant; ohne Quelle und mit nur einem Lieferanten dieser vorgewählt.
+  const mitMail = alleLieferanten.filter((l) => l.email);
+  const vorwahl = lieferant?.email ? lieferant.supplierId : !e.quelle && mitMail.length === 1 ? mitMail[0].supplierId : "";
+  const lieferantAuswahl = (testid: string) =>
+    mitMail.length > 0 ? (
+      <label>
+        Lieferant{" "}
+        <select name="lieferant" defaultValue={vorwahl} data-testid={testid}>
+          <option value="">{lieferant ? "–" : "– wählen –"}</option>
+          {mitMail.map((l) => <option key={l.supplierId} value={l.supplierId}>{l.name}</option>)}
+        </select>
+      </label>
+    ) : null;
   const datum = (d: Date | null) => (d ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–");
   return (
     <>
@@ -232,12 +245,19 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               <label>Preis netto/Stk <input name="preis" inputMode="decimal" defaultValue={e.gekauftPreis !== null ? String(e.gekauftPreis).replace(".", ",") : z.ekNetto !== null ? String(z.ekNetto).replace(".", ",") : ""} style={{ width: 80 }} /></label>
               <label>Verpackung <select name="verpackung" defaultValue={e.verpackung ?? ""} data-testid="de-verpackung"><option value="">–</option>{DEAL_VERPACKUNG.map((v) => <option key={v} value={v}>{VERPACKUNG_TEXT[v]}</option>)}</select></label>
               <label>EAN weicht ab <select name="ean_abweichend" defaultValue={e.eanAbweichend === null ? "" : e.eanAbweichend ? "ja" : "nein"} data-testid="de-ean-abweichend"><option value="">–</option><option value="nein">Nein</option><option value="ja">Ja</option></select></label>
-              <label title={lieferant?.email ? `Entwurf an ${lieferant.email} – gesendet wird erst mit „Senden“` : "Kein Lieferant mit Mailadresse zur Quelle – Einstellungen → Deal-Quellen"}>
-                <input type="checkbox" name="bestellmail" value="1" defaultChecked={!!lieferant?.email && !bestellmails.some((m) => m.status === "gesendet")} disabled={!lieferant?.email} data-testid="de-bestellmail-schalter" /> Bestellmail senden{lieferant?.email ? ` (${lieferant.name})` : ""}
+              {lieferantAuswahl("de-lieferant-wahl")}
+              <label title={mitMail.length ? "Legt einen Entwurf an den Lieferanten an – gesendet wird erst mit „Senden“" : "Noch kein Lieferant mit Mailadresse – Deal-Eingang → Deal-Quellen"}>
+                <input type="checkbox" name="bestellmail" value="1" defaultChecked={!!lieferant?.email && !bestellmails.some((m) => m.status === "gesendet")} disabled={!mitMail.length} data-testid="de-bestellmail-schalter" /> Bestellmail senden
               </label>
               <button className="btn btn-sm btn-primary" type="submit" data-testid="de-gekauft-knopf">Gekauft</button>
             </form>
-            {!lieferant?.email && <div className="small muted">Bestellmail an den Lieferanten: für die Quelle „{e.quelle ?? "–"}“ ist noch kein Lieferant mit Mailadresse hinterlegt – <Link href="/deal-eingang/quellen">Einstellungen → Deal-Quellen</Link>.</div>}
+            {!mitMail.length ? (
+              <div className="small muted">Bestellmail an den Lieferanten: noch kein Lieferant mit Mailadresse hinterlegt – <Link href="/deal-eingang/quellen">Deal-Eingang → Deal-Quellen</Link>.</div>
+            ) : !lieferant?.email ? (
+              <div className="small muted" data-testid="de-lieferant-hinweis">
+                {e.quelle ? `Zur Quelle „${e.quelle}“ passt kein Lieferant` : "Der Deal hat keine Quelle"} – für die Bestellmail oben den Lieferanten wählen und „Bestellmail senden“ anhaken. Ohne Quelle wird der Lieferant als Quelle gespeichert.
+              </div>
+            ) : null}
             {e.eanAbweichend && <div className="notice notice-warn small" data-testid="de-fnsku-hinweis">EAN weicht ab – FNSKU-Etikett nötig (Amazon-Barcode statt Hersteller-EAN).</div>}
             {e.gekauftAm && (
               <form action={wareAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -252,7 +272,7 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         );
       })()}
 
-      {(bestellmails.length > 0 || (schreiben && e.status === "gekauft" && lieferant?.email)) && (
+      {(bestellmails.length > 0 || (schreiben && e.status === "gekauft" && mitMail.length > 0)) && (
         <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="bestellmail" data-testid="de-bestellmail">
           <h2 style={{ margin: 0 }}>Bestellmail an den Lieferanten</h2>
           {bestellmails.map((m) =>
@@ -293,10 +313,11 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               </form>
             ) : null,
           )}
-          {schreiben && e.status === "gekauft" && lieferant?.email && !bestellmails.some((m) => m.status === "entwurf" || m.status === "fehler") && (
-            <form action={bestellmailEntwurfAction}>
+          {schreiben && e.status === "gekauft" && mitMail.length > 0 && !bestellmails.some((m) => m.status === "entwurf" || m.status === "fehler") && (
+            <form action={bestellmailEntwurfAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <input type="hidden" name="id" value={e.id} />
-              <button className="btn btn-sm" type="submit" data-testid="de-bestellmail-neu">{bestellmails.length ? "Weitere Bestellmail (Entwurf)" : `Bestellmail an ${lieferant.name} (Entwurf)`}</button>
+              {lieferantAuswahl("de-bestellmail-lieferant")}
+              <button className="btn btn-sm" type="submit" data-testid="de-bestellmail-neu">{bestellmails.length ? "Weitere Bestellmail (Entwurf)" : "Bestellmail (Entwurf) erstellen"}</button>
             </form>
           )}
         </section>

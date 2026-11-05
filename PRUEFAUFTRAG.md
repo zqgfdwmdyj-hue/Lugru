@@ -950,6 +950,28 @@ unten.
 | B28.5 Felder „EAN weicht ab“ und „Verpackung“ | ❌ | ✅ | Am Deal (Gekauft-Formular bzw. „Ware“). Bei „EAN weicht ab“ kommt der Hinweis „FNSKU-Etikett nötig“ |
 | B28.5 deal_gekauft | ✅ (ohne Mail) | ✅ | legt zusätzlich nur den **Entwurf** an (`bestellmail`), sendet nie |
 
+**Befund 05.11., 13:52 (Screenshot):** Lieferant unter Deal-Quellen gespeichert, am Deal blieb „Bestellmail senden“ trotzdem
+gesperrt („für die Quelle „–“ ist noch kein Lieferant hinterlegt“).
+- **Ursache:** Der Deal hatte keine Quelle. Der Lieferant wurde nur über die Quelle gefunden.
+- **Behoben:**
+  1. Am Gekauft-Knopf gibt es die Auswahl „Lieferant“ (alle Deal-Quellen mit Mailadresse).
+     - Ohne Quelle und mit nur einem Lieferanten ist er vorgewählt.
+     - Der Haken „Bestellmail senden“ ist frei, sobald es einen Lieferanten mit Mailadresse gibt.
+     - Ohne Quelle wird der gewählte Lieferant als Quelle gespeichert. Beim nächsten Mal passt es dann von selbst.
+  2. Dieselbe Auswahl steht im Block „Bestellmail“, für schon gekaufte Deals.
+  3. Ein geteilter Deal (Teilen-Menü oder Kurzbefehl) ohne Quelle und ohne Shop-Link gilt als „WhatsApp“. Er findet
+     damit den Lieferanten mit diesem Stichwort.
+  4. `deal_gekauft` hat neu `lieferant` (Name oder Mailadresse). Das ist eine Schema-Änderung → `list_changed`.
+- **Fundstellen:**
+  - `quelleFuerSuche` (`bestellmail-logic.ts`)
+  - `lieferantWaehlen` (`bestellmail.ts`)
+  - Auswahl in `src/app/(app)/deal-eingang/[id]/page.tsx`
+- **Abnahme:** Am Ende von `e2e/deal-b28.spec.ts` laufen zwei Deals ohne Quelle durch:
+  - Lieferant auf der Seite wählen → Entwurf, Quelle gespeichert.
+  - `deal_gekauft` mit `lieferant` → Entwurf.
+- **Test-Aufräumen:** Der Test entfernt danach seine erfundenen Pfannen-Deals, damit sie `deal-wert` nicht als
+  „ähnliche Deals“ stören.
+
 **Abweichung B28.3 (Discord-Knöpfe):** Echte Discord-Knöpfe brauchen für den ProfitPath-Bot eine ständige Verbindung
 oder eine öffentliche Interaktions-Adresse. Ohne die zeigt Discord nach dem Tippen „Interaktion fehlgeschlagen“.
 Deshalb fragt der Bot im Thread der ProfitPath-Nachricht und setzt selbst die Reaktionen 1️⃣–5️⃣ darunter. Ludwig
@@ -991,7 +1013,7 @@ Mandanten, und der neue Test legt ebenfalls eine an.
 | Werkzeug | Änderung |
 |---|---|
 | `deal_bewerten` | neu: `gruende` (👍, mehrere aus der festen Liste), `freitext`; `grund` gilt nur für 👎; Rückgängig stellt auch Gründe/Freitext wieder her |
-| `deal_gekauft` | neu: `verpackung`, `ean_abweichend`, `bestellmail` (nur Entwurf); Antwort mit `bestellmail` und `fnsku_etikett_noetig` |
+| `deal_gekauft` | neu: `verpackung`, `ean_abweichend`, `bestellmail` (nur Entwurf), `lieferant` (wenn die Quelle fehlt); Antwort mit `bestellmail` und `fnsku_etikett_noetig` |
 | `deal_eingang_detail` | Ausgabe: `bewertung` (mit Gründen), `verpackung`, `ean_abweichend`, `bestellmails` (Status, Empfänger, gesendet/Antwort, Sendungsnummer, Rechnung) |
 | `deal_lernen_bericht` | Ausgabe: `gruende` (je Grund, mit/ohne Grund, Freitexte) |
 | `deal_pruefen` | `marge_schnitt_90_prozent` jetzt brutto (wie überall), dazu `netto_marge_schnitt_90_prozent`; Verkäufe „geschätzt“ aus dem Rang |
