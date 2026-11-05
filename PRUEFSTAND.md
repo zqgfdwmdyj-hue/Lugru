@@ -19,7 +19,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Heute | Feierabend `/kalender/feierabend` | ○ 0/2 Abläufe | – | – |
 | Heute | Fahrtenbuch `/kalender/fahrten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Heute | Rechtsfälle (Anwalt) `/rechtsfaelle` | ○ 0/1 Abläufe | – | 2 |
-| Einkauf | Deal-Eingang `/deal-eingang` | ○ 0/4 Abläufe | – | 3 |
+| Einkauf | Deal-Eingang `/deal-eingang` | ○ 0/5 Abläufe | – | 4 |
 | Einkauf | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
 | Einkauf | Bestellvorschläge `/einkauf/vorschlaege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf | EK-Import (→ sellerboard) `/einkauf/ek-import` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -191,8 +191,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B25.3 Schwelle „Lugru Deals=60“ | als gespeicherter Wert im Feld, nicht als Platzhalter | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 | Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge | Ampel je Angebot mit Gründen; Push ≤ 60 s nur bei Grün/Gelb (ProfitPath); widerrufener Schlüssel abgelehnt; gleiche ASIN/EK zusammengefasst, neuer EK = Update; Einkaufsentwurf und B2B-Entwurf angelegt | ○ im letzten Lauf nicht gelaufen | `deal-eingang.spec.ts` |
 | Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge | History neu/aktualisiert/ungültig gezählt, ohne Schlüssel 401; Deal-Wert „Passt zu dir (X/100)“ mit ähnlichen Deals (Lugru-Gruppe); über Budget höchstens Gelb mit Budget-Grund; Push mit „Zum Angebot“ (Shop-Link) und „Gekauft …“; gekauft → Bestellung „bestellt“ + Aufgabe „Wareneingang buchen“; Mail → gekauft (Menge, Preis, Bestellnummer), Mail bleibt im Posteingang; 👍/👎 mit Weg gespeichert; Ergebnis nach 30 Tagen mit realem ROI; deal_wert/deal_lernen_bericht/deal_bewerten/deal_gekauft | ○ im letzten Lauf nicht gelaufen | `deal-wert.spec.ts` |
+| Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge | je Land Gewinn/Marge/ROI + max. EK Ziel-ROI/Ziel-Marge, Verk./Monat überall gefüllt (IT „geschätzt“), Seller-Central-Knopf; Szenario rechnet neu + „ca. n Verkäufe/Monat (Keepa „gekauft“)“; Deal-Wert des ähnlichen Deals steigt mit Grund-Text, Lernbericht zählt Gründe; Bot fragt im Thread, Grund + Freitext gespeichert; Entwurf an den Lieferanten, nichts gesendet vor „Senden“, danach Beleg am Deal und im Einkauf, Sendungsnummer + Rechnung zugeordnet; deal_gekauft legt nur Entwurf an | ○ im letzten Lauf nicht gelaufen | `deal-b28.spec.ts` |
 | Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei | Einstellungen gespeichert, Budget/Ziel-ROI unverändert; Link + 4 Skizzen; Rot mit Fallnummer; Rot „selektiver Vertrieb“ + Gelb Gefahrgut als 2. Grund; Chart mit Ø/Tief/Stand; Bild 200 image/png, Datei über anderen Eingang 404 | ○ im letzten Lauf nicht gelaufen | `deal-eingang-luecken.spec.ts` |
 
+- – Offen: B28: Bestellmail an echte Lieferanten (Zustellung, Message-ID-Erhalt je Postfach) und Discord-Rückfrage nach 👍 im echten ProfitPath-Kanal (Bot braucht dort „Nachrichten senden“, „Threads erstellen“, „Reaktionen hinzufügen“) – nur live
 - – Offen: ProfitPath mit echtem Discord-Bot (Message Content Intent, Rechte „Kanal ansehen“ + „Nachrichtenverlauf lesen“) – nur live
 - – Offen: Lugru Deals live: Programm auf den neuen Stand bringen, Seller-Adresse + Verbindungsschlüssel eintragen – die History kommt dann von selbst
 - – Offen: Echte Bestellbestätigungen anderer Shops (Betreff/Format je Shop) – nur live
@@ -553,7 +555,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (121 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 121 nicht gelaufen.
+**Automatisch** (122 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 122 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -572,6 +574,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Deal-Eingang: B25.3 Schwelle „Lugru Deals=60“ – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
+- ○ Deal-Eingang: Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei – im letzten Lauf nicht gelaufen
 - ○ Lugru Deals: Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert – im letzten Lauf nicht gelaufen
 - ○ Kontakt-Board: Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie – im letzten Lauf nicht gelaufen
@@ -700,6 +703,7 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Schnellerfassung (Sprache): Echte SMS über Twilio
 - Rechtsfälle (Anwalt): Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen
 - Rechtsfälle (Anwalt): Echte Anwalts-Mails (Domain, Aktenzeichen-Format)
+- Deal-Eingang: B28: Bestellmail an echte Lieferanten (Zustellung, Message-ID-Erhalt je Postfach) und Discord-Rückfrage nach 👍 im echten ProfitPath-Kanal (Bot braucht dort „Nachrichten senden“, „Threads erstellen“, „Reaktionen hinzufügen“) – nur live
 - Deal-Eingang: ProfitPath mit echtem Discord-Bot (Message Content Intent, Rechte „Kanal ansehen“ + „Nachrichtenverlauf lesen“) – nur live
 - Deal-Eingang: Lugru Deals live: Programm auf den neuen Stand bringen, Seller-Adresse + Verbindungsschlüssel eintragen – die History kommt dann von selbst
 - Deal-Eingang: Echte Bestellbestätigungen anderer Shops (Betreff/Format je Shop) – nur live

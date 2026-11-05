@@ -223,10 +223,16 @@ export type KeepaStand = {
     verkaufsrang: number | null;
     /** Amazon-Angabe „x+ im letzten Monat gekauft“ (Mindestwert), null = keine Angabe. */
     monatlich_verkauft: number | null;
+    /** B28.4: Herkunft – „amazon“ (aktuelle Angabe) oder „verlauf“ (letzter Wert der Keepa-Verkaufshistorie, ≤ 60 Tage alt). */
+    monatlich_verkauft_aus?: "amazon" | "verlauf" | null;
+    /** B28.4: Rang-Verbesserungen in 30 Tagen laut Keepa (≈ Verkäufe, Untergrenze) – Grundlage der Schätzung. */
+    rang_drops_30?: number | null;
   };
   kennzahlen: Record<"30" | "90" | "180", Kennzahlen>;
   /** Ein Wert je Tag (Stand am Tagesende, Europe/Berlin), älteste zuerst, bis zu 365 Tage. */
   verlauf: VerlaufZeile[];
+  /** B28.2: Keepa-Verkaufshistorie „x+ gekauft“ als [Tag, Wert] (nur Änderungen, bis zu 365 Tage). */
+  verkauft_verlauf?: [tag: string, wert: number][];
   buybox_verlauf: BbPunkt[];
   buybox_stats: BbStats | null;
 };
@@ -293,7 +299,14 @@ export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp:
 
   const rawStats = (stats.buyBoxStats ?? null) as Record<string, { percentageWon?: number; isFBA?: boolean }> | null;
   const bbStats: BbStats | null = rawStats ? Object.fromEntries(Object.entries(rawStats).map(([id, s]) => [id, { anteil: Number(s?.percentageWon ?? 0), fba: Boolean(s?.isFBA) }])) : null;
-  const ms = typeof p.monthlySold === "number" && p.monthlySold > 0 ? p.monthlySold : null;
+  // B28.4: „x+ gekauft“ – aktuelle Angabe, sonst letzter Wert der Verkaufshistorie (höchstens 60 Tage alt).
+  const msHist = reihe(p.monthlySoldHistory);
+  const verkauftVerlauf: [string, number][] = msHist.filter(([t, v]) => v !== null && t >= now - VERLAUF_TAGE * TAG).map(([t, v]) => [berlinTag(t), v!]);
+  const msLetzter = [...msHist].reverse().find(([, v]) => v !== null);
+  const msAmazon = typeof p.monthlySold === "number" && p.monthlySold > 0 ? p.monthlySold : null;
+  const msVerlauf = msLetzter && msLetzter[1]! > 0 && now - msLetzter[0] <= 60 * TAG ? msLetzter[1] : null;
+  const ms = msAmazon ?? msVerlauf;
+  const drops = typeof stats.salesRankDrops30 === "number" && stats.salesRankDrops30 >= 0 ? stats.salesRankDrops30 : null;
   const lu = typeof p.lastUpdate === "number" && p.lastUpdate > 0 ? new Date(keepaMs(p.lastUpdate)).toISOString() : null;
 
   return {
@@ -313,12 +326,35 @@ export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp:
       angebote_fbm: jetzt(fbm, K.COUNT_FBM),
       verkaufsrang: jetzt(rang, K.RANK),
       monatlich_verkauft: ms,
+      monatlich_verkauft_aus: msAmazon !== null ? "amazon" : msVerlauf !== null ? "verlauf" : null,
+      rang_drops_30: drops,
     },
     kennzahlen,
     verlauf,
+    verkauft_verlauf: verkauftVerlauf,
     buybox_verlauf: bbReihe(p.buyBoxSellerIdHistory).filter(([t]) => t >= now - VERLAUF_TAGE * TAG - 30 * TAG),
     buybox_stats: bbStats,
   };
+}
+
+// ---- Verkäufe schätzen (B28.4) ------------------------------------------------------------------
+
+/**
+ * Verkäufe je Monat aus dem Verkaufsrang, wenn Keepa keine „x+ gekauft“-Angabe hat: Keepas Rang-Verbesserungen in
+ * 30 Tagen, sonst die Tage mit besserem Rang im Tagesverlauf (Untergrenze). null = zu wenig Daten.
+ */
+export function verkaeufeAusRang(st: Pick<KeepaStand, "aktuell" | "verlauf">): number | null {
+  const d = st.aktuell.rang_drops_30;
+  if (typeof d === "number" && d > 0) return d;
+  const v = st.verlauf.slice(-31).map((z) => z[4]);
+  let n = 0;
+  let mitWert = 0;
+  for (let i = 1; i < v.length; i++) {
+    if (v[i] === null || v[i - 1] === null) continue;
+    mitWert++;
+    if (v[i]! < v[i - 1]!) n++;
+  }
+  return mitWert >= 20 && n > 0 ? n : null;
 }
 
 // ---- Alter der Keepa-Daten ---------------------------------------------------------------------

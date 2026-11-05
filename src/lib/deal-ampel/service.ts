@@ -59,7 +59,7 @@ export async function dealPruefen(tenantId: string, e: { code: string; ek: numbe
     const zuEur = (v: number | null) => (v === null || kurs === null ? null : r2(v * kurs));
     if (x.abgerufen && now - Date.parse(x.abgerufen) > STD48) hinweise.push(`${land}: Keepa-Werte vom ${new Date(x.abgerufen).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} – älter als 48 Stunden.`);
     return rechneLand(
-      { land, vkEur: x.vkEur, vk90Eur: zuEur(x.vk90), tief12Eur: zuEur(x.tief12), mwstSatz: x.mwstSatz, verkaeufeMonat: x.verkaeufeMonat, angebote: x.angeboteFba === null && x.angeboteFbm === null ? null : (x.angeboteFba ?? 0) + (x.angeboteFbm ?? 0), amazonProzent: x.amazonProzent, aktionsmuster: x.aktionsmuster ?? null, fehler: x.fehler ?? null, gebuehren: x.gebuehrenLive ? { provision: x.gebuehrenLive.provisionSatz, fba: x.gebuehrenLive.fbaEur } : null },
+      { land, vkEur: x.vkEur, vk90Eur: zuEur(x.vk90), tief12Eur: zuEur(x.tief12), mwstSatz: x.mwstSatz, verkaeufeMonat: x.verkaeufeMonat, verkaeufeGeschaetzt: x.verkaeufeGeschaetzt ?? null, angebote: x.angeboteFba === null && x.angeboteFbm === null ? null : (x.angeboteFba ?? 0) + (x.angeboteFbm ?? 0), amazonProzent: x.amazonProzent, aktionsmuster: x.aktionsmuster ?? null, fehler: x.fehler ?? null, gebuehren: x.gebuehrenLive ? { provision: x.gebuehrenLive.provisionSatz, fba: x.gebuehrenLive.fbaEur } : null },
       geb,
       ekNetto,
       cfg.nebenkosten,

@@ -44,12 +44,12 @@ export function blattBild(i: BlattPdfInput): string {
   y += 60;
   zeilen.push(`<line x1="60" y1="${y}" x2="${W - 60}" y2="${y}" stroke="#d1d6e0" stroke-width="2"/>`);
   y += 50;
-  const spalten = [60, 230, 420, 610, 800, W - 60];
-  ["Land", "Buy Box", "Gewinn/Stk", "ROI", "Verk./Monat"].forEach((h, k) => text(spalten[k], h, { size: 24, color: "#6b7587", anchor: k ? "end" : undefined }));
+  const spalten = [60, 210, 380, 530, 680, 830, W - 60];
+  ["Land", "Buy Box", "Gewinn/Stk", "Marge", "ROI", "Verk./Monat"].forEach((h, k) => text(spalten[k], h, { size: 24, color: "#6b7587", anchor: k ? "end" : undefined }));
   // rechtsbündige Spalten: Ende der Spalte
   y += 44;
   for (const l of i.laender.slice(0, 8)) {
-    const werte = [l.land, eur(l.vk), eur(l.gewinn), pz(l.roi), l.verkaeufe === null ? "–" : `${l.verkaeufe}+`];
+    const werte = [l.land, eur(l.vk), eur(l.gewinn), (l.gewinn !== null && l.vk ? `${Math.round((l.gewinn / l.vk) * 100)} %` : "–"), pz(l.roi), l.verkaeufe === null ? "–" : `${l.verkaeufe}+`];
     werte.forEach((v, k) => text(k ? spalten[k + 1] - 20 : spalten[0], v, { size: 28, bold: k === 2, anchor: k ? "end" : undefined }));
     y += 44;
   }

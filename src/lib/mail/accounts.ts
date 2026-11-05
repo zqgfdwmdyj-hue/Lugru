@@ -87,6 +87,10 @@ export type OutgoingMail = {
   replyTo?: string;
   /** Antwort auf eine Mail: deren Message-ID (hält den Verlauf im Mailprogramm zusammen). */
   inReplyTo?: string;
+  /** Kopie (sichtbar), z. B. an den eigenen Posteingang. */
+  cc?: string;
+  /** Eigene Message-ID (für die Zuordnung von Antworten über In-Reply-To). */
+  messageId?: string;
   attachments?: { filename: string; content: Buffer | Uint8Array; contentType?: string }[];
 };
 
@@ -112,6 +116,8 @@ export async function buildRaw(from: { name?: string; address: string }, mail: O
   const composer = new MailComposer({
     from: from.name ? { name: from.name, address: from.address } : from.address,
     to: mail.to,
+    cc: mail.cc,
+    messageId: mail.messageId,
     replyTo: mail.replyTo,
     inReplyTo: mail.inReplyTo,
     references: mail.inReplyTo,
@@ -133,7 +139,7 @@ export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mai
   const box = boxes.find((b) => b.id === id);
   // Testumgebung: nie wirklich senden – die Mail landet unter Einstellungen → Testumgebung.
   if (isTestEnv()) {
-    await db.insert(schema.testMails).values({ tenantId, to: mail.to.slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null });
+    await db.insert(schema.testMails).values({ tenantId, to: (mail.cc ? `${mail.to} (Kopie: ${mail.cc})` : mail.to).slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null });
     return { from: box?.address ?? "testumgebung@example.invalid" };
   }
   if (!box) {
@@ -144,6 +150,6 @@ export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mai
   const creds = await mailboxCredentials(box);
   if (creds.kind === "gmail") await gmailSend(creds.accessToken, raw);
   else if (creds.kind === "outlook") await graphSend(creds.accessToken, raw);
-  else await smtpSend(creds.account, raw, { from: box.address, to: mail.to.split(/[,;]\s*/).filter(Boolean) });
+  else await smtpSend(creds.account, raw, { from: box.address, to: [mail.to, mail.cc ?? ""].join(",").split(/[,;]\s*/).filter(Boolean) });
   return { from: box.address };
 }

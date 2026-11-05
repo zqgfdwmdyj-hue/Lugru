@@ -182,7 +182,7 @@ export async function kaufMeldung(e: Eingang, jetzt = new Date()): Promise<KaufM
   const gespeichert = v.kauf ? await kaufSpeichern(e, v.kauf, jetzt) : null;
   const nr = gespeichert?.nr ?? null;
   const k = gespeichert?.kauf ?? null;
-  const zeilen = [kaufText({ titel: z.titel, name: z.angebot.name, ekNetto: z.ekNetto, bestesLand: z.bestesLand, roi: z.roi, gewinn: z.gewinn, empfohlen: z.empfohlen, kapitalbedarf: z.kapitalbedarf, maxEk: z.maxEk, gueltigBis: z.angebot.gueltigBis }, { nr, ampel: z.ampel, wert, menge: k?.menge })];
+  const zeilen = [kaufText({ titel: z.titel, name: z.angebot.name, ekNetto: z.ekNetto, bestesLand: z.bestesLand, roi: z.roi, marge: z.margeBrutto ?? null, gewinn: z.gewinn, empfohlen: z.empfohlen, kapitalbedarf: z.kapitalbedarf, maxEk: z.maxEk, gueltigBis: z.angebot.gueltigBis }, { nr, ampel: z.ampel, wert, menge: k?.menge })];
   if (k) zeilen.push(`${k.shop}: ${k.warenkorb ? `Warenkorb vorbereitet (${k.menge} Stk)` : `Produktseite öffnen${k.hinweis ? ` – ${k.hinweis}` : ""}`}${k.gutschein ? ` · Code: ${k.gutschein}` : ""}`);
   if (k?.payback) zeilen.push(istAmazon({ kuerzel: k.kuerzel ?? "" }) ? "Payback noch nicht eingerichtet – Punkte nur mit Start in der PAYBACK-App" : `Payback: ${k.payback}`);
   if (!stark && k) zeilen.push(`Unter der Schwelle (${wert ?? "–"}/${schwelle}) – Details ansehen, du entscheidest.`);
@@ -335,7 +335,9 @@ export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userI
     poId = e.bestellungId;
   } else {
     if (!person) return { bestellungId: null, zeile: zeile.nr };
-    poId = await P.createPurchaseOrder(tenantId, person, { supplier: g.shop ?? e.quelle ?? "Deal-Eingang", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage), notes: `Aus dem Deal-Eingang (${g.weg === "mail" ? "Bestellbestätigung" : "gekauft"}).` });
+    // B28.5: Lieferant aus Einstellungen → Deal-Quellen (z. B. Quelle „Konrad“ → Lieferant mit Mailadresse)
+    const dl = g.shop ? null : await import("./bestellmail").then((b) => b.lieferantFuerDeal(tenantId, e.quelle)).catch(() => null);
+    poId = await P.createPurchaseOrder(tenantId, person, { supplier: g.shop ?? dl?.name ?? e.quelle ?? "Deal-Eingang", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage), notes: `Aus dem Deal-Eingang (${g.weg === "mail" ? "Bestellbestätigung" : "gekauft"}).` });
     await P.addItem(tenantId, poId, { asin: zeile.asin, quantity: g.menge, unitCostGross: r2(preis * 1.19), title: zeile.titel ?? zeile.angebot.name });
     for (const i of altItems.filter((x) => x.asin === zeile.asin)) await P.removeItem(tenantId, i.id);
   }

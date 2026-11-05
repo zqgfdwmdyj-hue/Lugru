@@ -94,6 +94,29 @@ export default async function DealLernenPage({ searchParams }: { searchParams: P
         </section>
       </div>
 
+      <section className="card card-pad" style={{ marginTop: 12 }} data-testid="dl-gruende">
+        <h3 style={{ marginTop: 0 }}>Deine Gründe</h3>
+        <p className="small muted">
+          👍 im Monat: {b.gruende.hochBegruendet + b.gruende.hochOhneGrund}, davon {b.gruende.hochBegruendet} mit Grund. Ein 👍 mit Grund zählt im Deal-Wert stärker; trifft ein Grund auf einen neuen Deal zu
+          (z. B. ein Land mit höchstens 1 Angebot), steigt dessen Wert (👎-Gründe senken ihn).
+        </p>
+        <div className="grid-kpi" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+          <div data-testid="dl-gruende-hoch">
+            <div className="kpi-label">👍 Gründe</div>
+            {b.gruende.hoch.length ? <ul className="small">{b.gruende.hoch.map((g) => <li key={g.grund}>{g.grund}: {g.anzahl}×</li>)}</ul> : <p className="small muted">Keine.</p>}
+          </div>
+          <div data-testid="dl-gruende-runter">
+            <div className="kpi-label">👎 Gründe</div>
+            {b.gruende.runter.length ? <ul className="small">{b.gruende.runter.map((g) => <li key={g.grund}>{g.grund}: {g.anzahl}×</li>)}</ul> : <p className="small muted">Keine.</p>}
+          </div>
+        </div>
+        {b.gruende.freitexte.length > 0 && (
+          <ul className="small" data-testid="dl-freitexte">
+            {b.gruende.freitexte.map((f) => <li key={f.id}>{f.daumen === "hoch" ? "👍" : "👎"} <Link href={`/deal-eingang/${f.id}`}>{f.titel ?? "Deal"}</Link> · {f.datum}: „{f.text}“</li>)}
+          </ul>
+        )}
+      </section>
+
       {b.wichtigsteMerkmale && (
         <section className="card card-pad" style={{ marginTop: 12 }} data-testid="dl-merkmale">
           <h3 style={{ marginTop: 0 }}>Was am meisten zählt (Lernmodell)</h3>

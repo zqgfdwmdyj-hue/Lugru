@@ -448,6 +448,16 @@ function discordVa(req, p, url, body) {
     else liste = liste.slice(-limit);
     return [200, [...liste].reverse()];
   }
+  const reaktion = /^\/messages\/(\d+)\/reactions\/([^/]+)\/@me$/.exec(rest);
+  if (reaktion && req.method === "PUT") {
+    const m = dcVa.nachrichten.find((x) => x.id === reaktion[1] && x.channel_id === k.id);
+    if (!m) return [404, { message: "Unknown Message", code: 10008 }];
+    const name = decodeURIComponent(reaktion[2]);
+    const r = m.reactions.find((x) => x.emoji.name === name);
+    if (r && !r.me) Object.assign(r, { count: r.count + 1, me: true });
+    else if (!r) m.reactions.push({ emoji: { id: null, name }, count: 1, me: true });
+    return [204, ""];
+  }
   const eine = /^\/messages\/(\d+)$/.exec(rest);
   if (eine && req.method === "GET") {
     const m = dcVa.nachrichten.find((x) => x.id === eine[1] && x.channel_id === k.id);
@@ -665,6 +675,8 @@ async function route(req, url, body) {
 // Keepa-Nachbau: erfundener Verlauf über 365 Tage je ASIN und Land (Amazon zeitweise nicht auf Lager, Buy Box
 // wechselt zwischen Amazon, einem FBA- und einem FBM-Händler). ASINs, die mit „B0FEHLT“ beginnen, kennt Keepa nicht.
 // „B0ALT…“: Keepas Stand ist 21 Tage alt, solange kein „update“ angefordert wird; „B0ALTFEST…“ bleibt auch dann alt.
+// B28: „B0PFANNE…“ = Preisverlauf wie im Bauauftrag (Buy Box 79 €, vor 31–120 Tagen 57,99 € mit besserem Rang und
+// „gekauft“-Verlauf), in IT nur 1 Angebot; „B0RANG…“ = ohne „x+ gekauft“, nur Keepa-Rang-Drops (30 T).
 let keepaTokens = 1200;
 const KEEPA_LAND = {
   3: { basis: 1999, verkauft: 50, amazon: "A3JWKAKR8XB7XF" },
@@ -684,15 +696,28 @@ function keepaProdukte(url) {
     .map((asin) => {
       const csv = [];
       const [amazon, rang, angebote, bb, fba, fbm, bbHist] = [[], [], [], [], [], [], []];
+      const pfanne = asin.startsWith("B0PFANNE");
+      const einzeln = pfanne && land === KEEPA_LAND[8];
       for (let d = 365; d >= 0; d -= 5) {
         const t = km(now - d * 86400000 - 3600000);
         const phase = Math.floor(d / 5) % 6;
-        amazon.push(t, phase === 4 ? -1 : land.basis + phase * 50);
-        bb.push(t, land.basis - 50 + phase * 40, phase === 5 ? 299 : 0);
-        rang.push(t, 2000 + phase * 500);
-        angebote.push(t, 10 + phase);
-        fba.push(t, 6 + phase);
-        fbm.push(t, 4);
+        if (pfanne) {
+          const billig = d > 30 && d <= 120;
+          const preis = Math.round(((billig ? 5799 : 7900) * land.basis) / 1999);
+          amazon.push(t, preis);
+          bb.push(t, preis, 0);
+          rang.push(t, billig ? 800 : 2500 + phase * 100);
+          angebote.push(t, einzeln ? 1 : 6);
+          fba.push(t, einzeln ? 1 : 4);
+          fbm.push(t, einzeln ? 0 : 2);
+        } else {
+          amazon.push(t, phase === 4 ? -1 : land.basis + phase * 50);
+          bb.push(t, land.basis - 50 + phase * 40, phase === 5 ? 299 : 0);
+          rang.push(t, 2000 + phase * 500);
+          angebote.push(t, 10 + phase);
+          fba.push(t, 6 + phase);
+          fbm.push(t, 4);
+        }
         bbHist.push(String(t), phase === 4 ? "A1TESTFBA00001" : phase === 5 ? "A2TESTFBM00002" : land.amazon);
       }
       Object.assign(csv, { 0: amazon, 3: rang, 11: angebote, 18: bb, 34: fba, 35: fbm });
@@ -701,9 +726,10 @@ function keepaProdukte(url) {
         title: `Testprodukt ${asin} (erfunden)`,
         csv: Array.from({ length: 36 }, (_, i) => csv[i] ?? null),
         availabilityAmazon: 0,
-        monthlySold: land.verkauft,
+        monthlySold: asin.startsWith("B0RANG") ? 0 : pfanne && land === KEEPA_LAND[3] ? 100 : land.verkauft,
+        ...(pfanne && land === KEEPA_LAND[3] ? { monthlySoldHistory: [km(now - 130 * 86400000), 100, km(now - 115 * 86400000), 300, km(now - 28 * 86400000), 100] } : {}),
         lastUpdate: km(now - (asin.startsWith("B0ALTFEST") || (asin.startsWith("B0ALT") && url.searchParams.get("update") === null) ? 21 * 86400000 : 3600000)),
-        stats: { outOfStockPercentage30: [17], outOfStockPercentage90: [17], outOfStockPercentageInInterval: [17], buyBoxStats: { [land.amazon]: { percentageWon: 67, isFBA: true }, A1TESTFBA00001: { percentageWon: 17, isFBA: true }, A2TESTFBM00002: { percentageWon: 16, isFBA: false } } },
+        stats: { ...(asin.startsWith("B0RANG") ? { salesRankDrops30: 12 } : {}), outOfStockPercentage30: [17], outOfStockPercentage90: [17], outOfStockPercentageInInterval: [17], buyBoxStats: { [land.amazon]: { percentageWon: 67, isFBA: true }, A1TESTFBA00001: { percentageWon: 17, isFBA: true }, A2TESTFBM00002: { percentageWon: 16, isFBA: false } } },
         buyBoxSellerIdHistory: bbHist,
       };
     });

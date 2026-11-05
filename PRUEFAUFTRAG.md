@@ -915,6 +915,105 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
    - Für den Rest bekommst du Aufgaben.
 5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
 
+## Nachtrag B28 (05.11.): Deal-Eingang – Marge, Preis-Szenario, Gründe bei 👍, Bestellmail
+
+Anlass: ein Deal-Eingang vom 05.11. (Pfanne, großer Posten, EK netto). Ludwig rechnet in Marge statt ROI, will
+„Was wäre bei VK x?“ sehen, dem Tool sagen können, **warum** ein Deal passt, und beim Kauf eine Bestellmail an den
+Lieferanten schicken. Die Zahlen des Anlass-Deals stehen nicht im Repo; geprüft wird mit einer erfundenen „Testpfanne“
+(Buy Box 79 €, vor 31–120 Tagen 57,99 €, in IT nur 1 Angebot).
+
+**Marge** heißt hier überall: Gewinn ÷ Buy-Box-Preis **brutto** (Ø 90 Tage, sonst aktuell). Die Ampel rechnet weiter
+mit der Netto-Marge (Gewinn ÷ VK netto, Ziel 15 %) und schreibt das jetzt auch so dazu („Netto-Marge“) – siehe Frage
+unten.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B28.1 Spalte „Marge“ neben Gewinn, ROI dahinter | ❌ | ✅ | `margeBrutto`, `landKennzahlen` (`src/lib/deal-eingang/logic.ts`), Tabelle in `src/app/(app)/deal-eingang/[id]/page.tsx` |
+| B28.1 „Max. EK für Ziel-Marge“ (Standard 10 %, einstellbar) neben „Max. EK für Ziel-ROI“ | ❌ | ✅ | `maxEkMarge`; Feld „Ziel-Marge %“ in den Deal-Eingang-Einstellungen (`zielMarge`) |
+| B28.1 Marge im Deal-Blatt (Text, PDF, Bild) | ❌ | ✅ | `dealBlattText` (`src/lib/b2b/logic.ts`), `blatt-pdf.ts`, `blatt-bild.ts` |
+| B28.1 Marge in Push-/Discord-/SMS-Meldung | ❌ | ✅ | `pushText`, `kaufText`, SMS in `ablauf.ts` („DE: Marge 12 %, ROI 23 %“) |
+| B28.1 Marge in Lugru-Deals, Deal-Bilanz, deal_pruefen, deal_wert | 🟡 (nur Lugru-Post-Marge) | ✅ | `reale_marge` (`lugru-deals/liste.ts`), Spalte „Marge“ in `/b2b/bilanz`, `marge_prozent` in deal_bilanz/deal_wert/deal_eingang, deal_pruefen `marge_schnitt_90_prozent` (jetzt brutto) + `netto_marge_schnitt_90_prozent` |
+| B28.2 Ziel-VK je Land (vorbelegt mit Buy Box), Gewinn/Marge/ROI sofort | ❌ | ✅ | `src/app/(app)/deal-eingang/[id]/szenario.tsx`, `szenarioRechnen` |
+| B28.2 „bei diesem Preis ca. n Verkäufe/Monat“ | ❌ | ✅ | `verkaeufeBeiPreis` (`szenario-logic.ts`): letzter Zeitraum (12 Monate) mit Buy Box ±7 % um den Preis. Quelle: Keepa-„gekauft“-Verlauf, sonst aktuelle Verkäufe × Rang-Verhältnis, sonst Rang-Verbesserungen. Daten nur aus dem Keepa-Zwischenspeicher (`keepaSzenarioAusCache`), keine Extra-Tokens |
+| B28.3 Gründe bei 👍 (Mehrfachauswahl + Freitext) | ❌ (nur die 👎-Liste) | ✅ | `DAUMEN_GRUENDE_HOCH`, Formular „Passt der Deal zu dir?“, `bewerten` (`src/lib/deal-eingang/wert.ts`) |
+| B28.3 Begründetes 👍 zählt mehr | ❌ | ✅ | `eigenesLabel`: 👍 mit Grund Label 0,9 / Gewicht 1,1 statt 0,8 / 0,8 |
+| B28.3 Gründe fließen in den Deal-Wert | ❌ (auch 👎-Gründe wurden nur gespeichert) | ✅ | `GRUND_REGELN`, `grundBeitraege` (`wert-logic.ts`). Trifft ein früherer Grund auf einen neuen Deal zu, gibt es +5 Punkte (je weitere Begründung +2, höchstens +12); ein 👎-Grund zieht entsprechend ab. Beispiel: ein Land mit höchstens 1 Angebot (neues Merkmal `angeboteMinLand`). Der Text steht unter „dafür“ bzw. „dagegen“ |
+| B28.3 Lernbericht mit Gründen | ❌ | ✅ | Seite „Deal-Wert: Wie gut lag er?“ → „Deine Gründe“; `deal_lernen_bericht.gruende` |
+| B28.3 Discord: nach 👍 Rückfrage im Thread | ❌ | ✅ (Abweichung: Zahl-Reaktionen statt Knöpfe) | `grundFragen`, `grundAntwortenLesen`, `grundAusAntwort` |
+| B28.4 Knopf „Freischaltung im Seller Central prüfen →“ | ❌ | ✅ | `freischaltungLink`. Der Knopf steht je Angebot, auch bei verbundener SP-API (z. B. bei „Marke gesperrt“). Der Hinweis „nicht geprüft“ bleibt |
+| B28.4 Verk./Monat leer trotz Keepa | 🐞 | ✅ | Keepa „x+ gekauft“, sonst letzter Wert der Verkaufshistorie (≤ 60 Tage), sonst „≈ n (geschätzt)“ aus den Rang-Drops (30 Tage): `standAusKeepa`, `verkaeufeAusRang` (`src/lib/keepa/auswertung.ts`) |
+| B28.5 Lieferant je Deal-Quelle (Einstellungen → Deal-Quellen) | ❌ | ✅ | `/deal-eingang/quellen`; neue Felder in `lieferanten_profile`: Ansprechpartner, Zahlungsweg, Rechnung mit EAN, Stichworte der Quelle |
+| B28.5 Schalter „Bestellmail senden“ am Gekauft-Knopf | ❌ | ✅ | Standard an, wenn zur Quelle ein Lieferant mit Mailadresse bekannt ist |
+| B28.5 Entwurf (bearbeitbar), dann „Senden“ | ❌ | ✅ | `bestellmailText`, `bestellmailSenden` (`src/lib/deal-eingang/bestellmail*.ts`). Inhalt: Artikel mit ASIN/EAN, Zustand/Verpackung, Menge, Preis netto je Stück und gesamt, Lieferadresse, Rechnungsanforderung, Zahlungsweg, Bitte um Sendungsnummer. Absender: Standard-Postfach, Kopie an dasselbe Postfach |
+| B28.5 Datum, Empfänger, Text, Status gespeichert; Beleg am Deal und im Einkauf | ❌ | ✅ | Tabelle `deal_bestellmails`. „Bestellung gesendet“ steht auf der Deal-Seite, in der Einkaufsliste und an der Bestellung |
+| B28.5 Antwort des Lieferanten zuordnen | ❌ | ✅ | `antwortZuordnen` (Haken in `src/lib/inbox/service.ts`). Zugeordnet über die Message-ID (In-Reply-To), sonst Absender + ASIN im Betreff (60 Tage). Die Sendungsnummer geht auch an die Bestellung; „Rechnung erhalten“ aus Anhang/Betreff |
+| B28.5 Felder „EAN weicht ab“ und „Verpackung“ | ❌ | ✅ | Am Deal (Gekauft-Formular bzw. „Ware“). Bei „EAN weicht ab“ kommt der Hinweis „FNSKU-Etikett nötig“ |
+| B28.5 deal_gekauft | ✅ (ohne Mail) | ✅ | legt zusätzlich nur den **Entwurf** an (`bestellmail`), sendet nie |
+
+**Abweichung B28.3 (Discord-Knöpfe):** Echte Discord-Knöpfe brauchen für den ProfitPath-Bot eine ständige Verbindung
+oder eine öffentliche Interaktions-Adresse. Ohne die zeigt Discord nach dem Tippen „Interaktion fehlgeschlagen“.
+Deshalb fragt der Bot im Thread der ProfitPath-Nachricht und setzt selbst die Reaktionen 1️⃣–5️⃣ darunter. Ludwig
+tippt eine oder mehrere an oder antwortet kurz mit Text („2, 5“ oder einem eigenen Satz = Freitext). Abgeholt wird mit
+dem normalen Abgleich (alle 15 Minuten bzw. „ProfitPath abrufen“). Die Antwort ist optional, die Rückfrage bleibt 2 Tage
+offen. Speichert Ludwig die Gründe auf der Seite, endet die Rückfrage.
+
+**Abnahme** (automatisch, erfundene Daten): `e2e/deal-b28.spec.ts`
+
+1. Testpfanne: je Land Gewinn, Marge und ROI. Darüber „Max. EK für Ziel-ROI“ und „Max. EK für Ziel-Marge (10 %)“.
+   Dazu der Seller-Central-Knopf.
+2. Ziel-VK DE 56 € statt 79 €: Gewinn, Marge und ROI rechnen neu. Hinweis: „Bei diesem Preis zuletzt TT.MM.–TT.MM.
+   (n Tage): ca. n Verkäufe/Monat (Keepa „gekauft“)“. Bei 30 €: „kam … nicht vor“.
+3. 👍 mit Grund „In einem Land kein oder nur 1 Angebot“:
+   - Der Grund steht im Lernbericht.
+   - Ein ähnlicher Deal (auch IT mit 1 Angebot) bekommt nach „Neu prüfen“ einen höheren Deal-Wert, mit dem Grund unter
+     „dafür“.
+   - Discord: Nach 👍 fragt der Bot im Thread. Reaktion 2️⃣ plus Text-Antwort werden als Grund und Freitext gespeichert.
+4. Verk./Monat in jedem Land gefüllt, IT „≈ n (geschätzt)“.
+5. Gekauft 84 × 25 €:
+   - Es entsteht ein Entwurf an den Lieferanten („84 Stück“, „25,00 € netto je Stück, gesamt 2.100,00 € netto“, ASIN,
+     „eingeschweißt“, Zahlungsweg). Vor „Senden“ geht nichts raus.
+   - Nach „Senden“ ist genau eine Mail weg. Der Beleg steht am Deal und an der Bestellung im Einkauf.
+   - Die Antwort als .eml mit Sendungsnummer und „Rechnung“ wird zugeordnet: Die Sendungsnummer steht am Deal und an
+     der Bestellung, „Rechnung erhalten“ ist gesetzt.
+   - Claude: `deal_bewerten` mit Gründen, `deal_lernen_bericht.gruende`, `deal_eingang_detail.bestellmails`.
+     `deal_gekauft` legt nur einen Entwurf an.
+
+Unit-Tests: `tests/b28-deal.test.ts` (24 Tests). Angepasst: `tests/keepa-auswertung.test.ts` (neue Felder in
+`aktuell`) und `tests/b2b-logic.test.ts` (Marge im Deal-Blatt). Alle 2184 Unit-Tests grün.
+
+Regression grün: b20-einkauf, b20-lugru, b22-lugru, b2b-deals, b2b-preislisten, deal-eingang-luecken, deal-eingang,
+deal-wert, herzstueck, kaufen-tap, keepa, lugru-deals, posteingang-null, va-anfragen, va-discord, werkzeuge. In
+`deal-eingang.spec.ts` zählt die ProfitPath-Prüfung jetzt nur die eigenen Meldungen. Vorher zählte sie alle des
+Mandanten, und der neue Test legt ebenfalls eine an.
+
+**Claude-Werkzeuge** (geänderte Schemas → `notifications/tools/list_changed`):
+
+| Werkzeug | Änderung |
+|---|---|
+| `deal_bewerten` | neu: `gruende` (👍, mehrere aus der festen Liste), `freitext`; `grund` gilt nur für 👎; Rückgängig stellt auch Gründe/Freitext wieder her |
+| `deal_gekauft` | neu: `verpackung`, `ean_abweichend`, `bestellmail` (nur Entwurf); Antwort mit `bestellmail` und `fnsku_etikett_noetig` |
+| `deal_eingang_detail` | Ausgabe: `bewertung` (mit Gründen), `verpackung`, `ean_abweichend`, `bestellmails` (Status, Empfänger, gesendet/Antwort, Sendungsnummer, Rechnung) |
+| `deal_lernen_bericht` | Ausgabe: `gruende` (je Grund, mit/ohne Grund, Freitexte) |
+| `deal_pruefen` | `marge_schnitt_90_prozent` jetzt brutto (wie überall), dazu `netto_marge_schnitt_90_prozent`; Verkäufe „geschätzt“ aus dem Rang |
+| `deal_wert`, `deal_eingang`, `deal_bilanz`, `lugru_deals` | Ausgabe: `marge_prozent` bzw. `reale_marge` |
+
+**To-dos für Ludwig:**
+1. Server aktualisieren: `bash /opt/seller-system/deploy/update.sh`. Beim Start läuft Migration 0127.
+2. **Deal-Eingang → Deal-Quellen (Lieferanten, Bestellmail)** öffnen und den Lieferanten aus dem Anlass-Deal
+   eintragen:
+   - Name, Mailadresse, Ansprechpartner, Zahlungsweg, „Rechnung mit EAN“.
+   - Als Stichwort die Quelle, unter der seine Deals ankommen (z. B. „WhatsApp-Deals“ oder der Vorname des
+     Ansprechpartners).
+3. Auf derselben Seite unter „Bestellmail“ die Liefer- und Rechnungsadresse sowie die USt-IdNr. prüfen. Ist das Feld
+   leer, nimmt das System den DHL-Absender.
+4. Discord-Bot im ProfitPath-Kanal: Für die Rückfrage nach 👍 braucht er „Nachrichten senden“, „Öffentliche Threads
+   erstellen“, „Nachrichten in Threads senden“ und „Reaktionen hinzufügen“. Ohne diese Rechte wird das 👍 trotzdem
+   gespeichert, nur die Rückfrage fehlt.
+5. Ältere Deals: einmal „Neu prüfen“. Danach gibt es das Preis-Szenario und die genauen Werte für max. EK (Ziel-Marge).
+   Vorher rechnet die Seite die Marge aus Gewinn + EK.
+6. **Frage:** Die Ampel prüft weiter die Netto-Marge (Ziel 15 % vom VK netto). Die Anzeige ist jetzt überall brutto.
+   Soll die Ampel auch auf brutto umgestellt werden? 15 % netto entsprechen bei 19 % USt etwa 12,6 % brutto.
+
 ## Nachtrag B27 (03.11.): Nächtliche Automatik – Fehler beheben
 
 | Punkt | vorher | nachher | Fundstelle |
@@ -1011,6 +1110,12 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 05.11. (Nachtrag B28, keine neuen Werkzeuge): `deal_bewerten` (neu `gruende`, `freitext`) und
+`deal_gekauft` (neu `verpackung`, `ean_abweichend`, `bestellmail` – nur Entwurf) haben neue Eingabe-Schemas →
+`notifications/tools/list_changed` nötig (geht beim Verbinden raus). Ausgaben ergänzt: Marge in `deal_pruefen`,
+`deal_wert`, `deal_eingang`, `deal_bilanz`, `lugru_deals`; Gründe in `deal_lernen_bericht`; Bewertung, Ware und
+Bestellmails in `deal_eingang_detail`. Einzelheiten im Abschnitt „Nachtrag B28“.
 
 Geändert am 01.11. (B25, keine neuen Werkzeuge): Rückgängig neu bei `auftrag_status`, `aufgabe_verschieben`,
 `aufgabe_zuweisen` und `privat_eintrag_anlegen` (Antwort enthält bei `privat_eintrag_anlegen` den Hinweis „rueckgaengig“).
@@ -1354,3 +1459,10 @@ nie in Chats oder Mails.
     hängt (z. B. Dialog oder „Export wird erstellt“). Reimbursement läuft nur montags, also erst am 09.11. im Nachtlauf
     (oder „Jetzt abholen“). sellerboard-Kostenimport bleibt „übersprungen“, bis die Anmeldung unter Anbindungen →
     sellerboard eingetragen ist.
+83. **B28 Deal-Quellen**: Unter Deal-Eingang → „Deal-Quellen (Lieferanten, Bestellmail)“ den Lieferanten aus dem
+    Anlass-Deal mit Mailadresse, Ansprechpartner, Zahlungsweg und Stichwort der Quelle eintragen. Darunter Liefer- und
+    Rechnungsadresse plus USt-IdNr. prüfen. Dann bietet „Gekauft“ die Bestellmail an. Sie geht erst mit „Senden“ raus.
+84. **B28 Discord-Rechte**: Der Bot im ProfitPath-Kanal braucht für die Rückfrage nach 👍 „Nachrichten senden“,
+    „Öffentliche Threads erstellen“, „Nachrichten in Threads senden“ und „Reaktionen hinzufügen“.
+85. **B28 Frage Ampel**: Die Ampel prüft weiter die Netto-Marge (15 % vom VK netto). Soll sie auf Brutto-Marge wie die
+    Anzeige umgestellt werden (≈ 12,6 %)?

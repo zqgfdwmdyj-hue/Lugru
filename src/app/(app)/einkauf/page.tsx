@@ -37,6 +37,8 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
     db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, t), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
   ]);
   const today = todayIso();
+  // B28.5: Beleg „Bestellung gesendet“ (Bestellmail aus dem Deal-Eingang)
+  const gesendet = await import("@/lib/deal-eingang/bestellmail").then((b) => b.bestellmailsFuerBestellungen(t, orders.map((o) => o.po.id))).catch(() => new Map());
 
   return (
     <>
@@ -62,7 +64,7 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
                   const late = po.expectedDate && po.expectedDate < today && ["ordered", "shipped", "partial"].includes(po.status);
                   return (
                     <tr key={po.id}>
-                      <td><Link href={`/einkauf/${po.id}`} style={{ fontWeight: 600 }} className="num">{po.number}</Link>{po.supplierOrderNo && <div className="small muted">{po.supplierOrderNo}</div>}</td>
+                      <td><Link href={`/einkauf/${po.id}`} style={{ fontWeight: 600 }} className="num">{po.number}</Link>{po.supplierOrderNo && <div className="small muted">{po.supplierOrderNo}</div>}{gesendet.has(po.id) && <div><span className="tag tag-ok" data-testid="ek-bestellung-gesendet">Bestellung gesendet</span></div>}</td>
                       <td>{supplier ?? "–"}</td>
                       <td><span className={`tag ${cls}`}>{label}</span>{po.invoiceId && <div className="small muted">Rechnung ✓</div>}</td>
                       <td className="num small">{po.orderDate ? formatDate(po.orderDate) : "–"}</td>

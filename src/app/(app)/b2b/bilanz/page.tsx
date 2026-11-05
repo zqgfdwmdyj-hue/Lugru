@@ -28,9 +28,9 @@ export default async function B2bBilanzPage({ searchParams }: { searchParams: Pr
       </section>
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table" data-testid="bilanz-liste">
-          <thead><tr><th>Deal</th><th>Status</th><th className="right">Stück</th><th className="right">Umsatz netto</th><th className="right">EK + Versand</th><th className="right">Gewinn</th><th>Kontrolle 30/60 Tage (Ø Buy Box vs. Prognose)</th></tr></thead>
+          <thead><tr><th>Deal</th><th>Status</th><th className="right">Stück</th><th className="right">Umsatz netto</th><th className="right">EK + Versand</th><th className="right">Gewinn</th><th className="right" title="Gewinn ÷ Umsatz netto (B2B-Verkauf ohne USt)">Marge</th><th>Kontrolle 30/60 Tage (Ø Buy Box vs. Prognose)</th></tr></thead>
           <tbody>
-            {b.liste.length === 0 && <tr><td colSpan={7} className="muted">Noch keine bestellten Deals.</td></tr>}
+            {b.liste.length === 0 && <tr><td colSpan={8} className="muted">Noch keine bestellten Deals.</td></tr>}
             {b.liste.map((d) => (
               <tr key={d.id}>
                 <td><Link href={`/b2b/${d.id}`}>#{d.nr}</Link> <span className="small">{d.titel}</span></td>
@@ -39,6 +39,7 @@ export default async function B2bBilanzPage({ searchParams }: { searchParams: Pr
                 <td className="num right">{formatEuro(d.umsatzNetto)}</td>
                 <td className="num right">{formatEuro(d.ekNetto + d.versand)}</td>
                 <td className="num right" style={{ color: d.gewinn < 0 ? "var(--danger)" : "var(--ok)", fontWeight: 600 }}>{formatEuro(d.gewinn)}</td>
+                <td className="num right" data-testid="bilanz-marge">{d.umsatzNetto > 0 ? `${String(Math.round((d.gewinn / d.umsatzNetto) * 1000) / 10).replace(".", ",")} %` : "–"}</td>
                 <td className="small">
                   {d.kontrollen.length === 0 ? <span className="muted">{d.status === "bestellt" ? "nach Wareneingang" : "folgt nach 30 Tagen"}</span> : d.kontrollen.map((k) => (
                     <div key={`${k.tag}${k.land}`}>{k.tag} T. {k.land}: {formatEuro(k.ist)} vs. {formatEuro(k.prognose)} <span className={`tag ${BEWERTUNG[k.bewertung][0]}`}>{BEWERTUNG[k.bewertung][1]}{k.abweichung !== null ? ` ${k.abweichung > 0 ? "+" : ""}${k.abweichung.toFixed(0)} %` : ""}</span></div>

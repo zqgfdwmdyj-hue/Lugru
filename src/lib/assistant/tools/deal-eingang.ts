@@ -2,8 +2,8 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { DAUMEN_GRUENDE, type DealEingangZeile } from "@/db/tables/deal-eingang";
-import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
+import { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH, type DealEingangZeile } from "@/db/tables/deal-eingang";
+import { AMPEL_EMOJI, antwortEntwurf, margeBrutto } from "@/lib/deal-eingang/logic";
 import { eingaenge, eingang, eingangAnlegen, eingangPruefen, quellen, statusSetzen, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { defineTool } from "../types";
 import { abs, isoDate, json, uuid } from "./common";
@@ -23,6 +23,7 @@ const zeileKurz = (z: DealEingangZeile) => ({
   ek_netto: z.ekNetto,
   bestes_land: z.bestesLand,
   gewinn_stueck: z.gewinn,
+  marge_prozent: z.margeBrutto ?? margeBrutto(z.gewinn, z.laender.find((l) => l.land === z.bestesLand)?.vk90Eur ?? z.laender.find((l) => l.land === z.bestesLand)?.vkEur ?? null),
   roi_prozent: z.roi,
   empfohlene_menge: z.empfohlen,
   kapitalbedarf: z.kapitalbedarf,
@@ -82,6 +83,7 @@ export const dealEingangDetailTool = defineTool({
     const e = await eingang(ctx.session.tenantId, i.id);
     if (!e) return { text: "Eingang nicht gefunden.", isError: true };
     const beste = [...e.zeilen].sort((a, b) => (b.roi ?? -999) - (a.roi ?? -999))[0];
+    const mails = await import("@/lib/deal-eingang/bestellmail").then((b) => b.bestellmailsFuerDeal(ctx.session.tenantId, e.id)).catch(() => []);
     return json({
       id: e.id,
       zeit: e.createdAt.toISOString(),
@@ -108,6 +110,13 @@ export const dealEingangDetailTool = defineTool({
             vorbereitet_menge: e.kaufVorbereitetMenge ?? undefined,
           }
         : undefined,
+      // B28.3: 👍/👎 mit Gründen
+      bewertung: e.daumen ? { daumen: e.daumen === "hoch" ? "👍" : "👎", grund: e.daumenGrund ?? undefined, gruende: e.daumenGruende.length ? e.daumenGruende : undefined, freitext: e.daumenFreitext ?? undefined, weg: e.daumenWeg } : undefined,
+      // B28.5: Ware und Bestellmail an den Lieferanten
+      verpackung: e.verpackung ?? undefined,
+      ean_abweichend: e.eanAbweichend ?? undefined,
+      fnsku_etikett_noetig: e.eanAbweichend ? true : undefined,
+      bestellmails: mails.length ? mails.map((m) => ({ status: m.status, an: m.an, betreff: m.betreff, gesendet_am: m.gesendetAm?.toISOString() ?? null, antwort_am: m.antwortAm?.toISOString() ?? null, sendungsnummer: m.sendungsnummer ?? undefined, rechnung_erhalten: m.rechnungErhalten })) : undefined,
       link: abs(ctx, `/deal-eingang/${e.id}`),
     });
   },
@@ -202,7 +211,7 @@ export const dealWertTool = defineTool({
       if (!r.zeilen.length) return json({ deal_id: r.deal_id, hinweis: "Für diesen Eingang wurde noch kein Deal-Wert berechnet (vor Abschnitt 11 geprüft oder ohne ASIN) – im Deal-Eingang „Neu rechnen“.", link: abs(ctx, `/deal-eingang/${r.deal_id}`) });
       return json({
         deal_id: r.deal_id,
-        angebote: r.zeilen.map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel, ampel: AMPEL[z.ampel], deal_wert: z.wert.wert, begruendung: z.wert.begruendung, dafuer: z.wert.dafuer, dagegen: z.wert.dagegen, verfahren: z.wert.verfahren, gedeckelt_wegen_rot: z.wert.gedeckelt || undefined, aehnliche_deals: aehnlich(z.wert) })),
+        angebote: r.zeilen.map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel, ampel: AMPEL[z.ampel], marge_prozent: z.marge, roi_prozent: z.roi, deal_wert: z.wert.wert, begruendung: z.wert.begruendung, dafuer: z.wert.dafuer, dagegen: z.wert.dagegen, verfahren: z.wert.verfahren, gedeckelt_wegen_rot: z.wert.gedeckelt || undefined, aehnliche_deals: aehnlich(z.wert) })),
         link: abs(ctx, `/deal-eingang/${r.deal_id}`),
       });
     }
@@ -220,7 +229,7 @@ export const dealLernenBerichtTool = defineTool({
   name: "deal_lernen_bericht",
   title: "Deal-Wert: Monatsbericht",
   description:
-    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle der jeweiligen Quelle – Lugru Deals 60 vorbelegt – und danach gekauft/gut bzw. 👍), eigener Block lugru_deals (gekauft, mit Ergebnis, Trefferquote), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
+    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle der jeweiligen Quelle – Lugru Deals 60 vorbelegt – und danach gekauft/gut bzw. 👍), eigener Block lugru_deals (gekauft, mit Ergebnis, Trefferquote), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), gruende (Anzahl je 👍-/👎-Grund, begründete vs. unbegründete 👍, letzte Freitexte – begründete 👍 zählen im Deal-Wert stärker, passende Gründe heben/senken den Wert ähnlicher Deals), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE_WERT,
@@ -239,6 +248,13 @@ export const dealLernenBerichtTool = defineTool({
       treffer_basis: b.trefferBasis,
       verpasst: b.verpasst.map((d) => ({ titel: d.titel, datum: d.datum, deal_wert: d.wert, link: abs(ctx, `/deal-eingang/${d.id}`) })),
       fehlkaeufe: b.fehlkaeufe.map((d) => ({ titel: d.titel, datum: d.datum, deal_wert: d.wert, realer_roi_prozent: d.realerRoi, link: abs(ctx, `/deal-eingang/${d.id}`) })),
+      gruende: {
+        daumen_hoch: b.gruende.hoch,
+        daumen_runter: b.gruende.runter,
+        hoch_mit_grund: b.gruende.hochBegruendet,
+        hoch_ohne_grund: b.gruende.hochOhneGrund,
+        freitexte: b.gruende.freitexte.map((f) => ({ datum: f.datum, titel: f.titel, daumen: f.daumen === "hoch" ? "👍" : "👎", text: f.text, link: abs(ctx, `/deal-eingang/${f.id}`) })),
+      },
       verfahren: b.verfahren,
       wichtigste_merkmale: b.wichtigsteMerkmale ?? undefined,
       // B22.2: Lugru-Deals des Monats (Schwelle 60 vorbelegt, Käufe automatisch erkannt) mit eigener Trefferquote
@@ -252,23 +268,33 @@ export const dealLernenBerichtTool = defineTool({
 export const dealBewertenTool = defineTool({
   name: "deal_bewerten",
   title: "Deal bewerten (👍/👎)",
-  description: `Speichert 👍 (hoch) oder 👎 (runter) zu einem Deal-Eingang, optional mit Kurzgrund aus der festen Liste (${DAUMEN_GRUENDE.join(", ")}). Fließt in den Deal-Wert ein. Lässt sich 7 Tage rückgängig machen. Nur auf ausdrücklichen Wunsch.`,
+  description: `Speichert 👍 (hoch) oder 👎 (runter) zu einem Deal-Eingang. Bei 👎 optional ein Kurzgrund (grund: ${DAUMEN_GRUENDE.join(", ")}). Bei 👍 optional mehrere Gründe (gruende: ${DAUMEN_GRUENDE_HOCH.join("; ")}). Für beide optional freitext. Fließt in den Deal-Wert ein – ein 👍 mit Grund zählt stärker, passende Gründe heben den Wert ähnlicher Deals. Lässt sich 7 Tage rückgängig machen. Nur auf ausdrücklichen Wunsch.`,
   area: "dealeingang",
   write: true,
-  input: z.object({ deal_id: uuid, daumen: z.enum(["hoch", "runter"]), grund: z.enum(DAUMEN_GRUENDE).optional() }),
-  summary: (i) => `Deal ${i.daumen === "hoch" ? "👍" : "👎"}${i.grund ? ` (${i.grund})` : ""}`,
+  input: z.object({
+    deal_id: uuid,
+    daumen: z.enum(["hoch", "runter"]),
+    grund: z.enum(DAUMEN_GRUENDE).optional().describe("nur bei 👎"),
+    gruende: z.array(z.enum(DAUMEN_GRUENDE_HOCH)).max(5).optional().describe("nur bei 👍, mehrere möglich"),
+    freitext: z.string().max(500).optional(),
+  }),
+  summary: (i) => `Deal ${i.daumen === "hoch" ? "👍" : "👎"}${i.daumen === "runter" && i.grund ? ` (${i.grund})` : ""}${i.daumen === "hoch" && i.gruende?.length ? ` (${i.gruende.join("; ")})` : ""}${i.freitext ? ` – „${i.freitext}“` : ""}`,
   run: async (ctx, i) => {
     const E = schema.dealEingaenge;
-    const [vorher] = await db.select({ daumen: E.daumen, grund: E.daumenGrund, weg: E.daumenWeg, am: E.daumenAm }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
+    const [vorher] = await db.select({ daumen: E.daumen, grund: E.daumenGrund, gruende: E.daumenGruende, freitext: E.daumenFreitext, weg: E.daumenWeg, am: E.daumenAm }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
     if (!vorher) return { text: "Deal-Eingang nicht gefunden.", isError: true };
     const { bewerten } = await import("@/lib/deal-eingang/wert");
-    await bewerten(ctx.session.tenantId, i.deal_id, { daumen: i.daumen, grund: i.grund ?? null, weg: "claude" });
-    return { text: JSON.stringify({ ok: true, gespeichert: i.daumen === "hoch" ? "👍" : "👎", grund: i.grund, link: abs(ctx, `/deal-eingang/${i.deal_id}`) }), ids: [i.deal_id], undo: { id: i.deal_id, vorher: { ...vorher, am: vorher.am?.toISOString() ?? null } } };
+    await bewerten(ctx.session.tenantId, i.deal_id, { daumen: i.daumen, grund: i.grund ?? null, gruende: i.gruende ?? [], freitext: i.freitext ?? null, weg: "claude" });
+    return {
+      text: JSON.stringify({ ok: true, gespeichert: i.daumen === "hoch" ? "👍" : "👎", grund: i.daumen === "runter" ? i.grund : undefined, gruende: i.daumen === "hoch" ? i.gruende : undefined, freitext: i.freitext, link: abs(ctx, `/deal-eingang/${i.deal_id}`) }),
+      ids: [i.deal_id],
+      undo: { id: i.deal_id, vorher: { ...vorher, am: vorher.am?.toISOString() ?? null } },
+    };
   },
   undo: async (ctx, d) => {
     const E = schema.dealEingaenge;
-    const x = d as { id: string; vorher: { daumen: "hoch" | "runter" | null; grund: string | null; weg: "tool" | "push" | "discord" | "claude" | null; am: string | null } };
-    await db.update(E).set({ daumen: x.vorher.daumen, daumenGrund: x.vorher.grund, daumenWeg: x.vorher.weg, daumenAm: x.vorher.am ? new Date(x.vorher.am) : null }).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, x.id)));
+    const x = d as { id: string; vorher: { daumen: "hoch" | "runter" | null; grund: string | null; gruende?: string[]; freitext?: string | null; weg: "tool" | "push" | "discord" | "claude" | null; am: string | null } };
+    await db.update(E).set({ daumen: x.vorher.daumen, daumenGrund: x.vorher.grund, daumenGruende: x.vorher.gruende ?? [], daumenFreitext: x.vorher.freitext ?? null, daumenWeg: x.vorher.weg, daumenAm: x.vorher.am ? new Date(x.vorher.am) : null }).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, x.id)));
     return "Bewertung zurückgenommen.";
   },
 });
@@ -277,17 +303,43 @@ export const dealGekauftTool = defineTool({
   name: "deal_gekauft",
   title: "Deal als gekauft markieren",
   description:
-    "Markiert einen Deal-Eingang als gekauft (Menge, Preis netto je Stück): legt die Einkaufs-Bestellung als „bestellt“ an, Wareneingang und Rechnung werden erwartet. Kauft NICHTS ein – nur erfassen, was Ludwig selbst gekauft hat. Einzeln bestätigen. Nur auf ausdrücklichen Wunsch.",
+    "Markiert einen Deal-Eingang als gekauft (Menge, Preis netto je Stück): legt die Einkaufs-Bestellung als „bestellt“ an, Wareneingang und Rechnung werden erwartet. Kauft NICHTS ein – nur erfassen, was Ludwig selbst gekauft hat. Optional verpackung (lose/eingeschweisst/originalkarton) und ean_abweichend (dann FNSKU-Etikett nötig). bestellmail (Standard an, wenn zur Quelle ein Lieferant mit Mailadresse unter Deal-Quellen steht): legt nur den ENTWURF der Bestellmail an den Lieferanten an – gesendet wird erst, wenn Ludwig auf der Deal-Seite „Senden“ klickt. Einzeln bestätigen. Nur auf ausdrücklichen Wunsch.",
   area: "dealeingang",
   write: true,
   stufe: "gelb",
-  input: z.object({ deal_id: uuid, menge: z.number().int().positive().max(100_000), preis: z.number().positive().max(100_000).optional().describe("EK netto je Stück; leer = EK aus der Prüfung"), nr: z.number().int().positive().max(500).optional().describe("Angebot im Eingang (Nr.)") }),
-  summary: (i) => `Deal gekauft: ${i.menge} Stk${i.preis ? ` zu ${i.preis.toFixed(2).replace(".", ",")} € netto` : ""}`,
+  input: z.object({
+    deal_id: uuid,
+    menge: z.number().int().positive().max(100_000),
+    preis: z.number().positive().max(100_000).optional().describe("EK netto je Stück; leer = EK aus der Prüfung"),
+    nr: z.number().int().positive().max(500).optional().describe("Angebot im Eingang (Nr.)"),
+    verpackung: z.enum(["lose", "eingeschweisst", "originalkarton"]).optional(),
+    ean_abweichend: z.boolean().optional().describe("true = EAN der Ware weicht von der Amazon-EAN ab (FNSKU-Etikett nötig)"),
+    bestellmail: z.boolean().optional().describe("Entwurf der Bestellmail an den Lieferanten anlegen (Standard: ja, wenn Lieferant mit Mailadresse bekannt). Wird NIE automatisch gesendet."),
+  }),
+  summary: (i) => `Deal gekauft: ${i.menge} Stk${i.preis ? ` zu ${i.preis.toFixed(2).replace(".", ",")} € netto` : ""}${i.bestellmail === false ? "" : " + Entwurf Bestellmail (falls Lieferant bekannt)"}`,
   run: async (ctx, i) => {
     const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
     try {
       const r = await alsGekauft(ctx.session.tenantId, i.deal_id, { menge: i.menge, preis: i.preis ?? null, nr: i.nr ?? null, weg: "claude" }, ctx.session.userId);
-      return { text: JSON.stringify({ ok: true, menge: i.menge, angebot_nr: r.zeile, bestellung: r.bestellungId ? abs(ctx, `/einkauf/${r.bestellungId}`) : null, hinweis: r.bestellungId ? "Bestellung „bestellt“ – Wareneingang und Rechnung werden erwartet." : undefined, link: abs(ctx, `/deal-eingang/${i.deal_id}`) }), ids: [i.deal_id] };
+      const E = schema.dealEingaenge;
+      if (i.verpackung !== undefined || i.ean_abweichend !== undefined) {
+        await db.update(E).set({ ...(i.verpackung ? { verpackung: i.verpackung } : {}), ...(i.ean_abweichend !== undefined ? { eanAbweichend: i.ean_abweichend } : {}) }).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
+      }
+      // B28.5: nur Entwurf – gesendet wird erst mit „Senden“ auf der Deal-Seite.
+      let bestellmail: { entwurf: boolean; an?: string; hinweis: string } | undefined;
+      if (i.bestellmail !== false) {
+        const B = await import("@/lib/deal-eingang/bestellmail");
+        const [e] = await db.select({ quelle: E.quelle }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
+        const l = await B.lieferantFuerDeal(ctx.session.tenantId, e?.quelle ?? null);
+        if (l?.email) {
+          const m = await B.bestellmailEntwurf(ctx.session.tenantId, i.deal_id, ctx.session.userId, { nr: r.zeile }).catch((x: unknown) => ({ fehler: x instanceof Error ? x.message : String(x) }));
+          bestellmail = "fehler" in m ? { entwurf: false, hinweis: m.fehler } : { entwurf: true, an: m.an, hinweis: "Nur Entwurf – Ludwig prüft und klickt auf der Deal-Seite „Senden“." };
+        } else if (i.bestellmail === true) bestellmail = { entwurf: false, hinweis: `Kein Lieferant mit Mailadresse für die Quelle „${e?.quelle ?? "–"}“ – unter Deal-Eingang → Deal-Quellen eintragen.` };
+      }
+      return {
+        text: JSON.stringify({ ok: true, menge: i.menge, angebot_nr: r.zeile, bestellung: r.bestellungId ? abs(ctx, `/einkauf/${r.bestellungId}`) : null, hinweis: r.bestellungId ? "Bestellung „bestellt“ – Wareneingang und Rechnung werden erwartet." : undefined, fnsku_etikett_noetig: i.ean_abweichend ? true : undefined, bestellmail, link: abs(ctx, `/deal-eingang/${i.deal_id}${bestellmail?.entwurf ? "#bestellmail" : ""}`) }),
+        ids: [i.deal_id],
+      };
     } catch (e) {
       return { text: e instanceof Error ? e.message : String(e), isError: true };
     }

@@ -201,7 +201,7 @@ export const deal = defineTool({
 export const dealBilanz = defineTool({
   name: "deal_bilanz",
   title: "B2B: Deal-Bilanz",
-  description: "Bilanz der bestellten B2B-Deals: gelieferte Stück, Umsatz netto, EK und Versand, unser Gewinn je Deal und gesamt, dazu die Erfolgskontrolle 30/60 Tage nach Wareneingang (Ø Buy Box gegen Prognose, Trefferquote). Für „Was haben die Deals gebracht, stimmen die Prognosen?“.",
+  description: "Bilanz der bestellten B2B-Deals: gelieferte Stück, Umsatz netto, EK und Versand, unser Gewinn und Marge (Gewinn ÷ Umsatz netto) je Deal und gesamt, dazu die Erfolgskontrolle 30/60 Tage nach Wareneingang (Ø Buy Box gegen Prognose, Trefferquote). Für „Was haben die Deals gebracht, stimmen die Prognosen?“.",
   area: "b2b",
   write: false,
   quelle: { text: "B2B-Deals + Erfolgskontrolle (Keepa)", jobs: ["B2B-Erfolgskontrolle"] },
@@ -212,9 +212,9 @@ export const dealBilanz = defineTool({
     if (i.deal && !d) return json({ hinweis: `Deal „${i.deal}“ nicht gefunden.`, link: abs(ctx, "/b2b/bilanz") });
     const b = await dealBilanzen(t, d?.id);
     return json({
-      summe: { stueck: b.summe.stueck, umsatz_netto: b.summe.umsatz, gewinn: b.summe.gewinn },
+      summe: { stueck: b.summe.stueck, umsatz_netto: b.summe.umsatz, gewinn: b.summe.gewinn, marge_prozent: b.summe.umsatz > 0 ? Math.round((b.summe.gewinn / b.summe.umsatz) * 1000) / 10 : null },
       prognosen: { kontrollen: b.treffer.anzahl, trefferquote_prozent: b.treffer.trefferquote, abweichung_schnitt_prozent: b.treffer.abweichungSchnitt },
-      deals: b.liste.slice(0, 50).map((x) => ({ nr: x.nr, titel: x.titel, status: DEAL_STATUS_TEXT[x.status as Deal["status"]], stueck: x.stueck, umsatz_netto: x.umsatzNetto, ek_netto: x.ekNetto, versand: x.versand, gewinn: x.gewinn, kontrollen: x.kontrollen.length ? x.kontrollen : undefined, link: abs(ctx, `/b2b/${x.id}`) })),
+      deals: b.liste.slice(0, 50).map((x) => ({ nr: x.nr, titel: x.titel, status: DEAL_STATUS_TEXT[x.status as Deal["status"]], stueck: x.stueck, umsatz_netto: x.umsatzNetto, ek_netto: x.ekNetto, versand: x.versand, gewinn: x.gewinn, marge_prozent: x.umsatzNetto > 0 ? Math.round((x.gewinn / x.umsatzNetto) * 1000) / 10 : null, kontrollen: x.kontrollen.length ? x.kontrollen : undefined, link: abs(ctx, `/b2b/${x.id}`) })),
       link: abs(ctx, "/b2b/bilanz"),
     });
   },

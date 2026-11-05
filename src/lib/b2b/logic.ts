@@ -267,7 +267,7 @@ export function dealBlattText(d: {
 }): string {
   const zeilen = d.laender
     .filter((l) => l.vk !== null)
-    .map((l) => `${l.land}: VK ${eur(l.vk)} · Gewinn ${eur(l.gewinn)} · ROI ${l.roi === null ? "–" : `${l.roi.toFixed(0)} %`}${l.verkaeufe !== null ? ` · ~${l.verkaeufe}/Monat` : ""}${l.angebote !== null ? ` · ${l.angebote} Angebote` : ""}`);
+    .map((l) => `${l.land}: VK ${eur(l.vk)} · Gewinn ${eur(l.gewinn)} · Marge ${l.gewinn !== null && l.vk ? `${Math.round((l.gewinn / l.vk) * 100)} %` : "–"} · ROI ${l.roi === null ? "–" : `${l.roi.toFixed(0)} %`}${l.verkaeufe !== null ? ` · ~${l.verkaeufe}/Monat` : ""}${l.angebote !== null ? ` · ${l.angebote} Angebote` : ""}`);
   return [
     `Deal #${d.nr}: ${d.titel}${d.marke ? ` (${d.marke})` : ""}`,
     `ASIN ${d.asin} · Preis ${eur(d.kundenpreisNetto)} netto/Stück · ab ${d.mindestmengeKunde} Stück${d.maxProKunde ? `, max. ${d.maxProKunde}` : ""}${d.rest !== null ? ` · noch ${d.rest} frei` : ""}${d.frist ? ` · Frist ${d.frist.split("-").reverse().join(".")}` : ""}`,

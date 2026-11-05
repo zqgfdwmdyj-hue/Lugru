@@ -17,6 +17,7 @@ import {
   istPreisliste,
   kiErkennungAuftrag,
   leseKiAngebote,
+  margeBrutto,
   maxEk,
   packungAus,
   packungsWarnung,
@@ -209,11 +210,33 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
   if (ohneEk) rot.push(...p.rot.filter((x) => !/Marge/.test(x)));
   const titel = p.titel ?? z.titel;
 
-  // Max. EK je Land für den Ziel-ROI (beim 90-Tage-Mittel)
+  // Max. EK je Land für den Ziel-ROI (beim 90-Tage-Mittel); B28: „rest“ und Gebühren für Ziel-Marge und Preis-Szenario
+  const prep = s.dealAmpel.nebenkosten;
   const laender: DealLandZeile[] = p.laender.map((l) => {
     const k = l.schnitt90 ?? l.aktuell;
-    const m = k ? maxEk({ vkNetto: k.vkNetto, gebuehren: k.gebuehren, prep: s.dealAmpel.nebenkosten, zielRoi: de.zielRoi }) : null;
-    return { land: l.land, vkEur: l.vkEur, vk90Eur: l.vk90Eur, tief12Eur: l.tief12Eur, verkaeufeMonat: l.verkaeufeMonat, angebote: l.angebote, amazonProzent: l.amazonProzent, gewinn: ohneEk ? null : (l.schnitt90?.gewinn ?? null), gewinnAktuell: ohneEk ? null : (l.aktuell?.gewinn ?? null), roi: ohneEk ? null : (l.schnitt90?.roi ?? null), marge: ohneEk ? null : (l.schnitt90?.marge ?? null), maxEk: m, fehler: l.fehler };
+    const m = k ? maxEk({ vkNetto: k.vkNetto, gebuehren: k.gebuehren, prep, zielRoi: de.zielRoi }) : null;
+    const g = l.gebuehren ?? p.gebuehren;
+    return {
+      land: l.land,
+      vkEur: l.vkEur,
+      vk90Eur: l.vk90Eur,
+      tief12Eur: l.tief12Eur,
+      verkaeufeMonat: l.verkaeufeMonat,
+      verkaeufeGeschaetzt: l.verkaeufeMonat === null ? (l.verkaeufeGeschaetzt ?? null) : null,
+      angebote: l.angebote,
+      amazonProzent: l.amazonProzent,
+      gewinn: ohneEk ? null : (l.schnitt90?.gewinn ?? null),
+      gewinnAktuell: ohneEk ? null : (l.aktuell?.gewinn ?? null),
+      roi: ohneEk ? null : (l.schnitt90?.roi ?? null),
+      marge: ohneEk ? null : (l.schnitt90?.marge ?? null),
+      maxEk: m,
+      fehler: l.fehler,
+      rest: k ? r2(k.vkNetto - k.gebuehren - prep) : null,
+      mwstSatz: l.mwstSatz,
+      provision: g.provision,
+      fba: g.fba,
+      prep,
+    };
   });
   const maxListe = laender.filter((l) => l.maxEk !== null).map((l) => ({ land: l.land, ek: l.maxEk! })).sort((x, y) => y.ek - x.ek);
   if (ohneEk) gelb.push(maxListe.length ? `EK fehlt – lohnt bis EK ${eur(maxListe[0].ek)} netto (${maxListe[0].land}).` : "EK fehlt.");
@@ -274,6 +297,7 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
     gewinn: ohneEk ? null : ((b?.schnitt90 ?? b?.aktuell)?.gewinn ?? null),
     roi: ohneEk ? null : ((b?.schnitt90 ?? b?.aktuell)?.roi ?? null),
     marge: ohneEk ? null : ((b?.schnitt90 ?? b?.aktuell)?.marge ?? null),
+    margeBrutto: ohneEk || !b ? null : margeBrutto((b.schnitt90 ?? b.aktuell)?.gewinn ?? null, b.schnitt90 ? (b.vk90Eur ?? b.vkEur) : b.vkEur),
     angebote: b?.angebote ?? null,
     amazonProzent: b?.amazonProzent ?? null,
     verkaeufeMonat: b?.verkaeufeMonat ?? null,
@@ -465,6 +489,24 @@ export async function keepaVerlaufAusCache(tenantId: string, asin: string, land:
     if (r && verlauf?.length) return { verlauf, land: mp, stand: r.am };
   }
   return null;
+}
+
+/**
+ * B28.2: Keepa-Daten fürs Preis-Szenario aus dem Zwischenspeicher (keine Tokens beim Ansehen): je EUR-Land
+ * [Tag, Buy Box, Rang] der letzten 365 Tage, „x+ gekauft“-Verlauf und aktuelle Verkäufe.
+ */
+export async function keepaSzenarioAusCache(tenantId: string, asin: string, laender: string[]): Promise<Record<string, { tage: [string, number | null, number | null][]; verkauftVerlauf: [string, number][]; aktuell: number | null }>> {
+  const C = schema.keepaCache;
+  const eur = laender.map((l) => l.toUpperCase()).filter((l) => ["DE", "FR", "IT", "ES"].includes(l));
+  if (!eur.length) return {};
+  const rows = await db.select({ mp: C.marktplatz, stand: C.stand }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.asin, asin), inArray(C.marktplatz, eur)));
+  const out: Record<string, { tage: [string, number | null, number | null][]; verkauftVerlauf: [string, number][]; aktuell: number | null }> = {};
+  for (const r of rows) {
+    const st = r.stand as { verlauf?: VerlaufZeile[]; verkauft_verlauf?: [string, number][]; aktuell?: { monatlich_verkauft?: number | null } } | null;
+    if (!st?.verlauf?.length) continue;
+    out[r.mp] = { tage: st.verlauf.map((z) => [z[0], z[1], z[4]]), verkauftVerlauf: st.verkauft_verlauf ?? [], aktuell: st.aktuell?.monatlich_verkauft ?? null };
+  }
+  return out;
 }
 
 /** Originaldatei eines Eingangs (Screenshot, PDF, Tabelle) – nur, wenn sie zu diesem Eingang des Mandanten gehört. */

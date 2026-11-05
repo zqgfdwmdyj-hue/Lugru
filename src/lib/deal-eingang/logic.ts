@@ -113,6 +113,43 @@ export function quelleAusText(text: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+/**
+ * B28.1: Marge, wie Ludwig rechnet – Gewinn ÷ Buy-Box-Preis brutto, in % (eine Nachkommastelle). Die Deal-Ampel
+ * prüft intern weiter die Netto-Marge (Gewinn ÷ VK netto).
+ */
+export function margeBrutto(gewinn: number | null | undefined, vkBrutto: number | null | undefined): number | null {
+  if (gewinn === null || gewinn === undefined || vkBrutto === null || vkBrutto === undefined || !(vkBrutto > 0)) return null;
+  return Math.round((gewinn / vkBrutto) * 1000) / 10;
+}
+
+/** B28.1: Reale Marge nach dem Verkauf – realer Gewinn ÷ (verkaufte Stück × Ø VK). null ohne Verkäufe. */
+export function realeMarge(e: { realerGewinn: number | null; verkauft: number; oVk: number | null } | null | undefined): number | null {
+  if (!e || e.realerGewinn === null || !e.oVk || !(e.verkauft > 0)) return null;
+  return Math.round((e.realerGewinn / (e.oVk * e.verkauft)) * 1000) / 10;
+}
+
+/** B28.1: Höchster EK netto für die Ziel-Marge (vom Brutto-VK): rest − Ziel × VK brutto; rest = VK netto − Gebühren − Prep. */
+export function maxEkMarge(o: { rest: number; vkBrutto: number; zielMarge: number }): number | null {
+  const ek = o.rest - (o.zielMarge / 100) * o.vkBrutto;
+  return ek > 0 ? Math.floor(ek * 100) / 100 : null;
+}
+
+/**
+ * Kennzahlen einer Länderzeile für die Anzeige (auch ältere gespeicherte Prüfungen): Marge vom Brutto-VK beim
+ * 90-Tage-Mittel und max. EK für die aktuelle Ziel-Marge. „rest“ fehlt bei alten Prüfungen – dann aus Gewinn + EK.
+ */
+export function landKennzahlen(l: { vkEur: number | null; vk90Eur: number | null; gewinn: number | null; rest?: number | null }, ekNetto: number | null, zielMarge: number): { marge: number | null; maxEkMarge: number | null } {
+  const vk = l.vk90Eur ?? l.vkEur;
+  const rest = l.rest ?? (l.gewinn !== null && ekNetto !== null ? l.gewinn + ekNetto : null);
+  return { marge: margeBrutto(l.gewinn, vk), maxEkMarge: rest !== null && vk ? maxEkMarge({ rest, vkBrutto: vk, zielMarge }) : null };
+}
+
+/** B28.4: „Freischaltung im Seller Central prüfen“ – Angebot-hinzufügen-Seite der ASIN (zeigt, ob Freischaltung nötig ist). */
+export function freischaltungLink(asin: string, land = "DE"): string {
+  const tld: Record<string, string> = { DE: "de", FR: "fr", IT: "it", ES: "es", UK: "co.uk", NL: "nl", PL: "pl", SE: "se", BE: "com.be" };
+  return `https://sellercentral.amazon.${tld[land.toUpperCase()] ?? "de"}/abis/listing/syh?asin=${encodeURIComponent(asin)}&ref_=xx_addlisting_dnav_xx#offer`;
+}
+
 /** Höchster EK netto, bei dem der Ziel-ROI noch erreicht wird: (VK netto − Gebühren − Prep) ÷ (1 + ROI). */
 export function maxEk(o: { vkNetto: number; gebuehren: number; prep: number; zielRoi: number }): number | null {
   const rest = o.vkNetto - o.gebuehren - o.prep;
@@ -127,6 +164,8 @@ export type ZeilenPruefung = {
   asin: string | null;
   bestesLand: string | null;
   roi: number | null;
+  /** B28.1: Marge vom Brutto-VK im besten Land. */
+  margeBrutto?: number | null;
   gewinn: number | null;
   angebote: number | null;
   amazonProzent: number | null;
@@ -158,7 +197,7 @@ export function pushText(zeilen: (ZeilenPruefung & { name: string | null })[]): 
   const z = zeilen[0];
   const teile = [`${AMPEL_EMOJI[z.ampel]} ${(z.titel ?? z.name ?? z.asin ?? "Angebot").slice(0, 40)}`];
   if (z.ekNetto) teile.push(`EK ${eur(z.ekNetto)}`);
-  if (z.bestesLand && z.roi !== null) teile.push(`bestes Land ${z.bestesLand}: ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
+  if (z.bestesLand && z.roi !== null) teile.push(`bestes Land ${z.bestesLand}: ${z.margeBrutto !== null && z.margeBrutto !== undefined ? `Marge ${Math.round(z.margeBrutto)} %, ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
   if (z.angebote !== null) teile.push(`${z.angebote} Angebote${z.amazonProzent !== null ? (z.amazonProzent >= 50 ? `, Amazon ${z.amazonProzent} %` : z.amazonProzent > 0 ? "" : ", Amazon nicht drin") : ""}`);
   if (z.empfohlen) teile.push(`Empf. ${z.empfohlen} Stk${z.kapitalbedarf ? ` (${Math.round(z.kapitalbedarf).toLocaleString("de-DE")} €)` : ""}`);
   if (!z.ekNetto && z.maxEk.length) teile.push(`lohnt bis EK ${eur(z.maxEk[0].ek)} netto (${z.maxEk[0].land})`);

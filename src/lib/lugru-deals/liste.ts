@@ -1,4 +1,5 @@
 import "server-only";
+import { realeMarge } from "@/lib/deal-eingang/logic";
 import { and, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { lugruStatistik, NUR_KAUFZEICHEN, reaktionenVon, type StatDeal } from "./auswertung-logic";
@@ -32,12 +33,12 @@ function bedingungen(tenantId: string, f: LugruFilter): SQL[] {
 }
 
 type Zeile = typeof L.$inferSelect;
-type Eingang = { id: string; status: string; ampel: string | null; gekauftMenge: number | null; gekauftPreis: number | null; gekauftWeg: string | null; gekauftRef: string | null; ergebnis: { realerRoi: number | null } | null; wert: number | null };
+type Eingang = { id: string; status: string; ampel: string | null; gekauftMenge: number | null; gekauftPreis: number | null; gekauftWeg: string | null; gekauftRef: string | null; ergebnis: { realerRoi: number | null; realerGewinn: number | null; verkauft: number; oVk: number | null } | null; wert: number | null };
 
 async function eingaengeZu(tenantId: string, ids: string[]): Promise<Map<string, Eingang>> {
   if (!ids.length) return new Map();
   const rows = await db.select({ id: E.id, status: E.status, ampel: E.ampel, gekauftMenge: E.gekauftMenge, gekauftPreis: E.gekauftPreis, gekauftWeg: E.gekauftWeg, gekauftRef: E.gekauftRef, ergebnis: E.ergebnis, zeilen: E.zeilen }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, ids)));
-  return new Map(rows.map((r) => [r.id, { id: r.id, status: r.status, ampel: r.ampel, gekauftMenge: r.gekauftMenge, gekauftPreis: r.gekauftPreis, gekauftWeg: r.gekauftWeg, gekauftRef: r.gekauftRef, ergebnis: r.ergebnis ? { realerRoi: r.ergebnis.realerRoi ?? null } : null, wert: r.zeilen?.[0]?.wert?.wert ?? null }]));
+  return new Map(rows.map((r) => [r.id, { id: r.id, status: r.status, ampel: r.ampel, gekauftMenge: r.gekauftMenge, gekauftPreis: r.gekauftPreis, gekauftWeg: r.gekauftWeg, gekauftRef: r.gekauftRef, ergebnis: r.ergebnis ? { realerRoi: r.ergebnis.realerRoi ?? null, realerGewinn: r.ergebnis.realerGewinn ?? null, verkauft: r.ergebnis.verkauft ?? 0, oVk: r.ergebnis.oVk ?? null } : null, wert: r.zeilen?.[0]?.wert?.wert ?? null }]));
 }
 
 const gekauftVon = (z: Zeile, e: Eingang | undefined) => z.gekauftErkannt || e?.status === "gekauft";
@@ -73,6 +74,7 @@ function zeileAus(z: Zeile, e: Eingang | undefined, wert: number | null) {
     gekauft_menge: e?.status === "gekauft" ? e.gekauftMenge : null,
     gekauft_ek_netto: e?.status === "gekauft" ? e.gekauftPreis : null,
     realer_roi: runde1(e?.ergebnis?.realerRoi),
+    reale_marge: realeMarge(e?.ergebnis),
     eingang_id: z.eingangId,
     quelle: z.quelle,
     link_discord: z.discordKanalId && z.discordNachrichtId ? nachrichtLink(z.discordGuildId, z.discordKanalId, z.discordNachrichtId) : null,

@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { AMPEL_TEXT, profitgoLink } from "@/lib/deal-ampel/logic";
 import { getSettings } from "@/lib/settings";
+import { margeBrutto } from "@/lib/deal-eingang/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
@@ -24,7 +25,7 @@ export const dealPruefenTool = defineTool({
   name: "deal_pruefen",
   title: "Deal-Ampel: Einkauf prüfen",
   description:
-    "Bewertet einen Einkauf (z. B. Deal aus der Deal-Gruppe) in Sekunden: ASIN, EAN oder Amazon-Link + Einkaufspreis (+ Menge). Je Land Gewinn/Marge beim aktuellen Buy-Box-Preis und beim 90-Tage-Mittel (USt je Land), Verkäufe/Monat, Angebote, Amazon-Anteil, Tief der letzten 12 Monate und Aktionsmuster; empfohlene Menge für 30–45 Tage; Ampel grün/gelb/rot mit Begründung. Für „Lohnt sich das?“, „Soll ich das kaufen?“.",
+    "Bewertet einen Einkauf (z. B. Deal aus der Deal-Gruppe) in Sekunden: ASIN, EAN oder Amazon-Link + Einkaufspreis (+ Menge). Je Land Gewinn, Marge (Gewinn ÷ Buy-Box-Preis brutto) und ROI beim aktuellen Buy-Box-Preis und beim 90-Tage-Mittel (USt je Land), Verkäufe/Monat, Angebote, Amazon-Anteil, Tief der letzten 12 Monate und Aktionsmuster; empfohlene Menge für 30–45 Tage; Ampel grün/gelb/rot mit Begründung. Für „Lohnt sich das?“, „Soll ich das kaufen?“.",
   area: "lieferanten",
   write: false,
   quelle: { text: "Keepa (DE/FR/IT/ES/UK), Amazon-Angebote (SP-API), Gebühren aus dem Seller-System" },
@@ -55,9 +56,10 @@ export const dealPruefenTool = defineTool({
         tief_12_monate_eur: l.tief12Eur,
         gewinn_jetzt: l.aktuell?.gewinn ?? null,
         gewinn_schnitt_90: l.schnitt90?.gewinn ?? null,
-        marge_schnitt_90_prozent: l.schnitt90?.marge ?? null,
+        marge_schnitt_90_prozent: margeBrutto(l.schnitt90?.gewinn ?? null, l.vk90Eur ?? l.vkEur),
         roi_schnitt_90_prozent: l.schnitt90?.roi ?? null,
-        verkaeufe_monat: l.verkaeufeMonat ?? (r.verkaeufeGeschaetzt && l.land === r.bestes?.land ? `${r.verkaeufeGeschaetzt.wert} (geschätzt aus ${r.verkaeufeGeschaetzt.aus})` : null),
+        netto_marge_schnitt_90_prozent: l.schnitt90?.marge ?? null,
+        verkaeufe_monat: l.verkaeufeMonat ?? (l.verkaeufeGeschaetzt ? `${l.verkaeufeGeschaetzt} (geschätzt aus dem Verkaufsrang)` : r.verkaeufeGeschaetzt && l.land === r.bestes?.land ? `${r.verkaeufeGeschaetzt.wert} (geschätzt aus ${r.verkaeufeGeschaetzt.aus})` : null),
         angebote: l.angebote,
         amazon_prozent: l.amazonProzent,
         gebuehren: l.gebuehren ? { quelle: "Amazon (je ASIN und Land)", provision_prozent: Math.round(l.gebuehren.provision * 1000) / 10, fba: l.gebuehren.fba } : { quelle: "Pauschale (Notlösung)" },

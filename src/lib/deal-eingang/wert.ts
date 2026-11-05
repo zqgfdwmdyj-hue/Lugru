@@ -1,11 +1,12 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { DAUMEN_GRUENDE, type DealEingangZeile, type DealErgebnis, type DealMerkmale } from "@/db/tables/deal-eingang";
+import { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH, type DealEingangZeile, type DealErgebnis, type DealMerkmale } from "@/db/tables/deal-eingang";
 import { getSettings } from "@/lib/settings";
 import { prozentText, runde1 } from "@/lib/numbers";
+import { GRUND_ZAHLEN as ZAHLEN, grundAusAntwort, grundFrageText } from "./wert-logic";
 import { bewaehrt, dealWert, eigenesLabel, lernBericht, lugruHarteGruende, lugruLabel, lugruMerkmale, merkmaleAus, modellLernen, modellMerkmale, type HistorieDeal, type KeepaLite, type Modell } from "./wert-logic";
-import { wertSchwelleFuer } from "./logic";
+import { margeBrutto, wertSchwelleFuer } from "./logic";
 import { kanalName } from "@/lib/lugru-deals/historie-logic";
 
 // Abschnitt 11 „Lernender Deal-Wert“: Merkmale beim Eingang (Keepa aus dem Zwischenspeicher, keine Extra-Tokens),
@@ -16,12 +17,15 @@ const E = schema.dealEingaenge;
 const L = schema.lugruDealsHistorie;
 const MP = new Set(["DE", "FR", "IT", "ES", "UK"]);
 
+/** Gründe eines Deals: bei 👍 die Mehrfachauswahl, bei 👎 der Kurzgrund (feste Liste). */
+const daumenGruendeVon = (e: { daumen: "hoch" | "runter" | null; daumenGrund: string | null; daumenGruende: string[] | null }) => (e.daumen === "hoch" ? (e.daumenGruende ?? []) : e.daumen === "runter" && e.daumenGrund ? [e.daumenGrund] : []);
+
 /** Historie der letzten 365 Tage (eigene Deals mit Entscheidung/Ergebnis + Lugru-Deals mit ✅). */
 async function historie(tenantId: string, zielRoi: number, ohneId?: string): Promise<HistorieDeal[]> {
   const seit = new Date(Date.now() - 365 * 86_400_000);
   const [eigen, lugru] = await Promise.all([
     db
-      .select({ id: E.id, zeilen: E.zeilen, status: E.status, daumen: E.daumen, ergebnis: E.ergebnis, createdAt: E.createdAt })
+      .select({ id: E.id, zeilen: E.zeilen, status: E.status, daumen: E.daumen, daumenGrund: E.daumenGrund, daumenGruende: E.daumenGruende, daumenFreitext: E.daumenFreitext, ergebnis: E.ergebnis, createdAt: E.createdAt })
       .from(E)
       .where(and(eq(E.tenantId, tenantId), gte(E.createdAt, seit), or(inArray(E.status, ["gekauft", "verworfen"]), isNotNull(E.daumen))))
       .orderBy(desc(E.createdAt))
@@ -33,9 +37,10 @@ async function historie(tenantId: string, zielRoi: number, ohneId?: string): Pro
     if (e.id === ohneId) continue;
     const z = e.zeilen.filter((x) => x.merkmale).sort((a, b) => (a.ampel === "gruen" ? -1 : 0) - (b.ampel === "gruen" ? -1 : 0))[0];
     if (!z?.merkmale) continue;
-    const l = eigenesLabel({ status: e.status, daumen: e.daumen, realerRoi: e.ergebnis?.realerRoi ?? null }, zielRoi);
+    const gruende = daumenGruendeVon(e);
+    const l = eigenesLabel({ status: e.status, daumen: e.daumen, realerRoi: e.ergebnis?.realerRoi ?? null, begruendet: gruende.length > 0 || !!e.daumenFreitext?.trim() }, zielRoi);
     if (!l) continue;
-    out.push({ id: e.id, quelle: "eigen", titel: z.titel ?? z.angebot.name, asin: z.asin, datum: e.createdAt.toISOString().slice(0, 10), merkmale: z.merkmale, label: l.label, gewicht: l.gewicht, ergebnis: l.ergebnis, realerRoi: e.ergebnis?.realerRoi ?? null });
+    out.push({ id: e.id, quelle: "eigen", titel: z.titel ?? z.angebot.name, asin: z.asin, datum: e.createdAt.toISOString().slice(0, 10), merkmale: z.merkmale, label: l.label, gewicht: l.gewicht, ergebnis: l.ergebnis, realerRoi: e.ergebnis?.realerRoi ?? null, daumen: e.daumen, gruende });
   }
   for (const d of lugru) {
     const l = lugruLabel({ kaeufe: d.kaeufe, bewaehrt: d.bewaehrt });
@@ -75,7 +80,7 @@ export async function wertAnhaengen(tenantId: string, zeilen: DealEingangZeile[]
   for (const z of zeilen) {
     if (!z.asin) continue;
     const k = await keepaLite(tenantId, z.asin, z.bestesLand, o.jetzt);
-    z.merkmale = merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote }, { marke: z.angebot.marke ?? k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null });
+    z.merkmale = merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote, laender: z.laender, menge: z.angebot.menge }, { marke: z.angebot.marke ?? k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null });
     z.wert = dealWert(z.merkmale, { zielRoi, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell, quelle: o.quelle, harte: lugruHarteGruende(z.merkmale, z) });
   }
 }
@@ -85,7 +90,11 @@ export async function dealWertFuer(tenantId: string, q: { asin?: string; dealId?
   if (q.dealId) {
     const [e] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, q.dealId)));
     if (!e) return null;
-    return { art: "eingang" as const, deal_id: e.id, zeilen: e.zeilen.filter((z) => z.wert).map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel ?? z.angebot.name, ampel: z.ampel, wert: z.wert! })) };
+    const marge = (z: DealEingangZeile) => {
+      const l = z.laender.find((x) => x.land === z.bestesLand);
+      return z.margeBrutto ?? margeBrutto(z.gewinn, l ? (l.vk90Eur ?? l.vkEur) : null);
+    };
+    return { art: "eingang" as const, deal_id: e.id, zeilen: e.zeilen.filter((z) => z.wert).map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel ?? z.angebot.name, ampel: z.ampel, roi: z.roi, marge: marge(z), wert: z.wert! })) };
   }
   if (!q.asin) return null;
   const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
@@ -95,12 +104,21 @@ export async function dealWertFuer(tenantId: string, q: { asin?: string; dealId?
   return { art: "asin" as const, asin: q.asin, ohne_ek: true, wert: dealWert(m, { zielRoi, ampel: "gelb", historie: h.filter((x) => x.asin !== q.asin || x.quelle === "lugru"), modell: await modellFuer(tenantId, h) }), merkmale: m };
 }
 
-/** 👍/👎 mit Kurzgrund speichern (Seite, Push, Discord, Claude). */
-export async function bewerten(tenantId: string, id: string, b: { daumen: "hoch" | "runter"; grund?: string | null; weg: "tool" | "push" | "discord" | "claude" }) {
-  // Kurzgrund nur aus der festen Liste (Unbekanntes → „sonstiges“), damit der Bericht zählbar bleibt.
+/**
+ * 👍/👎 mit Grund speichern (Seite, Push, Discord, Claude). 👎: ein Kurzgrund aus der festen Liste. 👍 (B28.3): mehrere
+ * Gründe aus DAUMEN_GRUENDE_HOCH, dazu Freitext (beide optional). Unbekanntes → „sonstiges“ bzw. verworfen, damit der
+ * Bericht zählbar bleibt. Von der Seite/Claude gespeichert beendet eine offene Discord-Rückfrage.
+ */
+export async function bewerten(tenantId: string, id: string, b: { daumen: "hoch" | "runter"; grund?: string | null; gruende?: string[] | null; freitext?: string | null; weg: "tool" | "push" | "discord" | "claude" }) {
   const g = b.grund?.trim();
-  const grund = !g ? null : (DAUMEN_GRUENDE as readonly string[]).includes(g) ? g : "sonstiges";
-  const r = await db.update(E).set({ daumen: b.daumen, daumenGrund: grund, daumenWeg: b.weg, daumenAm: new Date() }).where(and(eq(E.tenantId, tenantId), eq(E.id, id))).returning({ id: E.id });
+  const grund = b.daumen === "hoch" || !g ? null : (DAUMEN_GRUENDE as readonly string[]).includes(g) ? g : "sonstiges";
+  const gruende = b.daumen === "hoch" ? [...new Set((b.gruende ?? []).map((x) => x.trim()).filter((x) => (DAUMEN_GRUENDE_HOCH as readonly string[]).includes(x)))] : [];
+  const freitext = b.freitext?.trim().slice(0, 500) || null;
+  const r = await db
+    .update(E)
+    .set({ daumen: b.daumen, daumenGrund: grund, daumenGruende: gruende, daumenFreitext: freitext, daumenWeg: b.weg, daumenAm: new Date(), ...(b.weg !== "discord" ? { daumenFrageRef: null } : {}) })
+    .where(and(eq(E.tenantId, tenantId), eq(E.id, id)))
+    .returning({ id: E.id });
   modelle.delete(tenantId);
   return r.length > 0;
 }
@@ -111,7 +129,9 @@ export async function bewerten(tenantId: string, id: string, b: { daumen: "hoch"
  */
 export async function discordDaumen(tenantId: string): Promise<number> {
   const offen = await db.select({ id: E.id, ref: E.discordRef }).from(E).where(and(eq(E.tenantId, tenantId), isNotNull(E.discordRef), isNull(E.daumen), gte(E.createdAt, new Date(Date.now() - 7 * 86_400_000)))).limit(100);
-  if (!offen.length) return 0;
+  // B28.3: auch ohne unbewertete Deals die offenen Rückfragen nach dem Grund lesen
+  const [frage] = await db.select({ id: E.id }).from(E).where(and(eq(E.tenantId, tenantId), isNotNull(E.daumenFrageRef), gte(E.daumenFrageAm, new Date(Date.now() - 2 * 86_400_000)))).limit(1);
+  if (!offen.length && !frage) return 0;
   const { profitPathKonfig } = await import("./profitpath");
   const cfg = await profitPathKonfig(tenantId);
   if (!cfg) return 0;
@@ -127,6 +147,43 @@ export async function discordDaumen(tenantId: string): Promise<number> {
     const runter = zahl(["👎", "👎🏻", "👎🏼", "👎🏽", "👎🏾", "👎🏿"]);
     if (hoch === runter) continue;
     await bewerten(tenantId, o.id, { daumen: hoch > runter ? "hoch" : "runter", weg: "discord" });
+    n++;
+    // B28.3: nach 👍 kurz im Thread nach dem Grund fragen (Zahl-Reaktionen als Knöpfe, Antwort optional).
+    if (hoch > runter) await grundFragen(tenantId, o.id, dc, kanal, nachricht).catch(() => undefined);
+  }
+  await grundAntwortenLesen(tenantId, dc).catch(() => 0);
+  return n;
+}
+
+type Dc = ReturnType<typeof import("@/lib/va/discord").discord>;
+
+async function grundFragen(tenantId: string, id: string, dc: Dc, kanal: string, nachricht: string) {
+  // Thread an der ProfitPath-Nachricht; gibt es ihn schon, hat er die ID der Nachricht.
+  const thread = await dc.threadAnNachricht(kanal, nachricht, "Deal: Grund für 👍").then((t) => t.id, () => nachricht);
+  const frage = await dc.senden(thread, grundFrageText(), { still: true });
+  for (const z of ZAHLEN) await dc.reagieren(thread, frage, z).catch(() => undefined);
+  await db.update(E).set({ daumenFrageRef: `${thread}/${frage}`, daumenFrageAm: new Date() }).where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
+}
+
+/** Offene Rückfragen (2 Tage): Reaktionen und Antworten im Thread lesen und als Gründe zum 👍 speichern. */
+async function grundAntwortenLesen(tenantId: string, dc: Dc): Promise<number> {
+  const offen = await db
+    .select({ id: E.id, ref: E.daumenFrageRef, gruende: E.daumenGruende, freitext: E.daumenFreitext })
+    .from(E)
+    .where(and(eq(E.tenantId, tenantId), eq(E.daumen, "hoch"), eq(E.daumenWeg, "discord"), isNotNull(E.daumenFrageRef), gte(E.daumenFrageAm, new Date(Date.now() - 2 * 86_400_000))))
+    .limit(30);
+  let n = 0;
+  for (const o of offen) {
+    const [thread, frage] = (o.ref ?? "").split("/");
+    if (!thread || !frage) continue;
+    const m = await dc.nachricht(thread, frage).catch(() => null);
+    if (!m) continue;
+    const antworten = (await dc.neue(thread, frage, 50).catch(() => [])).filter((x) => !x.author?.bot && x.content);
+    const a = grundAusAntwort((m.reactions ?? []).map((r) => ({ name: r.emoji.name, anzahl: r.count - (r.me ? 1 : 0) })), antworten.map((x) => x.content!));
+    if (!a.gruende.length && !a.freitext) continue;
+    if (JSON.stringify(a.gruende) === JSON.stringify(o.gruende ?? []) && a.freitext === o.freitext) continue;
+    await db.update(E).set({ daumenGruende: a.gruende, daumenFreitext: a.freitext }).where(and(eq(E.tenantId, tenantId), eq(E.id, o.id)));
+    modelle.delete(tenantId);
     n++;
   }
   return n;
@@ -320,11 +377,11 @@ export async function lernBerichtFuer(tenantId: string, monat: string) {
   const s = (await getSettings(tenantId)).dealEingang;
   const von = new Date(`${monat}-01T00:00:00Z`);
   const bis = new Date(Date.UTC(von.getUTCFullYear(), von.getUTCMonth() + 1, 1));
-  const rows = await db.select({ id: E.id, zeilen: E.zeilen, status: E.status, daumen: E.daumen, ergebnis: E.ergebnis, createdAt: E.createdAt, quelle: E.quelle }).from(E).where(and(eq(E.tenantId, tenantId), gte(E.createdAt, von), sql`${E.createdAt} < ${bis}`));
+  const rows = await db.select({ id: E.id, zeilen: E.zeilen, status: E.status, daumen: E.daumen, daumenGrund: E.daumenGrund, daumenGruende: E.daumenGruende, daumenFreitext: E.daumenFreitext, ergebnis: E.ergebnis, createdAt: E.createdAt, quelle: E.quelle }).from(E).where(and(eq(E.tenantId, tenantId), gte(E.createdAt, von), sql`${E.createdAt} < ${bis}`));
   // Schwelle je Quelle (Lugru Deals 60 vorbelegt)
   const deals = rows.map((e) => {
     const z = e.zeilen.filter((x) => x.wert).sort((a, b) => (b.wert?.wert ?? 0) - (a.wert?.wert ?? 0))[0];
-    return { id: e.id, titel: z?.titel ?? z?.angebot.name ?? null, datum: e.createdAt.toISOString().slice(0, 10), wert: z?.wert?.wert ?? null, status: e.status, daumen: e.daumen, realerRoi: e.ergebnis?.realerRoi ?? null, schwelle: wertSchwelleFuer(e.quelle, s), quelle: e.quelle };
+    return { id: e.id, titel: z?.titel ?? z?.angebot.name ?? e.zeilen[0]?.titel ?? e.zeilen[0]?.angebot.name ?? null, datum: e.createdAt.toISOString().slice(0, 10), wert: z?.wert?.wert ?? null, status: e.status, daumen: e.daumen, realerRoi: e.ergebnis?.realerRoi ?? null, schwelle: wertSchwelleFuer(e.quelle, s), quelle: e.quelle, gruende: daumenGruendeVon(e), freitext: e.daumenFreitext };
   });
   const b = lernBericht(deals, { schwelle: s.wertSchwelle ?? 70, zielRoi: s.zielRoi });
   const h = await historie(tenantId, s.zielRoi);

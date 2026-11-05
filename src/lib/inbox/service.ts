@@ -29,6 +29,10 @@ export type ParsedMail = {
   an?: string | null;
   /** Ordner/Label, aus dem die Mail kam. */
   ordner?: string | null;
+  /** Antwort auf (Message-IDs aus In-Reply-To/References) – z. B. Lieferanten-Antwort auf eine Bestellmail. */
+  antwortAuf?: string[];
+  /** Namen aller Anhänge (z. B. „Rechnung_123.pdf“). */
+  anhangNamen?: string[];
 };
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
@@ -74,6 +78,8 @@ export async function parseRaw(raw: Buffer, providerMessageId?: string, ordner?:
       .map((a) => ({ name: a.filename ?? "Anhang", mime: a.contentType, data: new Uint8Array(a.content) })),
     an,
     ordner: ordner ?? null,
+    antwortAuf: [...new Set([...(m.inReplyTo ? [m.inReplyTo] : []), ...(Array.isArray(m.references) ? m.references : m.references ? [m.references] : [])])],
+    anhangNamen: (m.attachments ?? []).map((a) => a.filename ?? "").filter(Boolean),
   };
 }
 
@@ -185,6 +191,10 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     .onConflictDoNothing()
     .returning();
   if (!row) return "duplicate";
+  // B28.5: Antwort des Lieferanten auf eine Bestellmail (Rechnung, Sendungsnummer) → am Deal und im Einkauf vermerken.
+  await import("@/lib/deal-eingang/bestellmail")
+    .then((b) => b.antwortZuordnen(tenantId, { id: row.id, fromAddress: m.fromAddress, subject: m.subject, text: m.text, receivedAt: m.receivedAt, antwortAuf: m.antwortAuf ?? [], anhangNamen: m.anhangNamen ?? [] }))
+    .catch((e) => console.error("[Bestellmail-Antwort]", e instanceof Error ? e.message : e));
   if (regelZeile) await db.update(schema.mailRegeln).set({ treffer: sql`${schema.mailRegeln.treffer} + 1` }).where(eq(schema.mailRegeln.id, regelZeile.id));
   if (autoArchiv) return "new";
   // Gericht/Behörde/Gegenseite ohne Fall → Entwurf an den Anwalt + Aufgabe „an Anwalt weitergeben?“ (nie automatisch gesendet).

@@ -153,7 +153,7 @@ describe("Aktionsmuster, Erfolgskontrolle, Bestellung, Deal-Blatt", () => {
     const t = dealBlattText({ nr: 7, titel: "Testpfanne 28 cm", asin: "B0TEST0001", marke: "Testmarke", kundenpreisNetto: 11.5, mindestmengeKunde: 10, maxProKunde: 50, rest: 40, frist: "2026-11-10", laender: [{ land: "DE", vk: 29.99, gewinn: 5.1, roi: 42.1, verkaeufe: 120, angebote: 6 }, { land: "NL", vk: null, gewinn: null, roi: null, verkaeufe: null, angebote: null }], link: "https://example.invalid/portal/deals/x" });
     expect(t).toContain("Deal #7: Testpfanne 28 cm (Testmarke)");
     expect(t).toContain("11,50 € netto/Stück · ab 10 Stück, max. 50 · noch 40 frei · Frist 10.11.2026");
-    expect(t).toContain("DE: VK 29,99 € · Gewinn 5,10 € · ROI 42 % · ~120/Monat · 6 Angebote");
+    expect(t).toContain("DE: VK 29,99 € · Gewinn 5,10 € · Marge 17 % · ROI 42 % · ~120/Monat · 6 Angebote");
     expect(t).not.toContain("NL:");
     expect(t).toContain("Markenfreigabe im eigenen Amazon-Konto");
   });

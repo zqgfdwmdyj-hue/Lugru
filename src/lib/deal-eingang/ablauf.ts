@@ -48,7 +48,7 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
     const summe = best ? (best.gewinn ?? 0) * (best.empfohlen ?? 1) : 0;
     if (best && summe >= schwelle) {
       const { smsMelden } = await import("@/lib/mobil/sms");
-      await smsMelden(tenantId, { art: "deal", kern: `Grüner Deal${e.quelle ? ` (${e.quelle})` : ""}: ${best.bestesLand ?? ""} ${(best.gewinn ?? 0).toFixed(2).replace(".", ",")} € je Stück, ROI ${Math.round(best.roi ?? 0)} %${best.empfohlen ? `, empfohlen ${best.empfohlen} Stück` : ""}`.replace(/\s+/g, " "), schluessel: `deal:${e.id}`, bezug: `deal:${e.id}`, codes: ["GEKAUFT n", "KAUFEN n", "SPÄTER"] }).catch(() => null);
+      await smsMelden(tenantId, { art: "deal", kern: `Grüner Deal${e.quelle ? ` (${e.quelle})` : ""}: ${best.bestesLand ?? ""} ${(best.gewinn ?? 0).toFixed(2).replace(".", ",")} € je Stück${best.margeBrutto !== null && best.margeBrutto !== undefined ? `, Marge ${Math.round(best.margeBrutto)} %` : ""}, ROI ${Math.round(best.roi ?? 0)} %${best.empfohlen ? `, empfohlen ${best.empfohlen} Stück` : ""}`.replace(/\s+/g, " "), schluessel: `deal:${e.id}`, bezug: `deal:${e.id}`, codes: ["GEKAUFT n", "KAUFEN n", "SPÄTER"] }).catch(() => null);
     }
   }
   return r;

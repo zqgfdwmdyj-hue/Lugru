@@ -24,6 +24,8 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
   const { po, supplier, invoice } = row;
   const items = await db.select().from(schema.purchaseOrderItems).where(and(eq(schema.purchaseOrderItems.poId, po.id), eq(schema.purchaseOrderItems.tenantId, t))).orderBy(asc(schema.purchaseOrderItems.createdAt));
   const [label, cls] = PO_STATUS_LABEL[po.status];
+  // B28.5: Bestellmail aus dem Deal-Eingang (Beleg „Bestellung gesendet“) und Antwort des Lieferanten
+  const bestellmail = (await import("@/lib/deal-eingang/bestellmail").then((b) => b.bestellmailsFuerBestellungen(t, [po.id])).catch(() => new Map())).get(po.id) ?? null;
   const totalGross = items.reduce((s, i) => s + i.quantity * Number(i.unitCostGross), 0) + (po.shippingCostGross ?? 0);
   const totalNet = items.reduce((s, i) => s + i.quantity * netFromGross(Number(i.unitCostGross), Number(i.vatRate)), 0);
   const editable = po.status !== "received" && po.status !== "cancelled";
@@ -88,6 +90,19 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
         </div>
 
         <aside className="col-side">
+          {bestellmail && (
+            <section className="card card-pad stack small" data-testid="ek-bestellmail">
+              <h2>Beleg</h2>
+              <div><span className="tag tag-ok">Bestellung gesendet</span> am {bestellmail.gesendetAm?.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) ?? "–"} an {bestellmail.an}</div>
+              <div className="muted">{bestellmail.betreff}</div>
+              {bestellmail.antwortAm ? (
+                <div>Antwort am {bestellmail.antwortAm.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}{bestellmail.sendungsnummer ? ` · Sendungsnummer ${bestellmail.sendungsnummer}` : ""}{bestellmail.rechnungErhalten ? " · Rechnung erhalten" : ""}</div>
+              ) : (
+                <div className="muted">Noch keine Antwort des Lieferanten.</div>
+              )}
+              <Link href={`/deal-eingang/${bestellmail.dealId}#bestellmail`}>Zum Deal →</Link>
+            </section>
+          )}
           <section className="card card-pad stack">
             <h2>Bestellung</h2>
             {editable ? (

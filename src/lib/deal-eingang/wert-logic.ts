@@ -4,7 +4,7 @@
 // Ampel gelten immer – der Wert ersetzt keine Prüfung. Reaktionen der Lugru-Gruppe sind ein schwaches, positives
 // Signal (nur Anzahl, keine Mitglieder); eine fehlende Reaktion heißt nicht „nicht gekauft“.
 
-import type { DealAehnlich, DealMerkmale, DealWert } from "@/db/tables/deal-eingang";
+import { DAUMEN_GRUENDE_HOCH, type DealAehnlich, type DealMerkmale, type DealWert } from "@/db/tables/deal-eingang";
 
 type Verlauf = [tag: string, buybox: number | null, amazon: number | null, angebote: number | null, rang: number | null];
 export type KeepaLite = {
@@ -23,7 +23,7 @@ const TAG = 86_400_000;
 /** Merkmale beim Eingang aus Keepa (Verlauf bis 365 Tage), Rechnung der Deal-Ampel und Kontext. */
 export function merkmaleAus(
   k: KeepaLite | null,
-  z: { land: string | null; ekNetto: number | null; roi: number | null; marge: number | null; amazonProzent: number | null; angebote: number | null },
+  z: { land: string | null; ekNetto: number | null; roi: number | null; marge: number | null; amazonProzent: number | null; angebote: number | null; laender?: { land: string; angebote: number | null }[]; menge?: number | null },
   kontext: { marke: string | null; kategorie: string | null; quelle: string | null; weg: string; jetzt: Date; kapitalAmpel: "gruen" | "gelb" | "rot" | null; bestand: number | null },
 ): DealMerkmale {
   const jetzt = kontext.jetzt.getTime();
@@ -63,6 +63,8 @@ export function merkmaleAus(
   const rAlle = v.filter((r) => r[4] !== null).map((r) => r[4]!);
   const saison = rVorjahr.length >= 10 && rAlle.length >= 120 ? r1((mittel(rVorjahr)! / mittel(rAlle)!) * 100) / 100 : null;
   const jt = new Date(kontext.jetzt.toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+  // B28.3: Land mit den wenigsten Angeboten (Deal-Ampel je Land)
+  const mitAngeboten = (z.laender ?? []).filter((l): l is { land: string; angebote: number } => typeof l.angebote === "number").sort((a, b) => a.angebote - b.angebote);
   return {
     land: z.land,
     bbJetzt,
@@ -93,6 +95,9 @@ export function merkmaleAus(
     stunde: jt.getHours(),
     kapitalAmpel: kontext.kapitalAmpel,
     bestand: kontext.bestand,
+    angeboteMinLand: mitAngeboten[0]?.angebote ?? null,
+    angeboteMinLandName: mitAngeboten[0]?.land ?? null,
+    menge: z.menge ?? null,
   };
 }
 
@@ -153,7 +158,7 @@ export function kennzahlenWert(m: Partial<DealMerkmale>, zielRoi: number): { wer
 // ---- Ähnliche frühere Deals --------------------------------------------------------------------------------------
 
 /** Ein früherer Deal mit Ergebnis: label 1 = gelohnt/gewollt, 0 = nicht; gewicht = wie verlässlich das Signal ist. */
-export type HistorieDeal = { id: string | null; quelle: "eigen" | "lugru"; titel: string | null; asin: string | null; datum: string; merkmale: Partial<DealMerkmale>; label: number; gewicht: number; ergebnis: string; realerRoi?: number | null; kaeufe?: number };
+export type HistorieDeal = { id: string | null; quelle: "eigen" | "lugru"; titel: string | null; asin: string | null; datum: string; merkmale: Partial<DealMerkmale>; label: number; gewicht: number; ergebnis: string; realerRoi?: number | null; kaeufe?: number; /** B28.3: 👍/👎 mit Gründen (eigene Deals). */ daumen?: "hoch" | "runter" | null; gruende?: string[] };
 
 const DIMS: { k: keyof DealMerkmale; f: (x: number) => number }[] = [
   { k: "roi", f: (x) => x / 100 },
@@ -231,6 +236,82 @@ export function modellWahrscheinlichkeit(mo: Modell, m: Partial<DealMerkmale>): 
 /** Welche Merkmale zählen am meisten (Betrag des Gewichts)? */
 export const modellMerkmale = (mo: Modell) => DIMS.map((d, i) => ({ merkmal: d.k, gewicht: Math.round(mo.gewichte[i] * 100) / 100 })).sort((a, b) => Math.abs(b.gewicht) - Math.abs(a.gewicht));
 
+// ---- B28.3: Gründe aus 👍/👎 -------------------------------------------------------------------------------------
+
+const [H_AMAZON, H_LAND, H_ABVERKAUF, H_MARKE, H_POSTEN] = DAUMEN_GRUENDE_HOCH;
+const gleicheMarke = (m: Partial<DealMerkmale>, h: Partial<DealMerkmale>) => {
+  const n = (x: string | null | undefined) => (x ?? "").trim().toLowerCase();
+  return (n(m.marke) !== "" && n(m.marke) === n(h.marke)) || (n(m.kategorie) !== "" && n(m.kategorie) === n(h.kategorie));
+};
+
+/**
+ * Wann ein Grund auf einen neuen Deal zutrifft. „mitHistorie“: nur zusammen mit dem früheren Deal (gleiche Marke bzw.
+ * Kategorie); sonst reicht, dass der neue Deal das Muster zeigt.
+ */
+export const GRUND_REGELN: Record<string, { passt: (m: Partial<DealMerkmale>, frueher: Partial<DealMerkmale>) => boolean; detail?: (m: Partial<DealMerkmale>) => string | null }> = {
+  [H_AMAZON]: { passt: (m) => (m.amazonAnteil ?? 0) >= 50 && m.ekZuTief != null && m.ekZuTief <= 60, detail: (m) => `EK ${Math.round(m.ekZuTief ?? 0)} % vom 12-Monats-Tief` },
+  [H_LAND]: { passt: (m) => m.angeboteMinLand != null && m.angeboteMinLand <= 1, detail: (m) => `${m.angeboteMinLandName ?? "ein Land"}: ${m.angeboteMinLand === 0 ? "kein Angebot" : "1 Angebot"}` },
+  [H_ABVERKAUF]: { passt: (m) => m.ekZuTief != null && m.ekZuTief <= 70, detail: (m) => `EK ${Math.round(m.ekZuTief ?? 0)} % vom 12-Monats-Tief` },
+  [H_MARKE]: { passt: (m, f) => gleicheMarke(m, f), detail: (m) => m.marke ?? m.kategorie ?? null },
+  [H_POSTEN]: { passt: (m) => (m.menge ?? 0) >= 50, detail: (m) => `${m.menge} Stk` },
+  "zu viele Angebote": { passt: (m) => (m.angebote ?? 0) >= 15 || (m.angeboteTrend30 ?? 0) > 30 },
+  "Chart instabil": { passt: (m) => (m.schwankung90 ?? 0) > 15 || (m.einbrueche180 ?? 0) >= 2 },
+  "Amazon drin": { passt: (m) => (m.amazonAnteil ?? 0) >= 20 },
+  "Marke gesperrt": { passt: (m, f) => gleicheMarke(m, f) },
+  Saison: { passt: (m) => (m.saison ?? 0) > 1.2 },
+};
+
+export const grundKurz = (g: string) => (g.length > 40 ? `${g.slice(0, 38)}…` : g);
+
+/**
+ * Deine Gründe aus früheren 👍/👎 (eigene Deals), die auf diesen Deal zutreffen: je Grund +5 Punkte (👍) bzw. −5 (👎),
+ * jede weitere Begründung +2 bis höchstens ±12. Freitext zählt nicht als Regel (steht nur im Lernbericht).
+ */
+export function grundBeitraege(m: Partial<DealMerkmale>, historie: HistorieDeal[]): Beitrag[] {
+  const je = new Map<string, { daumen: "hoch" | "runter"; n: number }>();
+  for (const h of historie) {
+    if (h.quelle !== "eigen" || !h.daumen || !h.gruende?.length) continue;
+    for (const g of h.gruende) {
+      const r = GRUND_REGELN[g];
+      if (!r || !r.passt(m, h.merkmale)) continue;
+      const k = `${h.daumen}|${g}`;
+      je.set(k, { daumen: h.daumen, n: (je.get(k)?.n ?? 0) + 1 });
+    }
+  }
+  const out: Beitrag[] = [];
+  for (const [k, v] of je) {
+    const g = k.slice(k.indexOf("|") + 1);
+    const punkte = Math.min(12, 5 + 2 * (v.n - 1)) * (v.daumen === "hoch" ? 1 : -1);
+    const d = GRUND_REGELN[g].detail?.(m);
+    out.push({ punkte, text: `${v.daumen === "hoch" ? "👍" : "👎"}-Grund „${grundKurz(g)}“ trifft zu${d ? ` (${d})` : ""} – ${v.n}× von dir begründet` });
+  }
+  return out.sort((a, b) => Math.abs(b.punkte) - Math.abs(a.punkte));
+}
+
+/** Zahl-Reaktionen als „Knöpfe“ der Discord-Rückfrage nach 👍 (Reihenfolge = DAUMEN_GRUENDE_HOCH). */
+export const GRUND_ZAHLEN = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+const ZAHLEN = GRUND_ZAHLEN;
+
+/** Rückfrage-Text nach 👍 in Discord (Nummer = Reaktion). */
+export function grundFrageText() {
+  return ["👍 gespeichert. Warum passt der Deal? Zahl antippen (mehrere möglich) oder kurz antworten – optional.", ...DAUMEN_GRUENDE_HOCH.map((g, i) => `${ZAHLEN[i]} ${g}`)].join("\n");
+}
+
+/** Gründe aus einer Antwort: Zahl-Reaktionen (ohne die des Bots) und Text („2, 5“ oder eigener Satz → Freitext). */
+export function grundAusAntwort(reaktionen: { name: string | null; anzahl: number }[], texte: string[]): { gruende: string[]; freitext: string | null } {
+  const nr = new Set<number>();
+  for (const r of reaktionen) {
+    const i = ZAHLEN.indexOf(r.name ?? "");
+    if (i >= 0 && r.anzahl > 0) nr.add(i);
+  }
+  const frei: string[] = [];
+  for (const t of texte.map((x) => x.trim()).filter(Boolean)) {
+    if (/^[\d\s,;.+und]+$/i.test(t)) for (const m of t.match(/\d/g) ?? []) nr.add(Number(m) - 1);
+    else frei.push(t);
+  }
+  return { gruende: [...nr].filter((i) => i >= 0 && i < DAUMEN_GRUENDE_HOCH.length).sort().map((i) => DAUMEN_GRUENDE_HOCH[i]), freitext: frei.join(" · ").slice(0, 500) || null };
+}
+
 // ---- Deal-Wert ---------------------------------------------------------------------------------------------------
 
 /** B22.2: Vorwissen „Lugru-Deals würde ich nahezu blind kaufen“ – Lugru startet mit Deal-Wert 60. */
@@ -281,6 +362,9 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
     wert = wert * 0.7 + modellWahrscheinlichkeit(o.modell, m) * 100 * 0.3;
     verfahren = "modell";
   }
+  // B28.3: deine begründeten 👍/👎 bei früheren Deals
+  const gb = grundBeitraege(m, o.historie);
+  wert += gb.reduce((n, x) => n + x.punkte, 0);
   wert = Math.round(Math.max(0, Math.min(100, wert)));
   // Lugru-Vorwissen: Startwert 60, solange kein hartes Rot-Kriterium vorliegt.
   const lugru0 = istLugruQuelle(o.quelle);
@@ -295,12 +379,13 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
   const rois = gekauft.map((x) => x.realerRoi).filter((v): v is number => typeof v === "number");
   const lk = lugru.reduce((n, x) => n + (x.kaeufe ?? 0), 0);
   const dafuer = [
+    ...gb.filter((x) => x.punkte > 0).map((x) => x.text),
     ...(eigen.length ? [`${gekauft.length} von ${eigen.length} ähnlichen Deals gekauft/gut${rois.length ? `, Ø realer ROI ${Math.round(mittel(rois)!)} %` : ""}`] : []),
     ...(lk ? [`Lugru-Gruppe: ${lk} Käufe bei ähnlichen Deals`] : []),
     ...kz.beitraege.filter((x) => x.punkte > 0).sort((a, b) => b.punkte - a.punkte).map((x) => x.text),
   ];
   if (lugru0 && !harte.length && o.ampel !== "rot") dafuer.unshift(`Lugru-Deal: Vorwissen „nahezu blind kaufen“ (Start ${LUGRU_START})`);
-  const dagegen = [...harte, ...kz.beitraege.filter((x) => x.punkte < 0 && !harte.includes(x.text)).sort((a, b) => a.punkte - b.punkte).map((x) => x.text)];
+  const dagegen = [...harte, ...gb.filter((x) => x.punkte < 0).map((x) => x.text), ...kz.beitraege.filter((x) => x.punkte < 0 && !harte.includes(x.text)).sort((a, b) => a.punkte - b.punkte).map((x) => x.text)];
   if (gedeckelt) dagegen.unshift("Ampel rot – der Deal-Wert ersetzt keine Prüfung");
   const begruendung = `Passt zu dir (${wert}/100)${dafuer.length ? `: ${dafuer.slice(0, 3).join(", ")}` : ""}.${dagegen.length ? ` Gegen: ${dagegen.slice(0, 2).join(", ")}.` : ""}`;
   const aehnlicheListe: DealAehnlich[] = nb.slice(0, 5).map((x) => ({ id: x.id, quelle: x.quelle, titel: x.titel, asin: x.asin, datum: x.datum, ergebnis: x.ergebnis, abstand: Math.round(x.abstand * 1000) / 1000 }));
@@ -309,12 +394,18 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
 
 // ---- Historie aufbereiten ----------------------------------------------------------------------------------------
 
-/** Eigener Deal → Label: gekauft + realer ROI ≥ Ziel (bzw. noch offen und nicht 👎) = 1; 👎/verworfen/Verlust = 0. */
-export function eigenesLabel(d: { status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null }, zielRoi: number): { label: number; gewicht: number; ergebnis: string } | null {
+/**
+ * Eigener Deal → Label: gekauft + realer ROI ≥ Ziel (bzw. noch offen und nicht 👎) = 1; 👎/verworfen/Verlust = 0.
+ * B28.3: 👍 mit Grund (Auswahl oder Freitext) zählt mehr als ein unbegründetes 👍.
+ */
+export function eigenesLabel(d: { status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null; begruendet?: boolean }, zielRoi: number): { label: number; gewicht: number; ergebnis: string } | null {
+  const hochBegruendet = d.daumen === "hoch" && !!d.begruendet;
   if (d.status === "gekauft") {
     if (d.realerRoi !== null) return d.realerRoi >= zielRoi ? { label: 1, gewicht: 1.5, ergebnis: `gekauft, realer ROI ${d.realerRoi} %` } : d.realerRoi < 0 ? { label: 0, gewicht: 1.5, ergebnis: `gekauft, Verlust (ROI ${d.realerRoi} %)` } : { label: 0.5, gewicht: 1.2, ergebnis: `gekauft, realer ROI ${d.realerRoi} %` };
+    if (hochBegruendet) return { label: 0.9, gewicht: 1.2, ergebnis: "gekauft, 👍 mit Grund (Ergebnis offen)" };
     return d.daumen === "runter" ? { label: 0.3, gewicht: 1, ergebnis: "gekauft, 👎" } : { label: 0.85, gewicht: 1, ergebnis: "gekauft (Ergebnis offen)" };
   }
+  if (hochBegruendet) return { label: 0.9, gewicht: 1.1, ergebnis: "👍 mit Grund" };
   if (d.daumen === "hoch") return { label: 0.8, gewicht: 0.8, ergebnis: "👍" };
   if (d.daumen === "runter") return { label: 0, gewicht: 0.8, ergebnis: "👎" };
   if (d.status === "verworfen") return { label: 0.1, gewicht: 0.6, ergebnis: "verworfen" };
@@ -355,7 +446,25 @@ export function bewaehrt(d: { vkEur: number | null; gepostetAm: string }, k: Pic
 
 // ---- Monatsbericht -----------------------------------------------------------------------------------------------
 
-export type BerichtDeal = { id: string; titel: string | null; datum: string; wert: number | null; status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null; /** Schwelle der Quelle (sonst die allgemeine). */ schwelle?: number; quelle?: string | null };
+export type BerichtDeal = { id: string; titel: string | null; datum: string; wert: number | null; status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null; /** Schwelle der Quelle (sonst die allgemeine). */ schwelle?: number; quelle?: string | null; /** B28.3 */ gruende?: string[]; freitext?: string | null };
+
+/** B28.3: Gründe im Bericht – Anzahl je Grund (👍/👎), begründete vs. unbegründete 👍, letzte Freitexte. */
+export function gruendeBericht(deals: BerichtDeal[]) {
+  const zaehle = (d: "hoch" | "runter") => {
+    const m = new Map<string, number>();
+    for (const x of deals) if (x.daumen === d) for (const g of x.gruende ?? []) m.set(g, (m.get(g) ?? 0) + 1);
+    return [...m].map(([grund, anzahl]) => ({ grund, anzahl })).sort((a, b) => b.anzahl - a.anzahl);
+  };
+  const hoch = deals.filter((d) => d.daumen === "hoch");
+  const begruendet = hoch.filter((d) => (d.gruende?.length ?? 0) > 0 || !!d.freitext?.trim());
+  return {
+    hoch: zaehle("hoch"),
+    runter: zaehle("runter"),
+    hochBegruendet: begruendet.length,
+    hochOhneGrund: hoch.length - begruendet.length,
+    freitexte: deals.filter((d) => d.daumen && d.freitext?.trim()).slice(0, 10).map((d) => ({ id: d.id, datum: d.datum, titel: d.titel, daumen: d.daumen, text: d.freitext!.trim() })),
+  };
+}
 
 /** „Wie gut lag der Deal-Wert?“: Trefferquote, verpasste gute Deals, Fehlkäufe. */
 export function lernBericht(deals: BerichtDeal[], o: { schwelle: number; zielRoi: number }) {
@@ -379,5 +488,6 @@ export function lernBericht(deals: BerichtDeal[], o: { schwelle: number; zielRoi
     lugruDeals: lg.length ? { deals: lg.length, mitWert: lg.filter((d) => d.wert !== null).length, ueberSchwelle: lgHoch.length, gekauft: lg.filter((d) => d.status === "gekauft").length, mitErgebnis: lg.filter((d) => d.status === "gekauft" && d.realerRoi !== null).length, trefferquote: lgErg.length ? Math.round((lgErg.filter(gut).length / lgErg.length) * 100) : null, trefferBasis: lgErg.length } : null,
     verpasst: verpasst.slice(0, 10),
     fehlkaeufe: fehlkaeufe.slice(0, 10),
+    gruende: gruendeBericht(deals),
   };
 }

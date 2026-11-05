@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireArea } from "@/lib/auth/session";
-import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
-import { eingang, keepaVerlaufAusCache, STATUS_TEXT } from "@/lib/deal-eingang/service";
+import { AMPEL_EMOJI, antwortEntwurf, freischaltungLink, landKennzahlen, margeBrutto, realeMarge } from "@/lib/deal-eingang/logic";
+import { eingang, keepaSzenarioAusCache, keepaVerlaufAusCache, STATUS_TEXT } from "@/lib/deal-eingang/service";
+import { getSettings } from "@/lib/settings";
+import { PreisSzenario, type SzenarioLand } from "./szenario";
 import { miniChart, type MiniChart } from "@/lib/deal-eingang/chart-logic";
 import { KeepaMini } from "../keepa-mini";
 import { formatEuro } from "@/lib/numbers";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
-import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction } from "../actions";
-import { DAUMEN_GRUENDE } from "@/db/tables/deal-eingang";
+import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction, wareAction, bestellmailEntwurfAction, bestellmailAction } from "../actions";
+import { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH, DEAL_VERPACKUNG, VERPACKUNG_TEXT } from "@/db/tables/deal-eingang";
+import { bestellmailsFuerDeal, lieferantFuerDeal } from "@/lib/deal-eingang/bestellmail";
 import { angebotsLink } from "@/lib/deal-eingang/kauf-logic";
 import { kaufVorschlag } from "@/lib/deal-eingang/kauf";
 import { kaufNrGueltig } from "@/lib/deal-eingang/shop-logic";
@@ -38,11 +41,24 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         if (v && chart) charts.set(z.nr, { chart, land: v.land, stand: v.stand });
       }),
   );
+  // B28.2: Keepa-Tagesverlauf je Land fürs Preis-Szenario – ebenfalls nur aus dem Zwischenspeicher.
+  const szenarioKeepa = new Map<number, Awaited<ReturnType<typeof keepaSzenarioAusCache>>>();
+  await Promise.all(
+    e.zeilen
+      .filter((z) => z.asin && z.laender.some((l) => l.provision !== undefined))
+      .map(async (z) => szenarioKeepa.set(z.nr, await keepaSzenarioAusCache(session.tenantId, z.asin!, z.laender.map((l) => l.land)).catch(() => ({})))),
+  );
+  const de = (await getSettings(session.tenantId)).dealEingang;
+  const zielRoi = de.zielRoi;
+  const zielMarge = de.zielMarge ?? 10;
   const bilder = e.dateiIds.map((fid, i) => ({ id: fid, name: e.dateiNamen[i] ?? `Datei ${i + 1}` }));
   // Kaufen mit einem Tap: vorbereiteter Kauf aus dem Push bzw. jetzt berechnet (Shop-Profil, Menge, Gutschein).
   const vorschlag = e.pruefung === "fertig" ? await kaufVorschlag(e).catch(() => null) : null;
   const kauf = vorschlag?.kauf ?? null;
   const nrGueltig = e.kaufNr && kaufNrGueltig(e.kauf?.am) ? e.kaufNr : null;
+  // B28.5: Lieferant zur Quelle (Einstellungen → Deal-Quellen) und Bestellmails am Deal
+  const [lieferant, bestellmails] = await Promise.all([lieferantFuerDeal(session.tenantId, e.quelle).catch(() => null), bestellmailsFuerDeal(session.tenantId, e.id).catch(() => [])]);
+  const datum = (d: Date | null) => (d ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–");
   return (
     <>
       <AutoRefresh active={laeuft} everyMs={3000} />
@@ -75,17 +91,36 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         </details>
         <div className="small muted">Status: {STATUS_TEXT[e.status]}{e.grund ? ` – ${e.grund}` : ""}</div>
         {e.gekauftAm && <div className="small" data-testid="de-gekauft">Gekauft: {e.gekauftMenge} Stk{e.gekauftPreis !== null ? ` zu ${eur(e.gekauftPreis)} netto` : ""} am {e.gekauftAm.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} ({e.gekauftWeg === "automatisch" ? `automatisch erkannt – ${e.gekauftRef ?? "Beleg"}` : e.gekauftWeg === "mail" ? "Bestellbestätigung per Mail" : e.gekauftWeg === "claude" ? "über Claude" : e.gekauftWeg === "sprache" || e.gekauftWeg === "sms" ? "per Sprache/SMS" : "von Hand"}){e.bestellungId ? <> · <Link href={`/einkauf/${e.bestellungId}`}>Bestellung (Wareneingang, Rechnung)</Link></> : null}</div>}
-        {e.daumen && <div className="small" data-testid="de-daumen">{e.daumen === "hoch" ? "👍" : "👎"}{e.daumenGrund ? ` ${e.daumenGrund}` : ""} ({e.daumenWeg === "discord" ? "Discord" : e.daumenWeg === "push" ? "Push" : e.daumenWeg === "claude" ? "Claude" : "Seite"})</div>}
-        {e.ergebnis && <div className="small" data-testid="de-ergebnis">Ergebnis nach {e.ergebnis.tage} Tagen: {e.ergebnis.verkauft} verkauft{e.ergebnis.erstattet ? `, ${e.ergebnis.erstattet} erstattet` : ""}{e.ergebnis.oVk !== null ? `, Ø VK ${eur(e.ergebnis.oVk)}` : ""}{e.ergebnis.realerRoi !== null ? `, realer ROI ${pz(e.ergebnis.realerRoi)}` : ""}{e.ergebnis.tageBisAbverkauf !== null ? `, abverkauft nach ${e.ergebnis.tageBisAbverkauf} T` : ""}</div>}
+        {e.daumen && (
+          <div className="small" data-testid="de-daumen">
+            {e.daumen === "hoch" ? "👍" : "👎"}
+            {e.daumenGrund ? ` ${e.daumenGrund}` : ""}
+            {e.daumenGruende.length ? ` ${e.daumenGruende.join(" · ")}` : ""}
+            {e.daumenFreitext ? ` – „${e.daumenFreitext}“` : ""} ({e.daumenWeg === "discord" ? "Discord" : e.daumenWeg === "push" ? "Push" : e.daumenWeg === "claude" ? "Claude" : "Seite"})
+            {e.daumen === "hoch" && e.daumenWeg === "discord" && e.daumenFrageRef && !e.daumenGruende.length && !e.daumenFreitext ? <span className="muted"> · Rückfrage nach dem Grund im Discord-Thread offen</span> : null}
+          </div>
+        )}
+        {e.ergebnis && <div className="small" data-testid="de-ergebnis">Ergebnis nach {e.ergebnis.tage} Tagen: {e.ergebnis.verkauft} verkauft{e.ergebnis.erstattet ? `, ${e.ergebnis.erstattet} erstattet` : ""}{e.ergebnis.oVk !== null ? `, Ø VK ${eur(e.ergebnis.oVk)}` : ""}{e.ergebnis.realerRoi !== null ? `, realer ROI ${pz(e.ergebnis.realerRoi)}` : ""}{realeMarge(e.ergebnis) !== null ? `, reale Marge ${pz(realeMarge(e.ergebnis))}` : ""}{e.ergebnis.tageBisAbverkauf !== null ? `, abverkauft nach ${e.ergebnis.tageBisAbverkauf} T` : ""}</div>}
       </div>
 
-      {e.zeilen.map((z) => (
+      {e.zeilen.map((z) => {
+        const kz = new Map(z.laender.map((l) => [l.land, landKennzahlen(l, z.ekNetto, zielMarge)]));
+        const bestLand = z.laender.find((l) => l.land === z.bestesLand);
+        const margeBest = z.margeBrutto ?? (bestLand ? margeBrutto(bestLand.gewinn, bestLand.vk90Eur ?? bestLand.vkEur) : null);
+        const maxEkMarge = z.laender.filter((l) => kz.get(l.land)?.maxEkMarge != null).map((l) => ({ land: l.land, ek: kz.get(l.land)!.maxEkMarge! })).sort((a, b) => b.ek - a.ek);
+        const keepaSz = szenarioKeepa.get(z.nr);
+        const szenario: SzenarioLand[] = keepaSz
+          ? z.laender
+              .filter((l) => l.provision !== undefined && l.mwstSatz !== undefined)
+              .map((l) => ({ land: l.land, vk: l.vkEur ?? l.vk90Eur, mwstSatz: l.mwstSatz!, provision: l.provision!, fba: l.fba ?? 0, prep: l.prep ?? 0, tage: keepaSz[l.land]?.tage ?? [], verkauftVerlauf: keepaSz[l.land]?.verkauftVerlauf ?? [], aktuellVerkaeufe: l.verkaeufeMonat ?? keepaSz[l.land]?.aktuell ?? null }))
+          : [];
+        return (
         <section key={z.nr} className="card card-pad stack" style={{ marginTop: 12 }} data-testid="de-zeile" data-nr={z.nr} data-ampel={z.ampel} data-asin={z.asin ?? ""}>
           <h2 style={{ margin: 0 }}>{AMPEL_EMOJI[z.ampel]} {z.titel ?? z.angebot.name ?? z.asin ?? `Angebot ${z.nr}`}</h2>
           <div className="small">
             {z.asin ? <a href={`https://www.amazon.de/dp/${z.asin}`} target="_blank" rel="noreferrer">{z.asin}</a> : "keine ASIN"}
             {z.zuordnung !== "asin" && z.asin ? ` (über ${z.zuordnung === "ean" ? "EAN" : "Titelsuche"})` : ""} · EK {z.ekNetto !== null ? `${eur(z.ekNetto)} netto` : "fehlt"}
-            {z.bestesLand ? ` · bestes Land ${z.bestesLand}: ${eur(z.gewinn)}/Stk, ROI ${pz(z.roi)}, Marge ${pz(z.marge)}` : ""}
+            {z.bestesLand ? ` · bestes Land ${z.bestesLand}: ${eur(z.gewinn)}/Stk, Marge ${pz(margeBest)}, ROI ${pz(z.roi)}` : ""}
             {z.empfohlen !== null ? ` · empfohlen ${z.empfohlen} Stk${z.kapitalbedarf ? ` (${eur(z.kapitalbedarf)})` : ""}` : ""}
           </div>
           {z.gruende.length > 0 && <ul className="small" style={{ margin: 0 }} data-testid="de-gruende">{z.gruende.map((g) => <li key={g}>{g}</li>)}</ul>}
@@ -101,22 +136,51 @@ export default async function DealEingangDetail({ params, searchParams }: { para
             </div>
           )}
           {charts.has(z.nr) && <KeepaMini {...charts.get(z.nr)!} />}
-          {z.maxEk.length > 0 && <div className="small" data-testid="de-maxek">Max. EK für Ziel-ROI: {z.maxEk.map((m) => `${m.land} ${eur(m.ek)}`).join(" · ")}</div>}
+          {(z.maxEk.length > 0 || maxEkMarge.length > 0) && (
+            <div className="small" data-testid="de-maxek">
+              {z.maxEk.length > 0 && <span data-testid="de-maxek-roi">Max. EK für Ziel-ROI ({zielRoi} %): {z.maxEk.map((m) => `${m.land} ${eur(m.ek)}`).join(" · ")}</span>}
+              {z.maxEk.length > 0 && maxEkMarge.length > 0 && <br />}
+              {maxEkMarge.length > 0 && <span data-testid="de-maxek-marge">Max. EK für Ziel-Marge ({zielMarge} %): {maxEkMarge.map((m) => `${m.land} ${eur(m.ek)}`).join(" · ")}</span>}
+            </div>
+          )}
           {z.eigen && <div className="small muted">Eigene Lage: {z.eigen.bestand} auf Lager{z.eigen.unterwegs ? `, ${z.eigen.unterwegs} unterwegs` : ""}{z.eigen.reichweite !== null ? `, Reichweite ${z.eigen.reichweite >= 9999 ? "∞" : `${z.eigen.reichweite} T`}` : ""}{z.eigen.kapitalAmpel ? `, Kapital-Ampel ${AMPEL_EMOJI[z.eigen.kapitalAmpel]}` : ""}{z.eigen.letzterEk ? `, letzter EK ${eur(z.eigen.letzterEk)}` : ""}{z.eigen.bestellvorschlag ? ", Bestellvorschlag offen" : ""}{z.eigen.verlustStopp ? `, ${z.eigen.verlustStopp}` : ""}</div>}
           {z.laender.length > 0 && (
             <div className="table-wrap">
               <table className="table small">
-                <thead><tr><th>Land</th><th>Buy Box</th><th>Ø 90 T</th><th>Tief 12 M</th><th>Verk./Monat</th><th>Angebote</th><th>Amazon</th><th>Gewinn</th><th>ROI</th><th>max. EK</th></tr></thead>
+                <thead><tr><th>Land</th><th>Buy Box</th><th>Ø 90 T</th><th>Tief 12 M</th><th>Verk./Monat</th><th>Angebote</th><th>Amazon</th><th>Gewinn</th><th title="Gewinn ÷ Buy-Box-Preis brutto (90-Tage-Mittel)">Marge</th><th>ROI</th><th>max. EK (ROI)</th><th>max. EK (Marge)</th></tr></thead>
                 <tbody>
                   {z.laender.map((l) => (
-                    <tr key={l.land}><td>{l.land}</td><td>{eur(l.vkEur)}</td><td>{eur(l.vk90Eur)}</td><td>{eur(l.tief12Eur)}</td><td>{l.verkaeufeMonat ?? "–"}</td><td>{l.angebote ?? "–"}</td><td>{l.amazonProzent !== null ? `${l.amazonProzent} %` : "–"}</td><td>{eur(l.gewinn)}</td><td>{pz(l.roi)}</td><td>{eur(l.maxEk)}</td></tr>
+                    <tr key={l.land} data-testid="de-land" data-land={l.land}>
+                      <td>{l.land}</td><td>{eur(l.vkEur)}</td><td>{eur(l.vk90Eur)}</td><td>{eur(l.tief12Eur)}</td>
+                      <td data-testid="de-verkaeufe">{l.verkaeufeMonat ?? (l.verkaeufeGeschaetzt ? <span title="Keepa hat keine „x+ gekauft“-Angabe – geschätzt aus dem Verkaufsrang (Rang-Verbesserungen in 30 Tagen)">≈ {l.verkaeufeGeschaetzt} (geschätzt)</span> : "–")}</td>
+                      <td>{l.angebote ?? "–"}</td><td>{l.amazonProzent !== null ? `${l.amazonProzent} %` : "–"}</td>
+                      <td data-testid="de-gewinn">{eur(l.gewinn)}</td><td data-testid="de-marge">{pz(kz.get(l.land)?.marge)}</td><td data-testid="de-roi">{pz(l.roi)}</td>
+                      <td>{eur(l.maxEk)}</td><td data-testid="de-maxek-marge-land">{eur(kz.get(l.land)?.maxEkMarge)}</td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
           {z.vorschlaege.length > 1 && <div className="small muted">Weitere Treffer: {z.vorschlaege.map((v) => `${v.asin} (${v.titel.slice(0, 40)})`).join(" · ")}</div>}
-          {z.risiken.length > 0 && <div className="small muted">{z.risiken.join(" · ")}</div>}
+          {szenario.length > 0 && <PreisSzenario nr={z.nr} ekNetto={z.ekNetto} laender={szenario} />}
+          {z.laender.length > 0 && !szenario.length && z.asin && <div className="small muted">Preis-Szenario („Was wäre bei VK x?“): nach „Neu prüfen“ verfügbar.</div>}
+          {z.risiken.length > 0 && (
+            <div className="small muted" data-testid="de-risiken">
+              {z.risiken.map((r, i) => (
+                <span key={r}>
+                  {i > 0 ? " · " : ""}
+                  {r}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* B28.4: Knopf je Angebot – auch wenn die SP-API verbunden ist (z. B. bei „Marke gesperrt“) */}
+          {z.asin && (
+            <div className="small">
+              <a className="btn btn-sm" href={freischaltungLink(z.asin, z.bestesLand ?? "DE")} target="_blank" rel="noreferrer" data-testid="de-freischaltung">Freischaltung im Seller Central prüfen →</a>
+            </div>
+          )}
           <details>
             <summary className="small">Antwort-Entwurf</summary>
             <pre className="small" style={{ whiteSpace: "pre-wrap", userSelect: "all" }} data-testid="de-antwort">{antwortEntwurf({ name: z.angebot.name, titel: z.titel, ampel: z.ampel, empfohlen: z.empfohlen, ekNetto: z.ekNetto, maxEk: z.maxEk })}</pre>
@@ -134,7 +198,8 @@ export default async function DealEingangDetail({ params, searchParams }: { para
             </form>
           )}
         </section>
-      ))}
+        );
+      })}
 
       {schreiben && e.pruefung === "fertig" && e.zeilen.some((z) => z.asin) && (() => {
         const z = e.zeilen.find((x) => x.nr === Number(sp.zeile)) ?? e.zeilen.filter((x) => x.asin).sort((a, b) => (a.ampel === "gruen" ? -1 : 0) - (b.ampel === "gruen" ? -1 : 0))[0];
@@ -165,23 +230,100 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               <select name="nr" defaultValue={String(z.nr)} aria-label="Zeile">{e.zeilen.filter((x) => x.asin).map((x) => <option key={x.nr} value={x.nr}>{(x.titel ?? x.angebot.name ?? x.asin ?? "").slice(0, 40)}</option>)}</select>
               <label>Menge <input name="menge" inputMode="numeric" defaultValue={e.gekauftMenge ?? z.empfohlen ?? z.angebot.menge ?? ""} style={{ width: 70 }} required /></label>
               <label>Preis netto/Stk <input name="preis" inputMode="decimal" defaultValue={e.gekauftPreis !== null ? String(e.gekauftPreis).replace(".", ",") : z.ekNetto !== null ? String(z.ekNetto).replace(".", ",") : ""} style={{ width: 80 }} /></label>
+              <label>Verpackung <select name="verpackung" defaultValue={e.verpackung ?? ""} data-testid="de-verpackung"><option value="">–</option>{DEAL_VERPACKUNG.map((v) => <option key={v} value={v}>{VERPACKUNG_TEXT[v]}</option>)}</select></label>
+              <label>EAN weicht ab <select name="ean_abweichend" defaultValue={e.eanAbweichend === null ? "" : e.eanAbweichend ? "ja" : "nein"} data-testid="de-ean-abweichend"><option value="">–</option><option value="nein">Nein</option><option value="ja">Ja</option></select></label>
+              <label title={lieferant?.email ? `Entwurf an ${lieferant.email} – gesendet wird erst mit „Senden“` : "Kein Lieferant mit Mailadresse zur Quelle – Einstellungen → Deal-Quellen"}>
+                <input type="checkbox" name="bestellmail" value="1" defaultChecked={!!lieferant?.email && !bestellmails.some((m) => m.status === "gesendet")} disabled={!lieferant?.email} data-testid="de-bestellmail-schalter" /> Bestellmail senden{lieferant?.email ? ` (${lieferant.name})` : ""}
+              </label>
               <button className="btn btn-sm btn-primary" type="submit" data-testid="de-gekauft-knopf">Gekauft</button>
             </form>
+            {!lieferant?.email && <div className="small muted">Bestellmail an den Lieferanten: für die Quelle „{e.quelle ?? "–"}“ ist noch kein Lieferant mit Mailadresse hinterlegt – <Link href="/deal-eingang/quellen">Einstellungen → Deal-Quellen</Link>.</div>}
+            {e.eanAbweichend && <div className="notice notice-warn small" data-testid="de-fnsku-hinweis">EAN weicht ab – FNSKU-Etikett nötig (Amazon-Barcode statt Hersteller-EAN).</div>}
+            {e.gekauftAm && (
+              <form action={wareAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="hidden" name="id" value={e.id} />
+                <span className="muted">Ware:</span>
+                <select name="verpackung" defaultValue={e.verpackung ?? ""} aria-label="Verpackung"><option value="">Verpackung –</option>{DEAL_VERPACKUNG.map((v) => <option key={v} value={v}>{VERPACKUNG_TEXT[v]}</option>)}</select>
+                <select name="ean_abweichend" defaultValue={e.eanAbweichend === null ? "" : e.eanAbweichend ? "ja" : "nein"} aria-label="EAN weicht ab"><option value="">EAN weicht ab –</option><option value="nein">EAN gleich</option><option value="ja">EAN weicht ab</option></select>
+                <button className="btn btn-sm" type="submit">Speichern</button>
+              </form>
+            )}
           </section>
         );
       })()}
 
+      {(bestellmails.length > 0 || (schreiben && e.status === "gekauft" && lieferant?.email)) && (
+        <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="bestellmail" data-testid="de-bestellmail">
+          <h2 style={{ margin: 0 }}>Bestellmail an den Lieferanten</h2>
+          {bestellmails.map((m) =>
+            m.status === "gesendet" ? (
+              <div key={m.id} className="stack small" style={{ gap: 4 }} data-testid="de-bestellmail-gesendet">
+                <div>
+                  <span className="tag tag-ok">Bestellung gesendet</span> am {datum(m.gesendetAm)} an {m.an}
+                  {m.kopieAn ? ` · Kopie an ${m.kopieAn}` : ""} · Zustellstatus: gesendet
+                </div>
+                <div data-testid="de-bestellmail-antwort">
+                  {m.antwortAm ? (
+                    <>
+                      Antwort am {datum(m.antwortAm)}
+                      {m.sendungsnummer ? <> · Sendungsnummer <strong data-testid="de-bestellmail-sendungsnr">{m.sendungsnummer}</strong></> : ""}
+                      {m.rechnungErhalten ? " · Rechnung erhalten" : " · Rechnung noch offen"}
+                      {m.antwortId && <> · <Link href={`/posteingang/${m.antwortId}`}>Mail öffnen</Link></>}
+                    </>
+                  ) : (
+                    <span className="muted">Noch keine Antwort (Rechnung, Sendungsnummer) – wird über den Posteingang zugeordnet.</span>
+                  )}
+                </div>
+                <details><summary>Gesendeter Text</summary><div style={{ fontWeight: 600 }}>{m.betreff}</div><pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{m.text}</pre></details>
+              </div>
+            ) : schreiben ? (
+              <form key={m.id} action={bestellmailAction} className="stack small" style={{ gap: 6 }} data-testid="de-bestellmail-entwurf">
+                <input type="hidden" name="id" value={e.id} />
+                <input type="hidden" name="mail_id" value={m.id} />
+                {m.status === "fehler" && <div className="notice notice-warn">Nicht gesendet: {m.fehler}</div>}
+                <div className="muted">Entwurf – wird erst mit „Senden“ verschickt (Absender: dein Geschäfts-Postfach, Kopie an dich).</div>
+                <label>An <input name="an" defaultValue={m.an} style={{ width: "100%", maxWidth: 420 }} data-testid="de-bestellmail-an" /></label>
+                <label>Betreff <input name="betreff" defaultValue={m.betreff} style={{ width: "100%" }} data-testid="de-bestellmail-betreff" /></label>
+                <textarea name="text" defaultValue={m.text} rows={18} style={{ width: "100%", fontFamily: "inherit" }} data-testid="de-bestellmail-text" />
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="btn btn-sm btn-primary" type="submit" name="aktion" value="senden" data-testid="de-bestellmail-senden">Senden</button>
+                  <button className="btn btn-sm" type="submit" name="aktion" value="speichern">Entwurf speichern</button>
+                  <button className="btn btn-sm" type="submit" name="aktion" value="verwerfen">Verwerfen</button>
+                </div>
+              </form>
+            ) : null,
+          )}
+          {schreiben && e.status === "gekauft" && lieferant?.email && !bestellmails.some((m) => m.status === "entwurf" || m.status === "fehler") && (
+            <form action={bestellmailEntwurfAction}>
+              <input type="hidden" name="id" value={e.id} />
+              <button className="btn btn-sm" type="submit" data-testid="de-bestellmail-neu">{bestellmails.length ? "Weitere Bestellmail (Entwurf)" : `Bestellmail an ${lieferant.name} (Entwurf)`}</button>
+            </form>
+          )}
+        </section>
+      )}
+
       {schreiben && e.pruefung === "fertig" && (
         <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="bewerten" data-testid="de-bewerten">
           <h2 style={{ margin: 0 }}>Passt der Deal zu dir?</h2>
-          <div className="small muted">Deine 👍/👎 lernt der Deal-Wert mit – auch per Reaktion in Discord (ProfitPath-Nachricht).</div>
-          <form action={bewertenAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="small muted">Deine 👍/👎 lernt der Deal-Wert mit – auch per Reaktion in Discord (ProfitPath-Nachricht; nach 👍 fragt der Bot im Thread kurz nach dem Grund). Ein 👍 mit Grund zählt mehr als ein 👍 ohne.</div>
+          <form action={bewertenAction} className="stack small de-bewerten" style={{ gap: 6 }}>
             <input type="hidden" name="id" value={e.id} />
             <input type="hidden" name="weg" value={sp.daumen ? "push" : "tool"} />
-            <label><input type="radio" name="daumen" value="hoch" defaultChecked={(sp.daumen ?? e.daumen) === "hoch"} /> 👍</label>
-            <label><input type="radio" name="daumen" value="runter" defaultChecked={(sp.daumen ?? e.daumen) === "runter"} /> 👎</label>
-            <select name="grund" defaultValue={e.daumenGrund ?? ""} aria-label="Grund"><option value="">Grund (optional)</option>{DAUMEN_GRUENDE.map((g) => <option key={g} value={g}>{g}</option>)}</select>
-            <button className="btn btn-sm" type="submit" data-testid="de-bewerten-knopf">Speichern</button>
+            <div className="row" style={{ gap: 10 }}>
+              <label><input type="radio" name="daumen" value="hoch" defaultChecked={(sp.daumen ?? e.daumen) === "hoch"} data-testid="de-daumen-hoch" /> 👍</label>
+              <label><input type="radio" name="daumen" value="runter" defaultChecked={(sp.daumen ?? e.daumen) === "runter"} data-testid="de-daumen-runter" /> 👎</label>
+            </div>
+            <fieldset className="de-gruende-hoch" data-testid="de-gruende-hoch" style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className="muted">Warum passt der Deal? (👍, mehrere möglich)</legend>
+              {DAUMEN_GRUENDE_HOCH.map((g, i) => (
+                <label key={g} style={{ display: "block" }}>
+                  <input type="checkbox" name="gruende" value={g} defaultChecked={e.daumenGruende.includes(g)} data-testid={`de-grund-hoch-${i + 1}`} /> {g}
+                </label>
+              ))}
+            </fieldset>
+            <label className="de-grund-runter">Grund bei 👎 <select name="grund" defaultValue={e.daumenGrund ?? ""} aria-label="Grund"><option value="">(optional)</option>{DAUMEN_GRUENDE.map((g) => <option key={g} value={g}>{g}</option>)}</select></label>
+            <label>Freitext (optional) <input name="freitext" defaultValue={e.daumenFreitext ?? ""} maxLength={500} style={{ width: "100%", maxWidth: 420 }} data-testid="de-grund-freitext" /></label>
+            <div><button className="btn btn-sm" type="submit" data-testid="de-bewerten-knopf">Speichern</button></div>
           </form>
         </section>
       )}

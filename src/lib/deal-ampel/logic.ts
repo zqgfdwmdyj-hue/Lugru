@@ -47,6 +47,8 @@ export type LandMarkt = {
   tief12Eur: number | null;
   mwstSatz: number;
   verkaeufeMonat: number | null;
+  /** B28.4: Schätzung aus dem Verkaufsrang (Keepa), wenn „x+ gekauft“ fehlt. */
+  verkaeufeGeschaetzt?: number | null;
   angebote: number | null;
   amazonProzent: number | null;
   aktionsmuster: string | null;
@@ -98,6 +100,9 @@ export function verkaeufeSchaetzen(land: string, laender: Pick<LandMarkt, "land"
   return { wert: Math.max(1, Math.round((q.verkaeufeMonat! * ziel) / MARKTGROESSE[q.land])), aus: q.land };
 }
 
+/** Herkunft einer Verkaufsschätzung aus dem Verkaufsrang (statt eines Landes). */
+export const RANG = "Verkaufsrang";
+
 /** Bestes Land: höchster Gewinn beim 90-Tage-Mittel (ohne Mittel: aktueller Preis). */
 export function bestesLand(l: LandErgebnis[]): LandErgebnis | null {
   const wert = (x: LandErgebnis) => (x.schnitt90 ?? x.aktuell)?.gewinn ?? null;
@@ -124,8 +129,10 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
   const gelb: string[] = [];
   const m90 = b.schnitt90 ?? b.aktuell!;
   const mAkt = b.aktuell ?? m90;
-  if ((m90.marge ?? -999) < e.zielMarge) rot.push(`Marge beim 90-Tage-Mittel nur ${pz(m90.marge)} % (Ziel ${e.zielMarge} %).`);
-  else if ((mAkt.marge ?? -999) < e.zielMarge) gelb.push(`Beim aktuellen Preis nur ${pz(mAkt.marge)} % Marge – der Preis liegt gerade unter dem Mittel.`);
+  // Ampel-Regel auf die Netto-Marge (Gewinn ÷ VK netto, Ziel in den Deal-Ampel-Einstellungen). Die im Deal-Eingang
+  // angezeigte „Marge“ (B28) rechnet vom Brutto-VK – daher hier ausdrücklich „Netto-Marge“.
+  if ((m90.marge ?? -999) < e.zielMarge) rot.push(`Netto-Marge beim 90-Tage-Mittel nur ${pz(m90.marge)} % (Ziel ${e.zielMarge} %).`);
+  else if ((mAkt.marge ?? -999) < e.zielMarge) gelb.push(`Beim aktuellen Preis nur ${pz(mAkt.marge)} % Netto-Marge – der Preis liegt gerade unter dem Mittel.`);
   if (b.amazonProzent !== null && b.amazonProzent > AMAZON_ROT_PROZENT) rot.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
   else if (b.amazonProzent !== null && b.amazonProzent >= e.amazonMaxProzent) gelb.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
   // Hoher Amazon-Anteil in einem anderen Land: mindestens Gelb (Amazon drückt den Preis oft EU-weit).
@@ -138,17 +145,18 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
   if (b.angebote !== null && b.angebote > e.maxAngebote) gelb.push(`${b.angebote} Angebote (mehr als ${e.maxAngebote}) – Abverkauf genau prüfen.`);
   // Aktionspreise in irgendeinem Land drücken den Preis auch anderswo – alle nennen.
   for (const l of laender) if (l.aktionsmuster) gelb.push(`Aktionsmuster ${l.land}: ${l.aktionsmuster}`);
-  const geschaetzt = b.verkaeufeMonat === null ? verkaeufeSchaetzen(b.land, laender) : null;
+  // Fehlt „x+ gekauft“: zuerst die Schätzung aus dem Verkaufsrang dieses Landes, sonst über die Marktgröße.
+  const geschaetzt = b.verkaeufeMonat === null ? (b.verkaeufeGeschaetzt ? { wert: b.verkaeufeGeschaetzt, aus: RANG } : verkaeufeSchaetzen(b.land, laender)) : null;
   const verkaeufe = b.verkaeufeMonat ?? geschaetzt?.wert ?? null;
   const a = abverkauf(verkaeufe, b.angebote, menge);
   if (a.unsProMonat === null) gelb.push("Verkäufe je Monat unbekannt – Abverkauf nicht abschätzbar.");
   else if (a.tage !== null && a.tage > e.maxAbverkaufTage) gelb.push(`Abverkauf der Menge dauert etwa ${a.tage} Tage (Ziel ≤ ${e.maxAbverkaufTage}).`);
   const ampel: Ampel = rot.length ? "rot" : gelb.length ? "gelb" : "gruen";
 
-  const satz1 = `Bestes Land ${b.land}: ${eur(m90.gewinn)} Gewinn je Stück beim 90-Tage-Mittel (${pz(m90.marge)} % Marge, ROI ${pz(m90.roi)} %)${b.aktuell && b.schnitt90 ? `, aktuell ${eur(b.aktuell.gewinn)}` : ""}.`;
+  const satz1 = `Bestes Land ${b.land}: ${eur(m90.gewinn)} Gewinn je Stück beim 90-Tage-Mittel (${pz(m90.marge)} % Netto-Marge, ROI ${pz(m90.roi)} %)${b.aktuell && b.schnitt90 ? `, aktuell ${eur(b.aktuell.gewinn)}` : ""}.`;
   const satz2 =
     a.unsProMonat !== null
-      ? `Realistisch etwa ${Math.round(a.unsProMonat)} Stück im Monat für uns (${verkaeufe} Verkäufe aller Anbieter${geschaetzt ? ` – geschätzt aus ${geschaetzt.aus} über die Marktgröße` : ""}, ${b.angebote ?? "?"} Angebote) – empfohlen ${a.empfohlen!.von}–${a.empfohlen!.bis} Stück${a.tage !== null ? `, die Wunschmenge reicht für etwa ${a.tage} Tage` : ""}.`
+      ? `Realistisch etwa ${Math.round(a.unsProMonat)} Stück im Monat für uns (${verkaeufe} Verkäufe aller Anbieter${geschaetzt ? (geschaetzt.aus === RANG ? " – geschätzt aus dem Verkaufsrang" : ` – geschätzt aus ${geschaetzt.aus} über die Marktgröße`) : ""}, ${b.angebote ?? "?"} Angebote) – empfohlen ${a.empfohlen!.von}–${a.empfohlen!.bis} Stück${a.tage !== null ? `, die Wunschmenge reicht für etwa ${a.tage} Tage` : ""}.`
       : "Verkäufe je Monat unbekannt.";
   const satz3 = rot.length ? `Dagegen: ${rot.join(" ")}` : gelb.length ? `Achtung: ${gelb.join(" ")}` : "Keine Warnzeichen.";
   return { ampel, bestes: b, rot, gelb, begruendung: [satz1, satz2, satz3].join(" "), abverkauf: a, verkaeufeGeschaetzt: geschaetzt };

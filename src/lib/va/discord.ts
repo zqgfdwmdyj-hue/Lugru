@@ -104,6 +104,8 @@ export function discord(token: string) {
     /** Archivierte öffentliche Threads eines Kanals (neueste zuerst). */
     archivierteThreads: (kanalId: string, limit = 50) => anfrage<{ threads: DcThread[] }>("GET", `/channels/${encodeURIComponent(kanalId)}/threads/archived/public?limit=${Math.min(100, Math.max(1, limit))}`),
     nachricht: (kanalId: string, id: string) => anfrage<DcNachricht>("GET", `/channels/${encodeURIComponent(kanalId)}/messages/${encodeURIComponent(id)}`),
+    /** Eigene Reaktion setzen (z. B. 1️⃣–5️⃣ als antippbare Auswahl unter einer Rückfrage). */
+    reagieren: (kanalId: string, id: string, emoji: string) => anfrage<void>("PUT", `/channels/${encodeURIComponent(kanalId)}/messages/${encodeURIComponent(id)}/reactions/${encodeURIComponent(emoji)}/@me`),
     /** Die neuesten Nachrichten (höchstens 100, mit Reaktionen) – für das Nachziehen der Reaktionen frischer Posts. */
     neueste: (kanalId: string, limit = 100) => anfrage<DcNachricht[]>("GET", `/channels/${encodeURIComponent(kanalId)}/messages?limit=${Math.min(100, Math.max(1, limit))}`),
     /** Eine Seite älterer Nachrichten vor `vor` (History rückwärts), absteigend sortiert. */

@@ -99,7 +99,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
                     <td className="num right">{eur(l.aktuell?.gewinn)}</td>
                     <td className="num right">{eur(l.schnitt90?.gewinn)}</td>
                     <td className="num right">{pz(l.schnitt90?.marge)}</td>
-                    <td className="num right" data-testid={r.bestes?.land === l.land ? "deal-ampel-verkaeufe-bestes" : undefined}>{l.verkaeufeMonat ?? (r.bestes?.land === l.land && r.verkaeufeGeschaetzt ? <span title={`geschätzt aus ${r.verkaeufeGeschaetzt.aus} über die Marktgröße – dieselbe Zahl wie im Text`}>≈ {r.verkaeufeGeschaetzt.wert}</span> : "–")}</td>
+                    <td className="num right" data-testid={r.bestes?.land === l.land ? "deal-ampel-verkaeufe-bestes" : undefined}>{l.verkaeufeMonat ?? (l.verkaeufeGeschaetzt ? <span title="geschätzt aus dem Verkaufsrang (Keepa) – Keepa hat keine „x+ gekauft“-Angabe">≈ {l.verkaeufeGeschaetzt} (geschätzt)</span> : r.bestes?.land === l.land && r.verkaeufeGeschaetzt ? <span title={`geschätzt aus ${r.verkaeufeGeschaetzt.aus} über die Marktgröße – dieselbe Zahl wie im Text`}>≈ {r.verkaeufeGeschaetzt.wert}</span> : "–")}</td>
                     <td className="num right">{l.angebote ?? "–"}</td>
                     <td className="num right">{pz(l.amazonProzent)}</td>
                     <td className="small">{[l.aktionsmuster, l.fehler].filter(Boolean).join(" · ") || ""}</td>

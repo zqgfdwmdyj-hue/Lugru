@@ -6,7 +6,7 @@ import type { DealPrognose, OfferMarket } from "@/db/schema";
 import { eurRates } from "@/lib/fx/ecb";
 import { amazonVerbunden, feesSchaetzung, itemOffers } from "@/lib/integrations/clients/amazon";
 import { MARKTPLATZ_IDS, verdichteAngebote, type Land } from "@/lib/amazon-markt/logic";
-import { buyboxAnteile, MARKTPLAETZE, type KeepaStand, type Marktplatz } from "@/lib/keepa/auswertung";
+import { buyboxAnteile, MARKTPLAETZE, verkaeufeAusRang, type KeepaStand, type Marktplatz } from "@/lib/keepa/auswertung";
 import { keepaMarkt } from "@/lib/keepa/markt";
 import { getSettings } from "@/lib/settings";
 import { aktionsmuster, kundeAusPrognose, MWST, tief12 } from "./logic";
@@ -47,6 +47,7 @@ export function keepaEintrag(st: KeepaStand, mp: Marktplatz, inEur: (b: number |
     tief12: tief12(bbTage),
     vkEur: inEur(vk, st.waehrung),
     verkaeufeMonat: st.aktuell.monatlich_verkauft,
+    verkaeufeGeschaetzt: st.aktuell.monatlich_verkauft === null ? verkaeufeAusRang(st) : null,
     angeboteFba: st.aktuell.angebote_fba,
     angeboteFbm: st.aktuell.angebote_fbm,
     amazonProzent: anteile ? anteile.amazon_prozent : null,

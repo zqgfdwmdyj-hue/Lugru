@@ -149,12 +149,90 @@ export async function gekauftAction(fd: FormData) {
   try {
     const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
     const r = await alsGekauft(s.tenantId, id, { menge, preis, nr, weg: "knopf" }, s.userId);
-    ziel = mit(`${PFAD}/${id}`, `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.`);
+    await wareSpeichern(s.tenantId, id, fd);
+    let text = `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.`;
+    // B28.5: Bestellmail an den Lieferanten – nur Entwurf; gesendet wird erst mit „Senden“.
+    if (fd.get("bestellmail") === "1") {
+      const { bestellmailEntwurf } = await import("@/lib/deal-eingang/bestellmail");
+      try {
+        const m = await bestellmailEntwurf(s.tenantId, id, s.userId, { nr: r.zeile });
+        text += ` Entwurf der Bestellmail an ${m.an} – bitte prüfen und senden.`;
+      } catch (e) {
+        text += ` Bestellmail: ${e instanceof DealEingangFehler ? e.message : lesbarerFehler(e)}`;
+      }
+      ziel = `${mit(`${PFAD}/${id}`, text)}#bestellmail`;
+    } else ziel = mit(`${PFAD}/${id}`, text);
   } catch (e) {
     ziel = mit(`${PFAD}/${id}`, e instanceof DealEingangFehler ? e.message : `Nicht gespeichert – ${lesbarerFehler(e)}`);
   }
   revalidatePath(PFAD);
   redirect(ziel);
+}
+
+/** B28.5: Verpackung und „EAN weicht ab“ am Deal (aus dem Gekauft- bzw. Ware-Formular). */
+async function wareSpeichern(tenantId: string, id: string, fd: FormData) {
+  if (!fd.has("verpackung") && !fd.has("ean_abweichend")) return;
+  const { db, schema } = await import("@/db");
+  const { and, eq } = await import("drizzle-orm");
+  const v = String(fd.get("verpackung") ?? "");
+  const ean = String(fd.get("ean_abweichend") ?? "");
+  const E = schema.dealEingaenge;
+  await db
+    .update(E)
+    .set({ verpackung: (schema.DEAL_VERPACKUNG as readonly string[]).includes(v) ? (v as (typeof schema.DEAL_VERPACKUNG)[number]) : null, eanAbweichend: ean === "ja" ? true : ean === "nein" ? false : null })
+    .where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
+}
+
+/** B28.5: Ware (Verpackung, EAN weicht ab) ohne „Gekauft“ speichern. */
+export async function wareAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  await wareSpeichern(s.tenantId, id, fd);
+  revalidatePath(`${PFAD}/${id}`);
+  redirect(`${mit(`${PFAD}/${id}`, "Ware gespeichert.")}#gekauft`);
+}
+
+/** B28.5: Entwurf der Bestellmail erstellen (bzw. neu füllen). */
+export async function bestellmailEntwurfAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  let m: string;
+  try {
+    const { bestellmailEntwurf } = await import("@/lib/deal-eingang/bestellmail");
+    const r = await bestellmailEntwurf(s.tenantId, id, s.userId);
+    m = `Entwurf der Bestellmail an ${r.an} – bitte prüfen und senden.`;
+  } catch (e) {
+    m = e instanceof DealEingangFehler ? e.message : `Kein Entwurf – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(`${PFAD}/${id}`);
+  redirect(`${mit(`${PFAD}/${id}`, m)}#bestellmail`);
+}
+
+/** B28.5: Entwurf speichern, senden oder verwerfen (Knopf „aktion“). Senden nur per Klick. */
+export async function bestellmailAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  const mailId = String(fd.get("mail_id"));
+  const aktion = String(fd.get("aktion") ?? "speichern");
+  const d = { an: String(fd.get("an") ?? ""), betreff: String(fd.get("betreff") ?? ""), text: String(fd.get("text") ?? "") };
+  let m: string;
+  try {
+    const B = await import("@/lib/deal-eingang/bestellmail");
+    if (aktion === "verwerfen") {
+      await B.bestellmailVerwerfen(s.tenantId, mailId);
+      m = "Entwurf verworfen.";
+    } else if (aktion === "senden") {
+      const r = await B.bestellmailSenden(s.tenantId, mailId, s.userId, d);
+      m = r.ok ? `Bestellmail an ${d.an} gesendet – Beleg am Deal und im Einkauf.` : `Nicht gesendet: ${r.fehler}`;
+    } else {
+      await B.bestellmailSpeichern(s.tenantId, mailId, d);
+      m = "Entwurf gespeichert.";
+    }
+  } catch (e) {
+    m = e instanceof DealEingangFehler ? e.message : `Fehler – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(`${PFAD}/${id}`);
+  redirect(`${mit(`${PFAD}/${id}`, m)}#bestellmail`);
 }
 
 /** Abschnitt 11: 👍/👎 mit Kurzgrund (feste Auswahl). */
@@ -164,9 +242,12 @@ export async function bewertenAction(fd: FormData) {
   const daumen = fd.get("daumen") === "hoch" ? "hoch" : fd.get("daumen") === "runter" ? "runter" : null;
   if (!daumen) redirect(mit(`${PFAD}/${id}`, "Bitte 👍 oder 👎 wählen."));
   const { bewerten } = await import("@/lib/deal-eingang/wert");
-  await bewerten(s.tenantId, id, { daumen, grund: String(fd.get("grund") ?? "") || null, weg: fd.get("weg") === "push" ? "push" : "tool" });
+  const gruende = fd.getAll("gruende").map(String);
+  const freitext = String(fd.get("freitext") ?? "").trim() || null;
+  await bewerten(s.tenantId, id, { daumen, grund: String(fd.get("grund") ?? "") || null, gruende, freitext, weg: fd.get("weg") === "push" ? "push" : "tool" });
   revalidatePath(PFAD);
-  redirect(mit(`${PFAD}/${id}`, daumen === "hoch" ? "👍 gespeichert." : "👎 gespeichert."));
+  const mitGrund = daumen === "hoch" ? gruende.length > 0 || !!freitext : !!fd.get("grund") || !!freitext;
+  redirect(mit(`${PFAD}/${id}`, `${daumen === "hoch" ? "👍" : "👎"} gespeichert${mitGrund ? " – mit Grund (zählt im Deal-Wert stärker)" : ""}.`));
 }
 
 /** Einstellungen (nur Inhaber): Ziel-ROI, Monatsrahmen, Budget-Hinweise je Deal/Tag/Woche, Schwelle des Deal-Werts. */
@@ -182,6 +263,8 @@ export async function einstellungenAction(fd: FormData) {
     ...alt,
     // Jedes Formular schickt nur seine Felder – fehlende bleiben, wie sie sind.
     zielRoi: fd.has("zielRoi") ? Math.max(1, Math.min(500, Math.round(parseAmount(fd.get("zielRoi")) ?? alt.zielRoi ?? 20))) : alt.zielRoi,
+    // B28.1: Ziel-Marge (vom Brutto-VK) für „max. EK für Ziel-Marge“, eine Nachkommastelle
+    zielMarge: fd.has("zielMarge") ? Math.max(0.5, Math.min(80, Math.round((parseAmount(fd.get("zielMarge")) ?? alt.zielMarge ?? 10) * 10) / 10)) : alt.zielMarge,
     budgetJeDeal: fd.has("budgetJeDeal") ? euro("budgetJeDeal") : alt.budgetJeDeal,
     budgetJeTag: fd.has("budgetJeTag") ? euro("budgetJeTag") : alt.budgetJeTag,
     budgetJeWoche: fd.has("budgetJeWoche") ? euro("budgetJeWoche") : alt.budgetJeWoche,
@@ -296,4 +379,52 @@ export async function lugruHistorieAction(fd: FormData) {
   }
   revalidatePath(LUGRU);
   redirect(mit(LUGRU, text));
+}
+
+/** B28.5 Einstellungen → Deal-Quellen: Lieferant je Deal-Quelle speichern bzw. entfernen. */
+export async function dealQuelleAction(fd: FormData) {
+  const s = await schreibend();
+  const ziel = "/deal-eingang/quellen";
+  let m: string;
+  try {
+    const B = await import("@/lib/deal-eingang/bestellmail");
+    if (fd.get("aktion") === "entfernen") {
+      await B.dealQuelleEntfernen(s.tenantId, String(fd.get("supplier_id")));
+      m = "Deal-Quelle entfernt (der Lieferant bleibt im Einkauf).";
+    } else {
+      const name = String(fd.get("name") ?? "");
+      await B.dealQuelleSpeichern(s.tenantId, {
+        name,
+        email: String(fd.get("email") ?? "").trim() || null,
+        ansprechpartner: String(fd.get("ansprechpartner") ?? "").trim() || null,
+        zahlungsweg: String(fd.get("zahlungsweg") ?? "").trim() || null,
+        rechnungMitEan: fd.get("rechnung_mit_ean") === "1",
+        dealQuellen: String(fd.get("quellen") ?? "").split(/[,;\n]/),
+      });
+      m = `Deal-Quelle „${name.trim()}“ gespeichert.`;
+    }
+  } catch (e) {
+    m = e instanceof DealEingangFehler ? e.message : `Nicht gespeichert – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(ziel);
+  redirect(mit(ziel, m));
+}
+
+/** B28.5: Liefer-/Rechnungsadresse, USt-IdNr. und Kopie für Bestellmails (nur Inhaber). */
+export async function bestellEinstellungenAction(fd: FormData) {
+  const s = await schreibend();
+  const ziel = "/deal-eingang/quellen";
+  if (s.role !== "owner") redirect(mit(ziel, "Nur der Inhaber ändert die Einstellungen."));
+  const { db, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, s.tenantId));
+  const dealEingang = {
+    ...(t?.settings?.dealEingang ?? {}),
+    bestellAdresse: String(fd.get("bestellAdresse") ?? "").trim().slice(0, 500),
+    bestellUstId: String(fd.get("bestellUstId") ?? "").trim().slice(0, 30),
+    bestellKopie: fd.get("bestellKopie") === "1",
+  };
+  await db.update(schema.tenants).set({ settings: { ...(t?.settings ?? {}), dealEingang } }).where(eq(schema.tenants.id, s.tenantId));
+  revalidatePath(ziel);
+  redirect(mit(ziel, "Bestellmail-Einstellungen gespeichert."));
 }

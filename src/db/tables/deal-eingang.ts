@@ -27,7 +27,30 @@ export type DealAngebot = {
   packung: number | null;
 };
 
-export type DealLandZeile = { land: string; vkEur: number | null; vk90Eur: number | null; tief12Eur: number | null; verkaeufeMonat: number | null; angebote: number | null; amazonProzent: number | null; gewinn: number | null; gewinnAktuell: number | null; roi: number | null; marge: number | null; maxEk: number | null; fehler: string | null };
+export type DealLandZeile = {
+  land: string;
+  vkEur: number | null;
+  vk90Eur: number | null;
+  tief12Eur: number | null;
+  verkaeufeMonat: number | null;
+  angebote: number | null;
+  amazonProzent: number | null;
+  gewinn: number | null;
+  gewinnAktuell: number | null;
+  roi: number | null;
+  /** Netto-Marge (Gewinn ÷ VK netto) – Grundlage der Ampel. Angezeigt wird die Marge vom Brutto-VK (B28.1). */
+  marge: number | null;
+  maxEk: number | null;
+  fehler: string | null;
+  /** B28.4: Verkäufe/Monat geschätzt aus dem Verkaufsrang, wenn Keepa keine „x+ gekauft“-Angabe hat. */
+  verkaeufeGeschaetzt?: number | null;
+  /** B28.1/B28.2 (Prüfungen ab 05.11.): VK netto − Gebühren − Prep beim 90-Tage-Mittel, USt, Provision, FBA, Prep. */
+  rest?: number | null;
+  mwstSatz?: number;
+  provision?: number;
+  fba?: number;
+  prep?: number;
+};
 
 /** Eine geprüfte Zeile (ein Angebot) mit Ampel, höchstens drei Gründen, Länder-Tabelle und eigener Lage. */
 export type DealEingangZeile = {
@@ -45,7 +68,10 @@ export type DealEingangZeile = {
   ekNetto: number | null;
   gewinn: number | null;
   roi: number | null;
+  /** Netto-Marge im besten Land (Ampel); angezeigt wird margeBrutto. */
   marge: number | null;
+  /** B28.1: Marge vom Brutto-VK im besten Land (Gewinn ÷ Buy Box brutto beim 90-Tage-Mittel). */
+  margeBrutto?: number | null;
   angebote: number | null;
   amazonProzent: number | null;
   verkaeufeMonat: number | null;
@@ -104,6 +130,11 @@ export type DealMerkmale = {
   stunde: number;
   kapitalAmpel: "gruen" | "gelb" | "rot" | null;
   bestand: number | null;
+  /** B28.3: wenigste Angebote in einem Land (Deal-Ampel je Land) und welches Land – für 👍-Grund „kein oder nur 1 Angebot“. */
+  angeboteMinLand?: number | null;
+  angeboteMinLandName?: string | null;
+  /** Angebotene Menge (Stück) – für 👍-Grund „Großer Posten“. */
+  menge?: number | null;
 };
 
 export type DealAehnlich = { id: string | null; quelle: "eigen" | "lugru"; titel: string | null; asin: string | null; datum: string; ergebnis: string; abstand: number };
@@ -135,6 +166,19 @@ export type DealErgebnis = {
 };
 
 export const DAUMEN_GRUENDE = ["zu viele Angebote", "Chart instabil", "Amazon drin", "Marke gesperrt", "Kapital", "Saison", "sonstiges"] as const;
+
+/** B28.3: Gründe für 👍 (Mehrfachauswahl, dazu Freitext) – Reihenfolge = Nummern 1–5 der Discord-Rückfrage. */
+export const DAUMEN_GRUENDE_HOCH = [
+  "Amazon ist Hauptanbieter, aber viel Preis-Puffer zum EK",
+  "In einem Land (FR/IT/ES …) kein oder nur 1 Angebot",
+  "Schneller Abverkauf bei niedrigerem VK möglich",
+  "Marke/Kategorie läuft bei mir",
+  "Großer Posten, lange Laufzeit ok",
+] as const;
+
+/** B28.5: Verpackung der Ware laut Deal (für Bestellmail und Wareneingang). */
+export const DEAL_VERPACKUNG = ["lose", "eingeschweisst", "originalkarton"] as const;
+export const VERPACKUNG_TEXT: Record<(typeof DEAL_VERPACKUNG)[number], string> = { lose: "lose", eingeschweisst: "eingeschweißt", originalkarton: "Originalkarton" };
 
 export const dealEingaenge = pgTable(
   "deal_eingaenge",
@@ -179,6 +223,15 @@ export const dealEingaenge = pgTable(
     daumenGrund: text("daumen_grund"),
     daumenWeg: text("daumen_weg", { enum: ["tool", "push", "discord", "claude"] }),
     daumenAm: timestamp("daumen_am", { withTimezone: true }),
+    /** B28.3: Gründe bei 👍 (Mehrfachauswahl aus DAUMEN_GRUENDE_HOCH) und Freitext (👍 und 👎). */
+    daumenGruende: jsonb("daumen_gruende").$type<string[]>().notNull().default([]),
+    daumenFreitext: text("daumen_freitext"),
+    /** Rückfrage des Bots nach 👍 in Discord („thread/nachricht“) – Antwort per Zahl-Reaktion oder Text, optional. */
+    daumenFrageRef: text("daumen_frage_ref"),
+    daumenFrageAm: timestamp("daumen_frage_am", { withTimezone: true }),
+    /** B28.5: Verpackung und ob die EAN der Ware von der Amazon-EAN abweicht (dann FNSKU-Etikett nötig). */
+    verpackung: text("verpackung", { enum: DEAL_VERPACKUNG }),
+    eanAbweichend: boolean("ean_abweichend"),
     /** Abschnitt 10: gekauft (Menge, Preis netto je Stück) – Knopf, Bestellbestätigungs-Mail, Sprache/SMS oder Claude. */
     gekauftMenge: integer("gekauft_menge"),
     gekauftPreis: money("gekauft_preis"),
@@ -392,4 +445,39 @@ export const lugruKanaele = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("lugru_kanaele_uq").on(t.tenantId, t.kanalId)],
+);
+
+/**
+ * B28.5: Bestellmail an den Lieferanten bei „Gekauft“ – erst Entwurf (bearbeitbar), dann „Senden“. Antwort des
+ * Lieferanten (Rechnung, Sendungsnummer) wird über den Posteingang zugeordnet (Antwort auf die Mail, Betreff/ASIN).
+ */
+export const dealBestellmails = pgTable(
+  "deal_bestellmails",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    dealId: uuid("deal_id")
+      .notNull()
+      .references(() => dealEingaenge.id, { onDelete: "cascade" }),
+    /** Lieferant (suppliers) und Bestellung im Einkauf (purchase_orders), falls vorhanden. */
+    supplierId: uuid("supplier_id"),
+    bestellungId: uuid("bestellung_id"),
+    an: text("an").notNull(),
+    kopieAn: text("kopie_an"),
+    betreff: text("betreff").notNull(),
+    text: encryptedText("text").notNull(),
+    status: text("status", { enum: ["entwurf", "gesendet", "fehler", "verworfen"] }).notNull().default("entwurf"),
+    fehler: text("fehler"),
+    messageId: text("message_id"),
+    gesendetAm: timestamp("gesendet_am", { withTimezone: true }),
+    gesendetVon: uuid("gesendet_von").references(() => users.id, { onDelete: "set null" }),
+    /** Antwort aus dem Posteingang (emails) mit erkannter Sendungsnummer bzw. Rechnung. */
+    antwortId: uuid("antwort_id"),
+    antwortAm: timestamp("antwort_am", { withTimezone: true }),
+    sendungsnummer: text("sendungsnummer"),
+    rechnungErhalten: boolean("rechnung_erhalten").notNull().default(false),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("deal_bestellmails_deal_idx").on(t.tenantId, t.dealId), index("deal_bestellmails_bestellung_idx").on(t.tenantId, t.bestellungId), index("deal_bestellmails_msg_idx").on(t.tenantId, t.messageId)],
 );

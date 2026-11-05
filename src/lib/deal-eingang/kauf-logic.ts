@@ -45,19 +45,19 @@ export function angebotsLink(rohtext: string, asin: string | null, land: string 
   return asin ? amazonSeite(asin, land) : null;
 }
 
-export type KaufZeile = { titel: string | null; name: string | null; ekNetto: number | null; bestesLand: string | null; roi: number | null; gewinn: number | null; empfohlen: number | null; kapitalbedarf: number | null; maxEk: { land: string; ek: number }[]; gueltigBis: string | null };
+export type KaufZeile = { titel: string | null; name: string | null; ekNetto: number | null; bestesLand: string | null; roi: number | null; /** B28.1: Marge vom Brutto-VK. */ marge?: number | null; gewinn: number | null; empfohlen: number | null; kapitalbedarf: number | null; maxEk: { land: string; ek: number }[]; gueltigBis: string | null };
 
 const AMPEL: Record<string, string> = { gruen: "🟢", gelb: "🟡", rot: "🔴" };
 
 /**
  * Kopfzeile der Kauf-Meldung, das Wichtigste zuerst (Apple Watch zeigt nur ~120 Zeichen):
- * „🟢 Deal 17: Galaxy Watch Ultra · DE: ROI 23 %, 14,96 €/Stk · Empf. 4 Stk (1.196 €) · EK 299 €“ plus max. EK,
+ * „🟢 Deal 17: Galaxy Watch Ultra · DE: Marge 12 %, ROI 23 %, 14,96 €/Stk · Empf. 4 Stk (1.196 €) · EK 299 €“ plus max. EK,
  * Frist und Deal-Wert. Budget-Grenzen stehen hier nicht mehr (Kaufen mit einem Tap §4: keine Grenze, nur Monatsrahmen).
  */
 export function kaufText(z: KaufZeile, o: { nr?: number | null; ampel?: string | null; wert?: number | null; menge?: number | null }): string {
   const name = kuerzen((z.titel ?? z.name ?? "Deal").trim(), 32);
   const teile = [`${AMPEL[o.ampel ?? "gruen"] ?? "🟢"} ${o.nr ? `Deal ${o.nr}: ` : ""}${name}`];
-  if (z.roi !== null) teile.push(`${z.bestesLand ? `${z.bestesLand}: ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
+  if (z.roi !== null) teile.push(`${z.bestesLand ? `${z.bestesLand}: ` : ""}${z.marge !== null && z.marge !== undefined ? `Marge ${Math.round(z.marge)} %, ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
   const menge = o.menge ?? z.empfohlen;
   if (menge) teile.push(`Empf. ${menge} Stk${z.ekNetto ? ` (${eur0(menge * z.ekNetto)})` : z.kapitalbedarf ? ` (${eur0(z.kapitalbedarf)})` : ""}`);
   if (z.ekNetto !== null) teile.push(`EK ${eur(z.ekNetto)}`);

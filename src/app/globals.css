@@ -919,6 +919,9 @@ h2 { font-size: 16px; margin: 0; }
 /* Abendritual: Tabelle bzw. Abfolge je nach gewähltem Ablauf */
 .ritual-form:has(input[name="modus"][value="abfolge"]:checked) .nur-woche,
 .ritual-form:has(input[name="modus"][value="woche"]:checked) .nur-abfolge { display: none; }
+/* B28.3 Deal-Eingang „Passt der Deal zu dir?“: bei 👎 die 👍-Gründe ausblenden und umgekehrt */
+.de-bewerten:has(input[name="daumen"][value="runter"]:checked) .de-gruende-hoch,
+.de-bewerten:has(input[name="daumen"][value="hoch"]:checked) .de-grund-runter { display: none; }
 .pk-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .pk-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .pk-legend i { width: 18px; height: 11px; border-radius: 3px; border: 1.5px solid color-mix(in srgb, var(--c, var(--area)) 45%, var(--surface)); background: color-mix(in srgb, var(--c, var(--area)) 18%, var(--surface)); display: inline-block; }

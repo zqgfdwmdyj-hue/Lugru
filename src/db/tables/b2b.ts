@@ -106,6 +106,11 @@ export const lieferantenProfile = pgTable(
     vertriebGeprueftAm: timestamp("vertrieb_geprueft_am", { withTimezone: true }),
     vertriebGeprueftVon: uuid("vertrieb_geprueft_von").references(() => users.id, { onDelete: "set null" }),
     notiz: text("notiz"),
+    /** B28.5 Deal-Quellen: Ansprechpartner, Standard-Zahlungsweg, Rechnung mit EAN, Stichworte der Deal-Quelle („Konrad“, „WhatsApp“). */
+    ansprechpartner: text("ansprechpartner"),
+    zahlungsweg: text("zahlungsweg"),
+    rechnungMitEan: boolean("rechnung_mit_ean").notNull().default(true),
+    dealQuellen: jsonb("deal_quellen").$type<string[]>().notNull().default([]),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.supplierId] })],
@@ -125,6 +130,8 @@ export type DealPrognose = Record<
     /** Aktueller Buy-Box-Preis brutto umgerechnet in EUR (Grundlage der Kundenrechnung). */
     vkEur: number | null;
     verkaeufeMonat: number | null;
+    /** B28.4: Schätzung aus dem Verkaufsrang, wenn Keepa keine „x+ gekauft“-Angabe hat (nur Anzeige „geschätzt“ + Abverkauf). */
+    verkaeufeGeschaetzt?: number | null;
     angeboteFba: number | null;
     angeboteFbm: number | null;
     amazonProzent: number | null;

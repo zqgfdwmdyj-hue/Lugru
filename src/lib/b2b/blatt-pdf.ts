@@ -86,14 +86,15 @@ export async function blattPdf(i: BlattPdfInput): Promise<Uint8Array> {
   y -= 14;
   text("Prognose je Marktplatz", M, 12, bold);
   y -= 16;
-  const spalten = [M, M + 60, M + 160, M + 260, M + 340, M + 420];
-  const kopf = ["Land", "Buy Box", "Gewinn/Stück", "ROI", "Verk./Monat", "Angebote"];
+  // B28.1: Marge (Gewinn ÷ Buy Box brutto) neben dem Gewinn, ROI dahinter
+  const spalten = [M, M + 50, M + 135, M + 225, M + 290, M + 350, M + 435];
+  const kopf = ["Land", "Buy Box", "Gewinn/Stück", "Marge", "ROI", "Verk./Monat", "Angebote"];
   kopf.forEach((h, n) => page.drawText(h, { x: spalten[n], y, size: 9, font: bold, color: MUTED }));
   y -= 6;
   page.drawLine({ start: { x: M, y }, end: { x: M + W, y }, thickness: 0.6, color: LINE });
   y -= 13;
   for (const l of i.laender) {
-    const werte = [l.land, eur(l.vk), eur(l.gewinn), l.roi === null ? "–" : `${l.roi.toFixed(0)} %`, l.verkaeufe === null ? "–" : `~${l.verkaeufe}`, l.angebote === null ? "–" : String(l.angebote)];
+    const werte = [l.land, eur(l.vk), eur(l.gewinn), (l.gewinn !== null && l.vk ? `${Math.round((l.gewinn / l.vk) * 100)} %` : "–"), l.roi === null ? "–" : `${l.roi.toFixed(0)} %`, l.verkaeufe === null ? "–" : `~${l.verkaeufe}`, l.angebote === null ? "–" : String(l.angebote)];
     werte.forEach((v, n) => page.drawText(safe(v), { x: spalten[n], y, size: 10, font: n === 0 ? bold : reg, color: INK }));
     y -= 15;
   }

@@ -131,7 +131,8 @@ test.describe("Deal-Eingang", () => {
     await pp("€7,49");
     await Promise.all([aktion(page), page.getByTestId("de-profitpath").click()]);
     await expect(page.getByRole("status")).toContainText("1 Updates");
-    expect((await sql<{ c: string }>("select count(*) c from deal_eingaenge where tenant_id = $1 and weg = 'profitpath'", [T]))[0].c).toBe("1");
+    // Nur die Meldungen dieses Laufs zählen (andere Prüfungen legen eigene ProfitPath-Deals an)
+    expect((await sql<{ c: string }>("select count(*) c from deal_eingaenge where tenant_id = $1 and weg = 'profitpath' and zeilen::text like $2", [T, `%Haarspray ${m}%`]))[0].c).toBe("1");
     await expect(page.getByTestId("de-quellen")).toContainText("ProfitPath · Dealwatch");
 
     // 7) Claude: deal_eingang (seit heute), Einzelheiten, Quellen, Deal prüfen aus dem Chat
