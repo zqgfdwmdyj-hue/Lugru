@@ -3,7 +3,7 @@ import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 
 /** Ergebnis eines Hintergrund-Abrufs merken (Erfolg oder Fehler) – Fehler hier nie weiterwerfen. */
-export async function recordJob(tenantId: string, name: string, error: string | null, durationMs?: number, zeitplan?: { ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string } | null) {
+export async function recordJob(tenantId: string, name: string, error: string | null, durationMs?: number, zeitplan?: { ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string; uhrzeiten?: string[] } | null) {
   const J = schema.jobRuns;
   const now = new Date();
   const dur = durationMs === undefined ? null : Math.min(2_000_000_000, Math.round(durationMs));
@@ -18,6 +18,31 @@ export async function recordJob(tenantId: string, name: string, error: string | 
   } catch {
     // Protokoll ist Zusatz – ein Fehler hier darf den Abruf nicht stören.
   }
+}
+
+/**
+ * B29: Hinweis ohne Fehler (z. B. „übersprungen (Tagesbudget)“, „pausiert bis 01:00 Uhr“) – Erfolg und Fehler bleiben
+ * stehen; angezeigt wird der Hinweis, solange er neuer ist als beide.
+ */
+export async function recordJobHinweis(tenantId: string, name: string, hinweis: string, zeitplan?: { ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string; uhrzeiten?: string[] } | null) {
+  const J = schema.jobRuns;
+  const now = new Date();
+  try {
+    await db
+      .insert(J)
+      .values({ tenantId, name, hinweis: hinweis.slice(0, 500), hinweisAt: now, updatedAt: now, ...(zeitplan ? { zeitplan } : {}) })
+      .onConflictDoUpdate({ target: [J.tenantId, J.name], set: { hinweis: hinweis.slice(0, 500), hinweisAt: now, updatedAt: now, ...(zeitplan ? { zeitplan } : {}) } });
+  } catch {
+    // Protokoll ist Zusatz.
+  }
+}
+
+/** Gilt der Hinweis noch (neuer als letzter Erfolg und letzter Fehler)? */
+export function hinweisAktuell(j: { hinweis: string | null; hinweisAt: Date | null; lastOkAt: Date | null; lastErrorAt: Date | null }): string | null {
+  if (!j.hinweis || !j.hinweisAt) return null;
+  if (j.lastOkAt && j.lastOkAt >= j.hinweisAt) return null;
+  if (j.lastErrorAt && j.lastErrorAt >= j.hinweisAt) return null;
+  return j.hinweis;
 }
 
 export type JobStand = { text: string; at: Date | null; fehler: string | null };

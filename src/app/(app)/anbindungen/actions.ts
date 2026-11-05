@@ -7,7 +7,7 @@ import { integrationDef } from "@/lib/integrations/registry";
 import { deleteIntegration, saveIntegration } from "@/lib/integrations/store";
 import { testIntegration } from "@/lib/integrations/test";
 import { deleteConn } from "@/lib/sellerboard/connection";
-import { startSellerboardSync } from "@/lib/sellerboard/sync";
+import { startSbAutomatik, startSellerboardSync } from "@/lib/sellerboard/sync";
 
 export type TestState = { ok: boolean; message: string } | null;
 
@@ -117,6 +117,14 @@ export async function sellerboardSyncAction(formData: FormData) {
   const session = await requireOwner();
   startSellerboardSync(session.tenantId, formData.get("scope") === "bestand" ? "bestand" : "alles");
   // kurz warten, damit „Abgleich läuft“ schon angezeigt wird
+  await new Promise((r) => setTimeout(r, 400));
+  revalidatePath("/anbindungen");
+}
+
+/** B29: nur fällige geplante Abrufe nachholen – mit Tagesbudget und Pause wie im Zeitplan. */
+export async function sellerboardAutomatikAction() {
+  const session = await requireOwner();
+  startSbAutomatik(session.tenantId);
   await new Promise((r) => setTimeout(r, 400));
   revalidatePath("/anbindungen");
 }

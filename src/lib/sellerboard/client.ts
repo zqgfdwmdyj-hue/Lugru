@@ -1,6 +1,8 @@
 import "server-only";
 import { accessToken, mcpUrl, readConn } from "./connection";
 import { isPreparing, parseToolText } from "./parse";
+import { aufrufZaehlen, budgetPruefen, pauseSetzen, prioJetzt, quotaMerken } from "./budget";
+import { istLimitFehler, quotaAus, SbGestoppt, uhrText } from "./budget-logic";
 
 // Werkzeuge des sellerboard-Connectors aufrufen (MCP über HTTP, zustandslos). Hält sich an das Limit
 // (höchstens ~3 Anfragen/Sekunde je Konto), wartet bei „preparing“ und 429 und erneuert das Token bei 401.
@@ -68,16 +70,17 @@ async function readSse(r: Response): Promise<Record<string, unknown> | null> {
 }
 
 /** Ein JSON-RPC-Aufruf; Antwort als JSON oder als Event-Stream. */
-async function rpc(token: string, method: string, params: unknown): Promise<{ status: number; body: Record<string, unknown> | null }> {
+async function rpc(token: string, method: string, params: unknown, timeoutMs = 90_000): Promise<{ status: number; body: Record<string, unknown> | null; fehlerText?: string }> {
   const r = await fetch(mcpUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${token}`, "MCP-Protocol-Version": "2025-06-18" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!r.ok) {
-    await r.body?.cancel().catch(() => undefined);
-    return { status: r.status, body: null };
+    // Fehlertext kurz lesen (z. B. „used up today's MCP call limit“ als HTTP 429).
+    const fehlerText = await r.text().then((x) => x.slice(0, 500)).catch(() => "");
+    return { status: r.status, body: null, fehlerText };
   }
   if ((r.headers.get("content-type") ?? "").includes("text/event-stream")) return { status: r.status, body: await readSse(r) };
   const text = await r.text();
@@ -88,8 +91,20 @@ async function rpc(token: string, method: string, params: unknown): Promise<{ st
   }
 }
 
-/** Werkzeug aufrufen und den JSON-Teil der Antwort liefern. account_id wird automatisch ergänzt. */
+/** B29.2: sellerboard meldet „Tageslimit erreicht“ → bis 00:00 UTC pausieren, Abruf ohne Fehler stoppen. */
+async function limitErreicht(tenantId: string): Promise<never> {
+  const bis = await pauseSetzen(tenantId);
+  throw new SbGestoppt("pausiert", bis, `sellerboard-Tageslimit erreicht – pausiert bis ${uhrText(bis)}`);
+}
+
+/**
+ * Werkzeug aufrufen und den JSON-Teil der Antwort liefern. account_id wird automatisch ergänzt.
+ * B29.2: vor jedem Aufruf das Tagesbudget prüfen (sonst SbGestoppt), jeden beantworteten Aufruf zählen
+ * (auch „preparing“-Wiederholungen – die zählen bei sellerboard mit).
+ */
 export async function sbCall(tenantId: string, tool: string, args: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const prio = prioJetzt();
+  await budgetPruefen(tenantId, prio);
   const conn = await readConn(tenantId);
   const params = { name: tool, arguments: { ...(conn?.config.accountId && tool !== "list_accounts" ? { account_id: conn.config.accountId } : {}), ...args } };
   let token = await accessToken(tenantId);
@@ -97,6 +112,7 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
   let rateTries = 0;
   let netTries = 0;
   for (let preparing = 0; preparing < 40; ) {
+    if (preparing > 0) await budgetPruefen(tenantId, prio);
     await pace(tenantId);
     let reply: Awaited<ReturnType<typeof rpc>>;
     try {
@@ -109,6 +125,7 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
       continue;
     }
     const { status, body } = reply;
+    if (reply.fehlerText && istLimitFehler(reply.fehlerText)) await limitErreicht(tenantId);
     if (status === 401 && !refreshed) {
       token = await accessToken(tenantId, true);
       refreshed = true;
@@ -127,9 +144,16 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
       }
       throw new Error(`sellerboard (${tool}): unvollständige Antwort (HTTP ${status}) – mehrfach versucht.`);
     }
-    if (body.error) throw new Error(`sellerboard: ${String((body.error as { message?: string }).message ?? "Fehler")}`);
+    if (body.error) {
+      const msg = String((body.error as { message?: string }).message ?? "Fehler");
+      if (istLimitFehler(msg)) await limitErreicht(tenantId);
+      await aufrufZaehlen(tenantId, prio);
+      throw new Error(`sellerboard: ${msg}`);
+    }
     const result = body.result as { content?: { type: string; text?: string }[]; isError?: boolean; structuredContent?: Record<string, unknown> } | undefined;
     const text = (result?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
+    if (result?.isError && istLimitFehler(text)) await limitErreicht(tenantId);
+    await aufrufZaehlen(tenantId, prio);
     if (result?.isError) {
       if (/429|rate limit/i.test(text) && ++rateTries <= 6) {
         await sleep(Math.min(30_000, 1000 * 2 ** rateTries));
@@ -146,6 +170,36 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
     return data;
   }
   throw new Error(`sellerboard (${tool}): Daten nach mehreren Minuten noch nicht fertig – später erneut.`);
+}
+
+/**
+ * B29.2: Nutzung heute laut sellerboard (usage_quota – kostenlos, zählt nicht und geht auch am Limit). Merkt den
+ * Stand für Zähler und Budget; Fehler werden geschluckt (dann zählt nur der eigene Zähler).
+ */
+export async function sbQuota(tenantId: string, timeoutMs = 10_000): Promise<{ genutzt: number; limit: number } | null> {
+  try {
+    const conn = await readConn(tenantId);
+    if (!conn?.secrets.accessToken && !conn?.secrets.refreshToken) return null;
+    const token = await accessToken(tenantId);
+    await pace(tenantId);
+    const { body } = await rpc(token, "tools/call", { name: "usage_quota", arguments: conn.config.accountId ? { account_id: conn.config.accountId } : {} }, timeoutMs);
+    const result = body?.result as { content?: { type: string; text?: string }[]; isError?: boolean; structuredContent?: Record<string, unknown> } | undefined;
+    if (!result || result.isError) return null;
+    const text = (result.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
+    let data: unknown = result.structuredContent ?? null;
+    if (!data) {
+      try {
+        data = parseToolText(text);
+      } catch {
+        data = null;
+      }
+    }
+    const q = quotaAus(data, text);
+    if (q) await quotaMerken(tenantId, q);
+    return q;
+  } catch {
+    return null;
+  }
 }
 
 /** Alle Seiten eines Werkzeugs mit page/count lesen (total = Gesamtzahl). */

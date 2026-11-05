@@ -105,7 +105,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
-| Einstellungen | Anbindungen `/anbindungen` | ○ 0/2 Abläufe | – | – |
+| Einstellungen | Anbindungen `/anbindungen` | ○ 0/4 Abläufe | – | 2 |
 | Einstellungen | Claude & KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
 | Einstellungen | Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -298,7 +298,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | 2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar | Aufgabe „verlust-<SKU>“ offen/wichtig bzw. nicht mehr offen | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 | Kennzahlen | Zeitraum, Quelle, Stand | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
 
-- – Offen: Echte sellerboard-Tageswerte je Produkt (kommen mit dem täglichen Komplett-Abgleich)
+- – Offen: Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)
 
 ### Finanzen › Hebel: Umsatz & Marge (`/hebel`)
 
@@ -451,7 +451,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Familienkalender: „To do Ina: …“ → wichtige Aufgabe | genau eine Aufgabe (wichtig, Ina, Frist = Termintag); erledigt bleibt erledigt | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten | Einkäufe/Lagerbestand verarbeitet; BQool aus der Export-Liste, Reimbursement über den Dialog; Fehler je Export mit Bild + Seite; sellerboard „übersprungen“; alter Fehlimport → fertig | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
-| B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst | „alle 3 Std.“ statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
+| B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst | feste Uhrzeiten („04:00 und 13:00“, B29) statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
 | BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“ | Hinweis/Server-Annahme = hochgeladen, JSON-Ablehnung = Fehler; nichts erkannt = gelb + normale Aufgabe; „hat geklappt“ → von Hand bestätigt, Status fertig, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `bqool-upload-erkennung.spec.ts` |
 | Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin) | „nur Tom“ → blockt nicht, steht unter „Blockt nicht“, Kapazität steigt; zurückholen und ↺ gehen; Kalender-Tagesliste gleich; To-do-Termine blocken nicht | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel | Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
@@ -475,6 +475,11 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ | Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung | ○ im letzten Lauf nicht gelaufen | `postfach.spec.ts` |
 | B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ | z. B. „Amazon-Bestellungen: alle 15 Min.“; Zeitplan aus dem letzten Lauf | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
+| B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau | Zähler „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“ = Aufrufe beim Nachbau, höchstens 5; Verkauf lief (Vorrang), übrige Abrufe „übersprungen (Tagesbudget)“, kein Fehler | ○ im letzten Lauf nicht gelaufen | `b29-sellerboard-budget.spec.ts` |
+| B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung | genau ein Eintrag „pausiert bis 01:00 Uhr“ (auch unter nur_probleme), keine Fehlerzeilen, während der Pause kein Aufruf; danach nachgeholt Verkauf → Gewinn je Produkt → Bestand → Tagesabrufe, Eintrag weg | ○ im letzten Lauf nicht gelaufen | `b29-sellerboard-budget.spec.ts` |
+
+- – Offen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
+- – Offen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
 
 ### Einstellungen › Claude & KI-Assistent (`/einstellungen/claude`)
 
@@ -555,7 +560,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (122 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 122 nicht gelaufen.
+**Automatisch** (124 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 124 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -660,6 +665,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Einstellungen: B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ – im letzten Lauf nicht gelaufen
+- ○ Anbindungen: B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau – im letzten Lauf nicht gelaufen
+- ○ Anbindungen: B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung – im letzten Lauf nicht gelaufen
 - ○ Claude & KI-Assistent: Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten – im letzten Lauf nicht gelaufen
 - ○ Claude & KI-Assistent: Jedes lesende Werkzeug einzeln – im letzten Lauf nicht gelaufen
 - ○ Claude & KI-Assistent: Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) – im letzten Lauf nicht gelaufen
@@ -712,7 +719,7 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 - Gewinn: Amazon-Zeile mit echten Abrechnungen gegen sellerboard vergleichen (−525 € laut Testbericht)
-- Verlust-Stopp: Echte sellerboard-Tageswerte je Produkt (kommen mit dem täglichen Komplett-Abgleich)
+- Verlust-Stopp: Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)
 - Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
 - Retouren-Station & Fälle: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
 - Retouren-Station & Fälle: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
@@ -727,6 +734,8 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Calls (Consultant & Gruppe): Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)
 - Übersicht: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - Übersicht: Live nie prüfen (echte private Daten)
+- Anbindungen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
+- Anbindungen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
 - Claude & KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
 - Claude & KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - /posteingang/verbinden: IMAP mit echtem Postfach: Ordnerauswahl (Gmail „Alle Nachrichten“), Test-Knopf, SMTP 465 → 587, Fehlerarten (Anmeldung, IMAP aus, Port) – nur live mit Nur-ansehen-Daten

@@ -34,6 +34,10 @@ export const E2E_ENV: Record<string, string> = {
   TESLA_BASE_URL: `${TD}/tesla`,
   TWILIO_BASE_URL: `${TD}/twilio`,
   ASANA_BASE_URL: `${TD}/asana`,
+  // B29: sellerboard-MCP-Nachbau (Aufrufzähler, Tageslimit); kurze Pausen zwischen den Aufrufen
+  SELLERBOARD_MCP_URL: `${TD}/sellerboard/mcp`,
+  SELLERBOARD_GAP_MS: "30",
+  SELLERBOARD_PREPARING_MS: "200",
   NEXT_TELEMETRY_DISABLED: "1",
   // B24: Wartezeit auf das Anmeldeformular der Browser-Automatik (live 60 s)
   AUTOMATIK_WARTEN_MS: "5000",

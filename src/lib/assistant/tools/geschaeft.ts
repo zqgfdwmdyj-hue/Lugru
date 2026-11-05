@@ -19,6 +19,8 @@ import { bqoolStand } from "@/lib/bqool/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
+import { hinweisAktuell } from "@/lib/today/jobs";
+import { istLimitFehler } from "@/lib/sellerboard/budget-logic";
 
 // Lese-Werkzeuge für Auswertungen, die es im Seller-System schon gibt: Hebel, Bestellvorschläge, SAS/Black Week,
 // FBA-Sendungen, Remissionen, Stand der Anbindungen, eine Mail vollständig. Nur lesen.
@@ -296,7 +298,7 @@ export const anbindungenStatus = defineTool({
   name: "anbindungen_status",
   title: "Stand der Anbindungen",
   description:
-    "Ob die Daten aktuell sind: je Anbindung (Amazon, eBay, sellerboard, Keepa …) ob eingerichtet, je Hintergrund-Abruf der letzte Erfolg und ein aktueller Fehler, die Postfächer (Art, Ordner, letzter Abruf, Fehlerart, letzte Amazon-Mail, Warnung „7 Tage keine Mail von *@amazon.*“) und die letzten Datei-Importe. Für „Warum ist das nicht aktuell?“, „Kommen die Seller-Central-Mails an?“.",
+    "Ob die Daten aktuell sind: je Anbindung (Amazon, eBay, sellerboard, Keepa …) ob eingerichtet, je Hintergrund-Abruf der letzte Erfolg, ein aktueller Fehler oder ein Status ohne Fehler („übersprungen (Tagesbudget)“, „pausiert bis 01:00 Uhr“), die sellerboard-Aufrufe heute („sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“, Limit 125 je Tag für alle Nutzer inkl. Claude, Rücksetzung 00:00 UTC; „morgenbericht_zeile“, wenn das Limit am Vortag erreicht war), die Postfächer (Art, Ordner, letzter Abruf, Fehlerart, letzte Amazon-Mail, Warnung „7 Tage keine Mail von *@amazon.*“) und die letzten Datei-Importe. Für „Warum ist das nicht aktuell?“, „Kommen die Seller-Central-Mails an?“, „Wie viele sellerboard-Aufrufe sind heute noch frei?“.",
   area: null,
   ownerOnly: true,
   write: false,
@@ -318,14 +320,50 @@ export const anbindungenStatus = defineTool({
       postfachStand(t),
     ]);
     const now = Date.now();
+    // B29: sellerboard-Aufrufe heute (Stand laut sellerboard höchstens 15 Min. alt – der Blick darauf ist kostenlos).
+    const sbAufrufe = st.get("sellerboard")
+      ? await (async () => {
+          const b = await import("@/lib/sellerboard/budget");
+          let z = await b.zaehlerAnzeige(t);
+          const [a] = await db.select({ am: schema.sellerboardAufrufe.quotaAm }).from(schema.sellerboardAufrufe).where(and(eq(schema.sellerboardAufrufe.tenantId, t), eq(schema.sellerboardAufrufe.tag, z.tag_utc)));
+          if (!a?.am || now - a.am.getTime() > 15 * 60_000) {
+            const { sbQuota } = await import("@/lib/sellerboard/client");
+            if (await sbQuota(t, 8_000)) z = await b.zaehlerAnzeige(t);
+          }
+          return {
+            text: z.text,
+            heute_utc: z.tag_utc,
+            gesamt: z.gesamt,
+            limit: z.limit ?? "ohne Limit",
+            automatik: z.automatik,
+            obergrenze_automatik: z.obergrenze_automatik,
+            von_hand: z.hand || undefined,
+            claude_und_andere: z.andere ?? "unbekannt (Stand laut sellerboard fehlt)",
+            reserve: z.reserve,
+            frei: z.frei,
+            stand_laut_sellerboard: z.stand_laut_sellerboard ?? "noch nicht abgefragt",
+            uebersprungene_laeufe_heute: z.uebersprungen_heute || undefined,
+            pausiert_bis: z.pausiert_bis ? `${berlinDateTime(z.pausiert_bis)} (Rücksetzung 00:00 UTC)` : undefined,
+            limit_heute_erreicht: z.limit_heute_erreicht ?? undefined,
+            limit_gestern: z.limit_gestern ?? undefined,
+            morgenbericht_zeile: z.morgenbericht_zeile ?? undefined,
+            regeln: "Limit 125 Aufrufe je Tag für alle Nutzer zusammen (auch Claude/Morgenbericht); die Automatik nimmt sich höchstens 80, „Verkauf“ hat Vorrang, die letzten 10 bleiben immer für Claude; Rücksetzung 00:00 UTC.",
+          };
+        })()
+      : undefined;
     const abrufe = jobs
+      // B29: der Eintrag „pausiert bis …“ steht nur, solange die Pause gilt.
+      .filter((j) => j.name !== "sellerboard: Tageslimit" || hinweisAktuell(j))
       .map((j) => {
-        const fehlerAktuell = Boolean(j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt));
+        // B29.2: alte sellerboard-Fehler „Tageslimit erreicht“ sind kein Fehler des Abrufs – sie werden nachgeholt.
+        const limitFehler = j.name.startsWith("sellerboard:") && istLimitFehler(j.lastError);
+        const fehlerAktuell = !limitFehler && Boolean(j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt));
+        const status = hinweisAktuell(j) ?? (limitFehler && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? "übersprungen (sellerboard-Tageslimit) – wird nach der Rücksetzung nachgeholt" : null);
         // Einmalige Schritte (z. B. sellerboard-Konto erkennen) laufen nur beim Einrichten – nie „veraltet“.
         const einmalig = EINMALIGE_ABRUFE.has(j.name);
         // B27.5: abgelöste Abrufe (z. B. altes Call-Archiv) sind nie „veraltet“ und stehen nicht unter „nur Probleme“.
         const abgeloest = ABGELOESTE_ABRUFE[j.name];
-        const alt = !einmalig && !abgeloest && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
+        const alt = !einmalig && !abgeloest && j.name !== "sellerboard: Tageslimit" && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
         const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
         const letzterLauf = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
         return {
@@ -335,13 +373,14 @@ export const anbindungenStatus = defineTool({
           letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie",
           einmalig: einmalig ? "nur beim Einrichten nötig – kein Hinweis auf alte Daten" : undefined,
           abgeloest: abgeloest || undefined,
+          status: status ?? undefined,
           fehler: fehlerAktuell && !abgeloest ? (j.lastError ?? "Fehler").slice(0, 300) : undefined,
           fehler_seit: fehlerAktuell && !abgeloest ? (berlinDateTime(j.lastErrorAt) ?? undefined) : undefined,
           hinweis: fehlerAktuell && !abgeloest ? ABRUF_HINWEIS[j.name] : undefined,
           ueber_2_tage_alt: alt || undefined,
         };
       })
-      .filter((j) => !i.nur_probleme || j.fehler || j.ueber_2_tage_alt)
+      .filter((j) => !i.nur_probleme || j.fehler || j.ueber_2_tage_alt || j.abruf === "sellerboard: Tageslimit")
       .sort((a, b) => Number(Boolean(b.fehler)) - Number(Boolean(a.fehler)) || a.abruf.localeCompare(b.abruf));
     // sellerboard insgesamt: neuester Erfolg über alle laufenden Schritte (ohne die einmaligen).
     const sb = jobs.filter((j) => j.name.startsWith("sellerboard:") && !EINMALIGE_ABRUFE.has(j.name) && j.lastOkAt).map((j) => j.lastOkAt!.getTime());
@@ -353,10 +392,11 @@ export const anbindungenStatus = defineTool({
         const optional = d.provider === "google" || d.provider === "microsoft";
         // B19.8: aktueller Fehler des letzten Abgleichs direkt an der Anbindung (z. B. sellerboard), nicht nur unter „abrufe“.
         const fehlerJob = jobs
-          .filter((j) => (j.name.toLowerCase().startsWith(`${d.provider.toLowerCase()}:`) || j.name.toLowerCase().startsWith(d.name.toLowerCase())) && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt))
+          .filter((j) => (j.name.toLowerCase().startsWith(`${d.provider.toLowerCase()}:`) || j.name.toLowerCase().startsWith(d.name.toLowerCase())) && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) && !istLimitFehler(j.lastError))
           .sort((a, b) => b.lastErrorAt!.getTime() - a.lastErrorAt!.getTime())[0];
         return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined, letzter_fehler: fehlerJob ? { text: (fehlerJob.lastError ?? "Fehler").slice(0, 300), seit: berlinDateTime(fehlerJob.lastErrorAt), abruf: fehlerJob.name, hinweis: ABRUF_HINWEIS[fehlerJob.name] } : undefined };
       }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional) || a.letzter_fehler),
+      sellerboard_aufrufe: sbAufrufe,
       // Immer eine Übersicht – auch wenn „nur_probleme“ alle Postfächer ohne Fehler ausblendet (B17).
       discord_call_kanal: st.get("discord_calls")
         ? await (async () => {

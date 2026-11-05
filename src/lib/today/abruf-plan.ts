@@ -1,7 +1,10 @@
 // Wann läuft welcher Hintergrund-Abruf? (B21.5) – rein, getestet in tests/calls-live.test.ts.
 // „live“ = ausgelöst durch eingehende Nachrichten (Discord-Verbindung), sonst Zeitplan mit Abstand oder Uhrzeit.
 
-export type AbrufPlan = { ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string };
+export type AbrufPlan = { ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string; /** B29: feste Uhrzeiten (Berlin) */ uhrzeiten?: string[] };
+
+/** Uhrzeiten des Verkaufs-Abrufs (gleich wie SB_SLOTS.verkauf in sellerboard/budget-logic.ts – Test prüft das). */
+const SB_VERKAUF = ["02:00", "06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00"];
 
 export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "Discord live-Verbindung": { ausloeser: "live", text: "Auslöser: live (Discord)" },
@@ -24,19 +27,20 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "Amazon: Versandbestätigung": { ausloeser: "zeitplan", text: "Zeitplan: stündlich", minuten: 60 },
   "ArbitrageOne: Exporte abholen": { ausloeser: "zeitplan", text: "Auslöser: täglich 05:30 (Einkäufe, Lagerbestand, sellerboard-COG, BQool-Vergleich; montags Reimbursement; am 1. AccountOne COG)", taeglichUm: "05:30" },
   "ArbitrageOne: fehlgeschlagene Importe nachverarbeiten": { ausloeser: "zeitplan", text: "Zeitplan: stündlich (je fehlgeschlagenem Import einmal)", minuten: 60 },
-  // B27.4: sellerboard – Zeitplan fest eingetragen (vorher „wird beim nächsten Lauf erfasst“).
-  "sellerboard: Verkauf (Amazon + eBay)": { ausloeser: "zeitplan", text: "Zeitplan: alle 30 Min.", minuten: 30 },
-  "sellerboard: FBA-Bestand": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
-  "sellerboard: FBA-Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
-  "sellerboard: Hebel-Aufgaben": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
-  "sellerboard: Ansprüche aus Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: alle 4 Std.", minuten: 240 },
-  "sellerboard: Produkte & EK": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
-  "sellerboard: Monatswerte & Gewinn je SKU": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
-  "sellerboard: Fixkosten": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
-  "sellerboard: Produkte 30 Tage (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
-  "sellerboard: Keepa Buy Box (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich", minuten: 1440 },
-  "sellerboard: Gewinn je Produkt und Tag": { ausloeser: "zeitplan", text: "Zeitplan: alle 3 Std. (unabhängig vom großen Abgleich)", minuten: 180 },
-  "sellerboard: Verlust-Stopp": { ausloeser: "zeitplan", text: "Zeitplan: alle 3 Std. (nach „Gewinn je Produkt und Tag“)", minuten: 180 },
+  // B29.1: sellerboard – feste Uhrzeiten mit Tagesbudget (vorher alle 30 Min./3 Std./4 Std. = über 125 Aufrufe am Tag).
+  "sellerboard: Verkauf (Amazon + eBay)": { ausloeser: "zeitplan", text: "Zeitplan: alle 2 Std. 06–22 Uhr, nachts 02:00 (Vorrang im Tagesbudget)", uhrzeiten: SB_VERKAUF },
+  "sellerboard: FBA-Bestand": { ausloeser: "zeitplan", text: "Zeitplan: 04:30 und 16:30", uhrzeiten: ["04:30", "16:30"] },
+  "sellerboard: FBA-Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: 04:30 und 16:30 (nur geänderte Sendungen)", uhrzeiten: ["04:30", "16:30"] },
+  "sellerboard: Hebel-Aufgaben": { ausloeser: "zeitplan", text: "Zeitplan: nach den Tagesabrufen (ab 02:00) und nach dem Bestand (04:30, 16:30) – ohne sellerboard-Aufruf", uhrzeiten: ["02:00", "04:30", "16:30"] },
+  "sellerboard: Ansprüche aus Sendungen": { ausloeser: "zeitplan", text: "Zeitplan: 04:30 und 16:30 (nach den Sendungen) – ohne sellerboard-Aufruf", uhrzeiten: ["04:30", "16:30"] },
+  "sellerboard: Produkte & EK": { ausloeser: "zeitplan", text: "Zeitplan: täglich 02:00–03:30 (Tagesabrufe nacheinander)", uhrzeiten: ["02:00"] },
+  "sellerboard: Monatswerte & Gewinn je SKU": { ausloeser: "zeitplan", text: "Zeitplan: täglich 02:00–03:30 (Tagesabrufe nacheinander; Vormonat nur bis zum 10.)", uhrzeiten: ["02:00"] },
+  "sellerboard: Fixkosten": { ausloeser: "zeitplan", text: "Zeitplan: täglich 02:00–03:30 (Tagesabrufe nacheinander)", uhrzeiten: ["02:00"] },
+  "sellerboard: Produkte 30 Tage (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich 02:00–03:30 (Tagesabrufe nacheinander)", uhrzeiten: ["02:00"] },
+  "sellerboard: Keepa Buy Box (Hebel)": { ausloeser: "zeitplan", text: "Zeitplan: täglich 02:00–03:30 (nach den Tagesabrufen) – ohne sellerboard-Aufruf", uhrzeiten: ["02:00"] },
+  "sellerboard: Gewinn je Produkt und Tag": { ausloeser: "zeitplan", text: "Zeitplan: 04:00 und 13:00", uhrzeiten: ["04:00", "13:00"] },
+  "sellerboard: Verlust-Stopp": { ausloeser: "zeitplan", text: "Zeitplan: 04:00 und 13:00 (nach „Gewinn je Produkt und Tag“) – ohne sellerboard-Aufruf", uhrzeiten: ["04:00", "13:00"] },
+  "sellerboard: Tageslimit": { ausloeser: "zeitplan", text: "Auslöser: sellerboard meldet das Tageslimit (125 Aufrufe) – Pause bis 00:00 UTC, danach Nachholen" },
 };
 
 /** B27.5: Abrufe, die durch neuere ersetzt sind – nie „veraltet“, nicht unter „nur Probleme“. */
@@ -62,8 +66,8 @@ export function planAusTakt(o: { minuten?: number; taeglichUm?: string }): Abruf
 }
 
 const BERLIN = "Europe/Berlin";
-const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: BERLIN }).format(d);
-const zeitBerlin = (d: Date) => new Intl.DateTimeFormat("de-DE", { timeZone: BERLIN, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+export const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: BERLIN }).format(d);
+export const zeitBerlin = (d: Date) => new Intl.DateTimeFormat("de-DE", { timeZone: BERLIN, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
 
 /** Offset Berlin ↔ UTC (Minuten) an einem Zeitpunkt. */
 function berlinOffset(d: Date): number {
@@ -74,7 +78,7 @@ function berlinOffset(d: Date): number {
 }
 
 /** Zeitpunkt „Tag HH:MM“ in Berlin als Date. */
-function berlinZeitpunkt(tag: string, hhmm: string): Date {
+export function berlinZeitpunkt(tag: string, hhmm: string): Date {
   const [h, m] = hhmm.split(":").map(Number);
   const roh = new Date(`${tag}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`);
   return new Date(roh.getTime() - berlinOffset(roh) * 60_000);
@@ -83,6 +87,12 @@ function berlinZeitpunkt(tag: string, hhmm: string): Date {
 /** Nächster Lauf: live → null (sofort bei Eingang); Abstand → letzter + Abstand (frühestens jetzt); Uhrzeit → nächste. */
 export function naechsterLauf(plan: AbrufPlan | undefined, letzter: Date | null, jetzt = new Date()): Date | null {
   if (!plan || plan.ausloeser === "live") return null;
+  if (plan.uhrzeiten?.length) {
+    // B29: nächste feste Uhrzeit nach jetzt (übersprungene Läufe werden nach der Rücksetzung nachgeholt).
+    const tage = [0, 1, 2].map((i) => tagBerlin(new Date(jetzt.getTime() + i * 86_400_000)));
+    const kommend = tage.flatMap((t) => plan.uhrzeiten!.map((u) => berlinZeitpunkt(t, u))).filter((d) => d > jetzt);
+    return kommend.length ? new Date(Math.min(...kommend.map((d) => d.getTime()))) : null;
+  }
   if (plan.taeglichUm) {
     const heute = berlinZeitpunkt(tagBerlin(jetzt), plan.taeglichUm);
     const schonHeute = letzter && tagBerlin(letzter) === tagBerlin(jetzt) && letzter >= heute;

@@ -38,7 +38,7 @@ import { autoSendStatements, refreshPalletReminders } from "@/lib/pallets/servic
 import { todayIso } from "@/lib/dates";
 import { recordJob } from "@/lib/today/jobs";
 import { sbConnected } from "@/lib/sellerboard/connection";
-import { startSellerboardSync } from "@/lib/sellerboard/sync";
+import { startSbAutomatik } from "@/lib/sellerboard/sync";
 import { jobEnded, jobStarted } from "@/lib/perf";
 
 // Hintergrund-Abrufe. Läuft im Server-Prozess (alle 15 Minuten) oder per /api/cron.
@@ -169,15 +169,10 @@ export async function runScheduledJobs(force = false) {
           await step(t, "Rechnungen an Stotax", () => sendPendingToStotax(t));
           await step(t, "Belege an Stotax", () => sendPendingReceipts(t));
         }
-      // sellerboard (nur lesend): alles einmal täglich, Bestand + Sendungen alle 4 Std., Verkaufs-Kennzahlen der
-      // Startseite alle ~30 Min. (in den größeren Abgleichen enthalten) – im Hintergrund.
-      if (await sbConnected(t)) {
-        if (due(`${t}:sb-daily`, 1435)) startSellerboardSync(t, "alles");
-        else if (due(`${t}:sb-stock`, 239)) startSellerboardSync(t, "bestand");
-        else if (due(`${t}:sb-sales`, 29)) startSellerboardSync(t, "verkauf");
-        // B27.4: Gewinn je Produkt und Tag + Verlust-Stopp eigenständig alle 3 Std. (eigene Sperre, eigener Fehlerstand).
-        if (due(`${t}:sb-tage`, 179)) startSellerboardSync(t, "tage");
-      }
+      // sellerboard (nur lesend), B29: feste Uhrzeiten mit Tagesbudget (höchstens 80 der 125 Aufrufe am Tag) –
+      // Verkauf alle 2 Std. 06–22 Uhr + 02:00, Gewinn je Produkt 04:00/13:00, Bestand 04:30/16:30, Tagesabrufe ab 02:00.
+      // Der letzte Lauf je Gruppe steht in der Datenbank (kein Nachholen-Schwall nach einem Neustart).
+      if (await sbConnected(t)) startSbAutomatik(t);
       // B27.1: fehlgeschlagene ArbitrageOne-Importe (Einkäufe, Lagerbestand) einmal mit der verbesserten Verarbeitung nachholen.
       if (await has("arbitrageone_web")) if (force || due(`${t}:ao-nachverarbeiten`, 59)) await step(t, "ArbitrageOne: fehlgeschlagene Importe nachverarbeiten", async () => (await import("@/lib/datei-import/service")).aoFehlimporteNachverarbeiten(t));
       // Paletten-Lager: Erinnerungen (freie Zeit endet, lange Standzeit) und Monatsaufstellungen am Monatsanfang.

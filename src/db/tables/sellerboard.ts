@@ -272,3 +272,42 @@ export const sellerboardSkuTage = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.day, t.sku] }), index("sb_sku_tage_sku_idx").on(t.tenantId, t.sku)],
 );
+
+/**
+ * B29: sellerboard-Aufrufe je Tag (UTC wie bei sellerboard; Limit 125 je Kontoinhaber für alle Nutzer).
+ * automatik = geplante Abrufe, hand = von Hand ausgelöst; quota* = Stand laut usage_quota (kostenlos, zählt auch
+ * Claude und andere Nutzer). limitErreichtAm/datenStandBeiLimit für den Hinweis im Morgenbericht (B29.4).
+ */
+export const sellerboardAufrufe = pgTable(
+  "sellerboard_aufrufe",
+  {
+    tenantId: tenantId(),
+    tag: date("tag", { mode: "string" }).notNull(),
+    automatik: integer("automatik").notNull().default(0),
+    hand: integer("hand").notNull().default(0),
+    quotaGenutzt: integer("quota_genutzt"),
+    quotaLimit: integer("quota_limit"),
+    quotaAm: timestamp("quota_am", { withTimezone: true }),
+    systemBeiQuota: integer("system_bei_quota").notNull().default(0),
+    uebersprungen: integer("uebersprungen").notNull().default(0),
+    limitErreichtAm: timestamp("limit_erreicht_am", { withTimezone: true }),
+    datenStandBeiLimit: timestamp("daten_stand_bei_limit", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.tag] })],
+);
+
+/** B29: Zeitplan-Stand je Mandant – letzter Lauf je Abrufgruppe, Pause nach Limit-Fehler, Obergrenze der Automatik. */
+export const sellerboardPlan = pgTable(
+  "sellerboard_plan",
+  {
+    tenantId: tenantId(),
+    /** Gruppe (verkauf/tage/bestand/taeglich) → Beginn des letzten durchgeführten Laufs (ISO). Übersprungene zählen nicht. */
+    laeufe: jsonb("laeufe").$type<Record<string, string>>().notNull().default({}),
+    pausiertBis: timestamp("pausiert_bis", { withTimezone: true }),
+    /** Obergrenze der Automatik je Tag; leer = 80. */
+    obergrenze: integer("obergrenze"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId] })],
+);

@@ -617,7 +617,10 @@ export const jobRuns = pgTable(
     /** Dauer des letzten Laufs (ms) – zeigt, welcher Abruf den Server wie lange beschäftigt. */
     lastDurationMs: integer("last_duration_ms"),
     /** B25.12: tatsächlicher Zeitplan des Abrufs (aus dem Hintergrund-Takt), statt „laut Plan“. */
-    zeitplan: jsonb("zeitplan").$type<{ ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string }>(),
+    zeitplan: jsonb("zeitplan").$type<{ ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string; uhrzeiten?: string[] }>(),
+    /** B29: Hinweis ohne Fehler, z. B. „übersprungen (Tagesbudget)“ oder „pausiert bis 01:00 Uhr“ – gilt, solange er neuer ist als Erfolg/Fehler. */
+    hinweis: text("hinweis"),
+    hinweisAt: timestamp("hinweis_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.name] })],

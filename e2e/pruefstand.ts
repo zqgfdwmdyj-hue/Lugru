@@ -54,7 +54,10 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“", erwartet: "Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
       { ablauf: "B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“", erwartet: "z. B. „Amazon-Bestellungen: alle 15 Min.“; Zeitplan aus dem letzten Lauf", tests: ["b25.spec.ts › B25.10/B25.12"] },
+      { ablauf: "B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau", erwartet: "Zähler „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“ = Aufrufe beim Nachbau, höchstens 5; Verkauf lief (Vorrang), übrige Abrufe „übersprungen (Tagesbudget)“, kein Fehler", tests: ["b29-sellerboard-budget.spec.ts › Abnahme 2"] },
+      { ablauf: "B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung", erwartet: "genau ein Eintrag „pausiert bis 01:00 Uhr“ (auch unter nur_probleme), keine Fehlerzeilen, während der Pause kein Aufruf; danach nachgeholt Verkauf → Gewinn je Produkt → Bestand → Tagesabrufe, Eintrag weg", tests: ["b29-sellerboard-budget.spec.ts › Abnahme 3"] },
     ],
+    offen: ["B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)", "B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück"],
   },
   "/amazon-faelle": {
     abläufe: [
@@ -203,7 +206,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar", erwartet: "Aufgabe „verlust-<SKU>“ offen/wichtig bzw. nicht mehr offen", tests: ["teil2.spec.ts › Kapital-Ampel"] },
       { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand", tests: ["kennzahlen.spec.ts › Verlust-Stopp"] },
     ],
-    offen: ["Echte sellerboard-Tageswerte je Produkt (kommen mit dem täglichen Komplett-Abgleich)"],
+    offen: ["Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)"],
   },
   "/echtheit": { abläufe: [{ ablauf: "Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket", erwartet: "Beleg + SKU im Ordner, ZIP (PK…)", tests: ["teil2.spec.ts › Echtheits-Ordner"] }] },
   "/amazon-business": {
@@ -267,7 +270,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe", erwartet: "nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor", tests: ["privat.spec.ts › Privates bleibt privat"] },
       { ablauf: "Familienkalender: „To do Ina: …“ → wichtige Aufgabe", erwartet: "genau eine Aufgabe (wichtig, Ina, Frist = Termintag); erledigt bleibt erledigt", tests: ["familie-watch.spec.ts › Familienkalender: „To do Ina"] },
       { ablauf: "B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten", erwartet: "Einkäufe/Lagerbestand verarbeitet; BQool aus der Export-Liste, Reimbursement über den Dialog; Fehler je Export mit Bild + Seite; sellerboard „übersprungen“; alter Fehlimport → fertig", tests: ["b27-automatik.spec.ts › ArbitrageOne"] },
-      { ablauf: "B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst", erwartet: "„alle 3 Std.“ statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme", tests: ["b27-automatik.spec.ts › anbindungen_status"] },
+      { ablauf: "B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst", erwartet: "feste Uhrzeiten („04:00 und 13:00“, B29) statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme", tests: ["b27-automatik.spec.ts › anbindungen_status"] },
       { ablauf: "BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“", erwartet: "Hinweis/Server-Annahme = hochgeladen, JSON-Ablehnung = Fehler; nichts erkannt = gelb + normale Aufgabe; „hat geklappt“ → von Hand bestätigt, Status fertig, Aufgabe erledigt", tests: ["bqool-upload-erkennung.spec.ts › kurzer Hinweis"] },
       { ablauf: "Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin)", erwartet: "„nur Tom“ → blockt nicht, steht unter „Blockt nicht“, Kapazität steigt; zurückholen und ↺ gehen; Kalender-Tagesliste gleich; To-do-Termine blocken nicht", tests: ["familie-watch.spec.ts › Familientermine direkt"] },
       { ablauf: "Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel", erwartet: "Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder", tests: ["familie-watch.spec.ts › Familienkalender"] },

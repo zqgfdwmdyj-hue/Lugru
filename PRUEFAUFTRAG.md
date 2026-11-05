@@ -915,6 +915,101 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
    - Für den Rest bekommst du Aufgaben.
 5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
 
+## Nachtrag B29 (05.11.): sellerboard-Aufruflimit (125/Tag) – Abrufe drosseln, Budget verwalten
+
+Befund: Seit 04.11. scheiterten alle sellerboard-Abrufe mit „used up today's MCP call limit (125 of 125)“. Das Limit
+gilt je Kontoinhaber für **alle** Nutzer (auch Ludwigs Morgenbericht und Nachfragen über Claude), Rücksetzung 00:00 UTC
+(= 01:00 Uhr im Winter). Die Zeitpläne allein brauchten mehr als 125 Aufrufe – ein Verkaufs-Lauf kostete nicht einen,
+sondern je Kanal 1 Kennzahlen-Aufruf + 2 Top-Listen + eBay-Bestellmengen.
+
+**Prüfung (vorher):**
+
+| Punkt | vorher | Fundstelle |
+|---|---|---|
+| B29.1 Verkauf alle 30 Min. | ❌ alle 30 Min., je Lauf ca. 5–7 Aufrufe | `due(sb-sales, 29)` in `src/lib/scheduler.ts` |
+| B29.1 Gewinn je Produkt alle 3 Std. | ❌ 3 Tage × je Kanal Wärmen + Tabelle (35 Zeilen/Seite) | `due(sb-tage, 179)`, `syncSkuDays` |
+| B29.1 Verlust-Stopp ohne eigenen Aufruf | ✅ | `refreshVerlustTasks` (nur Datenbank) |
+| B29.1 FBA-Bestand/Sendungen alle 4 Std. | ❌ dazu lief jedes Mal Verkauf mit; Sendungen 150 Tage komplett | `due(sb-stock, 239)`, `syncSellerboard("bestand")` |
+| B29.1 Tagesabrufe täglich | 🟡 täglich, aber zu beliebiger Uhrzeit (Zähler nur im Speicher, nach Neustart sofort alles) und mit 30-Tage-Verlauf (6 Aufrufe) | `due(sb-daily, 1435)` |
+| B29.1 Keepa Buy Box, Hebel-Aufgaben, Ansprüche ohne sellerboard-Aufruf | ✅ geprüft: `sbCall` wird nur in `src/lib/sellerboard/sync.ts` benutzt | – |
+| B29.2 Zähler je Tag, Anzeige in `anbindungen_status` | ❌ | – |
+| B29.2 Obergrenze 80, „übersprungen (Tagesbudget)“, Verkauf mit Vorrang | ❌ | – |
+| B29.2 Pause bis 00:00 UTC, ein Eintrag, Nachholen in Reihenfolge | ❌ jeder Schritt schrieb eine Fehlerzeile | `step()` in `sync.ts` |
+| B29.2 Seitengröße | 🟡 35 Zeilen je Seite, ohne Feldauswahl | `tablePages` |
+| B29.2 gelesene Seiten bei NOT_WARMED behalten | ✅ (B27.4) | `tablePages` |
+| B29.3 CSV-Berichtsversand statt MCP | ❌ (laut Nachtrag erst, wenn B29.1/B29.2 laufen) | – |
+| B29.4 Zeile im Morgenbericht | ❌ | – |
+
+**Nachher:**
+
+| Punkt | nachher | Fundstelle |
+|---|---|---|
+| B29.1 Verkauf 06–22 Uhr alle 2 Std. + nachts 02:00 (10 Läufe) | ✅ | `SB_SLOTS` (`src/lib/sellerboard/budget-logic.ts`), `sbAutomatik` (`sync.ts`), Takt in `scheduler.ts` |
+| B29.1 Gewinn je Produkt 04:00 + 13:00, Verlust-Stopp danach | ✅ | Gruppe „tage“; `tageZuLesen`: 04:00 gestern + vorgestern, 13:00 nur gestern, fehlende Tage bis 3 zurück; **ein** Aufruf wärmt alle Tage |
+| B29.1 FBA-Bestand/Sendungen 04:30 + 16:30 | ✅ | Gruppe „bestand“ ohne Verkauf; Sendungen nur geänderte (`last_update_date desc`, Abbruch bei bekanntem Stand) |
+| B29.1 Tagesabrufe ab 02:00 nacheinander | ✅ | Gruppe „taeglich“ (Produkte & EK, Monatswerte, Fixkosten, Produkte 30 Tage, Keepa, Hebel) – startet nach dem Verkaufs-Lauf um 02:00 |
+| B29.1 Zeitplan überlebt Neustarts | ✅ | letzter Lauf je Gruppe in `sellerboard_plan.laeufe` (vorher nur im Speicher) |
+| B29.2 Zähler „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“ | ✅ | Tabelle `sellerboard_aufrufe`; jeder beantwortete Aufruf (auch „preparing“-Wiederholungen) wird in `sbCall` gezählt. Dazu der kostenlose Stand laut sellerboard (`usage_quota`, zählt auch Claude): `sbQuota`. Anzeige in `anbindungen_status.sellerboard_aufrufe` und auf der sellerboard-Karte |
+| B29.2 Obergrenze 80 → „übersprungen (Tagesbudget)“ statt Fehler | ✅ | `budgetEntscheidung` vor **jedem** Aufruf; Hinweis an den Abrufen (`job_runs.hinweis`), kein Fehler; die Gruppe bleibt fällig und wird nach der Rücksetzung nachgeholt |
+| B29.2 Verkauf hat Vorrang | ✅ | `verkaufVorrang`: die übrigen Abrufe lassen je noch ausstehendem Verkaufs-Lauf 3 Aufrufe frei |
+| B29.2 Limit-Fehler → Pause bis 00:00 UTC, **ein** Eintrag „pausiert bis 01:00 Uhr“ | ✅ | `istLimitFehler`, `pauseSetzen` (`budget.ts`): Abruf „sellerboard: Tageslimit“. Meldet `usage_quota` schon 125/125, pausiert das System ohne Fehlaufruf. Alte Limit-Fehler (vor dem Update) zeigen „übersprungen (sellerboard-Tageslimit)“ statt Fehler |
+| B29.2 danach automatisch nachholen: Verkauf → Gewinn je Produkt → Rest | ✅ | `SB_REIHENFOLGE`, `faelligeScopes`; ein Nachhol-Lauf um 01:00 zählt auch für 02:00/04:00/04:30 (`SB_NACHHOL_FENSTER_MIN`), sonst liefe alles doppelt. Schritte, die seit der Uhrzeit schon erfolgreich waren, laufen nicht noch einmal |
+| B29.2 Seitengröße | ✅ | Produkttabellen mit schlanker Feldauswahl: 200 Zeilen je Seite (Monat, Tag), 100 (30 Tage). Lehnt sellerboard die Auswahl ab, fällt der Abruf selbst auf volle Zeilen zu 35 zurück. Bestand 35, Sendungen 8, Fixkosten 50 = jeweils das Höchstmaß |
+| B29.3 CSV-Berichtsversand | ❌ noch nicht gebaut | laut Nachtrag erst, wenn B29.1/B29.2 laufen (To-do 88) |
+| B29.4 Zeile für den Morgenbericht | ✅ | `anbindungen_status.sellerboard_aufrufe.morgenbericht_zeile` = „sellerboard-Limit am TT.MM. erreicht, Daten von TT.MM., HH:MM“ (nur wenn das Limit am Vortag erreicht war; Zeitpunkt und Verkaufs-Stand werden beim Limit gemerkt) |
+
+**Aufrufe je Tag (Rechnung nach Plan, Amazon + eBay):**
+vorher > 125 (Befund ca. 130 ohne Claude, tatsächlich mehr). Nachher ca. **45 bis 12:00** und **72 am Tag** (bei ~2.500 Produkten in sellerboard, 150 SKUs mit FBA-Bestand):
+
+| Gruppe | Aufrufe |
+|---|---|
+| Verkauf: 10 × 2 (je Kanal 1), Top heute 14 + 20 Uhr, eBay-Mengen 06 + 20 Uhr | 26 |
+| Gewinn je Produkt: 04:00 = 6, 13:00 = 4 | 10 |
+| Bestand + Sendungen: 2 × 8 (5 Seiten mit Bestand, 1 ausverkaufte mit Abverkauf, 2 Sendungen) | 16 |
+| Tagesabrufe (Produkte 10 Seiten, Monatswerte 3, Fixkosten 1, 30 Tage 6) | 20 |
+
+Mit Morgenbericht (ca. 15) und drei Nachfragen bleibt der Tag unter 125. Die Rechnung steht als Test in
+`tests/b29-sellerboard-budget.test.ts` (`tagesSchaetzung`). Die echten Zahlen zeigt ab dem Update der Zähler.
+
+**Weitere Einsparungen:**
+- **Produkte & EK** (laut Anleitung ca. 2.500 Produkte = 72 Seiten): Das System liest höchstens 10 Seiten am Tag,
+  nach Name sortiert. Es merkt sich, wo es war, und speichert jede Seite sofort. Ein Durchgang dauert dann ca. 7 Tage.
+  Der eigene EK im Seller-System hat ohnehin Vorrang. In sellerboard gelöschte Produkte fallen erst heraus, wenn sie
+  zwei Durchgänge lang fehlen. Vorher hätte der Abruf jeden Tag das Budget aufgebraucht und nichts gespeichert.
+- **FBA-Bestand** liest nur SKUs mit Bestand, dazu ausverkaufte mit Abverkauf (Nachbestell-Kandidaten), statt aller
+  jemals angelegten SKUs. Nicht mehr gelistete SKUs stehen danach mit sellerboard-Bestand 0 da, wie vorher.
+- Der 30-Tage-Verlauf lädt nur noch fehlende Tage. Heute und gestern kommen ohnehin mit den Kacheln.
+- Die Top-Produkte von gestern entstehen ohne Aufruf aus „Gewinn je Produkt und Tag“.
+- Die Monatswerte lesen den Vormonat nur bis zum 10. des Monats.
+
+**Entscheidungen (bitte bestätigen oder ändern):**
+- Die letzten **10 Aufrufe des Tages** bleiben immer für Claude frei. Grundlage ist der Stand laut sellerboard, er
+  zählt auch Ludwigs eigene Aufrufe. Sonst könnte die Automatik nach einem langen Claude-Vormittag den Rest aufbrauchen.
+- „Jetzt abgleichen“ (von Hand) zählt im Zähler als „von Hand“, aber nicht zur Obergrenze 80. Die Pause gilt auch
+  dafür. Ein Hand-Abgleich braucht ca. 40–60 Aufrufe (steht am Knopf).
+- Neuer Knopf „Fällige Abrufe nachholen“ auf der sellerboard-Karte. Er holt nur, was laut Zeitplan fällig ist, mit
+  Budget und Pause.
+
+**Abnahme:**
+1. *(live)* Am 06.11. nach 01:00 laufen alle Abrufe wieder; um 12:00 zeigt der Zähler höchstens 45 → nach dem Update
+   prüfen (To-do 86). Rechnung nach Plan: 45 (am Nachholtag nach der Pause eher knapp darüber, weil um 01:00 auch
+   fehlende Tage nachgeladen werden).
+2. ✅ automatisch (`e2e/b29-sellerboard-budget.spec.ts`, sellerboard-Nachbau):
+   - Künstliches Budget 5, „Fällige Abrufe nachholen“: Der Zähler steht in `anbindungen_status` und auf der Karte und
+     stimmt mit dem Nachbau überein (höchstens 5).
+   - Verkauf lief (Vorrang). FBA-Bestand, Sendungen, Produkte & EK, Fixkosten und Verlust-Stopp stehen auf
+     „übersprungen (Tagesbudget) – wird nach der Rücksetzung um 01:00 Uhr nachgeholt“. Kein Fehler.
+3. ✅ automatisch:
+   - Der Nachbau meldet „used up today's MCP call limit (125 of 125)“. Danach gibt es genau **einen** Eintrag
+     „pausiert bis 01:00 Uhr …“, auch unter `nur_probleme`, und keine Fehlerzeile.
+   - Während der Pause geht kein Aufruf raus.
+   - Nach der Rücksetzung holt das System alles nach: Verkauf → Gewinn je Produkt → Bestand → Tagesabrufe. Danach ist
+     der Eintrag weg.
+4. *(live)* Ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125. Rechnung nach Plan: 72 + 15 + 15 = 102.
+
+Unit-Tests: `tests/b29-sellerboard-budget.test.ts` (20 Tests). Angepasst: `e2e/b27-automatik.spec.ts` erwartet jetzt
+„Zeitplan: 04:00 und 13:00“.
+
 ## Nachtrag B28 (05.11.): Deal-Eingang – Marge, Preis-Szenario, Gründe bei 👍, Bestellmail
 
 Anlass: ein Deal-Eingang vom 05.11. (Pfanne, großer Posten, EK netto). Ludwig rechnet in Marge statt ROI, will
@@ -1132,6 +1227,12 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 05.11. (Nachtrag B29, keine neuen Werkzeuge): `anbindungen_status` hat einen neuen Block
+`sellerboard_aufrufe`. Er enthält den Text „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“, Stand laut
+sellerboard, Pause, Limit gestern und `morgenbericht_zeile`. Neu ist auch `status` je Abruf, etwa „übersprungen
+(Tagesbudget)“ oder „pausiert bis 01:00 Uhr“. Die Beschreibung ist ergänzt, das Eingabe-Schema unverändert →
+`notifications/tools/list_changed` geht beim Verbinden raus, nötig ist es nicht.
 
 Geändert am 05.11. (Nachtrag B28, keine neuen Werkzeuge): `deal_bewerten` (neu `gruende`, `freitext`) und
 `deal_gekauft` (neu `verpackung`, `ean_abweichend`, `bestellmail` – nur Entwurf) haben neue Eingabe-Schemas →
@@ -1488,3 +1589,14 @@ nie in Chats oder Mails.
     „Öffentliche Threads erstellen“, „Nachrichten in Threads senden“ und „Reaktionen hinzufügen“.
 85. **B28 Frage Ampel**: Die Ampel prüft weiter die Netto-Marge (15 % vom VK netto). Soll sie auf Brutto-Marge wie die
     Anzeige umgestellt werden (≈ 12,6 %)?
+86. **B29 nach dem Update**: Nichts tun. Ist das sellerboard-Limit beim Update noch erschöpft, steht unter Anbindungen
+    → sellerboard „pausiert bis 01:00 Uhr“, danach holt das System selbst nach. Am 06.11. gegen 12:00 auf der Karte den
+    Zähler ansehen (Abnahme 1: höchstens 45). Am Abend prüfen, dass der Tag unter 125 bleibt (Abnahme 4).
+87. **B29 Morgenbericht**: In der Claude-Routine für den Morgenbericht ergänzen: „Wenn `anbindungen_status` →
+    `sellerboard_aufrufe.morgenbericht_zeile` gesetzt ist, diese Zeile ganz oben zeigen.“ Der Blick auf
+    `anbindungen_status` kostet keinen sellerboard-Aufruf.
+88. **B29.3 später**: Wenn B29.1/B29.2 ein paar Tage sauber laufen, in sellerboard unter Einstellungen → Reports den
+    täglichen CSV-Export (Produkte & EK, Monatswerte je SKU, Produkte 30 Tage) an das Firmenpostfach einrichten und
+    Bescheid geben. Dann baue ich den Import (wie bei ArbitrageOne), das spart ca. 15 Aufrufe am Tag.
+89. **B29 „Jetzt abgleichen“ sparsam**: Der Knopf holt alles auf einmal (ca. 40–60 Aufrufe). Für Nachzügler reicht
+    „Fällige Abrufe nachholen“.

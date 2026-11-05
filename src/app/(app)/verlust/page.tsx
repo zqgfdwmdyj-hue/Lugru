@@ -47,7 +47,7 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
       )}
       {v.tageMitDaten.length < v.fenster.length && (
         <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="verlust-luecke">
-          Tageswerte fehlen für {v.fenster.filter((d) => !v.tageMitDaten.includes(d)).map(dm).join(", ")} – sie kommen mit dem täglichen Komplett-Abgleich (<Link href="/anbindungen#sellerboard">Anbindungen → sellerboard</Link>).
+          Tageswerte fehlen für {v.fenster.filter((d) => !v.tageMitDaten.includes(d)).map(dm).join(", ")} – sie kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00 (<Link href="/anbindungen#sellerboard">Anbindungen → sellerboard</Link>).
         </div>
       )}
 

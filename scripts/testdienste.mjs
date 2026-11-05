@@ -328,6 +328,7 @@ async function lexoffice(req, p, url, b) {
 const carts = new Map();
 let viesNr = 0;
 let discord = [];
+let sbMock = { aufrufe: 0, limit: false, quotaVoll: true, werkzeuge: [] };
 let pushes = [];
 let shopOrder = 900000;
 let shipNo = 3400000000;
@@ -1142,6 +1143,37 @@ http
       dcVa = { kanaele: new Map(), nachrichten: [], anhaenge: new Map() };
       pushes = [];
       return send(200, { ok: true });
+    }
+    // B29: sellerboard-MCP (Nachbau, nur erfundene Werte). Zählt Aufrufe wie sellerboard (usage_quota kostenlos);
+    // POST /__sellerboard {limit: true} → jeder weitere Aufruf meldet „used up today's MCP call limit (125 of 125)“.
+    if (url.pathname === "/__sellerboard" && req.method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      if (b.zuruecksetzen) sbMock = { aufrufe: 0, limit: false, quotaVoll: true, werkzeuge: [] };
+      if (typeof b.limit === "boolean") sbMock.limit = b.limit;
+      // quotaVoll: false → usage_quota meldet noch Luft, die Aufrufe scheitern trotzdem (prüft den Weg über den Fehlertext)
+      if (typeof b.quotaVoll === "boolean") sbMock.quotaVoll = b.quotaVoll;
+      if (typeof b.aufrufe === "number") sbMock.aufrufe = b.aufrufe;
+      return send(200, sbMock);
+    }
+    if (url.pathname === "/__sellerboard") return send(200, sbMock);
+    if (url.pathname === "/sellerboard/mcp" && req.method === "POST") {
+      const rpc = JSON.parse(body || "{}");
+      const name = rpc.params?.name ?? "";
+      const antwort = (obj, isError = false) => send(200, { jsonrpc: "2.0", id: rpc.id, result: { content: [{ type: "text", text: isError ? obj : `${name}: success\n${JSON.stringify(obj)}` }], isError } });
+      if (rpc.method !== "tools/call") return send(200, { jsonrpc: "2.0", id: rpc.id, result: {} });
+      if (name === "usage_quota") {
+        const used = sbMock.limit && sbMock.quotaVoll ? 125 : sbMock.aufrufe;
+        return antwort({ used, limit: 125, remaining: 125 - used, resets_at: "00:00 UTC" });
+      }
+      if (sbMock.limit) return antwort(`You have used up today's MCP call limit (125 of 125). The counter resets at 00:00 UTC.`, true);
+      sbMock.aufrufe++;
+      sbMock.werkzeuge.push(name);
+      const a = rpc.params?.arguments ?? {};
+      if (name === "list_accounts") return antwort({ accounts: [{ account_id: "sb-test-1", name: "Testkonto (Nachbau)", has_ebay: false }] });
+      if (name === "dashboard_period") return antwort({ status: "ok", result: (a.periods ?? []).map((p) => ({ start: p.start, end: p.end, has_data: true, data: { Info: { Sales: 100, Units: 5, Orders: 4, Refunds: 0, Advertising: 0, EstPayout: 70, GrossProfit: 30, NetProfit: 20 } } })) });
+      if (["dashboard_table", "products", "inventory", "expenses"].includes(name)) return antwort({ result: [], total: 0 });
+      if (name === "fba_shipments") return antwort({ result: [], total: 0, products: [] });
+      return antwort(`Unbekanntes Werkzeug ${name}`, true);
     }
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     try {

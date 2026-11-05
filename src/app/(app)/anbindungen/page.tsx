@@ -16,6 +16,8 @@ import { ordnerName } from "@/lib/mail/ordner";
 import { postfachStand } from "@/lib/mail/status";
 import { discordLiveStatus } from "@/lib/discord/gateway";
 import { ABGELOESTE_ABRUFE, ABRUF_PLAN, ABRUFE_JE_ANBINDUNG, naechsterText } from "@/lib/today/abruf-plan";
+import { hinweisAktuell } from "@/lib/today/jobs";
+import { istLimitFehler } from "@/lib/sellerboard/budget-logic";
 
 /** Anmeldung per OAuth für Postfächer – nur optional („Erweitert“); Standard ist IMAP mit App-Passwort. */
 const OAUTH_POSTFACH = new Set(["google", "microsoft"]);
@@ -70,11 +72,17 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
     .slice(0, 20);
   const jetzt = new Date();
   const abrufe = jobs
+    // B29: „pausiert bis …“ nur, solange die Pause gilt
+    .filter((j) => j.name !== "sellerboard: Tageslimit" || hinweisAktuell(j))
     .map((j) => {
       const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
       const letzter = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
       const abgeloest = ABGELOESTE_ABRUFE[j.name];
-      return { name: j.name, plan, letzter, fehler: !abgeloest && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? j.lastError : null, naechster: abgeloest ? "–" : naechsterText(plan, letzter, jetzt), abgeloest };
+      // B29.2: sellerboard-Tageslimit ist kein Fehler des Abrufs – „übersprungen“, wird nachgeholt
+      const limitFehler = j.name.startsWith("sellerboard:") && istLimitFehler(j.lastError);
+      const fehlerAktuell = Boolean(j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt));
+      const status = hinweisAktuell(j) ?? (limitFehler && fehlerAktuell ? "übersprungen (sellerboard-Tageslimit) – wird nach der Rücksetzung nachgeholt" : null);
+      return { name: j.name, plan, letzter, fehler: !abgeloest && !limitFehler && fehlerAktuell ? j.lastError : null, status, naechster: abgeloest ? "–" : naechsterText(plan, letzter, jetzt), abgeloest };
     })
     .sort((a, b) => Number(b.plan?.ausloeser === "live") - Number(a.plan?.ausloeser === "live") || Number(/discord/i.test(b.name)) - Number(/discord/i.test(a.name)) || a.name.localeCompare(b.name));
   const discordAbrufe = abrufe.filter((a) => /discord|call/i.test(a.name));
@@ -83,7 +91,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
     <tr key={a.name} data-testid="abruf-zeile">
       <td>{a.name}</td>
       <td className="small">{a.abgeloest ? <span className="muted" data-testid="abruf-abgeloest">{a.abgeloest}</span> : (a.plan?.text ?? "Zeitplan: wird beim nächsten Lauf erfasst")}</td>
-      <td className="small num">{zeit(a.letzter) ?? "–"}{a.fehler && <div style={{ color: "var(--danger)" }}>Fehler: {a.fehler.slice(0, 160)}</div>}</td>
+      <td className="small num">{zeit(a.letzter) ?? "–"}{a.fehler && <div style={{ color: "var(--danger)" }}>Fehler: {a.fehler.slice(0, 160)}</div>}{a.status && <div className="muted" data-testid="abruf-status">{a.status}</div>}</td>
       <td className="small">{a.naechster}</td>
     </tr>
   );

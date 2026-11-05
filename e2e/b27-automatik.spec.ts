@@ -109,7 +109,7 @@ test.describe("B27 – nächtliche Automatik", () => {
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
     const alle = JSON.parse(await mcp.call("anbindungen_status", {}));
     const tage = alle.abrufe.find((a: { abruf: string }) => a.abruf === "sellerboard: Gewinn je Produkt und Tag");
-    expect(tage.ausloeser).toBe("Zeitplan: alle 3 Std. (unabhängig vom großen Abgleich)");
+    expect(tage.ausloeser).toBe("Zeitplan: 04:00 und 13:00");
     expect(tage.naechster_lauf).not.toMatch(/nach dem ersten Lauf/);
     const call = alle.abrufe.find((a: { abruf: string }) => a.abruf === "Call-Archiv (Discord)");
     expect(call.abgeloest).toContain("abgelöst");
