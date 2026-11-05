@@ -154,6 +154,16 @@ section{padding-block:clamp(64px,9vw,120px)}
 .price-group span{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-left:10px}
 .prices{border-top:0!important}
 .group-note{color:var(--muted);font-size:14px;max-width:70ch;margin:10px 0 0}
+/* Einblick */
+.shots-sec{padding-top:0}
+.shots{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.shot{margin:0;display:grid;gap:12px;min-width:0}
+.shot.big{grid-column:1/-1}
+.shot img{display:block;width:100%;height:auto;max-width:100%;border:1px solid var(--line);border-radius:6px;background:#fff}
+.shot figcaption{color:var(--muted);font-size:14px}
+.shot figcaption b{color:var(--fg);font-weight:600}
+@media (max-width:700px){.shots{grid-template-columns:1fr}}
+
 /* Standort */
 .place{display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,5vw,64px);align-items:start}
 .place dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:14px 24px;border-top:1px solid var(--line);padding-top:24px}
@@ -364,6 +374,21 @@ body{margin:0}
         </div>
         <span class="arrow">▼</span>
                 <div class="node"><div><strong>Amazon FBA</strong><br><small>Versand ins Fulfillment Center</small></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="einblick" class="shots-sec">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Einblick</span>
+        <h2>So sieht dein Kundenportal aus</h2>
+        <p class="lead">Echte Ansichten aus PrepTool, so wie du sie als Kunde siehst.</p>
+      </div>
+      <div class="shots">
+        <figure class="shot big"><img src="img/portal-inventar.webp" alt="PrepTool Inventar mit Artikeln, FNSKU, Maßen und verfügbarer Menge" width="1138" height="646" loading="lazy"><figcaption><b>Inventar:</b> alle Artikel mit FNSKU, Maßen und Bestand. Angelegt per Amazon-Sync oder SKU-Import.</figcaption></figure>
+        <figure class="shot"><img src="img/portal-wareneingang.webp" alt="PrepTool Wareneingang mit angemeldeter Lieferung und Status" width="1125" height="628" loading="lazy"><figcaption><b>Wareneingang:</b> Lieferungen anmelden und den Status verfolgen, inklusive Volumen in m³.</figcaption></figure>
+        <figure class="shot"><img src="img/portal-artikel.webp" alt="PrepTool Artikeldetails mit Paketabmessungen" width="1138" height="646" loading="lazy"><figcaption><b>Artikeldetails:</b> Maße, Bilder, Bestand, Historie und Seriennummern je Artikel.</figcaption></figure>
       </div>
     </div>
   </section>
