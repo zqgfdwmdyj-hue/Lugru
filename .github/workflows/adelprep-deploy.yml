@@ -1,0 +1,22 @@
+# Lädt die AdelPrep-Website ins Hetzner-Webhosting.
+# Läuft automatisch, wenn sich adelprep/public auf main ändert, oder per Klick unter Actions.
+name: AdelPrep Website hochladen
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['adelprep/public/**']
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Per FTPS hochladen
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.ADELPREP_FTP_HOST }}
+          username: ${{ secrets.ADELPREP_FTP_USER }}
+          password: ${{ secrets.ADELPREP_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./adelprep/public/
+          server-dir: ./public_html/

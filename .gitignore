@@ -12,3 +12,6 @@ next-env.d.ts
 
 # Programmstand, schreibt deploy/update.sh
 /VERSION
+
+# AdelPrep FTP-Zugang
+/adelprep/.env
