@@ -6,6 +6,7 @@ Statische Seite für das Prepcenter AdelPrep der Wittmann & Grunert GmbH. Unabh�
 |---|---|
 | `public/index.html` | Startseite mit Preisliste, FAQ und Impressum |
 | `public/datenschutz.html` | Datenschutzerklärung |
+| `public/agb.html` | AGB (Entwurf, vor dem Livegang anwaltlich prüfen lassen) |
 | `public/kontakt.php` | Anfrageformular, schickt an kontakt@wittmann-grunert.de (oben in der Datei änderbar) |
 | `public/AdelPrep_Preisliste.pdf` | Flyer zum Herunterladen |
 | `public/fonts/` | Schriften, lokal eingebunden (keine Google-Verbindung) |
