@@ -4,7 +4,7 @@
 //
 //   npx playwright test && npx tsx scripts/pruefstand.ts      (oder: npm run e2e && npm run pruefstand)
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { NAV, SUBPAGES } from "../src/lib/nav";
+import { NAV, navOrt, SUBPAGES } from "../src/lib/nav";
 import { ALLE_SEITEN, PRUEFSTAND, type Ablauf, type Reiter } from "../e2e/pruefstand";
 
 type Result = { status: string; duration: number; error?: { message?: string } };
@@ -63,7 +63,7 @@ for (const s of NAV) {
     for (const p of pfade) {
       if (p.pfad.includes("#") || gesehen.has(p.pfad)) continue;
       gesehen.add(p.pfad);
-      zeilen.push({ bereich: s.label, name: p.name, pfad: p.pfad, r: PRUEFSTAND[p.pfad] ?? {} });
+      zeilen.push({ bereich: navOrt(s, i), name: p.name, pfad: p.pfad, r: PRUEFSTAND[p.pfad] ?? {} });
     }
   }
 }

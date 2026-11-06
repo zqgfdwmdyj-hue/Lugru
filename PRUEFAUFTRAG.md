@@ -976,6 +976,67 @@ Regression: 172 Ablaufprüfungen, 170 im ersten Lauf grün. Nachgeprüft: Keepa-
 
 **Werkzeuge:** neu `abholung_anlegen` (ändernd), `abholung_stornieren` (ändernd), `abholungen` (lesend) – Bereich Service. `notifications/tools/list_changed` geht beim Verbinden raus.
 
+## Umbau 06.11.: linke Menüleiste („seller-system-menue-umbau“)
+
+**Prüfung (vorher):**
+
+| Punkt | vorher | Fundstelle |
+|---|---|---|
+| Struktur: 11 Gruppen / 82 Einträge statt 12 / 95 (+ 5 Zähler-Links), jede Seite genau einmal | ❌ 12 Gruppen, Dubletten (Alle Aufgaben, Anrufe, eBay-Tabs, Temu-Rechner, Einstellungs-Unterseiten) | `src/lib/nav.ts` |
+| Untergruppen (zweite Ebene, einklappbar), kein Block über 8 Zeilen | ❌ (Einkauf 13, Produkte & Lager 13, Finanzen 15 Zeilen) | – |
+| Akkordeon: nur eine Gruppe offen, aktive klappt auf | 🟡 aktive klappte auf, aber beliebig viele offen | `sidebar-nav.tsx` |
+| Fester Kopf (Favoriten + Zähler-Chips stehen, Gruppen scrollen) | ❌ ganze Leiste scrollte | – |
+| Zähler-Chips | 🟡 nur Zähler > 0, dazu „Versand“ und „Paletten-Meldungen“, wechselnde Reihenfolge | `navCounters` |
+| Favoriten (max. 8, per Ziehen sortierbar), „Zuletzt besucht“ | 🟡 max. 6, nicht sortierbar, kein Verlauf | `fav-toggle`, `nav-actions.ts` |
+| Suche: Platzhalter, Gruppe › Untergruppe je Treffer, Unterseiten findbar | 🟡 nur Gruppe; Seiten ohne Menüpunkt nicht findbar | `befehls-suche.tsx` |
+| Eingeklappter Modus mit Flyout | 🟡 64 px, Klick klappte die Leiste wieder aus | `app-sidebar.tsx` |
+| Zustand je Nutzer merken | ✅ Cookie (offene Gruppen, schmal) | `NAV_OPEN_COOKIE` |
+| Badges nur an 5 Einträgen, Summe am zugeklappten Kopf | 🟡 Summe an Gruppen ja, aber auch Versand/Paletten | – |
+| Rollen-Sichtbarkeit, leere Gruppen ausblenden | ✅ | `visibleNav` |
+| Einstellungen in Tabs/Sprungleiste | ❌ eine lange Seite + 4 Knöpfe oben | `einstellungen/page.tsx` |
+| `/rechnungsstation/pruefen` ohne Seitenleiste | ❌ lag im Vollbild-Layout | `(station)` |
+| Benutzerkonten bereinigen | – Daten im Live-System, kein Code | – |
+
+**Nachher:**
+
+| Punkt | Stand | Fundstelle |
+|---|---|---|
+| Struktur | ✅ Heute · Einkauf & Deals (› Lieferanten) · Amazon (› Fälle & Erstattungen, › Angebote & Lager) · eBay & Temu · Lager & Versand (› Lager, › Versand, › Retouren) · Finanzen (› Rechnungen) · B2B · Marken & Content · Team & Verwaltung (Delegation + Wissen & Calls + Rechtsfälle) · Privat · Einstellungen (ein Eintrag). 82 Einträge, 35 davon in Untergruppen, direkt höchstens 47; Bezeichnungen laut Auftrag („Tagesplan (Anrufe)“, „Uploads“, „Scanner“, „Deal-Ampel“, „Feeds“ …). Keine Route entfernt oder umbenannt | `NAV` in `src/lib/nav.ts` |
+| Seiten ohne eigenen Eintrag | ✅ eBay-Artikel/Verlauf/Rechnungen/Einstellungen (Symbol-Reiter auf `/ebay`), Temu-Rechner (auf Temu / Wawi), Alle Aufgaben, Anrufe, Anbindungen und alle Einstellungs-Unterseiten: direkt aufrufbar, in Strg+K mit ihrem Ort („Einstellungen (Reiter)“), beim Aufruf ist die Hauptseite markiert (`/anbindungen` → Einstellungen) | `NEBENSEITEN`, `SUBPAGES["/einstellungen"]` |
+| Akkordeon | ✅ immer nur eine Gruppe offen; Seitenwechsel öffnet Gruppe und Untergruppe des aktiven Eintrags; Untergruppen mehrfach offen; ohne aktive Seite die gemerkte Gruppe, sonst „Heute“; im Privatbereich nur „Privat“ | `startZustand`, `SidebarNav` |
+| Fester Kopf | ✅ Favoriten, „Zuletzt besucht“ (eingeklappt, eine Zeile) und Zähler-Chips bleiben oben stehen, nur die Gruppen scrollen | `.nav-kopf` |
+| Zähler-Chips | ✅ immer die fünf: Aufgaben · Amazon-ToDos · Posteingang · Belege · Ansprüche (je nach Rechten), auch bei 0, in zwei Zeilen | `ZAEHLER_CHIPS` |
+| Favoriten | ✅ max. 8, per Ziehen sortierbar (oder Alt+↑/↓), Reihenfolge beim Benutzer gespeichert. „Zuletzt besucht“: 5 Seiten, nur in diesem Browser, nie Privat | `favoritenSortierenAction`, `ZuletztBesucht` |
+| Suche | ✅ Knopf „Seite, ASIN, Aufgabe … (Strg+K)“; Seiten-Treffer mit „Gruppe › Untergruppe“ (z. B. „Amazon › Angebote & Lager“); Treffer im Titel zuerst | `befehls-suche.tsx` |
+| Eingeklappter Modus | ✅ nur Gruppen-Symbole (56 px); Zeigen oder Tippen öffnet ein Flyout mit Einträgen und Untergruppen, Esc schließt | `.nav-flyout` |
+| Zustand merken | ✅ offene Gruppe, offene Untergruppen und schmaler Modus im Cookie (Server zeichnet ohne Springen) | `zustandAlsCookie` |
+| Badges | ✅ Zahlen nur an Tagesübersicht, Posteingang, Amazon-ToDos, Ansprüche, Eingangsrechnungen; zugeklappte Gruppen- und Untergruppen-Köpfe zeigen die Summe | `badgeSumme` |
+| Rollen | ✅ unverändert; Gruppen und Untergruppen ohne sichtbare Einträge fallen weg (VA: kein Privat, kein Geld, keine Einstellungen; Finanzen nur mit der Rechnungsstation) | `visibleNav` |
+| Einstellungen | ✅ Reiter oben: Allgemein · Anbindungen · KI-Assistent · Geräte: Handy & Tesla · Apple Watch · Benachrichtigungen · Shop-Profile · Abholung · Testumgebung; auf der Hauptseite Sprungleiste (Allgemein · Ansprüche & Retouren · B2B · Preise · Versand & Prep · Postfächer & Rechnungen · Shops · Benutzer), bleibt beim Scrollen oben | `einstellungen/page.tsx` |
+| Prüfliste | ✅ `/rechnungsstation/pruefen` jetzt mit Seitenleiste; die Kamera-Station bleibt Vollbild mit „← Seller-System“ | `src/app/(app)/rechnungsstation/pruefen/` |
+| Benutzerkonten | To-do 102 (nur im Live-System, nichts automatisch gelöscht) | Einstellungen → Benutzer |
+
+**Verhaltensänderungen / Entscheidungen (bitte bestätigen oder ändern):**
+- „Versand“ (offene FBM-Aufträge) und „Paletten-Meldungen“ zählen nicht mehr in der Leiste (Auftrag: Zahlen nur an fünf Einträgen). Die Paletten-Meldungen stehen weiter auf „Paletten-Lager“ und „Sendungen“.
+- Favoriten vorbelegen: Es gibt keinen Seitenverlauf im System – laut Auftrag bleibt die Liste leer. „Zuletzt besucht“ sammelt ab jetzt je Browser.
+- „Geräte“ als drei Reiter (Handy & Tesla, Apple Watch, Benachrichtigungen) statt einem – so bleibt jede Seite mit einem Klick erreichbar. „Abholung“ (Abholorte) ist ebenfalls Reiter.
+- Seitenleiste 8 px breiter (252 px), damit die fünf Chips in zwei Zeilen passen.
+- Gemerkter Zustand aus der alten Leiste (mehrere offene Gruppen) gilt einmalig nicht mehr: es öffnet die Gruppe der Seite bzw. „Heute“.
+
+**Abnahme (automatisch, `e2e/navigation.spec.ts`, Unit `tests/nav.test.ts`):**
+1. ✅ Alle 82 Menü-Seiten und die 14 Seiten ohne eigenen Eintrag antworten unter ihrem bisherigen Pfad mit 200 (88 verschiedene Seiten aus Abschnitt 5).
+2. ✅ Jede alte Seite hat genau einen Eintrag am neuen Ort (Tabelle aus Abschnitt 5 im Unit-Test) oder ist Reiter/Kachel auf ihrer Hauptseite (Abschnitt 6).
+3. ✅ Beim Aufruf jeder Seite ist genau ihre Gruppe offen, ggf. die Untergruppe, und der Eintrag markiert.
+4. ✅ Alle Gruppen zu: Leiste bei 715 px Fensterhöhe ohne Scrollen (11 Gruppenköpfe + fester Kopf).
+5. ✅ Kein Block über 8 Zeilen (Einkauf offen: 8 Einträge + „Lieferanten“ zu).
+6. ✅ Strg+K findet jede Seite (82 + 15 ohne Eintrag) und zeigt ihre Gruppe › Untergruppe.
+7. ✅ Rollen wie vorher: VA-Rolle ohne Privat, Geld und Einstellungen; Büro ohne Privat/Einstellungen.
+Dazu: Akkordeon, Untergruppe gemerkt, fester Kopf beim Scrollen, Chips in ≤ 2 Zeilen, Favoriten (8, Ziehen, Alt+↑), Zuletzt besucht, Flyout über dem Inhalt, Reiter/Sprungleiste der Einstellungen, Prüfliste mit Leiste, Handy-Schublade.
+
+Regression: 174 Ablaufprüfungen, 171 im ersten Lauf grün; nachgeprüft und grün: Keepa-Zähler und Privat-Test (Ausreißer, einzeln grün), „Zuletzt besucht“ (Test wechselte die Seite, bevor sie fertig war – wartet jetzt). 2251 Unit-Tests grün. Menütexte in Anleitungen/Hinweisen auf die neuen Pfade angepasst (z. B. „Team & Verwaltung → VA & Delegation“).
+
+**Werkzeuge:** keine neuen oder geänderten Claude-Werkzeuge.
+
 ## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen
 
 Anlass: Unter Aufträge → „Meldung offen“ ließen sich nur Amazon-Meldungen gesammelt schließen (Versandbestätigung
@@ -1784,7 +1845,7 @@ nie in Chats oder Mails.
 96. **Erste echte Abholung**: Claude sagen „DHL-Abholung morgen 10–12 Uhr, 1 Paket, LuGru“, nach der Rückfrage
     bestätigen, im Protokoll (Versand → Abholung) die Nummer ansehen und gleich wieder stornieren.
 97. **Vorschlag-Schwelle**: Einstellungen → Abholung → „Mehr als … Labels“ (Standard 5) prüfen.
-98. **Rechnungsstation einrichten**: iPad/Monitor an der Werkbank, Menü Finanzen → „Rechnungsstation (Kamera)“, Kamera
+98. **Rechnungsstation einrichten**: iPad/Monitor an der Werkbank, Menü Finanzen › Rechnungen → „Rechnungsstation (Kamera)“, Kamera
     erlauben. Ablage dunkel und matt, gleichmäßiges Licht. Erster Test mit 5 Belegen, dann die Prüfliste ansehen.
 99. **Einzugsscanner**: Scan-Ziel auf den Server-Ordner `scan-eingang` (neben docker-compose.yml) legen, z. B. per
     Netzwerkfreigabe (SMB) oder „Scan to Folder/FTP“ des Scanners. Geht das nicht: Prüfliste → „PDF-Stapel hochladen“.
@@ -1792,3 +1853,7 @@ nie in Chats oder Mails.
      bleiben die Belege liegen (Prüfliste: „an Stotax: –“).
 101. **Drive-Belegordner (optional)**: Dienstkonto-Schlüssel unter Anbindungen → Google Drive, das Dienstkonto im
      Zielordner als Bearbeiter freigeben, Ordner-ID unten in der Prüfliste eintragen (nur Inhaber).
+102. **Benutzerkonten bereinigen** (Menü-Umbau, vom System gemeldet): Einstellungen → Benutzer. Die zwei nie benutzten
+     Inhaber-Konten deaktivieren oder ihnen die richtige Rolle geben; das VA-Konto über die Warnung „als VA“ auf die Rolle
+     „VA“ stellen (dann kein Privat, kein Geld, keine Einstellungen); das Test-Konto prüfen und ggf. deaktivieren. Das
+     System löscht hier nichts selbst.

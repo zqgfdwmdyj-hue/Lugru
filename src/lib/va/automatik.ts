@@ -517,7 +517,7 @@ async function vorschlagAufgabe(tenantId: string, a: Auto, beginn: Date) {
   if (!r?.n) return resolveSystemTask(db, tenantId, "va-automatik-vorschlag");
   await upsertSystemTask(db, tenantId, "va-automatik-vorschlag", {
     title: `VA-Automatik (Vorschlag): ${r.n} ${r.n === 1 ? "Vorgang wäre" : "Vorgänge wären"} heute an die VA gegangen`,
-    notes: "Prüfen unter Delegation → VA → Automatik (einzeln „An die VA“ möglich). Passt die Einstufung, dort auf „automatisch“ umstellen.",
+    notes: "Prüfen unter Team & Verwaltung → VA & Delegation → Automatik (einzeln „An die VA“ möglich). Passt die Einstufung, dort auf „automatisch“ umstellen.",
     category: "eigene",
     link: "/delegation/va#automatik",
     dueDate: todayIso(),

@@ -13,7 +13,7 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
       wann: "Einmal einrichten; läuft dann bei jeder Fahrt.",
       wer: "Ludwig",
       schritte: [
-        "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren.",
+        "Seller-System → Heute → Schnellerfassung → Handy-Schlüssel erzeugen und kopieren.",
         "Kurzbefehle → Automation → „Bluetooth“ → Gerät „Tesla“ → „Bei Verbindung“, „Sofort ausführen“.",
         "Aktion „Persönlicher Hotspot“ → Ein.",
         "Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/fahrt, Header Authorization = Bearer <Schlüssel>.",
@@ -107,7 +107,7 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
       wann: "Einmal einrichten; danach bei jedem Deal-Push mit Nummer.",
       wer: "Ludwig",
       schritte: [
-        "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
+        "Seller-System → Heute → Schnellerfassung → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
         "Kurzbefehle → neuer Kurzbefehl „Kaufen“ → Aktion „Nach Eingabe fragen“ (Zahl, „Welche Deal-Nummer?“).",
         "Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/kaufen, Methode POST, Header Authorization = Bearer <Schlüssel>, JSON {\"nr\": Eingabe}.",
         "Aktion „Wörterbuchwert abrufen“ → Schlüssel „url“ → Aktion „URLs öffnen“ (öffnet die Amazon-App mit dem Warenkorb).",
@@ -128,7 +128,7 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
       wann: "Einmal je iPhone einrichten (die Watch übernimmt die Kurzbefehle).",
       wer: "Ludwig",
       schritte: [
-        "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
+        "Seller-System → Heute → Schnellerfassung → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
         "Am einfachsten: EIN Kurzbefehl „Seller“ für alles (Einstellungen → Apple Watch): „Text diktieren“ → „Inhalte von URL abrufen“ https://<deine Adresse>/api/mobil/watch/frage, POST, Header Authorization = Bearer <Schlüssel>, JSON {\"text\": Diktierter Text} → „zeige“ anzeigen, „sprich“ vorlesen. Dann „Hey Siri, Seller“ und frei sprechen („Wie läuft's?“, „Erledigt“, „Bestand Tefal 12 Stück“ …). Auf der Seite „Apple Watch“ lässt sich jede Antwort vorher ausprobieren.",
         "Alternativ je Befehl ein eigener Kurzbefehl, Name = Sprachbefehl: „Wie läuft's“ → /api/mobil/watch/stand · „Was ist dringend“ → /api/mobil/watch/dringend · „Erledigt“ → /api/mobil/watch/erledigt · „Notiz“ → /api/mobil/watch/notiz · „Deal prüfen“ → /api/mobil/watch/deal · „Bestand“ → /api/mobil/watch/bestand · „Auto“ → /api/mobil/watch/tesla.",
         "In jedem Kurzbefehl: Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/watch/<befehl>, Methode POST, Header Authorization = Bearer <Schlüssel>.",
@@ -137,7 +137,7 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
         "In den Details jedes Kurzbefehls „Auf Apple Watch anzeigen“ einschalten.",
         "Komplikation: Zifferblatt bearbeiten → Komplikation „Kurzbefehle“ → „Was ist dringend“ (Standard).",
         "Rückfragen: Bei mehreren Treffern nennt die Watch „1 … 2 … 3 …“ – dann „Erledigt“ bzw. „Bestand“ erneut und „Nummer 2“ diktieren (10 Minuten gültig).",
-        "„Notiz VA …“ geht als Nachricht an die VA (Englisch). Im Modus „Vorschlag“ wartet sie unter Delegation → VA auf deine Freigabe; „Notiz privat …“ nur auf deinem eigenen Gerät.",
+        "„Notiz VA …“ geht als Nachricht an die VA (Englisch). Im Modus „Vorschlag“ wartet sie unter Team & Verwaltung → VA & Delegation auf deine Freigabe; „Notiz privat …“ nur auf deinem eigenen Gerät.",
         "Kaufen: Grüne Deal-Pushs tragen „Deal 17“ – „Hey Siri, Kaufen 17“ über den Kurzbefehl „Kaufen“ (eigene Anleitung).",
       ],
       zugaenge: ["Handy-Schlüssel (je Gerät, widerrufbar unter Schnellerfassung)", "Tesla nur, wenn unter Anbindungen verbunden"],

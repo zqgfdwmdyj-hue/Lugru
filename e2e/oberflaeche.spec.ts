@@ -5,13 +5,14 @@
 // - deaktivierte Knöpfe sichtbar anders (gestrichelt), Warnungen/Fehler/Hinweise unterscheidbar;
 // - Kontrast von Text auf Status, Knöpfen, Auswahl und Hinweisen mindestens 4,5 : 1;
 // - am Handy kein seitliches Verschieben der ganzen Seite.
-import { NAV, SUBPAGES } from "../src/lib/nav";
+import { NAV, NEBENSEITEN, SUBPAGES } from "../src/lib/nav";
 import { anmelden, expect, keinWaagrechtesScrollen, test } from "./helfer";
 
 const SEITEN = [
   ...new Set([
     ...NAV.flatMap((s) => s.items.map((i) => i.href)),
     ...Object.values(SUBPAGES).flatMap((l) => l.map((i) => i.href)),
+    ...NEBENSEITEN.map((n) => n.href),
     "/privat/kalender",
     "/privat/kalender?ansicht=monat",
     "/privat/eintragen?art=kinder",

@@ -11,78 +11,74 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Bereich | Reiter | Automatisch | Live | Noch offen |
 |---|---|---|---|---|
 | Heute | Tagesübersicht `/` | ○ 0/3 Abläufe | – | 2 |
-| Heute | Tagesplan `/kalender/tagesplan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Heute | Tagesplan (Anrufe) `/kalender/tagesplan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Heute | Termine `/kalender` | ○ 0/2 Abläufe | – | – |
 | Heute | Posteingang `/posteingang` | ○ 0/4 Abläufe | – | 3 |
-| Heute | Uploads (alles hochladen) `/uploads` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Heute | Schnellerfassung (Sprache) `/schnell` | ○ 0/2 Abläufe | – | 3 |
+| Heute | Uploads `/uploads` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Heute | Schnellerfassung `/schnell` | ○ 0/2 Abläufe | – | 3 |
 | Heute | Feierabend `/kalender/feierabend` | ○ 0/2 Abläufe | – | – |
 | Heute | Fahrtenbuch `/kalender/fahrten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Heute | Rechtsfälle (Anwalt) `/rechtsfaelle` | ○ 0/1 Abläufe | – | 2 |
-| Einkauf | Deal-Eingang `/deal-eingang` | ○ 0/5 Abläufe | – | 4 |
-| Einkauf | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
-| Einkauf | Bestellvorschläge `/einkauf/vorschlaege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | EK-Import (→ sellerboard) `/einkauf/ek-import` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Scanner (Barcode mit Ampel) `/scan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Deal-Ampel (Einkauf prüfen) `/lieferanten/deal-ampel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Einkauf & Wareneingang `/einkauf` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Dropship-Trackings `/einkauf/beschaffungsanalyse` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Lieferanten-Feeds `/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Lieferanten-Abfrage `/lieferanten/abfrage` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Chancen `/lieferanten/chancen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Großhändler finden `/lieferanten/finden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf | Kontakt-Board `/board` | ○ 0/1 Abläufe | – | – |
-| Amazon | Fall-Zentrale `/amazon-faelle` | ○ 0/3 Abläufe | – | 2 |
-| Amazon | Amazon-ToDos `/amazon-todos` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
-| Amazon | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon | SAS-Programm `/sas` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
-| Amazon | Ansprüche `/ansprueche` | ○ 0/2 Abläufe | – | – |
-| Amazon | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon | Bewertungen `/bewertungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon | Amazon Business `/amazon-business` | ○ 0/2 Abläufe | – | 1 |
-| Amazon | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
-| eBay & Temu | Neues eBay-Angebot `/ebay` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| eBay & Temu | eBay-Angebote prüfen `/ebay/pruefen` | ○ 0/1 Abläufe | – | – |
-| eBay & Temu | eBay-Artikel & Gewinn `/ebay?ansicht=artikel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| eBay & Temu | eBay-Verlauf `/ebay?ansicht=verlauf` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| eBay & Temu | eBay → Temu / Wawi `/listings/temu` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/5 Abläufe | – | 4 |
+| Einkauf & Deals | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
+| Einkauf & Deals | Deal-Ampel `/lieferanten/deal-ampel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Scanner `/scan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Bestellvorschläge `/einkauf/vorschlaege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Einkauf & Wareneingang `/einkauf` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | EK-Import (→ sellerboard) `/einkauf/ek-import` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Dropship-Trackings `/einkauf/beschaffungsanalyse` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals › Lieferanten | Feeds `/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals › Lieferanten | Abfrage `/lieferanten/abfrage` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals › Lieferanten | Chancen `/lieferanten/chancen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals › Lieferanten | Großhändler finden `/lieferanten/finden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals › Lieferanten | Kontakt-Board `/board` | ○ 0/1 Abläufe | – | – |
+| Amazon › Fälle & Erstattungen | Fall-Zentrale `/amazon-faelle` | ○ 0/3 Abläufe | – | 2 |
+| Amazon › Fälle & Erstattungen | Amazon-ToDos `/amazon-todos` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Amazon › Fälle & Erstattungen | Ansprüche `/ansprueche` | ○ 0/2 Abläufe | – | – |
+| Amazon › Fälle & Erstattungen | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Amazon › Fälle & Erstattungen | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
+| Amazon › Angebote & Lager | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
+| Amazon › Angebote & Lager | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Amazon › Angebote & Lager | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
+| Amazon › Angebote & Lager | SAS-Programm `/sas` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Amazon › Angebote & Lager | Bewertungen `/bewertungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Amazon › Angebote & Lager | Amazon Business `/amazon-business` | ○ 0/2 Abläufe | – | 1 |
+| eBay & Temu | eBay `/ebay` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| eBay & Temu | Angebote prüfen `/ebay/pruefen` | ○ 0/1 Abläufe | – | – |
+| eBay & Temu | Temu / Wawi `/listings/temu` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Bestand & Inventur `/bestand` | ○ 0/3 Abläufe | – | – |
+| Lager & Versand › Lager | Produkte `/produkte` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Artikelstamm `/artikel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Chargen `/chargen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager `/paletten` | ○ 0/1 Abläufe | – | – |
+| Lager & Versand › Lager | Paletten-Lager › Sendungen `/paletten/sendungen` | ○ 0/2 Abläufe | – | – |
+| Lager & Versand › Lager | Paletten-Lager › Lagerplan `/paletten/lagerplan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager › Abholung `/paletten/abholung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager › Inventur `/paletten/inventur` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager › Abrechnung `/paletten/abrechnung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager › Kunden & Preise `/paletten/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Paletten-Lager › Auswertung `/paletten/uebersicht` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Versand | Aufträge & Versand `/auftraege` | ○ 0/2 Abläufe | – | – |
+| Lager & Versand › Versand | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/4 Abläufe | – | – |
+| Lager & Versand › Versand | Label aus Chat (DHL) `/versand/label` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Versand | Abholung DHL/UPS `/versand/abholung` | ○ 0/3 Abläufe | – | 2 |
+| Lager & Versand › Versand | Prep Center: Versand je Monat `/auftraege/prep-center` | ○ 0/2 Abläufe | – | – |
+| Lager & Versand › Retouren | Retouren-Station & Fälle `/remissionen/pruefungen` | ○ 0/3 Abläufe | – | 3 |
+| Lager & Versand › Retouren | Retouren `/retouren` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Retouren | Remissionen `/remissionen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen | Gewinn `/gewinn` | ○ 0/3 Abläufe | – | 1 |
 | Finanzen | Liquidität `/cashflow` | ○ 0/2 Abläufe | – | – |
-| Finanzen | Buchhaltung (Abgleich, DATEV) `/buchhaltung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Finanzen | Importe (Daten importieren) `/import` | ○ 0/2 Abläufe | – | – |
-| Finanzen | Verlust-Stopp `/verlust` | ○ 0/2 Abläufe | – | 1 |
-| Finanzen | Hebel: Umsatz & Marge `/hebel` | ○ 0/1 Abläufe | – | – |
 | Finanzen | Kapital-Ampel `/kapital` | ○ 0/3 Abläufe | – | – |
-| Finanzen | Eingangsrechnungen `/rechnungen` | ○ 0/1 Abläufe | – | – |
-| Finanzen | Belege scannen `/rechnungen/belege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Finanzen | Rechnungsstation (Kamera) `/rechnungsstation` | ○ 0/2 Abläufe | – | 3 |
-| Finanzen | Rechnungsstation: Prüfliste `/rechnungsstation/pruefen` | ○ 0/2 Abläufe | – | – |
-| Finanzen | Ausgangsrechnungen `/rechnungen/ausgang` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Finanzen | eBay-Rechnungen `/ebay?ansicht=rechnungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Finanzen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen | Hebel: Umsatz & Marge `/hebel` | ○ 0/1 Abläufe | – | – |
+| Finanzen | Verlust-Stopp `/verlust` | ○ 0/2 Abläufe | – | 1 |
+| Finanzen | Buchhaltung (Abgleich, DATEV) `/buchhaltung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen | Importe `/import` | ○ 0/2 Abläufe | – | – |
 | Finanzen | COG-Export `/export` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Bestand & Inventur `/bestand` | ○ 0/3 Abläufe | – | – |
-| Produkte & Lager | Paletten-Lager (Kunden) `/paletten` | ○ 0/1 Abläufe | – | – |
-| Produkte & Lager | Paletten-Lager (Kunden) › Sendungen `/paletten/sendungen` | ○ 0/2 Abläufe | – | – |
-| Produkte & Lager | Paletten-Lager (Kunden) › Lagerplan `/paletten/lagerplan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Paletten-Lager (Kunden) › Abholung `/paletten/abholung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Paletten-Lager (Kunden) › Inventur `/paletten/inventur` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Paletten-Lager (Kunden) › Abrechnung `/paletten/abrechnung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Paletten-Lager (Kunden) › Kunden & Preise `/paletten/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Paletten-Lager (Kunden) › Auswertung `/paletten/uebersicht` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Retouren-Station & Fälle `/remissionen/pruefungen` | ○ 0/3 Abläufe | – | 3 |
-| Produkte & Lager | Produkte `/produkte` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Chargen `/chargen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Artikelstamm (eigene Marken) `/artikel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Aufträge & Versand `/auftraege` | ○ 0/2 Abläufe | – | – |
-| Produkte & Lager | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/4 Abläufe | – | – |
-| Produkte & Lager | Label aus Chat (DHL) `/versand/label` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Abholung DHL/UPS `/versand/abholung` | ○ 0/3 Abläufe | – | 2 |
-| Produkte & Lager | Prep Center: Versand je Monat `/auftraege/prep-center` | ○ 0/2 Abläufe | – | – |
-| Produkte & Lager | Retouren `/retouren` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Produkte & Lager | Remissionen `/remissionen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen › Rechnungen | Eingangsrechnungen `/rechnungen` | ○ 0/1 Abläufe | – | – |
+| Finanzen › Rechnungen | Belege scannen `/rechnungen/belege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen › Rechnungen | Rechnungsstation (Kamera) `/rechnungsstation` | ○ 0/2 Abläufe | – | 3 |
+| Finanzen › Rechnungen | Rechnungsstation: Prüfliste `/rechnungsstation/pruefen` | ○ 0/2 Abläufe | – | – |
+| Finanzen › Rechnungen | Ausgangsrechnungen `/rechnungen/ausgang` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen › Rechnungen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Deals `/b2b` | ○ 0/6 Abläufe | – | 5 |
 | B2B | Preislisten je Land `/b2b/preislisten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | B2B-Kunden `/b2b/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -97,24 +93,24 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Delegation | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
-| Delegation | Alle Aufgaben `/?ansicht=liste` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Delegation | Anrufe (im Tagesplan) `/kalender/tagesplan?anrufe=1` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Wissen & Calls | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
-| Wissen & Calls | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
+| Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
+| Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
+| Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
+| Team & Verwaltung | Rechtsfälle (Anwalt) `/rechtsfaelle` | ○ 0/1 Abläufe | – | 2 |
 | Privat | Übersicht `/privat` | ○ 0/10 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
-| Einstellungen | Anbindungen `/anbindungen` | ○ 0/6 Abläufe | – | 3 |
-| Einstellungen | Claude & KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
-| Einstellungen | Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einstellungen | Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einstellungen | Benachrichtigungen `/einstellungen/benachrichtigungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einstellungen | Shop-Profile & Payback `/einstellungen/shop-profile` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einstellungen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Anbindungen `/anbindungen` | ○ 0/6 Abläufe | – | 3 |
+| Einstellungen | Einstellungen › KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
+| Einstellungen | Einstellungen › Geräte: Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Benachrichtigungen `/einstellungen/benachrichtigungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Shop-Profile `/einstellungen/shop-profile` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Abholung `/einstellungen/abholung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Testumgebung `/einstellungen/testumgebung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | /posteingang/verbinden `/posteingang/verbinden` | ○ 0/2 Abläufe | – | 1 |
 | Übergreifend | /assistent-verlauf `/assistent-verlauf` | ○ 0/2 Abläufe | – | – |
 | Übergreifend | /calls/offen `/calls/offen` | ○ 0/1 Abläufe | – | – |
@@ -160,7 +156,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Entwurf echt senden (nur mit echtem Postfach)
 - – Offen: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
 
-### Heute › Schnellerfassung (Sprache) (`/schnell`)
+### Heute › Schnellerfassung (`/schnell`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -178,16 +174,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Feierabend: erledigt/offen, auf morgen schieben, morgen Top 3 | wichtige bleiben stehen | ○ im letzten Lauf nicht gelaufen | `herzstueck.spec.ts` |
 | Wochenrückblick mit „Privates zeigen“ (B16) | Beobachtungen (Bogen-Format, „unvollständig“), Zuwendung je Art und Richtung, Gespräche, Danke, Stimmung, Dateideen, Aufgaben, Vorwochen-Vergleich; ohne Freigabe nichts Privates | ○ im letzten Lauf nicht gelaufen | `privat-rueckblick.spec.ts` |
 
-### Heute › Rechtsfälle (Anwalt) (`/rechtsfaelle`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude | Status und Frist im Fall, wir am Zug, Aufgabe 3 Tage vorher (Kalender), privater Fall nur im Privatbereich, Startseite nur mit Anzahl, Entwurf nie gesendet, Asana nie beschrieben | ○ im letzten Lauf nicht gelaufen | `recht-discord.spec.ts` |
-
-- – Offen: Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen
-- – Offen: Echte Anwalts-Mails (Domain, Aktenzeichen-Format)
-
-### Einkauf › Deal-Eingang (`/deal-eingang`)
+### Einkauf & Deals › Deal-Eingang (`/deal-eingang`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -202,19 +189,19 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Lugru Deals live: Programm auf den neuen Stand bringen, Seller-Adresse + Verbindungsschlüssel eintragen – die History kommt dann von selbst
 - – Offen: Echte Bestellbestätigungen anderer Shops (Betreff/Format je Shop) – nur live
 
-### Einkauf › Lugru Deals (`/deal-eingang/lugru`)
+### Einkauf & Deals › Lugru Deals (`/deal-eingang/lugru`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert | Live-Post im Deal-Eingang mit Ampel (Push nur Grün/Gelb), History mit Reaktionen, Statistik aktualisiert, „Lugru Deals“ in deal_quellen, keine Namen gespeichert | ○ im letzten Lauf nicht gelaufen | `lugru-deals.spec.ts` |
 
-### Einkauf › Kontakt-Board (`/board`)
+### Einkauf & Deals › Lieferanten › Kontakt-Board (`/board`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie | 📘-Link auf der Karte, auch bei der Assistenz | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 
-### Amazon › Fall-Zentrale (`/amazon-faelle`)
+### Amazon › Fälle & Erstattungen › Fall-Zentrale (`/amazon-faelle`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -225,7 +212,20 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)
 - – Offen: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
 
-### Amazon › Repricer (BQool) (`/repricer`)
+### Amazon › Fälle & Erstattungen › Ansprüche (`/ansprueche`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Kennzahlen | Herkunft je Kennzahl | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| Als eingereicht markieren (über Claude) | nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
+
+### Amazon › Fälle & Erstattungen › Echtheits-Ordner (`/echtheit`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket | Beleg + SKU im Ordner, ZIP (PK…) | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
+
+### Amazon › Angebote & Lager › Repricer (BQool) (`/repricer`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -236,20 +236,13 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 - – Offen: Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 
-### Amazon › FBA-Inbound (`/inbound`)
+### Amazon › Angebote & Lager › FBA-Inbound (`/inbound`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | FBA-Sendung scannen | unbekannter Code → Fehler; gültiger Code bucht; Karton-Auswahl bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 
-### Amazon › Ansprüche (`/ansprueche`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Kennzahlen | Herkunft je Kennzahl | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
-| Als eingereicht markieren (über Claude) | nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
-
-### Amazon › Amazon Business (`/amazon-business`)
+### Amazon › Angebote & Lager › Amazon Business (`/amazon-business`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -258,17 +251,78 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 - – Offen: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 
-### Amazon › Echtheits-Ordner (`/echtheit`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket | Beleg + SKU im Ordner, ZIP (PK…) | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
-
-### eBay & Temu › eBay-Angebote prüfen (`/ebay/pruefen`)
+### eBay & Temu › Angebote prüfen (`/ebay/pruefen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Kleinanzeigen-Entwurf am eBay-Angebot | Titel ≤ 65, Kategorie, Zustand, Preis in ganzen Euro, Text ohne eBay-Sätze, Bilder + ZIP; nichts wird eingestellt | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
+
+### Lager & Versand › Lager › Bestand & Inventur (`/bestand`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Kennzahlen | Herkunft je Kennzahl, keine kaputten Werte | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| Inventur scannen | bucht +1, Feld leert sich für den nächsten Scan | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| B15.3 Prep Center verschickt | eigenes Lager unverändert; alte Fehlbuchung als Vorschlag, Zurückbuchen nur auf Klick | ○ im letzten Lauf nicht gelaufen | `b15-sofort.spec.ts` |
+
+### Lager & Versand › Lager › Paletten-Lager (`/paletten`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B15.13 Palette ohne Kunde | Warnung mit Palettennummer, Filter „ohne Kunde“ | ○ im letzten Lauf nicht gelaufen | `b15-anzeige.spec.ts` |
+
+### Lager & Versand › Lager › Paletten-Lager › Sendungen (`/paletten/sendungen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen | Meldung im System + Mail (abgefangen), Kunden sieht nur Freigegebenes, Links verfallen | ○ im letzten Lauf nicht gelaufen | `sendungen.spec.ts` |
+| Notiz über Claude bzw. Fragefeld | nur mit Recht; Mitarbeiter als Vorschlag mit Ausführen/Ablehnen | ○ im letzten Lauf nicht gelaufen | `rechte.spec.ts` |
+
+### Lager & Versand › Versand › Aufträge & Versand (`/auftraege`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Labels kaufen und alle als versendet melden (Amazon, simuliert) | Versandbestätigung je Amazon-Auftrag an den Testdienst; eBay ohne Verbindung als Meldung | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
+| Ansicht „Meldung offen“ | fehlgeschlagene Meldungen sichtbar | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
+
+### Lager & Versand › Versand › Labels: Warensendung & DHL (`/auftraege/lieferschein`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Falsche Datei hochladen | Fehler; Datei und Haken bleiben; Kanal bei „Offene Aufträge“ bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| Vorschau mit lauter „bitte prüfen“ | Fehler; Auswahl je Bestellung bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| Gewichte pflegen | unklare Eingabe bleibt stehen, gültige Zeile zeigt gespeicherte Werte, neue Zeile leert sich | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) | 5 Labels, Kabel als DHL-Paket, keine echten Käufe | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
+
+### Lager & Versand › Versand › Abholung DHL/UPS (`/versand/abholung`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt) | erst Rückfrage mit Zusammenfassung und Hinweisen (keine feste Uhrzeit, > 10 Pakete = Anfrage), nichts gebucht; nach „Ja“ (bestaetigt) Buchung mit Auftragsnummer, Protokoll „über Claude“; doppelt und Sonntag abgelehnt; Storno über abholung_stornieren | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+| UPS-Abholung von der Seite: UPS → Abholung buchen; Storno; VA (Service) bucht DHL | Paketzahl/Datum/Fenster vorbelegt, PRN 2929TEST… im Protokoll, Storno an UPS; VA bucht, Einstellungen → Abholung gesperrt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+| Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“ | bei 5 kein Vorschlag; bei 6 Aufgabe „Abholung buchen? … DHL-Labels fertig“ mit Push, nichts gebucht; Ein-Klick „Jetzt buchen“ bucht genau das, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+
+- – Offen: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
+- – Offen: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
+
+### Lager & Versand › Versand › Prep Center: Versand je Monat (`/auftraege/prep-center`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Kennzahlen | Zeitraum = Monat, Stand = letzter Bestellabruf, fehlende Gebühren als Text statt 0 | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| Frage im Fragefeld „Was kostet uns das Prep Center?“ | exakte Zahlen je Monat aus den Testdaten + Erklärung | ○ im letzten Lauf nicht gelaufen | `fragefeld.spec.ts` |
+
+### Lager & Versand › Retouren › Retouren-Station & Fälle (`/remissionen/pruefungen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner) | Remission über Etikett, Lieferschein-Abgleich, LPN → Kundenretoure; Fall nur ab Schwelle und wenn Amazon nicht gezahlt hat; KI-Warnung bei Abweichung; Netz weg → Warteschlange; Video je Paket | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
+| Fall-Paket und Eingereicht | Text DE/EN, Fotos 1_Versandetikett … 4_Inhalt in fester Reihenfolge, ZIP, Anspruch mit Betrag/Frist, Fallnummer + Eingereicht im Verlauf; RET-SKU mit EK der Charge | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
+| Rechte der Station | ohne Bereich Amazon kein Zugriff auf Station, Schnittstelle und Fotos | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
+
+- – Offen: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
+- – Offen: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
+- – Offen: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
 
 ### Finanzen › Gewinn (`/gewinn`)
 
@@ -287,12 +341,19 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Kennzahlen | Schätzungen mit „≈“, „keine Daten“ statt 0 | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
 | Kontoauszug einlesen, Amex erkannt, großer Einkauf in der Amex-Woche | Woche „unter Reserve“, Was-wäre-wenn meldet Unterschreitung | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 
-### Finanzen › Importe (Daten importieren) (`/import`)
+### Finanzen › Kapital-Ampel (`/kapital`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
-| Unbekannte Datei importieren | Fehler, Datei bleibt ausgewählt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
-| B25.2 Spalte „Ergebnis / Fehler“, Lagergebühren/USt-Bericht unter „Was erkannt wird“ | Ergebnis je Import (auch „nachgezogen“), fehlgeschlagene Uploads und abgelehnte Schnittstellen-Berichte mit Fehler | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
+| Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen | Ampel rot, „Nicht nachbestellen“ | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
+| Kennzahlen | Zeitraum, Quelle, Stand | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| Hinweis gestrandeter Bestand + weitere Amazon-Gebühren | Stück, gebundenes Kapital, Langzeit-Lagergebühr | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
+
+### Finanzen › Hebel: Umsatz & Marge (`/hebel`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Kennzahlen | geschätzte Werte gekennzeichnet | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
 
 ### Finanzen › Verlust-Stopp (`/verlust`)
 
@@ -303,27 +364,20 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 - – Offen: Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)
 
-### Finanzen › Hebel: Umsatz & Marge (`/hebel`)
+### Finanzen › Importe (`/import`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
-| Kennzahlen | geschätzte Werte gekennzeichnet | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| Unbekannte Datei importieren | Fehler, Datei bleibt ausgewählt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| B25.2 Spalte „Ergebnis / Fehler“, Lagergebühren/USt-Bericht unter „Was erkannt wird“ | Ergebnis je Import (auch „nachgezogen“), fehlgeschlagene Uploads und abgelehnte Schnittstellen-Berichte mit Fehler | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 
-### Finanzen › Kapital-Ampel (`/kapital`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen | Ampel rot, „Nicht nachbestellen“ | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
-| Kennzahlen | Zeitraum, Quelle, Stand | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
-| Hinweis gestrandeter Bestand + weitere Amazon-Gebühren | Stück, gebundenes Kapital, Langzeit-Lagergebühr | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
-
-### Finanzen › Eingangsrechnungen (`/rechnungen`)
+### Finanzen › Rechnungen › Eingangsrechnungen (`/rechnungen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Rechnung hochladen, Sammelbearbeitung | Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 
-### Finanzen › Rechnungsstation (Kamera) (`/rechnungsstation`)
+### Finanzen › Rechnungen › Rechnungsstation (Kamera) (`/rechnungsstation`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -334,79 +388,12 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
 - – Offen: Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
 
-### Finanzen › Rechnungsstation: Prüfliste (`/rechnungsstation/pruefen`)
+### Finanzen › Rechnungen › Rechnungsstation: Prüfliste (`/rechnungsstation/pruefen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen | nur rote/gelbe Belege mit Bild; Weitergabe meldet „An Stotax übertragen: 47“ und bleibt im Stapel; nach Speichern geprüft und weitergegeben, verworfenes Duplikat „kein Beleg“; Liste danach leer | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
 | „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel | Meldung „1 PDF aus dem Scanner-Ordner: 20 Belege“, Stapel mit 20 Belegen | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
-
-### Produkte & Lager › Bestand & Inventur (`/bestand`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Kennzahlen | Herkunft je Kennzahl, keine kaputten Werte | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
-| Inventur scannen | bucht +1, Feld leert sich für den nächsten Scan | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
-| B15.3 Prep Center verschickt | eigenes Lager unverändert; alte Fehlbuchung als Vorschlag, Zurückbuchen nur auf Klick | ○ im letzten Lauf nicht gelaufen | `b15-sofort.spec.ts` |
-
-### Produkte & Lager › Paletten-Lager (Kunden) (`/paletten`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| B15.13 Palette ohne Kunde | Warnung mit Palettennummer, Filter „ohne Kunde“ | ○ im letzten Lauf nicht gelaufen | `b15-anzeige.spec.ts` |
-
-### Produkte & Lager › Paletten-Lager (Kunden) › Sendungen (`/paletten/sendungen`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen | Meldung im System + Mail (abgefangen), Kunden sieht nur Freigegebenes, Links verfallen | ○ im letzten Lauf nicht gelaufen | `sendungen.spec.ts` |
-| Notiz über Claude bzw. Fragefeld | nur mit Recht; Mitarbeiter als Vorschlag mit Ausführen/Ablehnen | ○ im letzten Lauf nicht gelaufen | `rechte.spec.ts` |
-
-### Produkte & Lager › Retouren-Station & Fälle (`/remissionen/pruefungen`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner) | Remission über Etikett, Lieferschein-Abgleich, LPN → Kundenretoure; Fall nur ab Schwelle und wenn Amazon nicht gezahlt hat; KI-Warnung bei Abweichung; Netz weg → Warteschlange; Video je Paket | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
-| Fall-Paket und Eingereicht | Text DE/EN, Fotos 1_Versandetikett … 4_Inhalt in fester Reihenfolge, ZIP, Anspruch mit Betrag/Frist, Fallnummer + Eingereicht im Verlauf; RET-SKU mit EK der Charge | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
-| Rechte der Station | ohne Bereich Amazon kein Zugriff auf Station, Schnittstelle und Fotos | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
-
-- – Offen: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
-- – Offen: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
-- – Offen: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
-
-### Produkte & Lager › Aufträge & Versand (`/auftraege`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Labels kaufen und alle als versendet melden (Amazon, simuliert) | Versandbestätigung je Amazon-Auftrag an den Testdienst; eBay ohne Verbindung als Meldung | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
-| Ansicht „Meldung offen“ | fehlgeschlagene Meldungen sichtbar | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
-
-### Produkte & Lager › Labels: Warensendung & DHL (`/auftraege/lieferschein`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Falsche Datei hochladen | Fehler; Datei und Haken bleiben; Kanal bei „Offene Aufträge“ bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
-| Vorschau mit lauter „bitte prüfen“ | Fehler; Auswahl je Bestellung bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
-| Gewichte pflegen | unklare Eingabe bleibt stehen, gültige Zeile zeigt gespeicherte Werte, neue Zeile leert sich | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
-| Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) | 5 Labels, Kabel als DHL-Paket, keine echten Käufe | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
-
-### Produkte & Lager › Abholung DHL/UPS (`/versand/abholung`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt) | erst Rückfrage mit Zusammenfassung und Hinweisen (keine feste Uhrzeit, > 10 Pakete = Anfrage), nichts gebucht; nach „Ja“ (bestaetigt) Buchung mit Auftragsnummer, Protokoll „über Claude“; doppelt und Sonntag abgelehnt; Storno über abholung_stornieren | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
-| UPS-Abholung von der Seite: UPS → Abholung buchen; Storno; VA (Service) bucht DHL | Paketzahl/Datum/Fenster vorbelegt, PRN 2929TEST… im Protokoll, Storno an UPS; VA bucht, Einstellungen → Abholung gesperrt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
-| Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“ | bei 5 kein Vorschlag; bei 6 Aufgabe „Abholung buchen? … DHL-Labels fertig“ mit Push, nichts gebucht; Ein-Klick „Jetzt buchen“ bucht genau das, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
-
-- – Offen: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
-- – Offen: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
-
-### Produkte & Lager › Prep Center: Versand je Monat (`/auftraege/prep-center`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| Kennzahlen | Zeitraum = Monat, Stand = letzter Bestellabruf, fehlende Gebühren als Text statt 0 | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
-| Frage im Fragefeld „Was kostet uns das Prep Center?“ | exakte Zahlen je Monat aus den Testdaten + Erklärung | ○ im letzten Lauf nicht gelaufen | `fragefeld.spec.ts` |
 
 ### B2B › Deals (`/b2b`)
 
@@ -442,7 +429,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - 👁 Live (vor dem 28.10.2026, Prüfung mit ChatGPT): Uhren-Deal bearbeiten – Eingaben/Status gingen verloren – behoben, seither automatisch geprüft
 - 👁 Live (vor dem 28.10.2026, Prüfung mit ChatGPT): Übungs-Deal – zählte unter „Verworfen“ – behoben, seither automatisch geprüft
 
-### Delegation › VA & Delegation (`/delegation`)
+### Team & Verwaltung › VA & Delegation (`/delegation`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -453,14 +440,14 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 - – Offen: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 
-### Wissen & Calls › Wissen (`/wissen`)
+### Team & Verwaltung › Wissen (`/wissen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Wissen aus Calls: KI-Auszug je Call, Bereich „Aus Calls“, Eintrag mit Quelle, Suche | Einträge mit Einschätzung und Link zum Call, im Bereich „Aus Calls“ und in der Suche | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 | Anleitung anlegen und beim Zuweisen anhängen | Anleitung im Wissen, 📘 an der Aufgabe | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 
-### Wissen & Calls › Calls (Consultant & Gruppe) (`/calls`)
+### Team & Verwaltung › Calls (Consultant & Gruppe) (`/calls`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -473,6 +460,15 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - – Offen: Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
 - – Offen: Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)
+
+### Team & Verwaltung › Rechtsfälle (Anwalt) (`/rechtsfaelle`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude | Status und Frist im Fall, wir am Zug, Aufgabe 3 Tage vorher (Kalender), privater Fall nur im Privatbereich, Startseite nur mit Anzahl, Entwurf nie gesendet, Asana nie beschrieben | ○ im letzten Lauf nicht gelaufen | `recht-discord.spec.ts` |
+
+- – Offen: Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen
+- – Offen: Echte Anwalts-Mails (Domain, Aktenzeichen-Format)
 
 ### Privat › Übersicht (`/privat`)
 
@@ -501,7 +497,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen | gesperrt, keine Finanz- oder Privatdaten | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 | B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle | Privatbereich gesperrt; beim Inhaber-Login auf „kein Zugang“ bereinigt + Dialog + Aufgabe; Knopf „Als VA-Rolle übernehmen“ | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 
-### Einstellungen › Anbindungen (`/anbindungen`)
+### Einstellungen › Einstellungen › Anbindungen (`/anbindungen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -516,7 +512,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
 - – Offen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
 
-### Einstellungen › Claude & KI-Assistent (`/einstellungen/claude`)
+### Einstellungen › Einstellungen › KI-Assistent (`/einstellungen/claude`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
@@ -595,7 +591,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (133 Abläufe + Oberfläche auf 112 Seiten): 0 bestanden, 0 fehlgeschlagen, 133 nicht gelaufen.
+**Automatisch** (133 Abläufe + Oberfläche auf 108 Seiten): 0 bestanden, 0 fehlgeschlagen, 133 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -606,11 +602,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Posteingang: Antwort-Entwurf (über Claude) prüfen und senden – im letzten Lauf nicht gelaufen
 - ○ Posteingang: Posteingang auf null: Regel an Zuständigen, Auto-Archiv, Zahlung abgelehnt (IT), Termin-Mail → Privatkalender, Vorschlag für Claude – im letzten Lauf nicht gelaufen
 - ○ Posteingang: Gerichts-/Behörden-Mail und Anwalts-Mails (B14) – im letzten Lauf nicht gelaufen
-- ○ Schnellerfassung (Sprache): Diktat per Handy-Schlüssel: Aufgabe, Eingangsliste, Privates nur mit Zugang, Widerruf – im letzten Lauf nicht gelaufen
-- ○ Schnellerfassung (Sprache): Widget, Anrufe in der Fahrzeit, Briefing je Ziel, SMS-Codes, Ins Auto, Fahrtenbuch, Scan, Auto-Status/Klima – im letzten Lauf nicht gelaufen
+- ○ Schnellerfassung: Diktat per Handy-Schlüssel: Aufgabe, Eingangsliste, Privates nur mit Zugang, Widerruf – im letzten Lauf nicht gelaufen
+- ○ Schnellerfassung: Widget, Anrufe in der Fahrzeit, Briefing je Ziel, SMS-Codes, Ins Auto, Fahrtenbuch, Scan, Auto-Status/Klima – im letzten Lauf nicht gelaufen
 - ○ Feierabend: Feierabend: erledigt/offen, auf morgen schieben, morgen Top 3 – im letzten Lauf nicht gelaufen
 - ○ Feierabend: Wochenrückblick mit „Privates zeigen“ (B16) – im letzten Lauf nicht gelaufen
-- ○ Rechtsfälle (Anwalt): Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: B25.3 Schwelle „Lugru Deals=60“ – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
@@ -621,44 +616,23 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Fall-Zentrale: Amazon-Mails einordnen: Freischaltung abgelehnt, Fall „Antwort nötig“ (2 Mails, gleiche Fall-ID), Freischaltung entzogen, unsichere Mail – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: 20 erfundene Amazon-Mails in 8 Sprachen einordnen (Unit-Test) – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: Amazon-Berichte 1–4: Konto-Berichte anfordern/abholen, Kontozustand, gestrandet/gesperrt, weitere Gebühren, USt per Schnittstelle, Datei-Import – im letzten Lauf nicht gelaufen
+- ○ Ansprüche: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Ansprüche: Als eingereicht markieren (über Claude) – im letzten Lauf nicht gelaufen
+- ○ Echtheits-Ordner: Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): BQool-Export „Manage Listings“ hochladen – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): B15.11 Übersicht je Regel, Filter, alle Länder – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): B25.5 /repricer/export ohne Format – im letzten Lauf nicht gelaufen
 - ○ FBA-Inbound: FBA-Sendung scannen – im letzten Lauf nicht gelaufen
-- ○ Ansprüche: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Ansprüche: Als eingereicht markieren (über Claude) – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Geschäftsbericht (CSV) hochladen, Staffelpreis-Vorschlag übernehmen, Freigabe, Upload-Datei – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Echtheits-Ordner: Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket – im letzten Lauf nicht gelaufen
-- ○ eBay-Angebote prüfen: Kleinanzeigen-Entwurf am eBay-Angebot – im letzten Lauf nicht gelaufen
-- ○ Gewinn: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Gewinn: B15.4 Quelle je Zeile, sellerboard als Ersatz, Amazon-Zeile – im letzten Lauf nicht gelaufen
-- ○ Gewinn: B25.1 Abrechnung aus dem Transaktionsbericht (auch ältere Importe) – im letzten Lauf nicht gelaufen
-- ○ Liquidität: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Liquidität: Kontoauszug einlesen, Amex erkannt, großer Einkauf in der Amex-Woche – im letzten Lauf nicht gelaufen
-- ○ Importe (Daten importieren): Unbekannte Datei importieren – im letzten Lauf nicht gelaufen
-- ○ Importe (Daten importieren): B25.2 Spalte „Ergebnis / Fehler“, Lagergebühren/USt-Bericht unter „Was erkannt wird“ – im letzten Lauf nicht gelaufen
-- ○ Verlust-Stopp: 2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar – im letzten Lauf nicht gelaufen
-- ○ Verlust-Stopp: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Hebel: Umsatz & Marge: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Kapital-Ampel: Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen – im letzten Lauf nicht gelaufen
-- ○ Kapital-Ampel: Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Kapital-Ampel: Hinweis gestrandeter Bestand + weitere Amazon-Gebühren – im letzten Lauf nicht gelaufen
-- ○ Eingangsrechnungen: Rechnung hochladen, Sammelbearbeitung – im letzten Lauf nicht gelaufen
-- ○ Rechnungsstation (Kamera): 50 Blätter nacheinander an der Station (VA mit Bereich Service), Stapel fertig, Prüfliste, Weitergabe – im letzten Lauf nicht gelaufen
-- ○ Rechnungsstation (Kamera): PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff – im letzten Lauf nicht gelaufen
-- ○ Rechnungsstation: Prüfliste: Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen – im letzten Lauf nicht gelaufen
-- ○ Rechnungsstation: Prüfliste: „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel – im letzten Lauf nicht gelaufen
+- ○ Angebote prüfen: Kleinanzeigen-Entwurf am eBay-Angebot – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: Inventur scannen – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: B15.3 Prep Center verschickt – im letzten Lauf nicht gelaufen
-- ○ Paletten-Lager (Kunden): B15.13 Palette ohne Kunde – im letzten Lauf nicht gelaufen
-- ○ Paletten-Lager (Kunden) › Sendungen: Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen – im letzten Lauf nicht gelaufen
-- ○ Paletten-Lager (Kunden) › Sendungen: Notiz über Claude bzw. Fragefeld – im letzten Lauf nicht gelaufen
-- ○ Retouren-Station & Fälle: Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner) – im letzten Lauf nicht gelaufen
-- ○ Retouren-Station & Fälle: Fall-Paket und Eingereicht – im letzten Lauf nicht gelaufen
-- ○ Retouren-Station & Fälle: Rechte der Station – im letzten Lauf nicht gelaufen
+- ○ Paletten-Lager: B15.13 Palette ohne Kunde – im letzten Lauf nicht gelaufen
+- ○ Paletten-Lager › Sendungen: Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen – im letzten Lauf nicht gelaufen
+- ○ Paletten-Lager › Sendungen: Notiz über Claude bzw. Fragefeld – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Labels kaufen und alle als versendet melden (Amazon, simuliert) – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Ansicht „Meldung offen“ – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Falsche Datei hochladen – im letzten Lauf nicht gelaufen
@@ -670,6 +644,27 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Abholung DHL/UPS: Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“ – im letzten Lauf nicht gelaufen
 - ○ Prep Center: Versand je Monat: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Prep Center: Versand je Monat: Frage im Fragefeld „Was kostet uns das Prep Center?“ – im letzten Lauf nicht gelaufen
+- ○ Retouren-Station & Fälle: Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner) – im letzten Lauf nicht gelaufen
+- ○ Retouren-Station & Fälle: Fall-Paket und Eingereicht – im letzten Lauf nicht gelaufen
+- ○ Retouren-Station & Fälle: Rechte der Station – im letzten Lauf nicht gelaufen
+- ○ Gewinn: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Gewinn: B15.4 Quelle je Zeile, sellerboard als Ersatz, Amazon-Zeile – im letzten Lauf nicht gelaufen
+- ○ Gewinn: B25.1 Abrechnung aus dem Transaktionsbericht (auch ältere Importe) – im letzten Lauf nicht gelaufen
+- ○ Liquidität: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Liquidität: Kontoauszug einlesen, Amex erkannt, großer Einkauf in der Amex-Woche – im letzten Lauf nicht gelaufen
+- ○ Kapital-Ampel: Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen – im letzten Lauf nicht gelaufen
+- ○ Kapital-Ampel: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Kapital-Ampel: Hinweis gestrandeter Bestand + weitere Amazon-Gebühren – im letzten Lauf nicht gelaufen
+- ○ Hebel: Umsatz & Marge: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Verlust-Stopp: 2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar – im letzten Lauf nicht gelaufen
+- ○ Verlust-Stopp: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Importe: Unbekannte Datei importieren – im letzten Lauf nicht gelaufen
+- ○ Importe: B25.2 Spalte „Ergebnis / Fehler“, Lagergebühren/USt-Bericht unter „Was erkannt wird“ – im letzten Lauf nicht gelaufen
+- ○ Eingangsrechnungen: Rechnung hochladen, Sammelbearbeitung – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation (Kamera): 50 Blätter nacheinander an der Station (VA mit Bereich Service), Stapel fertig, Prüfliste, Weitergabe – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation (Kamera): PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation: Prüfliste: Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation: Prüfliste: „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel – im letzten Lauf nicht gelaufen
 - ○ Deals: B25.10 Wo Deal-Blatt, Sammelbestellung und Prep-Export erscheinen – im letzten Lauf nicht gelaufen
 - ○ Deals: B15.12 SKU-Kürzel in der Lieferantenliste – im letzten Lauf nicht gelaufen
 - ○ Deals: Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord – im letzten Lauf nicht gelaufen
@@ -691,6 +686,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Calls (Consultant & Gruppe): Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen – im letzten Lauf nicht gelaufen
 - ○ Calls (Consultant & Gruppe): B25.12 Suchfeld über alle Transkripte – im letzten Lauf nicht gelaufen
 - ○ Calls (Consultant & Gruppe): Gruppen-Kanäle (Discord, nur lesen): Nachrichten mehrerer Nutzer, Deal, Kanal „aus“, alter Rohtext – im letzten Lauf nicht gelaufen
+- ○ Rechtsfälle (Anwalt): Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Abendritual als Abfolge „zweimal Streicheln, danach Massage“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe – im letzten Lauf nicht gelaufen
@@ -705,20 +701,20 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Einstellungen: Apple Watch: Seite mit Anleitung, ein Kurzbefehl für alles (watch/frage), Ausprobieren – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: B30.3 Fehlimporte beim nächsten Abruf nachverarbeitet; fehlende Spalten – im letzten Lauf nicht gelaufen
-- ○ Anbindungen: B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Jedes lesende Werkzeug einzeln – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Keepa: Länder vergleichen – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Neue Werkzeuge ohne Neustart (notifications/tools/list_changed) – im letzten Lauf nicht gelaufen
-- ○ Claude & KI-Assistent: Rechte der neuen Werkzeuge im Fragefeld – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B30.3 Fehlimporte beim nächsten Abruf nachverarbeitet; fehlende Spalten – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Jedes lesende Werkzeug einzeln – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Keepa: Länder vergleichen – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Neue Werkzeuge ohne Neustart (notifications/tools/list_changed) – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › KI-Assistent: Rechte der neuen Werkzeuge im Fragefeld – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Postfach verbinden: App-Passwort zuerst, Anleitung (Google, Microsoft 365, GMX/WEB.DE, IONOS/STRATO), „Nur abrufen“, OAuth nur unter „Erweitert“ – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“ – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) – im letzten Lauf nicht gelaufen
@@ -738,9 +734,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 62 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 58 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Bestellvorschläge (`/einkauf/vorschlaege`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Scanner (Barcode mit Ampel) (`/scan`) · Deal-Ampel (Einkauf prüfen) (`/lieferanten/deal-ampel`) · Einkauf & Wareneingang (`/einkauf`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Lieferanten-Feeds (`/lieferanten`) · Lieferanten-Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Fälle & A-bis-Z (`/faelle`) · Bewertungen (`/bewertungen`) · Neues eBay-Angebot (`/ebay`) · eBay-Artikel & Gewinn (`/ebay?ansicht=artikel`) · eBay-Verlauf (`/ebay?ansicht=verlauf`) · eBay → Temu / Wawi (`/listings/temu`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · eBay-Rechnungen (`/ebay?ansicht=rechnungen`) · Kunden (`/rechnungen/kunden`) · COG-Export (`/export`) · Paletten-Lager (Kunden) › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager (Kunden) › Abholung (`/paletten/abholung`) · Paletten-Lager (Kunden) › Inventur (`/paletten/inventur`) · Paletten-Lager (Kunden) › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager (Kunden) › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager (Kunden) › Auswertung (`/paletten/uebersicht`) · Produkte (`/produkte`) · Chargen (`/chargen`) · Artikelstamm (eigene Marken) (`/artikel`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Alle Aufgaben (`/?ansicht=liste`) · Anrufe (im Tagesplan) (`/kalender/tagesplan?anrufe=1`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Handy & Tesla (`/einstellungen/handy`) · Apple Watch (`/einstellungen/watch`) · Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Shop-Profile & Payback (`/einstellungen/shop-profile`) · eBay-Einstellungen (`/ebay?ansicht=einstellungen`)
+Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
 
 **Bekannte offene Punkte:**
 
@@ -749,11 +745,9 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Posteingang: Mails abrufen (nur echte Postfächer)
 - Posteingang: Entwurf echt senden (nur mit echtem Postfach)
 - Posteingang: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
-- Schnellerfassung (Sprache): Echtes Handy (Kurzbefehle/Widget)
-- Schnellerfassung (Sprache): Echter Tesla (Fleet-API-App, virtueller Schlüssel, Befehls-Proxy)
-- Schnellerfassung (Sprache): Echte SMS über Twilio
-- Rechtsfälle (Anwalt): Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen
-- Rechtsfälle (Anwalt): Echte Anwalts-Mails (Domain, Aktenzeichen-Format)
+- Schnellerfassung: Echtes Handy (Kurzbefehle/Widget)
+- Schnellerfassung: Echter Tesla (Fleet-API-App, virtueller Schlüssel, Befehls-Proxy)
+- Schnellerfassung: Echte SMS über Twilio
 - Deal-Eingang: B28: Bestellmail an echte Lieferanten (Zustellung, Message-ID-Erhalt je Postfach) und Discord-Rückfrage nach 👍 im echten ProfitPath-Kanal (Bot braucht dort „Nachrichten senden“, „Threads erstellen“, „Reaktionen hinzufügen“) – nur live
 - Deal-Eingang: ProfitPath mit echtem Discord-Bot (Message Content Intent, Rechte „Kanal ansehen“ + „Nachrichtenverlauf lesen“) – nur live
 - Deal-Eingang: Lugru Deals live: Programm auf den neuen Stand bringen, Seller-Adresse + Verbindungsschlüssel eintragen – die History kommt dann von selbst
@@ -762,16 +756,16 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Fall-Zentrale: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
+- Abholung DHL/UPS: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
+- Abholung DHL/UPS: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
+- Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
+- Retouren-Station & Fälle: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
+- Retouren-Station & Fälle: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
 - Gewinn: Amazon-Zeile mit echten Abrechnungen gegen sellerboard vergleichen (−525 € laut Testbericht)
 - Verlust-Stopp: Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)
 - Rechnungsstation (Kamera): Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live
 - Rechnungsstation (Kamera): Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
 - Rechnungsstation (Kamera): Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
-- Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
-- Retouren-Station & Fälle: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
-- Retouren-Station & Fälle: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
-- Abholung DHL/UPS: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
-- Abholung DHL/UPS: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
 - Deals: Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)
 - Deals: Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)
 - Deals: Discord-Webhook im echten B2B-Kanal
@@ -781,13 +775,15 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - Calls (Consultant & Gruppe): Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
 - Calls (Consultant & Gruppe): Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)
+- Rechtsfälle (Anwalt): Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen
+- Rechtsfälle (Anwalt): Echte Anwalts-Mails (Domain, Aktenzeichen-Format)
 - Übersicht: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - Übersicht: Live nie prüfen (echte private Daten)
-- Anbindungen: B30 mit der echten PurchaseOrders-Datei: Import vom 06.11. nach dem Update „fertig“, Spaltenzuordnung (EK netto/brutto, Menge, Status) prüfen; Lauf am 07.11. 05:30 Einkäufe · ok – nur live (To-dos 90/91)
-- Anbindungen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
-- Anbindungen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
-- Claude & KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
-- Claude & KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
+- Einstellungen › Anbindungen: B30 mit der echten PurchaseOrders-Datei: Import vom 06.11. nach dem Update „fertig“, Spaltenzuordnung (EK netto/brutto, Menge, Status) prüfen; Lauf am 07.11. 05:30 Einkäufe · ok – nur live (To-dos 90/91)
+- Einstellungen › Anbindungen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
+- Einstellungen › Anbindungen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
+- Einstellungen › KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
+- Einstellungen › KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - /posteingang/verbinden: IMAP mit echtem Postfach: Ordnerauswahl (Gmail „Alle Nachrichten“), Test-Knopf, SMTP 465 → 587, Fehlerarten (Anmeldung, IMAP aus, Port) – nur live mit Nur-ansehen-Daten
 - Server (Port, Adresse, Testumgebung): `deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)
 - Server (Port, Adresse, Testumgebung): `deploy/testumgebung.sh an` + `pruefen` auf dem Server

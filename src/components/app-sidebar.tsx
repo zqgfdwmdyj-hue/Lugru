@@ -6,8 +6,8 @@ import type { Favorite } from "@/db/schema";
 import { SidebarNav, type NavAccess } from "./sidebar-nav";
 
 /**
- * Linke Seitenleiste (~240 px), auf dem Desktop einklappbar auf Symbole (gemerkt), auf dem Handy eine Schublade von
- * links (Knopf „Mehr“ in der Tab-Leiste bzw. ☰ oben).
+ * Linke Seitenleiste (~240 px), auf dem Desktop einklappbar auf Gruppen-Symbole (~56 px, gemerkt; Zeigen/Tippen öffnet
+ * ein Flyout), auf dem Handy eine Schublade von links (Knopf „Mehr“ in der Tab-Leiste bzw. ☰ oben).
  */
 export function AppSidebar({ schmal: start, foot, ...props }: NavAccess & { counts: NavCounts; favorites: Favorite[]; gemerkt: string[]; privatBereich: boolean; schmal: boolean; foot: React.ReactNode }) {
   const [schmal, setSchmal] = useState(start);
@@ -32,7 +32,7 @@ export function AppSidebar({ schmal: start, foot, ...props }: NavAccess & { coun
       <label htmlFor="nav-toggle" className="nav-backdrop" aria-hidden="true" />
       <div className="nav-drawer">
         <label htmlFor="nav-toggle" className="nav-close">✕ Schließen</label>
-        <SidebarNav {...props} schmal={schmal} aufklappen={() => umschalten(false)} />
+        <SidebarNav {...props} schmal={schmal} />
         {foot}
       </div>
     </aside>

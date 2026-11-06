@@ -6,11 +6,9 @@ import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { logout } from "@/app/login/actions";
 import { getPrefs } from "@/lib/auth/prefs";
-import { canAccess } from "@/lib/auth/areas";
 import { needsReview } from "@/lib/invoices/review";
 import { bindingTask } from "@/lib/today/service";
 import { appVersion } from "@/lib/version";
-import { unreadNotices } from "@/lib/pallets/shipment-service";
 import { assistantAvailable } from "@/lib/assistant/chat";
 import { NAV_OPEN_COOKIE, NAV_SCHMAL_COOKIE, offeneAusCookie } from "@/lib/nav";
 import { AppSidebar } from "./app-sidebar";
@@ -32,10 +30,9 @@ export async function AppShell({ session, bereich, children }: { session: Sessio
   const t = session.tenantId;
   const privatBereich = bereich === "privat";
   const M = schema.meldungen;
-  const [[tasks], [inbox], [orders], [claims], [invoices], [amazonTodos], prefs, jar] = await Promise.all([
+  const [[tasks], [inbox], [claims], [invoices], [amazonTodos], prefs, jar] = await Promise.all([
     (db.select({ n: count() }).from(schema.tasks).where(and(eq(schema.tasks.tenantId, t), eq(schema.tasks.status, "open"), bindingTask))),
     (db.select({ n: count() }).from(schema.emails).where(and(eq(schema.emails.tenantId, t), eq(schema.emails.category, "critical"), eq(schema.emails.archived, false)))),
-    (db.select({ n: count() }).from(schema.orders).where(and(eq(schema.orders.tenantId, t), eq(schema.orders.fulfillment, "FBM"), inArray(schema.orders.status, ["open", "label_created"])))),
     (db.select({ n: count() }).from(schema.claims).where(and(eq(schema.claims.tenantId, t), inArray(schema.claims.status, ["detected", "queued"])))),
     (db.select({ n: count() }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, t), needsReview))),
     (db.select({ n: count() }).from(schema.amazonTodos).where(and(eq(schema.amazonTodos.tenantId, t), eq(schema.amazonTodos.status, "open"), eq(schema.amazonTodos.priority, "high")))),
@@ -44,7 +41,6 @@ export async function AppShell({ session, bereich, children }: { session: Sessio
   ]);
   const access = { isOwner: session.role === "owner", areas: session.areas, privateAccess: session.privateAccess };
   const assistant = privatBereich ? null : await assistantAvailable(t).catch(() => null);
-  const pallets = canAccess(session, "paletten") ? (await unreadNotices(session, prefs.shipmentNoticesSeenAt ?? null, 1).catch(() => ({ count: 0 }))).count : 0;
   const favorites = prefs.favorites ?? [];
   // Glocke: letzte Push-Meldungen (30 Tage) und wie viele seit dem letzten Öffnen neu sind.
   const seit = new Date(Date.now() - 30 * 86_400_000);
@@ -78,7 +74,7 @@ export async function AppShell({ session, bereich, children }: { session: Sessio
       <TestBanner />
       <div className={`shell${schmal ? " shell-schmal" : ""}${privatBereich ? " shell-privat" : ""}`}>
         <AppSidebar
-          counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n, pallets }}
+          counts={{ tasks: tasks.n, inbox: inbox.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n }}
           favorites={favorites}
           gemerkt={gemerkt}
           privatBereich={privatBereich}

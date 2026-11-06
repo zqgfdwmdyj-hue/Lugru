@@ -23,7 +23,7 @@ export default async function ProduktePage({ searchParams }: { searchParams: Pro
     <>
       <div className="page-head">
         <div>
-          <div className="crumb">Produkte & Lager</div>
+          <div className="crumb">Lager & Versand › Lager</div>
           <h1>Produkte</h1>
           <div className="small muted" style={{ marginTop: 4 }}>Ein Einstieg für Stammdaten, Chargen & Einkauf, Bestand, Angebote, Ergebnis und Belege.</div>
         </div>

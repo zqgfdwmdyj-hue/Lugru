@@ -427,7 +427,7 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
       tenantId: c.t,
       systemKey: `va-nachricht:${m.id}`,
       title: `VA: ${e.titel}${offenDe ? ` – offen: ${L.offenKurz(offenDe)}` : ""}`.slice(0, 200),
-      notes: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Delegation → VA (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
+      notes: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Team & Verwaltung → VA & Delegation (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
       dueDate: faellig,
       priority: "normal",
       category: "eigene",
@@ -671,7 +671,7 @@ export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtI
   const key = `va-rueckfrage:${nachrichtId ?? `${th.id}:reaktion`}`;
   const [lt] = await db
     .insert(T)
-    .values({ tenantId: c.t, systemKey: key, title: (o.titel ?? `Rückfrage VA: ${taskTitle ?? "Aufgabe"}`).slice(0, 200), notes: `${text}\n\nAntwort unter Delegation → VA (Discord); sie erscheint im Thread der VA.`, dueDate: c.heute, priority: "normal", category: "eigene", link: o.link ?? "/delegation/va" })
+    .values({ tenantId: c.t, systemKey: key, title: (o.titel ?? `Rückfrage VA: ${taskTitle ?? "Aufgabe"}`).slice(0, 200), notes: `${text}\n\nAntwort unter Team & Verwaltung → VA & Delegation (Discord); sie erscheint im Thread der VA.`, dueDate: c.heute, priority: "normal", category: "eigene", link: o.link ?? "/delegation/va" })
     .onConflictDoNothing()
     .returning({ id: T.id });
   if (nachrichtId && lt) await db.update(VN).set({ ludwigTaskId: lt.id }).where(and(eq(VN.tenantId, c.t), eq(VN.id, nachrichtId)));

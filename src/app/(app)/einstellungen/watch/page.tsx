@@ -12,7 +12,7 @@ const BEFEHLE: { sag: string; macht: string; aendert?: boolean }[] = [
   { sag: "Was ist dringend?", macht: "die 3 wichtigsten Punkte wie „Jetzt dringend“ auf der Startseite" },
   { sag: "Erledigt", macht: "schließt die zuletzt per Push gemeldete Aufgabe; bei mehreren: „Welche? 1 … 2 …“ → „Nummer 2“", aendert: true },
   { sag: "Notiz Rechnung Tefal prüfen", macht: "Aufgabe für dich (Datum aus dem Diktat)", aendert: true },
-  { sag: "Notiz VA bitte Rechnung prüfen", macht: "Nachricht an die VA auf Englisch – erst nach deiner Freigabe (Delegation → VA)", aendert: true },
+  { sag: "Notiz VA bitte Rechnung prüfen", macht: "Nachricht an die VA auf Englisch – erst nach deiner Freigabe (Team & Verwaltung → VA & Delegation)", aendert: true },
   { sag: "Bestand Tefal 12 Stück", macht: "setzt die gezählte Menge im eigenen Lager (ohne Zahl: nur nachsehen)", aendert: true },
   { sag: "Deal B0… für 19,99", macht: "Deal-Ampel in einer Zeile (ROI, Gewinn je Stück, Empfehlung)" },
   { sag: "Tesla", macht: "Ladestand, Reichweite, Klima (nur lesen)" },

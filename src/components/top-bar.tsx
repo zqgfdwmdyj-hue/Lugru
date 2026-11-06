@@ -42,7 +42,7 @@ function favoriteLabel(pathname: string, search: string, itemHref?: string, item
  * Keine zweite Menüzeile – Bereiche und Seiten stehen in der Seitenleiste.
  */
 export function TopBar({ favorites, canFavorite, glocke, name, firma, owner, abmelden, serverSuche, privatBereich, ...access }: NavAccess & { favorites: Favorite[]; canFavorite: boolean; glocke: Glocke; name: string; firma: string; owner: boolean; abmelden: React.ReactNode; serverSuche: boolean; privatBereich: boolean }) {
-  const { pathname, search, sections, active } = useNav(access);
+  const { pathname, search, sections, nebenseiten, active } = useNav(access);
   const label = useRef<HTMLInputElement>(null);
   const [neu, setNeu] = useState(glocke.neu);
   const href = `${pathname}${search.toString() ? `?${search}` : ""}`;
@@ -53,10 +53,10 @@ export function TopBar({ favorites, canFavorite, glocke, name, firma, owner, abm
     <div className="top-bar" data-testid="top-bar">
       <button type="button" className="bs-knopf" onClick={() => window.dispatchEvent(new Event("befehls-suche"))} data-testid="bs-knopf" aria-label="Suchen">
         <span aria-hidden="true">🔍</span>
-        <span className="bs-knopf-text">Suchen …</span>
+        <span className="bs-knopf-text">Seite, ASIN, Aufgabe …</span>
         <kbd className="bs-kbd">{istMac ? "⌘K" : "Strg+K"}</kbd>
       </button>
-      <BefehlsSuche sections={sections} favorites={favorites} serverSuche={serverSuche} />
+      <BefehlsSuche sections={sections} nebenseiten={nebenseiten} favorites={favorites} serverSuche={serverSuche} />
       <div className="top-bar-rechts">
         {canFavorite && !privatBereich && (
           <form

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Favorite } from "@/db/schema";
-import type { NavSection } from "@/lib/nav";
+import { navOrt, type Nebenseite, type NavSection } from "@/lib/nav";
 
 type Eintrag = { art: "seite" | "favorit" | "aufgabe" | "produkt" | "mail"; titel: string; zusatz?: string; link: string };
 const ART: Record<Eintrag["art"], string> = { favorit: "★ Favorit", seite: "Seite", aufgabe: "Aufgabe", produkt: "Produkt", mail: "Mail" };
@@ -14,10 +14,11 @@ const passt = (text: string, q: string) => {
 };
 
 /**
- * ⌘K / Strg+K: Seiten (aus der Seitenleiste, nur was man sehen darf) sofort, dazu Aufgaben, Produkte und Mails vom
- * Server. Pfeiltasten + Enter, Esc schließt. „Alle Treffer“ führt zur Seite „Suche“.
+ * ⌘K / Strg+K: Seiten (aus der Seitenleiste und Reiter-Seiten ohne eigenen Menüeintrag, nur was man sehen darf) sofort –
+ * mit Gruppe › Untergruppe –, dazu Aufgaben, Produkte und Mails vom Server. Pfeiltasten + Enter, Esc schließt.
+ * „Alle Treffer“ führt zur Seite „Suche“.
  */
-export function BefehlsSuche({ sections, favorites, serverSuche }: { sections: NavSection[]; favorites: Favorite[]; serverSuche: boolean }) {
+export function BefehlsSuche({ sections, nebenseiten = [], favorites, serverSuche }: { sections: NavSection[]; nebenseiten?: Nebenseite[]; favorites: Favorite[]; serverSuche: boolean }) {
   const router = useRouter();
   const [offen, setOffen] = useState(false);
   const [q, setQ] = useState("");
@@ -68,11 +69,21 @@ export function BefehlsSuche({ sections, favorites, serverSuche }: { sections: N
   const seiten = useMemo<Eintrag[]>(() => {
     const alle: Eintrag[] = [
       ...favorites.map((f) => ({ art: "favorit" as const, titel: f.label, link: f.href })),
-      ...sections.flatMap((s) => s.items.filter((it) => !it.href.includes("#")).map((it) => ({ art: "seite" as const, titel: it.label, zusatz: s.label, link: it.href }))),
+      ...sections.flatMap((s) => s.items.filter((it) => !it.href.includes("#")).map((it) => ({ art: "seite" as const, titel: it.label, zusatz: navOrt(s, it), link: it.href }))),
+      ...nebenseiten.map((n) => ({ art: "seite" as const, titel: n.label, zusatz: n.wo, link: n.href })),
     ];
     const t = q.trim();
-    return (t ? alle.filter((e) => passt(`${e.titel} ${e.zusatz ?? ""}`, t)) : alle.filter((e) => e.art === "favorit")).slice(0, 12);
-  }, [sections, favorites, q]);
+    if (!t) return alle.filter((e) => e.art === "favorit").slice(0, 12);
+    // Treffer im Titel vor Treffern nur über die Gruppe („Deals“ → B2B › Deals vor allem aus „Einkauf & Deals“).
+    const ql = t.toLowerCase();
+    const rang = (e: Eintrag) => (e.titel.toLowerCase() === ql ? 0 : e.titel.toLowerCase().startsWith(ql) ? 1 : passt(e.titel, t) ? 2 : 3);
+    return alle
+      .filter((e) => passt(`${e.titel} ${e.zusatz ?? ""}`, t))
+      .map((e, i) => ({ e, r: rang(e), i }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .map((x) => x.e)
+      .slice(0, 12);
+  }, [sections, nebenseiten, favorites, q]);
   const liste = [...seiten, ...server];
   const gehe = (e: Eintrag | undefined) => {
     if (!e) return;
@@ -87,7 +98,7 @@ export function BefehlsSuche({ sections, favorites, serverSuche }: { sections: N
         <input
           ref={input}
           className="input bs-input"
-          placeholder="Seiten, Aufgaben, Produkte, Mails suchen …"
+          placeholder="Seite, ASIN, Aufgabe … suchen"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);

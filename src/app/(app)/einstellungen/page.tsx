@@ -78,18 +78,18 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
     <>
       <div className="page-head">
         <div><div className="crumb">System</div><h1>Einstellungen</h1></div>
-        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link className="btn" href="/einstellungen/claude">Claude & KI-Assistent →</Link>
-          <Link className="btn" href="/anbindungen">Anbindungen →</Link>
-          <Link className="btn" href="/einstellungen/shop-profile" data-testid="settings-shop-profile">Shop-Profile & Payback →</Link>
-          <Link className="btn" href="/einstellungen/testumgebung">Testumgebung →</Link>
-        </span>
       </div>
+      {/* Anbindungen, KI-Assistent, Geräte, Shop-Profile, Abholung und Testumgebung: Reiter oben. Hier: Sprungleiste. */}
+      <nav className="sprungleiste" aria-label="Abschnitte der Einstellungen" data-testid="einstellungen-sprungleiste">
+        {[["allgemein", "Allgemein"], ["ansprueche", "Ansprüche & Retouren"], ["b2b", "B2B"], ["preise", "Preise"], ["versand", "Versand & Prep"], ["postfaecher", "Postfächer & Rechnungen"], ["shops", "Shops"], ["benutzer", "Benutzer"]].map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="sprung">{label}</a>
+        ))}
+      </nav>
       {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
       <AddressCheck />
 
       <form action={saveSettings} className="stack" style={{ gap: 16 }}>
-        <section className="card card-pad stack" style={{ gap: 14 }}>
+        <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="allgemein">
           <h2>Allgemein</h2>
           <div style={grid}>
             <Field label="Firmenname" name="tenantName" value={tenant.name} width={220} />
@@ -98,7 +98,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 14 }}>
+        <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="ansprueche">
           <h2>Ansprüche</h2>
           <div style={grid}>
             <Field label="Fälle pro Tag (Amazon-Limit)" name="dailyLimit" value={s.claims.dailyLimit} width={80} />
@@ -140,7 +140,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <div className="small muted">Mit Aktivierungswort lösen Gespräche im Raum nichts aus: „Station Etikett“ statt nur „Etikett“. Die Frist für Fälle aus der Station steht oben bei „{CLAIM_TYPE_LABEL.return_condition}“ (falsches Produkt: „{CLAIM_TYPE_LABEL.return_wrong_item}“) – gezählt ab dem Rückgabedatum.</div>
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 14, scrollMarginTop: 70 }} id="b2b" data-testid="settings-b2b">
+        <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="b2b" data-testid="settings-b2b">
           <h2>B2B-Deals</h2>
           <div className="small muted">Firma, auf die Deals und Rechnungen laufen (Rechnungen über Lexoffice dieser Firma – Schlüssel unter Anbindungen).</div>
           <div style={grid}>
@@ -185,7 +185,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 14 }}>
+        <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="preise">
           <h2>Preise & Repricer</h2>
           <div style={grid}>
             <Field label="Verkaufsprovision (Standard)" name="referralRate" value={pct(s.pricing.referralRate)} suffix="%" width={80} />
@@ -205,7 +205,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 14 }}>
+        <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="versand">
           <h2>Versand (DHL)</h2>
           <div style={grid}>
             <Field label="Absender Name" name="shipper_name1" value={s.shipper.name1} width={220} />
@@ -312,7 +312,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         <div><button className="btn btn-primary" type="submit">Einstellungen speichern</button></div>
       </form>
 
-      <section className="stack" id="postfaecher" style={{ gap: 10, maxWidth: 720 }}>
+      <section className="stack sprungziel" id="postfaecher" style={{ gap: 10, maxWidth: 720 }}>
         <MailboxManager tenantId={session.tenantId} />
         <Link className="small" href="/posteingang">Zum Posteingang →</Link>
       </section>
@@ -323,7 +323,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         <div className="small muted">Absenderdaten (Firma, Anschrift, USt-ID) für Rechnungen: <Link href="/ebay?ansicht=einstellungen&tab=invoices">eBay-Einstellungen → Rechnungen</Link>. Stotax-Anbindung: <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link>.</div>
       </section>
 
-      <section className="card" style={{ overflow: "hidden" }} id="shops">
+      <section className="card sprungziel" style={{ overflow: "hidden" }} id="shops">
         <div className="card-head"><h2>Shops / Lieferanten</h2><span className="small muted">Kürzel aus den SKUs – hier einen lesbaren Namen vergeben</span></div>
         {pairs.length > 0 && (
           <details className="card-pad" style={{ borderBottom: "1px solid var(--border)" }} data-testid="supplier-dups">
@@ -361,8 +361,8 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         )}
       </section>
 
-      <section className="card card-pad stack" style={{ gap: 14 }}>
-        <h2 id="benutzer">Benutzer</h2>
+      <section className="card card-pad stack sprungziel" style={{ gap: 14 }} id="benutzer">
+        <h2>Benutzer</h2>
         {(() => {
           const last = members.filter((m) => m.lastLoginAt && m.userId !== session.userId).sort((a, b) => b.lastLoginAt!.getTime() - a.lastLoginAt!.getTime())[0];
           const online = members.filter((m) => isOnline(m.lastSeenAt) && m.userId !== session.userId);

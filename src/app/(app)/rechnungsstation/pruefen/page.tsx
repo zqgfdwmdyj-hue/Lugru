@@ -30,10 +30,10 @@ export default async function PruefPage({ searchParams }: { searchParams: Promis
   const ordner = eingangsOrdner();
   const inhaber = s.role === "owner" && !s.readOnly;
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }} className="stack" data-testid="pruefliste">
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <Link href="/">← Seller-System</Link>
-        <h1 style={{ margin: 0, flexGrow: 1 }}>Rechnungsstation: Prüfliste</h1>
+    // Mit Seitenleiste wie jede Seite (nur die Kamera-Station selbst läuft im Vollbild).
+    <div style={{ maxWidth: 1200 }} className="stack" data-testid="pruefliste">
+      <div className="page-head">
+        <div><div className="crumb">Finanzen › Rechnungen</div><h1>Rechnungsstation: Prüfliste</h1></div>
         <Link href="/rechnungsstation" className="btn btn-primary">Station (Kamera)</Link>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="pruef-meldung">{sp.meldung}</div>}

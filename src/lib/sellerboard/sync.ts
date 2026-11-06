@@ -195,7 +195,7 @@ async function syncInventory(t: string, now: Date) {
   if (now2.length) {
     await upsertSystemTask(db, t, key, {
       title: `${now2.length} Produkt${now2.length === 1 ? "" : "e"} jetzt nachbestellen (laut sellerboard)`,
-      notes: `sellerboard rechnet mit Abverkauf, Lieferzeit und Puffer. Liste mit Menge, Kapitalbedarf (gültiger EK netto) und spätestem Bestelldatum unter Einkauf → Bestellvorschläge.${rets ? ` Dazu ${rets} Retouren-SKU${rets === 1 ? "" : "s"} – Beschaffung über den Ursprungsartikel prüfen.` : ""}`,
+      notes: `sellerboard rechnet mit Abverkauf, Lieferzeit und Puffer. Liste mit Menge, Kapitalbedarf (gültiger EK netto) und spätestem Bestelldatum unter Einkauf & Deals → Bestellvorschläge.${rets ? ` Dazu ${rets} Retouren-SKU${rets === 1 ? "" : "s"} – Beschaffung über den Ursprungsartikel prüfen.` : ""}`,
       category: "einkauf",
       link: "/einkauf/vorschlaege?weg=sellerboard",
       dueDate: today,
