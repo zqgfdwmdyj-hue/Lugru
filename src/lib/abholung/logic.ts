@@ -133,7 +133,15 @@ export function ortFinden(orte: AbholOrt[], text?: string | null): AbholOrt | nu
   const q = (text ?? "").trim().toLowerCase();
   if (!q) return orte.find((o) => o.standard) ?? (orte.length === 1 ? orte[0] : null);
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
-  return orte.find((o) => o.key.toLowerCase() === q) ?? orte.find((o) => norm(o.name).includes(norm(q)) || norm(q).includes(norm(o.key))) ?? null;
+  const n = norm(q);
+  if (!n) return null;
+  // Genauester Treffer zuerst: Schlüssel, Name enthält die Angabe (kürzester Name), Angabe enthält Namen/Schlüssel (längster).
+  const nachLaenge = (a: AbholOrt[], f: (o: AbholOrt) => number) => [...a].sort((x, y) => f(x) - f(y))[0] ?? null;
+  return (
+    orte.find((o) => o.key.toLowerCase() === q || norm(o.key) === n) ??
+    nachLaenge(orte.filter((o) => norm(o.name).includes(n)), (o) => norm(o.name).length) ??
+    nachLaenge(orte.filter((o) => n.includes(norm(o.name)) || n.includes(norm(o.key))), (o) => -Math.max(n.includes(norm(o.name)) ? norm(o.name).length : 0, n.includes(norm(o.key)) ? norm(o.key).length : 0))
+  );
 }
 
 export const ortAdresse = (o: AbholOrt) => `${o.name}${o.name2 ? `, ${o.name2}` : ""}, ${o.strasse} ${o.hausnr}, ${o.plz} ${o.ort}`;

@@ -19,3 +19,7 @@ next-env.d.ts
 /blob-report/
 /medien
 /.e2e-medien
+
+# Rechnungsstation: Scanner-Ordner (enthält Rechnungen)
+/scan-eingang/
+/.e2e-scan-eingang/

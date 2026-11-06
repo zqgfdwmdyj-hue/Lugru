@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, inArray, isNull, lte, notExists, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, lte, notExists, sql } from "drizzle-orm";
 import { extractText, getDocumentProxy } from "unpdf";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -117,6 +117,8 @@ export async function syncDrive(tenantId: string, max = 150) {
   const known = new Set(
     (await db.select({ id: schema.invoices.externalId }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.source, "drive")))).map((r) => r.id),
   );
+  // Von der Rechnungsstation selbst abgelegte Belege nicht noch einmal als neue Rechnung einlesen.
+  for (const r of await db.select({ id: schema.invoices.driveDateiId }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), isNotNull(schema.invoices.driveDateiId)))) known.add(r.id);
   const todo = files.filter((f) => !known.has(f.id)).slice(0, max);
   let created = 0;
   for (const f of todo) {

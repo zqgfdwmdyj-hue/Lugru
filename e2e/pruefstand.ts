@@ -126,6 +126,27 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Frage im Fragefeld „Was kostet uns das Prep Center?“", erwartet: "exakte Zahlen je Monat aus den Testdaten + Erklärung", tests: ["fragefeld.spec.ts › Prep Center"] },
     ],
   },
+  "/versand/abholung": {
+    abläufe: [
+      { ablauf: "Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt)", erwartet: "erst Rückfrage mit Zusammenfassung und Hinweisen (keine feste Uhrzeit, > 10 Pakete = Anfrage), nichts gebucht; nach „Ja“ (bestaetigt) Buchung mit Auftragsnummer, Protokoll „über Claude“; doppelt und Sonntag abgelehnt; Storno über abholung_stornieren", tests: ["abholung.spec.ts › Abnahme 1: Stammdaten einmal"] },
+      { ablauf: "UPS-Abholung von der Seite: UPS → Abholung buchen; Storno; VA (Service) bucht DHL", erwartet: "Paketzahl/Datum/Fenster vorbelegt, PRN 2929TEST… im Protokoll, Storno an UPS; VA bucht, Einstellungen → Abholung gesperrt", tests: ["abholung.spec.ts › Abnahme 4: UPS-Abholung in drei Klicks"] },
+      { ablauf: "Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“", erwartet: "bei 5 kein Vorschlag; bei 6 Aufgabe „Abholung buchen? … DHL-Labels fertig“ mit Push, nichts gebucht; Ein-Klick „Jetzt buchen“ bucht genau das, Aufgabe erledigt", tests: ["abholung.spec.ts › Abnahme 5: mehr als n fertige Labels"] },
+    ],
+    offen: ["Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)", "Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)"],
+  },
+  "/rechnungsstation": {
+    abläufe: [
+      { ablauf: "50 Blätter nacheinander an der Station (VA mit Bereich Service), Stapel fertig, Prüfliste, Weitergabe", erwartet: "49 Belege (1 Zweiseiter angehängt), alle mit Lieferant/Datum, 42 automatisch zugeordnet (Bestellungen, ASIN an Charge), Kassenzettel als Ausgabe, Duplikat und fehlender Betrag rot, unsicheres Datum gelb; Aufgabe „Rechnungsstapel prüfen: 49 Belege, …, 2 unklar“; 47 an Stotax (gelb mit Vermerk), rot erst nach Prüfung; nach der Prüfung Aufgabe erledigt; unter 10 Minuten", tests: ["rechnungsstation.spec.ts › Abnahme 2: 50 Blätter"] },
+      { ablauf: "PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff", erwartet: "20 Belege (2 Zweiseiter), alle grün, Original nach verarbeitet/; Lager wird umgeleitet, Upload 403", tests: ["rechnungsstation.spec.ts › Abnahme 3: PDF-Stapel"] },
+    ],
+    offen: ["Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live", "Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live", "Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live"],
+  },
+  "/rechnungsstation/pruefen": {
+    abläufe: [
+      { ablauf: "Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen", erwartet: "nur rote/gelbe Belege mit Bild; Weitergabe meldet „An Stotax übertragen: 47“ und bleibt im Stapel; nach Speichern geprüft und weitergegeben, verworfenes Duplikat „kein Beleg“; Liste danach leer", tests: ["rechnungsstation.spec.ts › Abnahme 2: 50 Blätter"] },
+      { ablauf: "„Scanner-Ordner jetzt prüfen“ mit PDF-Stapel", erwartet: "Meldung „1 PDF aus dem Scanner-Ordner: 20 Belege“, Stapel mit 20 Belegen", tests: ["rechnungsstation.spec.ts › Abnahme 3: PDF-Stapel"] },
+    ],
+  },
   "/repricer": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },

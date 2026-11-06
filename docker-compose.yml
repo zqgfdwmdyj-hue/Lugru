@@ -38,9 +38,13 @@ services:
       BACKUP_DIR: /backups
       # Fotos/Videos der Retouren-Station (verschlüsselt, nicht in der Datenbank-Sicherung)
       MEDIA_DIR: /medien
+      # Rechnungsstation: Einzugsscanner legt PDF-Stapel in ./scan-eingang (z. B. als Netzwerkfreigabe) – sie werden
+      # jede Minute getrennt und erfasst; Originale landen danach in scan-eingang/verarbeitet.
+      BELEG_EINGANG_DIR: /scan-eingang
     volumes:
       - ./backups:/backups
       - medien:/medien
+      - ./scan-eingang:/scan-eingang
   # Tägliche Sicherung der ganzen Datenbank nach ./backups (siehe deploy/backup.sh).
   backup:
     image: postgres:16

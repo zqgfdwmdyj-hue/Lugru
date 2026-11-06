@@ -1,5 +1,5 @@
-import { date, index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAt, files, id, lots, money, suppliers, tenantId, updatedAt } from "./core";
+import { date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { createdAt, files, id, lots, money, suppliers, tenantId, updatedAt, users } from "./core";
 
 export const INVOICE_KINDS = ["goods", "expense", "unknown"] as const;
 export const INVOICE_STATUSES = ["new", "matched", "review", "ignored"] as const;
@@ -22,13 +22,39 @@ export type InvoiceChecks = {
   v?: number;
 };
 
+/**
+ * Rechnungsstation: ein Stapel = eine Sitzung an der Kamera bzw. eine PDF aus dem Einzugsscanner-Ordner.
+ * Am Stapelende: Zusammenfassung als Aufgabe „Rechnungsstapel prüfen“.
+ */
+export const belegStapel = pgTable(
+  "beleg_stapel",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** kamera | ordner | upload */
+    quelle: text("quelle").notNull(),
+    name: text("name").notNull(),
+    gestartetVon: uuid("gestartet_von").references(() => users.id, { onDelete: "set null" }),
+    gestartetVonName: text("gestartet_von_name"),
+    beendetAm: timestamp("beendet_am", { withTimezone: true }),
+    aufgabeId: uuid("aufgabe_id"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("beleg_stapel_idx").on(t.tenantId, t.createdAt)],
+);
+
+export type BelegPosition = { asin: string | null; ean: string | null; artikel: string | null; menge: number | null; ek: number | null };
+export type BelegZuordnung = { art: "bestellung" | "b2b"; id: string; text: string; punkte: number };
+
 export const invoices = pgTable(
   "invoices",
   {
     id: id(),
     tenantId: tenantId(),
     /** „scan“: Kassenzettel/Beleg mit dem Handy fotografiert. */
-    source: text("source", { enum: ["drive", "upload", "scan"] }).notNull(),
+    /** „station“: Rechnungsstation (Kamera), „ordner“: PDF-Stapel vom Einzugsscanner. */
+    source: text("source", { enum: ["drive", "upload", "scan", "station", "ordner"] }).notNull(),
     externalId: text("external_id"),
     fileName: text("file_name").notNull(),
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
@@ -55,12 +81,33 @@ export const invoices = pgTable(
     stotaxSentAt: timestamp("stotax_sent_at", { withTimezone: true }),
     stotaxTriedAt: timestamp("stotax_tried_at", { withTimezone: true }),
     stotaxError: text("stotax_error"),
+    // ── Rechnungsstation ──
+    stapelId: uuid("stapel_id").references(() => belegStapel.id, { onDelete: "set null" }),
+    /** gruen | gelb (unsicher, geht mit Vermerk an Stotax) | rot (erst nach Prüfung); null = wird noch gelesen. */
+    ampel: text("ampel"),
+    pruefGruende: jsonb("pruef_gruende").$type<string[]>().notNull().default([]),
+    positionen: jsonb("positionen").$type<BelegPosition[]>().notNull().default([]),
+    ust: jsonb("ust").$type<{ satz: number; betrag: number }[]>().notNull().default([]),
+    zahlungsart: text("zahlungsart"),
+    faelligAm: date("faellig_am", { mode: "string" }),
+    zuordnung: jsonb("zuordnung").$type<BelegZuordnung | null>(),
+    zugeordnetAm: timestamp("zugeordnet_am", { withTimezone: true }),
+    seiten: integer("seiten").notNull().default(1),
+    /** Bilder in voller Auflösung (Thermopapier bleicht aus) – Original und entzerrt. */
+    bildFileIds: jsonb("bild_file_ids").$type<string[]>().notNull().default([]),
+    aufgenommenAm: timestamp("aufgenommen_am", { withTimezone: true }),
+    geprueftAm: timestamp("geprueft_am", { withTimezone: true }),
+    geprueftVonName: text("geprueft_von_name"),
+    /** Kopie im Google-Drive-Belegordner (Dienstkonto mit Schreibrecht). */
+    driveDateiId: text("drive_datei_id"),
+    driveFehler: text("drive_fehler"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     uniqueIndex("invoices_ext_uq").on(t.tenantId, t.source, t.externalId),
     index("invoices_status_idx").on(t.tenantId, t.status),
+    index("invoices_stapel_idx").on(t.stapelId),
   ],
 );
 

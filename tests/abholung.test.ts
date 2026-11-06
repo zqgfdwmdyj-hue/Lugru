@@ -106,6 +106,11 @@ describe("Abholung – Prüfen", () => {
     expect(ortFinden([ORT, ORT2], null)?.key).toBe("testfirma");
     expect(ortFinden([ORT, ORT2], "Unbekannt")).toBeNull();
     expect(ortFinden([{ ...ORT2 }], "")?.key).toBe("zweitlager");
+    // Schlüssel eines Orts steckt im Namen eines anderen: der genauere gewinnt
+    const LAGER: AbholOrt = { ...ORT, key: "lager", name: "Lager GmbH", standard: undefined };
+    const NEU: AbholOrt = { ...ORT, key: "lager-x1-gmbh", name: "Lager X1 GmbH", standard: undefined };
+    expect(ortFinden([LAGER, NEU], "Lager X1")?.key).toBe("lager-x1-gmbh");
+    expect(ortFinden([LAGER, NEU], "Lager")?.key).toBe("lager");
   });
 });
 

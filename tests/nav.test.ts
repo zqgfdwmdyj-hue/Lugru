@@ -75,7 +75,7 @@ describe("Sichtbarkeit", () => {
   it("Mitarbeiter nur mit „Geld“: Finanzen mit Gewinn, Liquidität, Hebel, Kapital-Ampel, Verlust-Stopp und Buchhaltung, keine Inhaber-Punkte", () => {
     const sections = visibleNav((p) => canAccess({ role: "staff", areas: ["geld"] }, areaForPath(p)), false);
     const fin = sections.find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Buchhaltung (Abgleich, DATEV)", "Verlust-Stopp", "Hebel: Umsatz & Marge", "Kapital-Ampel"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Buchhaltung (Abgleich, DATEV)", "Verlust-Stopp", "Hebel: Umsatz & Marge", "Kapital-Ampel", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste"]);
     expect(sections.find((s) => s.key === "produkte")).toBeUndefined();
     // Einstellungen nur für Inhaber – die Gruppe fehlt ganz.
     expect(sections.find((s) => s.key === "einstellungen")).toBeUndefined();

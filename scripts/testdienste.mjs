@@ -119,6 +119,55 @@ function kiAnswer(req, b) {
     }
     return [200, reply(b, [{ type: "text", text: JSON.stringify(a) }], "end_turn")];
   }
+  // Rechnungsstation (erfundene Regeln wie eine KI): Testbilder/-PDFs tragen den Belegtext hinter „TESTOCR“ –
+  // Zeilen „ART:“, „LIEFERANT:“, „NR:“, „BESTELLNR:“, „DATUM:“, „NETTO:“, „BRUTTO:“, „UST: 19 19,00“, „POS: ASIN EAN Artikel | Menge | EK“,
+  // „ZIEL: 14“, „ZAHLUNG:“, „FOLGESEITE“, „UNSICHER: datum,nummer“. PDF-Stapel: Seiten getrennt durch „=== SEITE n ===“.
+  if ((/^Lies den Beleg von der Rechnungsstation/m.test(text) || /^Lies den PDF-Stapel vom Einzugsscanner/m.test(text)) && !stale) {
+    const roh = parts
+      .filter((p) => (p.type === "image" || p.type === "document") && p.source?.data)
+      .map((p) => Buffer.from(/TESTOCR\n([\s\S]*)$/.exec(Buffer.from(p.source.data, "base64").toString("latin1"))?.[1] ?? "", "latin1").toString("utf8"))
+      .join("\n");
+    const zahl = (v) => (v == null ? null : Number(String(v).replace(/\./g, "").replace(",", ".")));
+    const lesen = (t) => {
+      const o = { art: "sonstiges", lieferant: null, rechnungsnummer: null, bestellnummer: null, datum: null, netto: null, brutto: null, ust: [], positionen: [], zahlungsziel_tage: null, faellig_am: null, zahlungsart: null, folgeseite: false, unsicher: [] };
+      for (const z0 of t.split("\n")) {
+        const z = z0.trim();
+        let m;
+        if ((m = /^ART:\s*(\w+)/.exec(z))) o.art = m[1];
+        else if ((m = /^LIEFERANT:\s*(.+)$/.exec(z))) o.lieferant = m[1];
+        else if ((m = /^NR:\s*(.+)$/.exec(z))) o.rechnungsnummer = m[1];
+        else if ((m = /^BESTELLNR:\s*(.+)$/.exec(z))) o.bestellnummer = m[1];
+        else if ((m = /^DATUM:\s*(\d{4}-\d{2}-\d{2})/.exec(z))) o.datum = m[1];
+        else if ((m = /^NETTO:\s*([\d.,]+)/.exec(z))) o.netto = zahl(m[1]);
+        else if ((m = /^BRUTTO:\s*([\d.,]+)/.exec(z))) o.brutto = zahl(m[1]);
+        else if ((m = /^UST:\s*(\d+)\s+([\d.,]+)/.exec(z))) o.ust.push({ satz: Number(m[1]), betrag: zahl(m[2]) });
+        else if ((m = /^POS:\s*(.+)$/.exec(z))) {
+          const [kopf, menge, ek] = m[1].split("|").map((x) => x.trim());
+          const asin = /\b(B0[A-Z0-9]{8})\b/.exec(kopf)?.[1] ?? null;
+          const ean = /\b(\d{13})\b/.exec(kopf)?.[1] ?? null;
+          o.positionen.push({ asin, ean, artikel: kopf.replace(asin ?? "", "").replace(ean ?? "", "").trim() || null, menge: zahl(menge), ek: zahl(ek) });
+        } else if ((m = /^ZIEL:\s*(\d+)/.exec(z))) o.zahlungsziel_tage = Number(m[1]);
+        else if ((m = /^ZAHLUNG:\s*(.+)$/.exec(z))) o.zahlungsart = m[1];
+        else if (/^FOLGESEITE$/.test(z)) o.folgeseite = true;
+        else if ((m = /^UNSICHER:\s*(.+)$/.exec(z))) o.unsicher = m[1].split(/[,\s]+/).filter(Boolean);
+      }
+      return o;
+    };
+    if (/^Lies den Beleg von der Rechnungsstation/m.test(text)) return [200, reply(b, [{ type: "text", text: JSON.stringify(lesen(roh)) }], "end_turn")];
+    // PDF-Stapel: Seiten gruppieren – gleiche Rechnungsnummer bzw. Folgeseite ohne Nummer gehört zum vorigen Beleg.
+    const seiten = roh.split(/^=== SEITE \d+ ===$/m).map((x) => x.trim()).filter(Boolean).map(lesen);
+    const belege = [];
+    seiten.forEach((s, i) => {
+      const vor = belege.at(-1);
+      if (vor && ((s.rechnungsnummer && s.rechnungsnummer === vor.rechnungsnummer) || (s.folgeseite && !s.rechnungsnummer))) {
+        vor.seiten.push(i + 1);
+        vor.positionen.push(...s.positionen);
+        for (const k of ["netto", "brutto", "zahlungsziel_tage", "zahlungsart"]) if (s[k] != null) vor[k] = s[k];
+        if (s.ust.length) vor.ust = s.ust;
+      } else belege.push({ seiten: [i + 1], ...s });
+    });
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ belege }) }], "end_turn")];
+  }
   // Briefe von Schule/Kita (Modul 8): erfundene Testbilder tragen den Text hinter „TESTOCR“; je Zeile mit Datum ein
   // Vorschlag – „bis“/„mitbringen“/„Unterschrift“ = Aufgabe, sonst Termin; „Kind A“ wird erkannt.
   if (/^Lies den Brief der Schule bzw\. Kita/m.test(text) && !stale) {

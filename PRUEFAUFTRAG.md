@@ -915,6 +915,67 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
    - Für den Rest bekommst du Aufgaben.
 5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
 
+## Bauauftrag 06.11.: Abholung DHL/UPS aus dem Tool (auch per Sprache) · Rechnungsstation
+
+**Prüfung (vorher):**
+
+| Punkt | vorher | Fundstelle |
+|---|---|---|
+| A1 Seite „Versand → Abholung“, Werkzeug `abholung_anlegen` | ❌ | – |
+| A2 Stammdaten (Abholadressen je Absender, Ansprechpartner, Telefon, Kundennummer, Zeitfenster, Fahrer-Hinweis) | 🟡 nur ein Absender für Labels (Einstellungen → Versand) | `settings.shipper` |
+| A3 Technik: DHL-Abhol-API, sonst Browser-Automatik | ❌ – die API gibt es (DHL Parcel DE Pickup v1), also kein Browser nötig | – |
+| A4 Automatik-Vorschlag (mehr als n Labels, nichts gebucht → Aufgabe + Push) | ❌ | – |
+| A5 Protokoll je Abholung, Stornieren über denselben Weg | ❌ | – |
+| B1 Seite „Rechnungsstation“ im Vollbild | ❌ (nur „Belege scannen“ einzeln mit dem Handy) | `/rechnungen/belege` |
+| B2 Auslöser bei stillem Blatt, Mehrseiter ≤ 5 s | ❌ | – |
+| B3 KI-Erkennung (Lieferant, Nr., Datum, Netto/Brutto/USt, Positionen, Zahlungsziel), unsicher = gelb, Kachel | 🟡 Kassenzettel: Händler/Datum/Brutto/USt, keine Positionen, keine Ampel | `readReceipt` |
+| B4 Zuordnung zu Einkäufen, an den ASIN, Duplikate | 🟡 Rechnungen aus Drive → Chargen; keine Zuordnung zu Bestellungen | `matchInvoice` |
+| B5 Weiterleitung an Stotax (rot erst nach Prüfung, gelb mit Vermerk) und Drive | 🟡 Stotax nur für Handy-Belege, ohne Ampel; Drive nur lesend | `sendPendingReceipts` |
+| B6 Stapelende: Zusammenfassung als Aufgabe, Prüfliste mit Bild | ❌ | – |
+| B7 Beide Wege: Kamera live und Scanner-Ordner (PDF an Rechnungsnummern trennen) | ❌ | – |
+| C UPS-Abholung (OAuth, PRN, Storno, Vorschlag) | ❌ | – |
+| Rechte (VA bucht/bedient, keine Stammdaten/Zugänge; Protokoll wer/wann) | ❌ | – |
+
+**Nachher:**
+
+| Punkt | Stand | Fundstelle |
+|---|---|---|
+| A1 Seite | ✅ Versand → Abholung: Dienst DHL/UPS (Reiter), Abholort, Datum (nächster Abholtag), Fenster und Paketzahl vorbelegt (Paketzahl = heute erstellte Labels), Paletten/Gewicht/Hinweis optional. Kommende Abholungen und Protokoll darunter | `src/app/(app)/versand/abholung/` |
+| A1 Werkzeug (Sprache über Claude) | ✅ `abholung_anlegen` (ändernd, Stufe gelb): erst ohne `bestaetigt` → Rückfrage mit Zusammenfassung und Hinweisen, nichts gebucht; nach „Ja“ mit `bestaetigt=true` → Buchung, Bestätigungsnummer zurück. Datum wie gesagt („morgen“, „Montag“, „7.11.“), Fenster wie gesagt („10-12“, „10 bis 12 Uhr“), Abholort per Name („LuGru“). Doppelte Buchung (gleicher Tag/Ort/Dienst) wird abgelehnt. Rückgängig = Storno | `src/lib/assistant/tools/abholung.ts`, `src/lib/abholung/logic.ts` |
+| A2 Stammdaten | ✅ Einstellungen → Abholung (nur Inhaber, verlinkt unter Einstellungen → Versand): beliebig viele Abholorte mit Firma, Adresse, Ansprechpartner, Telefon, Mail, DHL-Kundennummer (EKP) je Absender, optional Abrechnungsnummer/UPS-Konto, Standard-Zeitfenster, Fahrer-Hinweis, Standardort. Keine echten Daten im Programm – die Adressen aus dem Bauauftrag trägst du ein (To-do 94) | `src/app/(app)/einstellungen/abholung/` |
+| A3 DHL | ✅ DHL Parcel DE Pickup v1 (gleicher Zugang wie der Versand + API „Parcel DE Pickup“). Regeln vorher geprüft: Mo–Sa, keine Feiertage (bundesweit + Bayern), nicht am selben Tag, bis 22 Uhr für morgen, höchstens 30 Tage im Voraus. DHL bucht **keine feste Uhrzeit** – das Fenster geht als Öffnungszeit mit; über 10 Pakete ist es eine einmalige Abholung (Anfrage, Bestätigung per Mail) – beides steht in der Rückfrage | `src/lib/integrations/clients/dhl-pickup.ts` |
+| A4 Vorschlag | ✅ Abends 17–22 Uhr stündlich: mehr als n fertige Labels (Standard 5, einstellbar) und für den nächsten Abholtag nichts gebucht → Aufgabe „Abholung buchen? 6 DHL-Labels fertig, für Sa, 07.11. nichts gebucht“ mit Push; der Link öffnet die Seite mit „Jetzt buchen“ (ein Klick bucht genau das). Nie automatisch gebucht. Zusätzlich „Vorschlag jetzt prüfen“ auf der Seite | `abholVorschlag` (`src/lib/abholung/service.ts`), Schritt im Hintergrund-Takt |
+| A5 Protokoll / Storno | ✅ je Abholung Dienst, Datum, Fenster, Pakete/Paletten, Abholort, Status (gebucht/angefragt/storniert/nicht gebucht + Fehler), Bestätigungsnummer, Abholart (BDA/EZA/EMA, kostenpflichtig), wer gebucht hat (Seite/Claude/Vorschlag), wer storniert hat. Storno über die API (Seite oder `abholung_stornieren`) | Tabelle `abholungen` (Migration 0133) |
+| C UPS | ✅ UPS Pickup v2409 mit OAuth (Anbindungen → UPS: Client-ID, Secret, Kontonummer, Umgebung, „Verbindung testen“). Gleiche Seite und gleiches Werkzeug (`dienst = ups`): Mo–Fr, Fenster = bereit ab / spätestens bis, Gewicht geschätzt 5 kg je Paket, wenn keins genannt. PRN wird gespeichert, Storno per PRN. Vorschlag wie A4, wenn UPS-Labels oder Palettenkunden-Sendungen per UPS (Versand, geplant) vorliegen | `src/lib/integrations/clients/ups.ts` |
+| B1 Station | ✅ `/rechnungsstation` im Vollbild (Menü Finanzen → „Rechnungsstation (Kamera)“ und „Rechnungsstation: Prüfliste“, sichtbar für Service, Buchhaltung und Geld): „Station starten“, Livebild mit erkanntem Blattrand, Kacheln am Rand (Lieferant, Betrag, Datum, Nummer, Status, Zuordnung, grün/gelb/rot), Summe oben | `src/app/(station)/rechnungsstation/` |
+| B2 Auslöser | ✅ Blatt erkannt (helle Fläche auf dunkler Ablage, vier Ecken) und ≥ 0,9 s still → Foto in voller Auflösung, entzerrt (Homographie), Ton „ok“, nächstes Blatt; ein Blatt löst nur einmal aus, das nächste nach Bewegung + neuem Bild. Fußtaster: Leertaste/Enter/Bild↓/→ (USB-Fußtaster senden solche Tasten). Mehrseiter: Blatt ≤ 5 s nach dem vorigen mit gleicher Rechnungsnummer (oder Folgeseite ohne Kopf) wird angehängt (ein PDF, Summen von der letzten Seite). Ohne Netz wird erneut gesendet | `blattFinden`, `ausloeserSchritt`, `entzerren`, `gehoertZumVorigen` |
+| B3 KI | ✅ Art (Rechnung/Kassenzettel/Lieferschein/Gutschrift), Lieferant, Nr., Bestellnr., Datum, Netto/Brutto/USt-Sätze, Positionen (ASIN/EAN/Artikel/Menge/EK), Zahlungsziel/Fälligkeit, Zahlungsart, unsichere Felder. Ampel: rot = Betrag/Datum/Lieferant fehlt, kein Beleg oder Nummer schon erfasst; gelb = Felder unsicher, Netto + USt ≠ Brutto, Nummer fehlt; sonst grün. Kassenzettel: Original-Foto in voller Auflösung archiviert | `STATION_PROMPT`, `ampelVon` |
+| B4 Zuordnung | ✅ automatisch zu offenen Bestellungen (ArbitrageOne-Bestellungen aus B30, Deal-Käufe, von Hand) über Lieferant + Betrag + Datum (oder gleiche Bestellnummer), nur eindeutig; B2B-Deal-Bestellungen über Lieferant + Netto. Die Bestellung bekommt die Rechnung, Positionen mit ASIN hängen an der Charge → VA (`rechnungenFuer`) und `wissen` finden sie am ASIN. Doppelte Rechnungsnummer (gleicher Lieferant) → rot; dasselbe Foto zweimal → „war schon da“ | `besteZuordnung`, `anChargenHaengen`, `duplikatVon` |
+| B5 Weiterleitung | ✅ Takt „Belege an Stotax“ (alle 15 Min., ohne Klick): grün sofort, gelb mit Vermerk im Mailtext, rot erst nach der Prüfung (dann sofort). Kamera-Belege frühestens 1 Minute nach dem letzten Blatt (Mehrseiter vollständig). Optional Kopie in einen Drive-Belegordner (Dienstkonto mit Schreibrecht); eigene Ablagen liest der Rechnungs-Abruf nicht noch einmal ein. Status je Beleg: erfasst → zugeordnet → an Stotax (mit Zeit) | `ausstehendeWeitergeben`, `stotaxMailStation`, `driveHochladen` |
+| B6 Stapelende | ✅ „Stapel fertig“ (oder 30 Min. Ruhe) → Aufgabe „Rechnungsstapel prüfen: n Belege, Summe, k unklar“; Prüfliste `/rechnungsstation/pruefen`: gelbe/rote Belege mit Bild daneben, Felder korrigieren → „Speichern & freigeben“ bzw. „Kein Beleg“; Aufgabe erledigt sich, wenn nichts mehr offen ist | `stapelBeenden`, `belegPruefen`, `src/app/(station)/rechnungsstation/pruefen/` |
+| B7 Beide Wege | ✅ Kamera live und Scanner-Ordner: PDFs in `./scan-eingang` (Docker: `/scan-eingang`) werden jede Minute verarbeitet – KI trennt an den Rechnungsnummern und liest je Beleg (bis 30 Seiten je Aufruf), jede Seite gehört zu genau einem Beleg, Original danach unter `verarbeitet/` (Fehler: `fehler/` + Aufgabe). Ohne Ordner: „PDF-Stapel hochladen“ in der Prüfliste | `pdfStapelVerarbeiten`, `ordnerPruefen` |
+| Rechte | ✅ Abholung buchen/stornieren: Inhaber und Bereich Service (VA). Abholorte und Zugänge (Anbindungen) nur Inhaber. Rechnungsstation und Prüfliste: Service, Buchhaltung oder Geld; Station-Einstellungen nur Inhaber. Jede Buchung/jeder Stapel mit wer und wann | `requireArea`, `/api/rechnungsstation` |
+
+**Verhaltensänderungen / Entscheidungen (bitte bestätigen oder ändern):**
+- Claude bucht nie ohne Rückfrage: der erste Aufruf gibt nur die Zusammenfassung, erst „Ja“ bucht.
+- UPS-Samstag biete ich nicht an (Aufpreis); DHL Mo–Sa.
+- Kassenzettel sind Ausgaben ohne Einkauf: grün, aber nicht „zugeordnet“ und nicht in der Prüfliste.
+- Handzeichen als Auslöser habe ich nicht gebaut (optional laut Bauauftrag) – Fußtaster per Taste geht.
+- Rechnungen von der Station landen auch unter Eingangsrechnungen (Quelle „station“/„ordner“).
+
+**Abnahme:**
+1. ✅ automatisch (`e2e/abholung.spec.ts`, DHL-Nachbau): Abholort unter Einstellungen → Abholung angelegt → „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ über den Claude-Konnektor → Rückfrage mit Zusammenfassung, nichts gebucht → nach Bestätigung angefragt (12 > 10 Pakete) mit Auftragsnummer, Protokoll „über Claude“, an DHL gingen 12 Pakete, Adresse, Kundennummer und Fenster. Doppelt und Sonntag abgelehnt, Storno per Werkzeug. *(live)* Erste echte Buchung (To-dos 93–96).
+2. ✅ automatisch (`e2e/rechnungsstation.spec.ts`, Bilder über die Prüf-Hilfe der Station, KI-Nachbau): 50 Blätter durch die VA → 49 Belege (Zweiseiter angehängt), alle mit Lieferant und Datum, **42 automatisch zugeordnet**, Rest (1 gelb, 2 rot) in der Prüfliste mit Bild; Aufgabe „Rechnungsstapel prüfen: 49 Belege, …, 2 unklar“; 47 an Stotax (gelb mit Vermerk), rot erst nach Prüfung; nach der Prüfung Aufgabe erledigt. Dauer im Test unter einer Minute. *(live)* Kamera an der Werkbank mit echtem Papier.
+3. ✅ automatisch: PDF mit 22 Seiten (20 Rechnungen, 2 davon zweiseitig) im Scanner-Ordner → 20 Belege, Original unter `verarbeitet/`. *(live)* echter Einzugsscanner (To-do 99).
+4. ✅ automatisch: Versand → Abholung → „UPS“ → „Abholung buchen“ (Paketzahl aus der UPS-Palettenkunden-Sendung vorbelegt) → PRN gespeichert, Storno an UPS. VA bucht DHL, Einstellungen → Abholung bleibt gesperrt.
+5. ✅ automatisch: 5 fertige Labels über dem Stand → kein Vorschlag; das 6. → Aufgabe mit Push, nichts gebucht; ein Klick bucht genau den Vorschlag, Aufgabe erledigt. Der Abendlauf (17–22 Uhr) ist derselbe Aufruf im Hintergrund-Takt.
+
+Unit-Tests: `tests/abholung.test.ts` (14), `tests/rechnungsstation.test.ts` (10: Blatt-Erkennung, Auslöser, Homographie/Entzerren, KI-Antworten, PDF-Trennung, Ampel, Mehrseiter, Zuordnung, Stotax-Text). Alle 2246 Unit-Tests grün.
+
+Regression: 172 Ablaufprüfungen, 170 im ersten Lauf grün. Nachgeprüft: Keepa-Aufrufzähler (Ausreißer, einzeln grün) und Navigation (Breite wurde während der Einklapp-Animation gemessen – der Test wartet jetzt das Ende ab), beide grün.
+
+**Werkzeuge:** neu `abholung_anlegen` (ändernd), `abholung_stornieren` (ändernd), `abholungen` (lesend) – Bereich Service. `notifications/tools/list_changed` geht beim Verbinden raus.
+
 ## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen
 
 Anlass: Unter Aufträge → „Meldung offen“ ließen sich nur Amazon-Meldungen gesammelt schließen (Versandbestätigung
@@ -1325,6 +1386,11 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
 
+Geändert am 06.11. (Bauauftrag Abholung DHL/UPS): **drei neue Werkzeuge** – `abholung_anlegen` (ändernd, Stufe gelb:
+erst Rückfrage mit Zusammenfassung, nach „Ja“ mit `bestaetigt=true` buchen; Rückgängig = Storno), `abholung_stornieren`
+(ändernd, gelb) und `abholungen` (lesend: Protokoll, Abholorte, Labels heute, nächster Abholtag). Bereich Service (VA
+darf). `notifications/tools/list_changed` nötig – geht beim Verbinden raus.
+
 Geändert am 05.11. (Nachtrag B29, keine neuen Werkzeuge): `anbindungen_status` hat einen neuen Block
 `sellerboard_aufrufe`. Er enthält den Text „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“, Stand laut
 sellerboard, Pause, Limit gestern und `morgenbericht_zeile`. Neu ist auch `status` je Abruf, etwa „übersprungen
@@ -1707,3 +1773,22 @@ nie in Chats oder Mails.
     einfachsten: die Kopfzeile der Datei schicken (nur die Spaltennamen, keine Werte).
 92. **B30 EK-Vorschläge**: Sobald Positionen geliefert sind, erscheinen unter Einkauf → EK-Import Vorschläge
     „EK-Vorschlag aus ArbitrageOne-Bestellungen“. Ansehen und übernehmen oder verwerfen – nichts geht automatisch.
+93. **Abholung – DHL freischalten**: developer.dhl.com → deine App → API „Parcel DE Pickup (Post & Parcel Germany)“
+    hinzufügen (gleicher API-Key wie der Versand). Im Geschäftskundenportal dem System-Benutzer das Recht „Abholung
+    beauftragen“ geben. Für echte Abholungen unter Einstellungen → Versand „DHL-Sandbox“ ausschalten.
+94. **Abholorte eintragen**: Einstellungen → Abholung → beide Absender aus dem Bauauftrag mit Adresse,
+    Ansprechpartner, Telefon, DHL-Kundennummer, Standard-Zeitfenster und Hinweis für den Fahrer; einen als Standard.
+    Die Daten aus dem Bauauftrag habe ich bewusst nicht ins Programm geschrieben.
+95. **UPS**: developer.ups.com → App anlegen (APIs „Authorization (OAuth)“ und „Pickup“), Kontonummer zuordnen.
+    Client-ID, Secret und Kontonummer unter Anbindungen → UPS eintragen (nie im Chat), „Verbindung testen“.
+96. **Erste echte Abholung**: Claude sagen „DHL-Abholung morgen 10–12 Uhr, 1 Paket, LuGru“, nach der Rückfrage
+    bestätigen, im Protokoll (Versand → Abholung) die Nummer ansehen und gleich wieder stornieren.
+97. **Vorschlag-Schwelle**: Einstellungen → Abholung → „Mehr als … Labels“ (Standard 5) prüfen.
+98. **Rechnungsstation einrichten**: iPad/Monitor an der Werkbank, Menü Finanzen → „Rechnungsstation (Kamera)“, Kamera
+    erlauben. Ablage dunkel und matt, gleichmäßiges Licht. Erster Test mit 5 Belegen, dann die Prüfliste ansehen.
+99. **Einzugsscanner**: Scan-Ziel auf den Server-Ordner `scan-eingang` (neben docker-compose.yml) legen, z. B. per
+    Netzwerkfreigabe (SMB) oder „Scan to Folder/FTP“ des Scanners. Geht das nicht: Prüfliste → „PDF-Stapel hochladen“.
+100. **Stotax**: Die Anbindung „Stotax Select“ (Mail2Select-Adresse, automatisch = ja) muss eingerichtet sein. Sonst
+     bleiben die Belege liegen (Prüfliste: „an Stotax: –“).
+101. **Drive-Belegordner (optional)**: Dienstkonto-Schlüssel unter Anbindungen → Google Drive, das Dienstkonto im
+     Zielordner als Bearbeiter freigeben, Ordner-ID unten in der Prüfliste eintragen (nur Inhaber).

@@ -939,6 +939,13 @@
       "when": 1793965261953,
       "tag": "0133_b31_abholung",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1793966633487,
+      "tag": "0134_b31_rechnungsstation",
+      "breakpoints": true
     }
   ]
 }

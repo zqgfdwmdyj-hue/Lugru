@@ -21,11 +21,11 @@ function parseKey(json: string): ServiceAccount {
   return sa;
 }
 
-export async function driveToken(serviceAccountJson: string): Promise<string> {
+export async function driveToken(serviceAccountJson: string, scope = "https://www.googleapis.com/auth/drive.readonly"): Promise<string> {
   const sa = parseKey(serviceAccountJson);
   const now = Math.floor(Date.now() / 1000);
   const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const unsigned = `${enc({ alg: "RS256", typ: "JWT" })}.${enc({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/drive.readonly", aud: sa.token_uri ?? "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
+  const unsigned = `${enc({ alg: "RS256", typ: "JWT" })}.${enc({ iss: sa.client_email, scope, aud: sa.token_uri ?? "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
   const signature = createSign("RSA-SHA256").update(unsigned).sign(sa.private_key).toString("base64url");
   const res = await fetch(sa.token_uri ?? "https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -156,3 +156,27 @@ registerTester("google_drive", async (v) => {
   const note = access.mode === "link" ? ` Tipp: In Drive „Jeder, der über den Link verfügt" auf „Betrachter" stellen – Mitbearbeiter ist nicht nötig.` : "";
   return `Verbunden – ${files.length} PDFs im Ordner${access.mode === "link" ? " (inkl. Unterordner)" : ""} gefunden.${note}`;
 });
+
+/**
+ * Rechnungsstation: Beleg-PDF in den Drive-Belegordner legen (Dienstkonto mit Schreibrecht auf den Ordner, Scope
+ * drive.file – das Konto sieht nur selbst angelegte Dateien). Gibt die Datei-ID zurück.
+ */
+export async function driveHochladen(serviceAccountJson: string, ordnerId: string, name: string, daten: Buffer, mimeType = "application/pdf"): Promise<string> {
+  const token = await driveToken(serviceAccountJson, "https://www.googleapis.com/auth/drive.file");
+  const grenze = `grenze${Date.now().toString(36)}`;
+  const meta = JSON.stringify({ name, parents: [ordnerId], appProperties: { quelle: "seller-system-rechnungsstation" } });
+  const body = Buffer.concat([
+    Buffer.from(`--${grenze}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${grenze}\r\nContent-Type: ${mimeType}\r\n\r\n`),
+    daten,
+    Buffer.from(`\r\n--${grenze}--`),
+  ]);
+  const res = await fetch(`${process.env.DRIVE_UPLOAD_BASE_URL || "https://www.googleapis.com/upload/drive/v3"}/files?uploadType=multipart&supportsAllDrives=true&fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${grenze}` },
+    body,
+    signal: AbortSignal.timeout(60_000),
+  });
+  const j = (await res.json().catch(() => ({}))) as { id?: string; error?: { message?: string } };
+  if (!res.ok || !j.id) throw new Error(`Drive-Ablage fehlgeschlagen (${res.status}${j.error?.message ? `: ${j.error.message}` : ""}) – hat das Dienstkonto Schreibrecht auf den Ordner?`);
+  return j.id;
+}

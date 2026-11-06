@@ -19,6 +19,8 @@ export type NavItem = {
   also?: (path: string, q: URLSearchParams) => boolean;
   /** Kurzname für die Zählerzeile oben in der Seitenleiste („Aufgaben 5“). */
   short?: string;
+  /** Für Seiten ohne eigenen Bereich: sichtbar, wenn einer dieser Pfade erlaubt ist. */
+  sichtbarMit?: string[];
 };
 
 export type NavSection = { key: string; label: string; color: string; icon?: string; items: NavItem[] };
@@ -111,6 +113,9 @@ export const NAV: NavSection[] = [
       { href: "/kapital", label: "Kapital-Ampel" },
       { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices", short: "Belege prüfen" },
       { href: "/rechnungen/belege", label: "Belege scannen" },
+      // Rechnungsstation hat keinen eigenen Bereich: sichtbar für Service (VA), Buchhaltung und Geld.
+      { href: "/rechnungsstation", label: "Rechnungsstation (Kamera)", sichtbarMit: ["/versand", "/rechnungen", "/buchhaltung"] },
+      { href: "/rechnungsstation/pruefen", label: "Rechnungsstation: Prüfliste", sichtbarMit: ["/versand", "/rechnungen", "/buchhaltung"] },
       { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
       { href: "/ebay?ansicht=rechnungen", label: "eBay-Rechnungen" },
       { href: "/rechnungen/kunden", label: "Kunden" },
@@ -315,7 +320,7 @@ export function activeItem(sections: NavSection[], path: string, q: URLSearchPar
 
 /** Bereiche mit den Punkten, die diese Person sehen darf (Bereichs-Rechte, Inhaber-Punkte). */
 export function visibleNav(allowed: (path: string) => boolean, isOwner: boolean): NavSection[] {
-  return NAV.map((s) => ({ ...s, items: s.items.filter((it) => (!it.owner || isOwner) && allowed(it.href.split(/[?#]/)[0])) })).filter((s) => s.items.length > 0);
+  return NAV.map((s) => ({ ...s, items: s.items.filter((it) => (!it.owner || isOwner) && (it.sichtbarMit ? it.sichtbarMit.some(allowed) : allowed(it.href.split(/[?#]/)[0]))) })).filter((s) => s.items.length > 0);
 }
 
 export type NavCounter = { href: string; label: string; n: number; alert: boolean; color: string; section: string };

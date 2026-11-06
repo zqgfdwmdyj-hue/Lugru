@@ -21,6 +21,9 @@ export const E2E_ENV: Record<string, string> = {
   DHL_TRACKING_BASE_URL: `${TD}/dhl-track`,
   DHL_PICKUP_BASE_URL: `${TD}/dhl-pickup`,
   UPS_API_BASE_URL: `${TD}/ups`,
+  // Rechnungsstation: Scanner-Ordner der Prüfungen, ohne Ruhezeit
+  BELEG_EINGANG_DIR: `${process.cwd()}/.e2e-scan-eingang`,
+  BELEG_EINGANG_RUHE_MS: "0",
   AMAZON_SP_BASE_URL: `${TD}/amazon`,
   AMAZON_LWA_URL: `${TD}/amazon-lwa`,
   EBAY_API_BASE_URL: `${TD}/ebay`,

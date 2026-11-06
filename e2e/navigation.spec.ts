@@ -33,10 +33,11 @@ test.describe("Navigation links", () => {
       await expect(page.getByTestId("seitenleiste")).toHaveClass(/schmal/);
       await page.reload();
       await expect(page.getByTestId("seitenleiste")).toHaveClass(/schmal/);
-      expect(await page.getByTestId("seitenleiste").evaluate((e) => e.getBoundingClientRect().width)).toBeLessThan(80);
+      // Breite ändert sich mit kurzer Animation – bis zum Ende warten
+      await expect.poll(() => page.getByTestId("seitenleiste").evaluate((e) => e.getBoundingClientRect().width)).toBeLessThan(80);
       await page.getByTestId("nav-einklappen").click();
       await expect(page.getByTestId("seitenleiste")).not.toHaveClass(/schmal/);
-      expect(await page.getByTestId("seitenleiste").evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThan(200);
+      await expect.poll(() => page.getByTestId("seitenleiste").evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThan(200);
 
       // Oben nur Suche, Stern, Glocke, Benutzer – keine zweite Menüzeile mit Bereichs-Reitern
       await expect(page.getByTestId("top-bar")).toBeVisible();

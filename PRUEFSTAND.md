@@ -57,6 +57,8 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Finanzen | Kapital-Ampel `/kapital` | ○ 0/3 Abläufe | – | – |
 | Finanzen | Eingangsrechnungen `/rechnungen` | ○ 0/1 Abläufe | – | – |
 | Finanzen | Belege scannen `/rechnungen/belege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Finanzen | Rechnungsstation (Kamera) `/rechnungsstation` | ○ 0/2 Abläufe | – | 3 |
+| Finanzen | Rechnungsstation: Prüfliste `/rechnungsstation/pruefen` | ○ 0/2 Abläufe | – | – |
 | Finanzen | Ausgangsrechnungen `/rechnungen/ausgang` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen | eBay-Rechnungen `/ebay?ansicht=rechnungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -77,6 +79,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Produkte & Lager | Aufträge & Versand `/auftraege` | ○ 0/2 Abläufe | – | – |
 | Produkte & Lager | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/4 Abläufe | – | – |
 | Produkte & Lager | Label aus Chat (DHL) `/versand/label` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Produkte & Lager | Abholung DHL/UPS `/versand/abholung` | ○ 0/3 Abläufe | – | 2 |
 | Produkte & Lager | Prep Center: Versand je Monat `/auftraege/prep-center` | ○ 0/2 Abläufe | – | – |
 | Produkte & Lager | Retouren `/retouren` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Produkte & Lager | Remissionen `/remissionen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -320,6 +323,24 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Rechnung hochladen, Sammelbearbeitung | Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 
+### Finanzen › Rechnungsstation (Kamera) (`/rechnungsstation`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| 50 Blätter nacheinander an der Station (VA mit Bereich Service), Stapel fertig, Prüfliste, Weitergabe | 49 Belege (1 Zweiseiter angehängt), alle mit Lieferant/Datum, 42 automatisch zugeordnet (Bestellungen, ASIN an Charge), Kassenzettel als Ausgabe, Duplikat und fehlender Betrag rot, unsicheres Datum gelb; Aufgabe „Rechnungsstapel prüfen: 49 Belege, …, 2 unklar“; 47 an Stotax (gelb mit Vermerk), rot erst nach Prüfung; nach der Prüfung Aufgabe erledigt; unter 10 Minuten | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
+| PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff | 20 Belege (2 Zweiseiter), alle grün, Original nach verarbeitet/; Lager wird umgeleitet, Upload 403 | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
+
+- – Offen: Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live
+- – Offen: Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
+- – Offen: Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
+
+### Finanzen › Rechnungsstation: Prüfliste (`/rechnungsstation/pruefen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen | nur rote/gelbe Belege mit Bild; Weitergabe meldet „An Stotax übertragen: 47“ und bleibt im Stapel; nach Speichern geprüft und weitergegeben, verworfenes Duplikat „kein Beleg“; Liste danach leer | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
+| „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel | Meldung „1 PDF aus dem Scanner-Ordner: 20 Belege“, Stapel mit 20 Belegen | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
+
 ### Produkte & Lager › Bestand & Inventur (`/bestand`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -368,6 +389,17 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Vorschau mit lauter „bitte prüfen“ | Fehler; Auswahl je Bestellung bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 | Gewichte pflegen | unklare Eingabe bleibt stehen, gültige Zeile zeigt gespeicherte Werte, neue Zeile leert sich | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 | Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) | 5 Labels, Kabel als DHL-Paket, keine echten Käufe | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
+
+### Produkte & Lager › Abholung DHL/UPS (`/versand/abholung`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt) | erst Rückfrage mit Zusammenfassung und Hinweisen (keine feste Uhrzeit, > 10 Pakete = Anfrage), nichts gebucht; nach „Ja“ (bestaetigt) Buchung mit Auftragsnummer, Protokoll „über Claude“; doppelt und Sonntag abgelehnt; Storno über abholung_stornieren | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+| UPS-Abholung von der Seite: UPS → Abholung buchen; Storno; VA (Service) bucht DHL | Paketzahl/Datum/Fenster vorbelegt, PRN 2929TEST… im Protokoll, Storno an UPS; VA bucht, Einstellungen → Abholung gesperrt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+| Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“ | bei 5 kein Vorschlag; bei 6 Aufgabe „Abholung buchen? … DHL-Labels fertig“ mit Push, nichts gebucht; Ein-Klick „Jetzt buchen“ bucht genau das, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `abholung.spec.ts` |
+
+- – Offen: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
+- – Offen: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
 
 ### Produkte & Lager › Prep Center: Versand je Monat (`/auftraege/prep-center`)
 
@@ -563,7 +595,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (126 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 126 nicht gelaufen.
+**Automatisch** (133 Abläufe + Oberfläche auf 112 Seiten): 0 bestanden, 0 fehlgeschlagen, 133 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -614,6 +646,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Kapital-Ampel: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Kapital-Ampel: Hinweis gestrandeter Bestand + weitere Amazon-Gebühren – im letzten Lauf nicht gelaufen
 - ○ Eingangsrechnungen: Rechnung hochladen, Sammelbearbeitung – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation (Kamera): 50 Blätter nacheinander an der Station (VA mit Bereich Service), Stapel fertig, Prüfliste, Weitergabe – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation (Kamera): PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation: Prüfliste: Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen – im letzten Lauf nicht gelaufen
+- ○ Rechnungsstation: Prüfliste: „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: Inventur scannen – im letzten Lauf nicht gelaufen
 - ○ Bestand & Inventur: B15.3 Prep Center verschickt – im letzten Lauf nicht gelaufen
@@ -629,6 +665,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Labels: Warensendung & DHL: Vorschau mit lauter „bitte prüfen“ – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Gewichte pflegen – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) – im letzten Lauf nicht gelaufen
+- ○ Abholung DHL/UPS: Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt) – im letzten Lauf nicht gelaufen
+- ○ Abholung DHL/UPS: UPS-Abholung von der Seite: UPS → Abholung buchen; Storno; VA (Service) bucht DHL – im letzten Lauf nicht gelaufen
+- ○ Abholung DHL/UPS: Vorschlag am Abend: 5 bzw. 6 fertige DHL-Labels über der Schwelle, „Vorschlag jetzt prüfen“ – im letzten Lauf nicht gelaufen
 - ○ Prep Center: Versand je Monat: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Prep Center: Versand je Monat: Frage im Fragefeld „Was kostet uns das Prep Center?“ – im letzten Lauf nicht gelaufen
 - ○ Deals: B25.10 Wo Deal-Blatt, Sammelbestellung und Prep-Export erscheinen – im letzten Lauf nicht gelaufen
@@ -725,9 +764,14 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 - Gewinn: Amazon-Zeile mit echten Abrechnungen gegen sellerboard vergleichen (−525 € laut Testbericht)
 - Verlust-Stopp: Echte sellerboard-Tageswerte je Produkt (kommen mit „Gewinn je Produkt und Tag“ um 04:00 und 13:00)
+- Rechnungsstation (Kamera): Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live
+- Rechnungsstation (Kamera): Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
+- Rechnungsstation (Kamera): Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
 - Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
 - Retouren-Station & Fälle: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
 - Retouren-Station & Fälle: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
+- Abholung DHL/UPS: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
+- Abholung DHL/UPS: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
 - Deals: Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)
 - Deals: Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)
 - Deals: Discord-Webhook im echten B2B-Kanal

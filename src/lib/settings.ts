@@ -205,6 +205,8 @@ export const DEFAULT_SETTINGS = {
   versandLabel: { absender2: null as null | NonNullable<TenantSettings["shipper"]>, preise: VERSAND_PREISE_STANDARD as Record<string, number> },
   /** Abholung DHL/UPS: keine Orte vorbelegt (Stammdaten trägt der Inhaber ein), Vorschlag ab mehr als 5 fertigen Labels. */
   abholung: { orte: [] as AbholOrt[], vorschlagAb: 5, vorschlagAn: true },
+  /** Rechnungsstation: Scanner-Ordner an, kein Drive-Belegordner (Ordner-ID trägt der Inhaber ein). */
+  rechnungsstation: { ordnerAn: true, driveOrdnerId: "" },
   /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
   liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0, wareneinkaufPlanen: true },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
@@ -275,6 +277,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     benachrichtigungen: { personen: { ...(s.benachrichtigungen?.personen ?? {}) } },
     versandLabel: { absender2: s.versandLabel?.absender2 ?? null, preise: { ...d.versandLabel.preise, ...(s.versandLabel?.preise ?? {}) } },
     abholung: { ...d.abholung, ...(s.abholung ?? {}), orte: s.abholung?.orte ?? [] },
+    rechnungsstation: { ...d.rechnungsstation, ...(s.rechnungsstation ?? {}) },
     liquiditaet: { ...d.liquiditaet, ...(s.liquiditaet ?? {}) },
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },

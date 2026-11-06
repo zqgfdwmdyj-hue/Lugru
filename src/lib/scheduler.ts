@@ -204,6 +204,15 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
       // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
+      // Rechnungsstation: grüne/gelbe Belege an Stotax und Drive (alle 15 Min.), ruhende Kamera-Stapel schließen
+      // (Zusammenfassung als Aufgabe), abgebrochene KI-Lesungen nachholen. Der Scanner-Ordner läuft im Minutentakt.
+      if (force || due(`${t}:rechnungsstation`, 14))
+        await step(t, "Rechnungsstation: Belege an Stotax", async () => {
+          const m = await import("@/lib/rechnungsstation/service");
+          await m.ausstehendeWeitergeben(t);
+          await m.ruhendeStapelBeenden(t);
+          await m.liegengebliebeneLesen(t);
+        });
       // Bauauftrag Abholung: abends (17–22 Uhr, stündlich) „Abholung buchen?“, wenn mehr als n Labels fertig sind und für
       // den nächsten Abholtag nichts gebucht ist – Aufgabe + Push, nie automatisch buchen.
       {
@@ -340,6 +349,19 @@ async function vaTakt() {
     }
   }
 }
+// Einzugsscanner: neue PDFs im Scanner-Ordner jede Minute (nur mit BELEG_EINGANG_DIR), nie zwei Läufe gleichzeitig.
+let scanLaeuft = false;
+async function scanOrdnerTakt() {
+  if (scanLaeuft || !process.env.BELEG_EINGANG_DIR) return;
+  scanLaeuft = true;
+  try {
+    const { ordnerPruefen } = await import("@/lib/rechnungsstation/service");
+    for (const t of await db.select({ id: schema.tenants.id }).from(schema.tenants)) await ordnerPruefen(t.id).catch((e) => console.error("[Scanner-Ordner]", e instanceof Error ? e.message : e));
+  } finally {
+    scanLaeuft = false;
+  }
+}
+
 export function startScheduler() {
   if (started || process.env.ENABLE_SCHEDULER === "0") return;
   started = true;
@@ -349,5 +371,6 @@ export function startScheduler() {
   setInterval(tick, 5 * 60_000);
   // VA über Discord: alle 30 Sekunden (Antwort auf Datenfragen in ≤ 1 Minute) – nur mit eingerichtetem VA-Kanal.
   setInterval(() => void vaTakt().catch((e) => console.error("[VA]", e instanceof Error ? e.message : e)), 30_000);
+  setInterval(() => void scanOrdnerTakt(), 60_000);
   console.log("[Hintergrund] Abrufe aktiv (alle 5 Minuten).");
 }

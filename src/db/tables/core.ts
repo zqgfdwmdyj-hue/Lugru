@@ -228,6 +228,8 @@ export type TenantSettings = {
   versandLabel?: { absender2?: Address; preise?: Record<string, number> };
   /** Abholung DHL/UPS: Abholorte (je Absender) einmal hinterlegen, Vorschlag ab n fertigen Labels ohne gebuchte Abholung. */
   abholung?: { orte?: AbholOrt[]; vorschlagAb?: number; vorschlagAn?: boolean };
+  /** Rechnungsstation: Einzugsscanner-Ordner auswerten, Google-Drive-Belegordner (Ordner-ID, Dienstkonto mit Schreibrecht). */
+  rechnungsstation?: { ordnerAn?: boolean; driveOrdnerId?: string };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
   /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */

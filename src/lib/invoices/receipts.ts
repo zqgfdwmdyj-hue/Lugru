@@ -10,6 +10,7 @@ import { sendMail } from "@/lib/mail/accounts";
 import { storeFile } from "@/lib/orders/service";
 import { buildReceiptPdf, parseReceiptAi, RECEIPT_PROMPT, receiptFileName, receiptMail, type ReceiptFacts, type ReceiptImage } from "./receipt-logic";
 import { stotaxConfig } from "./stotax";
+import { stotaxMailStation } from "@/lib/rechnungsstation/logic";
 
 // Belege scannen: Fotos → PDF (gespeichert, verschlüsselt) → KI liest Händler/Datum/Betrag →
 // per Mail2Select an Stotax. Auch andere Eingangsrechnungen lassen sich so an Stotax schicken.
@@ -95,7 +96,9 @@ export async function sendInvoiceToStotax(tenantId: string, id: string): Promise
     const [file] = await db.select({ data: schema.files.data, mimeType: schema.files.mimeType }).from(schema.files).where(and(eq(schema.files.tenantId, tenantId), eq(schema.files.id, row.fileId)));
     if (!file) throw new ReceiptError("Datei nicht gefunden.");
     const facts: ReceiptFacts = { vendor: row.vendor, date: row.invoiceDate, totalGross: row.totalGross, totalNet: row.totalNet, vat: [], payment: null, category: null };
-    const mail = row.source === "scan" ? receiptMail(facts, today(), row.textExcerpt) : { subject: `Eingangsrechnung ${row.invoiceNumber ?? row.fileName}`, text: `Eingangsrechnung ${row.fileName}${row.invoiceDate ? ` vom ${row.invoiceDate.split("-").reverse().join(".")}` : ""}` };
+    // Rechnungsstation: rote Belege erst nach der Prüfung; gelbe mit Vermerk.
+    if ((row.source === "station" || row.source === "ordner") && (row.status === "ignored" || row.ampel === null || (row.ampel === "rot" && !row.geprueftAm))) throw new ReceiptError("Beleg ist noch nicht geprüft – rote Belege gehen erst nach der Prüfung an Stotax.");
+    const mail = row.source === "station" || row.source === "ordner" ? stotaxMailStation({ ...row, geprueft: Boolean(row.geprueftAm) }) : row.source === "scan" ? receiptMail(facts, today(), row.textExcerpt) : { subject: `Eingangsrechnung ${row.invoiceNumber ?? row.fileName}`, text: `Eingangsrechnung ${row.fileName}${row.invoiceDate ? ` vom ${row.invoiceDate.split("-").reverse().join(".")}` : ""}` };
     const s = await getInvoiceSettings(ebayDb(tenantId));
     await sendMail(
       tenantId,

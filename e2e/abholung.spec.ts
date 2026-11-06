@@ -92,7 +92,7 @@ test.describe("Abholung DHL/UPS", () => {
     // UPS-Sendung eines Palettenkunden (3 Kartons) wartet auf Abholung → Paketzahl vorbelegt
     await sql("update pallet_shipments set status = 'zugestellt' where tenant_id = $1 and carrier = 'ups' and direction = 'aus' and status = 'geplant'", [T]);
     const [ps] = await sql<{ id: string }>("insert into pallet_shipments (tenant_id, direction, title, carrier, carton_count, status) values ($1, 'aus', $2, 'ups', 3, 'geplant') returning id", [T, `UPS-Test ${m}`]);
-    const [{ buero_areas }] = await sql<{ buero_areas: string[] }>("select m.areas as buero_areas from memberships m join users u on u.id = m.user_id where u.email = 'buero'");
+    const [{ buero_areas }] = await sql<{ buero_areas: string[] | null }>("select m.areas as buero_areas from memberships m join users u on u.id = m.user_id where u.email = 'buero'");
     try {
       await anmelden(page, "inhaber");
       await page.goto("/versand/abholung");
@@ -119,7 +119,7 @@ test.describe("Abholung DHL/UPS", () => {
       await expect(zeile(page, prn)).toHaveAttribute("data-status", "storniert");
 
       // VA (Bereich Service): bucht und sieht das Protokoll, aber keine Stammdaten
-      await sql("update memberships set areas = array['start','service'] where user_id = (select id from users where email = 'buero')");
+      await sql("update memberships set areas = '[\"start\",\"service\"]'::jsonb where user_id = (select id from users where email = 'buero')");
       const va = await browser.newContext();
       const vp = await va.newPage();
       await anmelden(vp, "buero");
@@ -135,7 +135,7 @@ test.describe("Abholung DHL/UPS", () => {
       await expect(vp).toHaveURL(/gesperrt=inhaber/);
       await va.close();
     } finally {
-      await sql("update memberships set areas = $1 where user_id = (select id from users where email = 'buero')", [buero_areas]);
+      await sql("update memberships set areas = $1::jsonb where user_id = (select id from users where email = 'buero')", [JSON.stringify(buero_areas)]);
       await sql("delete from pallet_shipments where id = $1", [ps.id]);
     }
   });
