@@ -1,4 +1,4 @@
-import { index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { encryptedJson, encryptedText } from "./encrypted";
 import { type Address, createdAt, files, id, lots, money, tenantId, updatedAt } from "./core";
 
@@ -41,6 +41,8 @@ export const orders = pgTable(
     trackingNumber: text("tracking_number"),
     trackingUploadedAt: timestamp("tracking_uploaded_at", { withTimezone: true }),
     trackingUploadError: text("tracking_upload_error"),
+    /** Meldung von Hand geschlossen (im Kanal selbst eingetragen bzw. kein Kanal zum Melden) – nicht über die Schnittstelle. */
+    trackingUploadManuell: boolean("tracking_upload_manuell").notNull().default(false),
     notes: text("notes"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

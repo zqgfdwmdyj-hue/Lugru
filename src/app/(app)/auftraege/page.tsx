@@ -8,7 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
 import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
-import { bestaetigungHochgeladen, createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
+import { bestaetigungHochgeladen, createManualOrder, fetchOrdersNow, markAllLabeledShipped, meldungenErledigtAction } from "./actions";
 import { offeneBestaetigungen } from "@/lib/orders/bestaetigung";
 import { BatchForm } from "./batch-form";
 import { openLabels } from "@/lib/shipping/label-pdfs";
@@ -46,6 +46,8 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     .orderBy(view === "offen" ? sql`${O.shipBy} asc nulls last` : desc(O.orderDate))
     .limit(300);
   const bestaetigung = view === "fehler" ? await offeneBestaetigungen(session.tenantId, new Date(), { ohneWartezeit: true }) : [];
+  // Meldung offen bei anderen Kanälen: im Kanal selbst eingetragen bzw. nichts zu melden → hier auf einmal schließen.
+  const andere = view === "fehler" ? orders.filter(({ o }) => o.channel !== "amazon") : [];
   const counts = await db
     .select({ channel: O.channel, n: sql<number>`count(*)::int` })
     .from(O)
@@ -63,7 +65,10 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
           {orders.length === 0 && <tr><td colSpan={9} className="muted">Keine Aufträge in dieser Ansicht.</td></tr>}
           {orders.map(({ o, items }) => (
             <tr key={o.id}>
-              <td>{view === "offen" && <input type="checkbox" name="ids" value={o.id} aria-label="Auswählen" defaultChecked />}</td>
+              <td>
+                {view === "offen" && <input type="checkbox" name="ids" value={o.id} aria-label="Auswählen" defaultChecked />}
+                {view === "fehler" && o.channel !== "amazon" && <input type="checkbox" name="meldung" value={o.id} aria-label="Meldung schließen" defaultChecked data-testid="meldung-auswahl" />}
+              </td>
               <td><span className="tag tag-neutral">{CHANNEL_LABEL[o.channel]}</span></td>
               <td className="num"><Link href={`/auftraege/${o.id}`}>{o.externalId}</Link></td>
               <td className="num">{o.orderDate.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</td>
@@ -162,7 +167,25 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
         )}
       </div>
       {labelsOpen && labelsOpen.withoutPdf > 0 && <div className="small muted" data-testid="labels-csv-hint">{labelsOpen.withoutPdf} Auftrag/Aufträge ohne PDF (Warensendung per CSV) – Porto wird im Internetmarke-Shop gedruckt.</div>}
-      {view === "offen" ? <BatchForm>{table}</BatchForm> : table}
+      {view === "offen" ? (
+        <BatchForm>{table}</BatchForm>
+      ) : andere.length ? (
+        <form action={meldungenErledigtAction}>
+          <input type="hidden" name="kanal" value={sp.kanal ?? ""} />
+          <div className="notice notice-info" data-testid="meldungen-andere" style={{ marginBottom: 12 }}>
+            <strong>{andere.length} Meldung{andere.length === 1 ? "" : "en"} bei anderen Kanälen</strong> ({[...new Set(andere.map(({ o }) => CHANNEL_LABEL[o.channel]))].join(", ")}) – Sendungsnummer im Kanal selbst eingetragen oder dort nichts zu melden (z. B. WhatsApp, von Hand)? Dann hier schließen. Häkchen in der Liste abwählen, was offen bleiben soll.
+            {bestaetigung.length > 0 && <> Amazon-Aufträge bleiben offen, bis die Versandbestätigung hochgeladen ist (oben).</>}
+            <div style={{ marginTop: 6 }}>
+              <ConfirmButton className="btn btn-small" testid="meldungen-schliessen" confirm="Ausgewählte Meldungen als erledigt markieren? Gemeldet wird dabei nichts – nur hier geschlossen.">
+                Ausgewählte als erledigt markieren
+              </ConfirmButton>
+            </div>
+          </div>
+          {table}
+        </form>
+      ) : (
+        table
+      )}
       <details className="card card-pad">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Auftrag von Hand anlegen</summary>
         <form action={createManualOrder} style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "end" }}>

@@ -46,6 +46,22 @@ export async function alsHochgeladenMarkieren(tenantId: string, ids: string[]): 
   return r.length;
 }
 
+/**
+ * „Meldung offen“ bei anderen Kanälen als Amazon (Temu, eBay, Kleinanzeigen, WhatsApp, von Hand …) von Hand schließen:
+ * Die Sendungsnummer ist im Kanal selbst eingetragen bzw. es gibt keinen Kanal, dem man etwas melden könnte. Amazon
+ * bleibt beim Weg über die Versandbestätigungs-Datei (sonst endete die Erinnerung, ohne dass Amazon etwas weiß).
+ */
+export async function meldungenSchliessen(tenantId: string, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const jetzt = new Date();
+  const r = await db
+    .update(O)
+    .set({ trackingUploadedAt: jetzt, trackingUploadManuell: true, trackingUploadError: null, updatedAt: jetzt })
+    .where(and(eq(O.tenantId, tenantId), inArray(O.id, ids.slice(0, 500)), sql`${O.channel} <> 'amazon'`, isNull(O.trackingUploadedAt)))
+    .returning({ id: O.id });
+  return r.length;
+}
+
 /** Erinnerung (Aufgabe für den Inhaber), solange etwas offen ist; schließt sich selbst, wenn alles gemeldet ist. */
 export async function bestaetigungErinnern(tenantId: string, jetzt = new Date()): Promise<number> {
   const offen = await offeneBestaetigungen(tenantId, jetzt);

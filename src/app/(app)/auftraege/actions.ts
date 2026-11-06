@@ -192,3 +192,21 @@ export async function bestaetigungHochgeladen(fd: FormData) {
   revalidatePath("/auftraege");
   redirect(`/auftraege?ansicht=fehler&meldung=${encodeURIComponent(`${n} Auftr${n === 1 ? "ag" : "äge"} als an Amazon gemeldet markiert.`)}`);
 }
+
+/**
+ * „Meldung offen“ bei anderen Kanälen (Temu, eBay, Kleinanzeigen, WhatsApp, von Hand …) auf einmal schließen – die
+ * Sendungsnummer ist im Kanal selbst eingetragen bzw. es gibt dort nichts zu melden. Amazon läuft weiter über die Datei.
+ * Ein Auftrag (Detailseite) oder mehrere (Häkchen in der Liste).
+ */
+export async function meldungenErledigtAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const ids = fd.getAll("meldung").map(String).filter((x) => uuid.safeParse(x).success);
+  const { meldungenSchliessen } = await import("@/lib/orders/bestaetigung");
+  const n = await meldungenSchliessen(session.tenantId, ids);
+  revalidatePath("/auftraege", "layout");
+  const zurueck = String(fd.get("zurueck") ?? "");
+  if (/^\/auftraege\/[0-9a-f-]{36}$/i.test(zurueck)) redirect(zurueck);
+  const kanal = String(fd.get("kanal") ?? "");
+  const text = n ? `${n} Meldung${n === 1 ? "" : "en"} als erledigt markiert (im Kanal selbst eingetragen).` : "Keine Meldung geschlossen – nichts ausgewählt.";
+  redirect(`/auftraege?ansicht=fehler${CHANNELS.includes(kanal as never) ? `&kanal=${kanal}` : ""}&meldung=${encodeURIComponent(text)}`);
+}

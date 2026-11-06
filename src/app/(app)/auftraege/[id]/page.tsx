@@ -9,7 +9,7 @@ import { orderShipWeight, skuShippingMap } from "@/lib/shipping/weights-service"
 import { WS_OPTIONS, warensendungCheck } from "@/lib/shipping/warensendung";
 import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
+import { cancelLabelAction, cancelOrder, markShippedAction, meldungenErledigtAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
 import { LabelForm } from "./label-form";
 import { PostFormatHint } from "../post-format-hint";
 import { postFormatInfo } from "@/lib/shipping/internetmarke";
@@ -168,11 +168,25 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <button className="btn" type="submit">Als versendet markieren & melden</button>
                 </form>
               )}
-              {order.trackingUploadedAt && <div className="notice notice-ok small">An {CHANNEL_LABEL[order.channel]} gemeldet am {order.trackingUploadedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</div>}
+              {order.trackingUploadedAt && (
+                <div className="notice notice-ok small" data-testid="meldung-status">
+                  {order.trackingUploadManuell ? "Meldung von Hand als erledigt markiert am " : `An ${CHANNEL_LABEL[order.channel]} gemeldet am `}
+                  {order.trackingUploadedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}
+                </div>
+              )}
               {order.trackingUploadError && (
                 <div className="notice notice-warn small">
                   {order.trackingUploadError}
-                  <form action={retryTracking} style={{ marginTop: 6 }}><input type="hidden" name="orderId" value={order.id} /><button className="btn btn-small" type="submit">Erneut melden</button></form>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    <form action={retryTracking}><input type="hidden" name="orderId" value={order.id} /><button className="btn btn-small" type="submit">Erneut melden</button></form>
+                    {order.channel !== "amazon" && (
+                      <form action={meldungenErledigtAction}>
+                        <input type="hidden" name="meldung" value={order.id} />
+                        <input type="hidden" name="zurueck" value={`/auftraege/${order.id}`} />
+                        <button className="btn btn-small" type="submit" data-testid="meldung-erledigt">Im Kanal erledigt – schließen</button>
+                      </form>
+                    )}
+                  </div>
                 </div>
               )}
             </section>

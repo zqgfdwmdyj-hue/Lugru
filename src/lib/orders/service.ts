@@ -181,7 +181,7 @@ export async function uploadTracking(tenantId: string, orderId: string) {
   }
   try {
     await fn(tenantId, data.order, data.items.map((i) => i.item));
-    await db.update(schema.orders).set({ trackingUploadedAt: new Date(), trackingUploadError: null }).where(eq(schema.orders.id, orderId));
+    await db.update(schema.orders).set({ trackingUploadedAt: new Date(), trackingUploadManuell: false, trackingUploadError: null }).where(eq(schema.orders.id, orderId));
   } catch (e) {
     await db.update(schema.orders).set({ trackingUploadError: e instanceof Error ? e.message : String(e) }).where(eq(schema.orders.id, orderId));
   }
