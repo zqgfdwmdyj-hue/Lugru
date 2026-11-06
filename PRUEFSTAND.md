@@ -106,6 +106,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
 | Einstellungen | Einstellungen › Anbindungen `/anbindungen` | ○ 0/6 Abläufe | – | 3 |
 | Einstellungen | Einstellungen › KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
+| Einstellungen | Einstellungen › Hintergrund & Importe `/einstellungen/hintergrund` | ○ 0/5 Abläufe | – | – |
 | Einstellungen | Einstellungen › Geräte: Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Benachrichtigungen `/einstellungen/benachrichtigungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -526,12 +527,22 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) | Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt | ○ im letzten Lauf nicht gelaufen | `keepa.spec.ts` |
 | Keepa: Länder vergleichen | DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“ | ○ im letzten Lauf nicht gelaufen | `keepa.spec.ts` |
 | Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) | Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen | ○ im letzten Lauf nicht gelaufen | `keepa.spec.ts` |
-| Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live | Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
+| Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live | Berichte unter Einstellungen → Hintergrund & Importe anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
 | Neue Werkzeuge ohne Neustart (notifications/tools/list_changed) | Ereignis-Kanal meldet beim Verbinden „tools/list_changed“ | ○ im letzten Lauf nicht gelaufen | `retouren-station.spec.ts` |
 | Rechte der neuen Werkzeuge im Fragefeld | Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
 
 - – Offen: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
 - – Offen: getItemOffers-Ratenlimit im Betrieb beobachten
+
+### Einstellungen › Einstellungen › Hintergrund & Importe (`/einstellungen/hintergrund`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Eigener Reiter „Hintergrund & Importe“ neben Anbindungen und KI-Assistent; Anbindungen nur noch mit Hinweis | Reiter aktiv, Abschnitt Hintergrund-Abrufe mit Tabelle; unter Anbindungen keine Abruf-Tabelle mehr, Link auf den neuen Reiter | ○ im letzten Lauf nicht gelaufen | `navigation.spec.ts` |
+| ArbitrageOne „Jetzt abholen“, zweiter Abruf, fehlender Export, Zwei-Faktor (Importe – ArbitrageOne) | Meldung und Lauf-Zeilen im neuen Reiter; Rücksprung nach dem Knopf auf /einstellungen/hintergrund | ○ im letzten Lauf nicht gelaufen | `arbitrageone.spec.ts` |
+| Amazon-Berichte sofort anfordern / Konto-Berichte / fertige abholen | Meldung „6 Berichte angefordert …“ im neuen Reiter, Berichte in der Tabelle | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
+| Discord live und Abrufzeile „Call-Archiv (Discord live)“ | Auslöser live, zuletzt empfangen, sofort bei Eingang | ○ im letzten Lauf nicht gelaufen | `b21-calls-live.spec.ts` |
+| BQool-Upload „hat geklappt“ | Zeile „hochgeladen (von Hand bestätigt)“, Rücksprung in den Reiter | ○ im letzten Lauf nicht gelaufen | `bqool-upload-erkennung.spec.ts` |
 
 ### Übergreifend › /posteingang/verbinden (`/posteingang/verbinden`)
 
@@ -596,7 +607,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (136 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 136 nicht gelaufen.
+**Automatisch** (141 Abläufe + Oberfläche auf 110 Seiten): 0 bestanden, 0 fehlgeschlagen, 141 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -723,6 +734,11 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Einstellungen › KI-Assistent: Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › KI-Assistent: Neue Werkzeuge ohne Neustart (notifications/tools/list_changed) – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › KI-Assistent: Rechte der neuen Werkzeuge im Fragefeld – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Hintergrund & Importe: Eigener Reiter „Hintergrund & Importe“ neben Anbindungen und KI-Assistent; Anbindungen nur noch mit Hinweis – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Hintergrund & Importe: ArbitrageOne „Jetzt abholen“, zweiter Abruf, fehlender Export, Zwei-Faktor (Importe – ArbitrageOne) – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Hintergrund & Importe: Amazon-Berichte sofort anfordern / Konto-Berichte / fertige abholen – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Hintergrund & Importe: Discord live und Abrufzeile „Call-Archiv (Discord live)“ – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Hintergrund & Importe: BQool-Upload „hat geklappt“ – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Postfach verbinden: App-Passwort zuerst, Anleitung (Google, Microsoft 365, GMX/WEB.DE, IONOS/STRATO), „Nur abrufen“, OAuth nur unter „Erweitert“ – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“ – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) – im letzten Lauf nicht gelaufen
