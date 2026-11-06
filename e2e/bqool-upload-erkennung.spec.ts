@@ -49,10 +49,10 @@ test.describe("BQool-Upload: Erfolg erkennen", () => {
       expect(await aufgabe()).toMatchObject({ title: "BQool-Upload: DE bitte kurz in BQool prüfen", priority: "normal", status: "open" });
 
       // In BQool nachgesehen → „hat geklappt“: Zeile grün „von Hand bestätigt“, Status fertig, Aufgabe erledigt
-      await page.goto("/anbindungen");
+      await page.goto("/einstellungen/hintergrund#importe-exporte");
       const z = page.getByTestId("bq-upload-zeile").filter({ has: page.locator(`a[href="/repricer/bqool?export=${e2}"]`) });
       await expect(z.getByTestId("bq-upload-pruefen")).toBeVisible();
-      await Promise.all([page.waitForURL(/\/anbindungen/), z.getByTestId("bq-upload-geklappt").click()]);
+      await Promise.all([page.waitForURL(/\/einstellungen\/hintergrund/), z.getByTestId("bq-upload-geklappt").click()]);
       await expect(z).toContainText("hochgeladen (von Hand bestätigt)");
       const p2 = await protokoll(e2);
       expect(p2.u).toBe("fertig");

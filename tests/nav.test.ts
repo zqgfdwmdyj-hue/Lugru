@@ -81,7 +81,10 @@ describe("Zuordnung alt → neu (Abschnitte 5 und 6)", () => {
       expect(hauptmenue.has(h), h).toBe(false);
       expect(NEBENSEITEN.some((n) => n.href === h), h).toBe(true);
     }
-    for (const h of ["/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile", "/einstellungen/testumgebung"]) expect(reiter.has(h), h).toBe(true);
+    for (const h of ["/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile", "/einstellungen/testumgebung", "/einstellungen/hintergrund"]) expect(reiter.has(h), h).toBe(true);
+    // Reiter „Hintergrund & Importe“ (neu): direkt nach Anbindungen und KI-Assistent, nur Inhaber, über Strg+K findbar
+    expect(SUBPAGES["/einstellungen"].map((i) => i.label).slice(1, 4)).toEqual(["Anbindungen", "KI-Assistent", "Hintergrund & Importe"]);
+    expect(NEBENSEITEN.find((n) => n.href === "/einstellungen/hintergrund")?.owner).toBe(true);
     expect(NEBENSEITEN.find((n) => n.href === "/ebay?ansicht=rechnungen")?.wo).toBe("eBay & Temu › eBay (Reiter)");
   });
 });

@@ -209,7 +209,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-hilfe)",
     icon: "⚙️",
     items: [
-      // Ein Eintrag – Anbindungen, KI-Assistent, Geräte, Shop-Profile, Abholung und Testumgebung sind Reiter darauf.
+      // Ein Eintrag – Anbindungen, KI-Assistent, Hintergrund & Importe, Geräte, Shop-Profile, Abholung und Testumgebung sind Reiter darauf.
       { href: "/einstellungen", label: "Einstellungen", owner: true, also: (p) => p === "/anbindungen" || p.startsWith("/anbindungen/") },
     ],
   },
@@ -230,6 +230,7 @@ export const NEBENSEITEN: Nebenseite[] = [
   { href: "/kalender/tagesplan?anrufe=1", label: "Anrufe", wo: "Heute › Tagesplan (Anrufe)" },
   { href: "/anbindungen", label: "Anbindungen", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/claude", label: "Claude & KI-Assistent", wo: "Einstellungen (Reiter)", owner: true },
+  { href: "/einstellungen/hintergrund", label: "Hintergrund-Abrufe & Importe", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/handy", label: "Handy & Tesla", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/watch", label: "Apple Watch", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/benachrichtigungen", label: "Benachrichtigungen", wo: "Einstellungen (Reiter)", owner: true },
@@ -315,6 +316,7 @@ export const SUBPAGES: Record<string, NavItem[]> = {
     { href: "/einstellungen", label: "Allgemein" },
     { href: "/anbindungen", label: "Anbindungen" },
     { href: "/einstellungen/claude", label: "KI-Assistent" },
+    { href: "/einstellungen/hintergrund", label: "Hintergrund & Importe" },
     { href: "/einstellungen/handy", label: "Geräte: Handy & Tesla" },
     { href: "/einstellungen/watch", label: "Apple Watch" },
     { href: "/einstellungen/benachrichtigungen", label: "Benachrichtigungen" },

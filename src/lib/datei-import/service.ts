@@ -319,7 +319,7 @@ export async function importStatus(tenantId: string, id: string) {
     fehler_text: a.fehlerText ?? (abgelaufen ? "Upload-Adresse abgelaufen, ohne dass eine Datei kam – bitte mit import_link eine neue anfordern." : undefined),
     bereits_importiert: a.bereitsImportId ? true : undefined,
     herkunft: a.herkunft,
-    // B27.1: fehlgeschlagen und Datei noch da → unter Anbindungen → Importe „Erneut verarbeiten“ (Inhaber).
+    // B27.1: fehlgeschlagen und Datei noch da → unter Einstellungen → Hintergrund & Importe „Erneut verarbeiten“ (Inhaber).
     erneut_verarbeitbar: a.status === "fehler" && Boolean(a.ablage) ? true : undefined,
     nachverarbeitet_am: a.nachverarbeitetAm?.toISOString() ?? undefined,
     ergebnis: a.ergebnis ?? undefined,

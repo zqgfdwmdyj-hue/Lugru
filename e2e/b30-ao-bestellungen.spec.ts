@@ -50,7 +50,7 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
 
       // Abnahme 1: „Erneut verarbeiten“ nimmt die neue Art, Status „fertig“ mit „n Bestellungen, m Positionen, k ohne Zuordnung“
       await anmelden(page, "inhaber");
-      await page.goto("/anbindungen?p=arbitrageone_web#arbitrageone_web");
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       const zeile = page.getByTestId("ao-import").filter({ hasText: altName });
       await expect(zeile).toContainText("Pflichtspalten fehlen");
       await Promise.all([page.waitForURL(/erneut=/), zeile.getByTestId("ao-import-erneut").click()]);
@@ -145,7 +145,7 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
       const tagesdatei = poDatei([[`B30T-${m}`, tt(tag(0)), "Testshop B30 Tag", AT, `TEST-SKU-B30T-${m}`, "Testartikel B30 Tag (erfunden)", "1", "4,00", "Bestellt"]]);
       await ao({ zuruecksetzen: true, dateien: { einkaeufe: tagesdatei }, namen: { einkaeufe: `ArbitrageOne_PurchaseOrders_Export_${iso(tag(0))}.xls` } });
       await anmelden(page, "inhaber");
-      await page.goto("/anbindungen?p=arbitrageone_web#arbitrageone_web");
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       await Promise.all([page.waitForURL(/ao=/, { timeout: 240_000 }), page.getByTestId("ao-jetzt").click()]);
       const st = JSON.parse(await mcp.call("import_status", { import_id: alt.id }));
       expect(st, st.fehler_text).toMatchObject({ status: "fertig", art: "ao_einkaeufe" });

@@ -445,6 +445,8 @@ export const anbindungenStatus = defineTool({
       importe_90_tage: imports.map((r) => ({ bericht: r.typ, weg: r.via === "api" ? "Schnittstelle" : "Datei-Upload", zuletzt: berlinDateTime(new Date(r.am)), anzahl: r.n })).sort((a, b) => a.bericht.localeCompare(b.bericht)),
       probleme: abrufe.filter((j) => j.fehler).length + pf.postfaecher.filter((b) => b.fehler).length + (pf.warnung ? 1 : 0),
       link: abs(ctx, "/anbindungen"),
+      // Abrufe (letzter/nächster Lauf) und Importe stehen im Reiter „Hintergrund & Importe“
+      link_abrufe: abs(ctx, "/einstellungen/hintergrund#abrufe"),
     });
   },
 });

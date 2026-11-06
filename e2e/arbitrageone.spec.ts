@@ -51,7 +51,8 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       for (const k of ["Einkäufe: gefunden", "Lagerbestand: gefunden", "Sellerboard: gefunden", "BQool: gefunden", "Inventory Reimbursement: gefunden", "AccountOne COG (NEU): gefunden"]) await expect(t).toContainText(k);
       expect((await (await fetch(`${TD}/__ao`)).json()).downloads).toEqual([]);
 
-      // Abruf wie der Nachtlauf (Knopf „Jetzt abholen“)
+      // Abruf wie der Nachtlauf (Knopf „Jetzt abholen“ unter Einstellungen → Hintergrund & Importe)
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       await expect(page.getByTestId("ao-plan")).toContainText("täglich 05:30");
       await Promise.all([page.waitForURL(/ao=/, { timeout: 180_000 }), page.getByTestId("ao-jetzt").click()]);
       await expect(page.getByTestId("ao-meldung")).toContainText("alle Exporte abgeholt");
@@ -100,7 +101,7 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       expect(JSON.parse(await mcp.call("anbindungen_status", {})).arbitrageone.ausloeser).toContain("täglich 05:30");
 
       // Zweiter Abruf: dieselben Dateien → „bereits importiert“, nichts doppelt
-      await page.goto("/anbindungen#importe-arbitrageone");
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       await Promise.all([page.waitForURL(/ao=/, { timeout: 180_000 }), page.getByTestId("ao-jetzt").click()]);
       await expect(page.getByTestId("ao-lauf").first()).toContainText("bereits importiert");
       expect((await sql("select 1 from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, A2])).length).toBe(2);

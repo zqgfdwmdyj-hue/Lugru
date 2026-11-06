@@ -179,7 +179,18 @@ test.describe("Navigation links", () => {
 
       // Einstellungen: ein Menüeintrag, Unterseiten als Reiter, Abschnitte über die Sprungleiste
       await page.goto("/einstellungen");
-      await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Allgemein", "Anbindungen", "KI-Assistent", "Geräte: Handy & Tesla", "Apple Watch", "Benachrichtigungen", "Shop-Profile", "Abholung", "Testumgebung"]);
+      await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Allgemein", "Anbindungen", "KI-Assistent", "Hintergrund & Importe", "Geräte: Handy & Tesla", "Apple Watch", "Benachrichtigungen", "Shop-Profile", "Abholung", "Testumgebung"]);
+      // Reiter „Hintergrund & Importe“: Abrufe, Amazon-Berichte, ArbitrageOne, BQool-Uploads – unter Anbindungen nur noch der Hinweis
+      await page.getByTestId("sub-tabs").getByRole("link", { name: "Hintergrund & Importe" }).click();
+      await page.waitForURL(/\/einstellungen\/hintergrund/);
+      await expect(page.getByTestId("sub-tabs").locator(".area-tab.active")).toHaveText("Hintergrund & Importe");
+      await expect(page.getByTestId("hintergrund-sprung").locator("a").first()).toHaveText("Hintergrund-Abrufe");
+      for (const id of ["hintergrund-abrufe", "abrufe-alle"]) await expect(page.getByTestId(id), id).toBeVisible();
+      await page.getByTestId("sub-tabs").getByRole("link", { name: "Anbindungen" }).click();
+      await page.waitForURL(/\/anbindungen/);
+      await expect(page.getByTestId("hinweis-hintergrund").getByRole("link", { name: "Hintergrund & Importe" })).toBeVisible();
+      await expect(page.getByTestId("abrufe-alle")).toHaveCount(0);
+      await page.goto("/einstellungen");
       await expect(page.getByTestId("einstellungen-sprungleiste").locator("a")).toHaveText(["Allgemein", "Ansprüche & Retouren", "B2B", "Preise", "Versand & Prep", "Postfächer & Rechnungen", "Shops", "Benutzer"]);
       await page.getByTestId("einstellungen-sprungleiste").getByRole("link", { name: "Benutzer" }).click();
       await expect(page).toHaveURL(/#benutzer$/);

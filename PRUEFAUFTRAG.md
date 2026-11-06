@@ -1100,6 +1100,28 @@ Regression: 177 Ablaufprüfungen, 174 im ersten Lauf grün. Rot: Keepa (bekannte
 
 **Werkzeuge:** keine neuen Claude-Werkzeuge. Geändert: `ueberblick` (Beschreibung + Feld `persoenliche_nachrichten` nur Anzahl, nur Inhaber mit Privat-Zugang) → die Werkzeugliste ändert sich, Claude erhält `notifications/tools/list_changed`.
 
+## Wunsch 06.11.: Einstellungen – eigener Reiter „Hintergrund & Importe“
+
+Anlass: Hintergrund-Abrufe und Importe standen unten auf der langen Seite „Anbindungen“. Gewünscht: eigener Reiter
+oben bei Einstellungen, neben Anbindungen und KI-Assistent.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Reiter | ❌ alles unter Anbindungen | ✅ Reiter „Hintergrund & Importe“ direkt nach „KI-Assistent“ (nur Inhaber, über Strg+K findbar) | `SUBPAGES["/einstellungen"]`, `NEBENSEITEN` (`src/lib/nav.ts`) |
+| Inhalt | – | ✅ Hintergrund-Abrufe (Jetzt alles abrufen, letzter/nächster Lauf, Discord live), Amazon-Berichte sofort anfordern/abholen, Importe – ArbitrageOne (Jetzt abholen, Läufe, Erneut verarbeiten), BQool-Uploads („hat geklappt“), Sprungleiste | `src/app/(app)/einstellungen/hintergrund/page.tsx`, `src/app/(app)/anbindungen/abrufe.ts` |
+| Anbindungen | lang | ✅ nur Zugänge/Verbindungen (eBay, sellerboard, Postfächer, Karten mit Intervall je Abruf, Erweitert) + Hinweis-Kasten mit Link auf den neuen Reiter | `src/app/(app)/anbindungen/page.tsx` |
+| Knöpfe | Rücksprung auf /anbindungen | ✅ Rücksprung in den neuen Reiter an die passende Stelle (`#amazon-berichte`, `#importe-arbitrageone`, `#importe-exporte`) | `src/app/(app)/anbindungen/actions.ts` |
+| Verweise | „Anbindungen → Importe“ | ✅ „Einstellungen → Hintergrund & Importe“ in Aufgaben-Texten (BQool, sellerboard-Kostenimport), Upload-Erkennung, Repricer-Hinweis, Anbindungs-Hilfe ArbitrageOne | `src/lib/automatik/uebertragen.ts`, `src/lib/uploads/erkennen.ts`, `src/app/(app)/repricer/bqool/page.tsx`, `src/lib/integrations/registry.ts` |
+
+Abnahme: ✅ automatisch (`e2e/navigation.spec.ts`: Reiterreihe, Klick auf „Hintergrund & Importe“, Abruf-Tabelle da,
+unter Anbindungen nur der Hinweis); die Abläufe ArbitrageOne, Amazon-Berichte, Discord live, sellerboard-Budget,
+BQool-Uploads laufen jetzt gegen den neuen Reiter (`arbitrageone`, `amazon-berichte`, `b21-calls-live`, `b27-automatik`,
+`b29-sellerboard-budget`, `b30-ao-bestellungen`, `bqool-dateien`, `bqool-upload-erkennung`, `geschaeft`).
+
+**Werkzeuge:** keine neuen. Geändert: `import_status` (Beschreibung nennt den neuen Ort für „Erneut verarbeiten“) und
+`anbindungen_status` (zusätzlich `link_abrufe` auf den neuen Reiter) → Claude erhält `notifications/tools/list_changed`.
+Keine To-dos für Ludwig.
+
 ## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen
 
 Anlass: Unter Aufträge → „Meldung offen“ ließen sich nur Amazon-Meldungen gesammelt schließen (Versandbestätigung

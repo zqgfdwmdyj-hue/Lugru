@@ -39,7 +39,7 @@ test.describe("B27 – nächtliche Automatik", () => {
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
     try {
       await anmelden(page, "inhaber");
-      await page.goto("/anbindungen?p=arbitrageone_web#arbitrageone_web");
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       await Promise.all([page.waitForURL(/ao=/, { timeout: 240_000 }), page.getByTestId("ao-jetzt").click()]);
       await expect(page.getByTestId("ao-meldung")).toContainText("nicht alle Exporte");
 
@@ -88,7 +88,7 @@ test.describe("B27 – nächtliche Automatik", () => {
       );
       const vorher = JSON.parse(await mcp.call("import_status", { import_id: alt.id }));
       expect(vorher).toMatchObject({ status: "fehler", erneut_verarbeitbar: true });
-      await page.goto("/anbindungen?p=arbitrageone_web#arbitrageone_web");
+      await page.goto("/einstellungen/hintergrund#importe-arbitrageone");
       const altZeile = page.getByTestId("ao-import").filter({ hasText: altName });
       await Promise.all([page.waitForURL(/erneut=/), altZeile.getByTestId("ao-import-erneut").click()]);
       await expect(page.getByTestId("ao-erneut-meldung")).toContainText("Erneut verarbeitet: Lagerbestand");
@@ -119,9 +119,9 @@ test.describe("B27 – nächtliche Automatik", () => {
     expect(call.ueber_2_tage_alt).toBeUndefined();
     const probleme = JSON.parse(await mcp.call("anbindungen_status", { nur_probleme: true }));
     expect(probleme.abrufe.map((a: { abruf: string }) => a.abruf)).not.toContain("Call-Archiv (Discord)");
-    // Anbindungen-Seite: abgelöst statt Zeitplan
+    // Hintergrund-Abrufe: abgelöst statt Zeitplan
     await anmelden(page, "inhaber");
-    await page.goto("/anbindungen");
+    await page.goto("/einstellungen/hintergrund");
     await expect(page.getByTestId("abruf-zeile").filter({ hasText: "Call-Archiv (Discord)" }).getByTestId("abruf-abgeloest")).toBeVisible();
   });
 });

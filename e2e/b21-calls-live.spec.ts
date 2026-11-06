@@ -76,9 +76,9 @@ test.describe("B21 – Call-Transkripte live aus Discord", () => {
       expect(aufgabe.title).toBe("Call-Transkript aus Discord nicht verarbeitet");
       expect(aufgabe.notes).toContain(`https://discord.com/channels/500000000000000001/${kanal}/${gross.id}`);
 
-      // Anbindungen: Auslöser live, zuletzt empfangen, letzter/nächster Lauf
+      // Einstellungen → Hintergrund & Importe: Auslöser live, zuletzt empfangen, letzter/nächster Lauf
       await anmelden(page, "inhaber");
-      await page.goto("/anbindungen");
+      await page.goto("/einstellungen/hintergrund");
       await expect(page.getByTestId("discord-live-status")).toContainText("Auslöser: live (Discord) – verbunden seit");
       await expect(page.getByTestId("discord-zuletzt-empfangen")).not.toHaveText("noch nichts");
       const zeile = page.getByTestId("abrufe-discord").getByTestId("abruf-zeile").filter({ hasText: "Call-Archiv (Discord live)" });

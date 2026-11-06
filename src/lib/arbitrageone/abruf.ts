@@ -323,7 +323,7 @@ export async function aoLaeufe(tenantId: string, limit = 10) {
   return db.select().from(L).where(eq(L.tenantId, tenantId)).orderBy(desc(L.createdAt)).limit(limit);
 }
 
-/** Letzte ArbitrageOne-Dateien (Anbindungen → Importe). */
+/** Letzte ArbitrageOne-Dateien (Einstellungen → Hintergrund & Importe). */
 export async function aoImporte(tenantId: string, limit = 20) {
   return db
     .select({ id: D.id, art: D.art, quelle: D.quelleExport, dateiname: D.dateiname, status: D.status, am: D.createdAt, fertigAm: D.fertigAm, fehler: D.fehlerText, ergebnis: D.ergebnis, bereits: sql<boolean>`${D.bereitsImportId} is not null`, datei: sql<boolean>`${D.ablage} is not null`, nachverarbeitetAm: D.nachverarbeitetAm })

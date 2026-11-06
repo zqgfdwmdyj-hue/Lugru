@@ -120,7 +120,7 @@ test.describe("Claude & KI-Assistent – BQool und Amazon je Land", () => {
   test("Amazon je Land: Berichte anfordern + abholen → amazon_buybox, amazon_listungen, amazon_lageralter; amazon_angebote live", async ({ page, browser, baseURL }) => {
     const { anmelden } = await import("./helfer");
     await anmelden(page, "inhaber");
-    await page.goto("/anbindungen");
+    await page.goto("/einstellungen/hintergrund");
     const box = page.locator('[data-testid="amazon-berichte"]');
     await box.locator('select[name="bericht"]').selectOption("alle");
     await Promise.all([page.waitForURL(/amz=angefordert/), box.getByRole("button", { name: "Anfordern", exact: true }).click()]);

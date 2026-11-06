@@ -27,7 +27,7 @@ export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; lin
   bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
   bqool_datei: { text: "BQool-Repricing-Datei (Ist-Stand je Land)", bereich: "buchhaltung", link: "/repricer/bqool" },
   ek_liste: { text: "EK-Liste (ArbitrageOne: sellerboard-Export bzw. Einkäufe)", bereich: "wawi", link: "/einkauf/ek-import" },
-  ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag)", bereich: "wawi", link: "/anbindungen#importe-arbitrageone" },
+  ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag)", bereich: "wawi", link: "/einstellungen/hintergrund#importe-arbitrageone" },
   ao_einkaeufe: { text: "ArbitrageOne – Bestellungen", bereich: "wawi", link: "/einkauf?ansicht=arbitrageone" },
   amazon_business: { text: "Amazon-Business-Bericht", bereich: "amazon", link: "/amazon-business" },
   call_archiv: { text: "Call-Archiv (JSON-Export)", bereich: "amazon", link: "/calls" },

@@ -81,8 +81,9 @@ test.describe.serial("B29 – sellerboard-Aufrufbudget", () => {
     expect(sb.filter((a) => a.fehler)).toEqual([]);
 
     // Seite: Status an der Abrufzeile statt roter Fehler
-    await page.goto("/anbindungen");
+    await page.goto("/einstellungen/hintergrund");
     await expect(page.getByTestId("abruf-zeile").filter({ hasText: "sellerboard: FBA-Bestand" }).getByTestId("abruf-status")).toContainText("übersprungen (Tagesbudget)");
+    await page.goto("/anbindungen#sellerboard");
     await expect(page.getByTestId("sb-aufrufe")).toContainText(`Automatik ${automatik}`);
   });
 

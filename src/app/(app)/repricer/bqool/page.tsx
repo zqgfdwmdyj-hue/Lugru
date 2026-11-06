@@ -78,7 +78,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
             {(aktiv.laender as string[]).map((l) => (
               <span key={l}> · <a href={`/repricer/bqool/datei?export=${aktiv.id}&land=${l}`} data-testid={`bq-datei-${l}`}>{l} ({aktiv.anzahl[l] ?? 0})</a></span>
             ))}
-            {aktiv.uebertragung && <span data-testid="bq-uebertragung"> · BQool: {{ laeuft: "Übertragung läuft", fertig: "hochgeladen ✓", teilweise: "teilweise hochgeladen (siehe Protokoll)", fehler: "Übertragung abgebrochen", pruefen: "hochgeladen – Bestätigung bitte in BQool prüfen (Anbindungen → Importe/Exporte)" }[aktiv.uebertragung]}</span>}
+            {aktiv.uebertragung && <span data-testid="bq-uebertragung"> · BQool: {{ laeuft: "Übertragung läuft", fertig: "hochgeladen ✓", teilweise: "teilweise hochgeladen (siehe Protokoll)", fehler: "Übertragung abgebrochen", pruefen: "hochgeladen – Bestätigung bitte in BQool prüfen (Einstellungen → Hintergrund & Importe)" }[aktiv.uebertragung]}</span>}
           </div>
         )}
         {aktiv && kannSchreiben && (

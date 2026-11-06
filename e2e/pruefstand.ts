@@ -312,6 +312,15 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle", erwartet: "Privatbereich gesperrt; beim Inhaber-Login auf „kein Zugang“ bereinigt + Dialog + Aufgabe; Knopf „Als VA-Rolle übernehmen“", tests: ["b25.spec.ts › B25.9"] },
     ],
   },
+  "/einstellungen/hintergrund": {
+    abläufe: [
+      { ablauf: "Eigener Reiter „Hintergrund & Importe“ neben Anbindungen und KI-Assistent; Anbindungen nur noch mit Hinweis", erwartet: "Reiter aktiv, Abschnitt Hintergrund-Abrufe mit Tabelle; unter Anbindungen keine Abruf-Tabelle mehr, Link auf den neuen Reiter", tests: ["navigation.spec.ts › Favoriten (max. 8"] },
+      { ablauf: "ArbitrageOne „Jetzt abholen“, zweiter Abruf, fehlender Export, Zwei-Faktor (Importe – ArbitrageOne)", erwartet: "Meldung und Lauf-Zeilen im neuen Reiter; Rücksprung nach dem Knopf auf /einstellungen/hintergrund", tests: ["arbitrageone.spec.ts › Verbindung testen"] },
+      { ablauf: "Amazon-Berichte sofort anfordern / Konto-Berichte / fertige abholen", erwartet: "Meldung „6 Berichte angefordert …“ im neuen Reiter, Berichte in der Tabelle", tests: ["amazon-berichte.spec.ts › Kontozustand, gestrandet"] },
+      { ablauf: "Discord live und Abrufzeile „Call-Archiv (Discord live)“", erwartet: "Auslöser live, zuletzt empfangen, sofort bei Eingang", tests: ["b21-calls-live.spec.ts › Upload → Archiv"] },
+      { ablauf: "BQool-Upload „hat geklappt“", erwartet: "Zeile „hochgeladen (von Hand bestätigt)“, Rücksprung in den Reiter", tests: ["bqool-upload-erkennung.spec.ts › kurzer Hinweis"] },
+    ],
+  },
   "/einstellungen/claude": {
     abläufe: [
       { ablauf: "Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten", erwartet: "nicht angebotene Werkzeuge abgewiesen und protokolliert; Änderungen nur als Vorschlag", tests: ["rechte.spec.ts › Claude-Konnektor"] },
@@ -319,7 +328,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag)", erwartet: "Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt", tests: ["keepa.spec.ts › keepa_produkt"] },
       { ablauf: "Keepa: Länder vergleichen", erwartet: "DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“", tests: ["keepa.spec.ts › keepa_vergleich"] },
       { ablauf: "Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon)", erwartet: "Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen", tests: ["keepa.spec.ts › Rechte"] },
-      { ablauf: "Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live", erwartet: "Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land", tests: ["geschaeft.spec.ts › Amazon je Land"] },
+      { ablauf: "Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live", erwartet: "Berichte unter Einstellungen → Hintergrund & Importe anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land", tests: ["geschaeft.spec.ts › Amazon je Land"] },
       { ablauf: "Neue Werkzeuge ohne Neustart (notifications/tools/list_changed)", erwartet: "Ereignis-Kanal meldet beim Verbinden „tools/list_changed“", tests: ["retouren-station.spec.ts › Paket mit 4 Artikeln"] },
       { ablauf: "Rechte der neuen Werkzeuge im Fragefeld", erwartet: "Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen", tests: ["geschaeft.spec.ts › Rechte im Fragefeld"] },
     ],

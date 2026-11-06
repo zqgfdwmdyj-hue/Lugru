@@ -36,8 +36,8 @@ export async function anSellerboardUebertragen(tenantId: string, ekImportId: str
  */
 export async function anSellerboardDateiUebertragen(tenantId: string, datei: { name: string; bytes: Uint8Array }): Promise<{ ok: boolean; text: string; uebersprungen?: boolean }> {
   const z = await getIntegration(tenantId, "sellerboard_web");
-  // B27.3: nicht eingerichtet ist kein Fehler – „übersprungen“, die Datei liegt unter Anbindungen → Importe.
-  if (!z?.email || !z.password || !z.importUrl) return { ok: false, uebersprungen: true, text: "übersprungen (nicht eingerichtet) – Importdatei liegt unter Anbindungen → Importe" };
+  // B27.3: nicht eingerichtet ist kein Fehler – „übersprungen“, die Datei liegt unter Einstellungen → Hintergrund & Importe.
+  if (!z?.email || !z.password || !z.importUrl) return { ok: false, uebersprungen: true, text: "übersprungen (nicht eingerichtet) – Importdatei liegt unter Einstellungen → Hintergrund & Importe" };
   const typ = /\.xlsx$/i.test(datei.name) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.csv$/i.test(datei.name) ? "text/csv" : "application/vnd.ms-excel";
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport (ArbitrageOne-Datei)", aufgabeKey: "automatik-sellerboard-arbitrageone", link: "/anbindungen?p=arbitrageone_web#arbitrageone_web" }, async (page, log) => {
     await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
@@ -94,10 +94,10 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
     .set({ uebertragung: status, protokoll: [...(e?.protokoll ?? []), ...r.protokoll.map((p) => ({ zeit: p.zeit, text: p.text })), ...jeLand, { zeit: new Date().toISOString(), text: r.ok ? `Ergebnis: ${bqoolErgebnisText(ergebnis)}` : `Abgebrochen: ${r.fehler}` }] })
     .where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
   if (r.ok && fehlerLaender.length) {
-    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${fehlerLaender.map((x) => x.land).join(", ")} nicht hochgeladen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie übrigen Länder sind hochgeladen. Für die fehlenden Länder die Upload-Seite unter Anbindungen → BQool prüfen und erneut übertragen oder die Datei selbst hochladen. Hat es doch geklappt: unter Anbindungen → Importe/Exporte „hat geklappt“ drücken.`, priority: "critical", category: "system", link: `/repricer/bqool?export=${exportId}` });
+    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${fehlerLaender.map((x) => x.land).join(", ")} nicht hochgeladen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie übrigen Länder sind hochgeladen. Für die fehlenden Länder die Upload-Seite unter Anbindungen → BQool prüfen und erneut übertragen oder die Datei selbst hochladen. Hat es doch geklappt: unter Einstellungen → Hintergrund & Importe → BQool-Uploads „hat geklappt“ drücken.`, priority: "critical", category: "system", link: `/repricer/bqool?export=${exportId}` });
   } else if (r.ok && unklarLaender.length) {
     // Kein Fehler, nur keine Bestätigung erkannt → normale Aufgabe zum kurzen Nachsehen.
-    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${unklarLaender.map((x) => x.land).join(", ")} bitte kurz in BQool prüfen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie Dateien wurden hochgeladen, eine Bestätigung von BQool war aber nicht zu erkennen. In BQool nachsehen; hat es geklappt, unter Anbindungen → Importe/Exporte „hat geklappt“ drücken.`, priority: "normal", category: "system", link: "/anbindungen#importe-exporte" });
+    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${unklarLaender.map((x) => x.land).join(", ")} bitte kurz in BQool prüfen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie Dateien wurden hochgeladen, eine Bestätigung von BQool war aber nicht zu erkennen. In BQool nachsehen; hat es geklappt, unter Einstellungen → Hintergrund & Importe → BQool-Uploads „hat geklappt“ drücken.`, priority: "normal", category: "system", link: "/einstellungen/hintergrund#importe-exporte" });
   }
   if (!r.ok) return { ok: false, text: `Abgebrochen: ${r.fehler}`, ergebnis };
   const text = fehlerLaender.length

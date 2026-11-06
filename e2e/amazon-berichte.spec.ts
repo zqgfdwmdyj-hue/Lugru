@@ -16,7 +16,7 @@ test.describe("Amazon-Berichte 1–4", () => {
     const TYPEN = ["GET_V2_SELLER_PERFORMANCE_REPORT", "GET_VAT_TRANSACTION_DATA", "GET_STRANDED_INVENTORY_UI_DATA", "GET_MERCHANTS_LISTINGS_FYP_REPORT", "GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA", "GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA"];
 
     await anmelden(page, "inhaber");
-    await page.goto("/anbindungen");
+    await page.goto("/einstellungen/hintergrund");
     const box = page.locator('[data-testid="amazon-berichte"]');
     await Promise.all([page.waitForURL(/amz=konto/), box.locator('[data-testid="konto-berichte-anfordern"]').click()]);
     await expect(page.locator('[data-testid="amazon-berichte-msg"]')).toContainText("6 Berichte angefordert (Kontozustand, gestrandet/gesperrt, Langzeitlager, Inbound-Mängel, Umsatzsteuer)");

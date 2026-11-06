@@ -368,7 +368,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "ArbitrageOne hat keine öffentliche Schnittstelle und keine Export-Links mit Token (geprüft 01.11.) – deshalb meldet sich die Automatik an und drückt auf der Export-Seite den Download-Knopf. Exportvorlagen werden nur gelesen, nie verändert.",
       "Am besten ein eigenes ArbitrageOne-Konto nur fürs System ohne Zwei-Faktor-Anmeldung – mit Zwei-Faktor bricht die Automatik ab und legt eine Aufgabe an.",
       "„Verbindung testen“ meldet sich an und sucht auf der Export-Seite jede Karte (lädt nichts herunter).",
-      "Gleiche Datei zweimal wird übersprungen (Prüfsumme). Ergebnis je Abruf unter Anbindungen → Importe – ArbitrageOne; Fehler → Aufgabe.",
+      "Gleiche Datei zweimal wird übersprungen (Prüfsumme). Ergebnis je Abruf unter Einstellungen → Hintergrund & Importe – ArbitrageOne; Fehler → Aufgabe.",
       "EK ohne Warnung wird gleich übernommen; EK-Sprünge über 20 % und Platzhalter bleiben als Vorschau zum Prüfen (Aufgabe).",
       "Der Browser wird beim Update automatisch auf dem Server mitgebaut (abschalten nur mit MIT_BROWSER=0 in der .env).",
     ],

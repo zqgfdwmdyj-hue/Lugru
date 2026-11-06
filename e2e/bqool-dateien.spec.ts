@@ -85,8 +85,8 @@ test.describe("BQool-Dateien", () => {
         await expect(page.getByTestId("bq-uebertragung")).toContainText("teilweise");
         const [aufgabe] = await sql<{ title: string }>("select title from tasks where tenant_id = $1 and system_key like 'automatik-bqool-%' and status = 'open' order by created_at desc limit 1", [T]);
         expect(aufgabe.title).toContain("FR nicht hochgeladen");
-        // Protokoll je Upload unter Anbindungen → Importe/Exporte
-        await page.goto("/anbindungen");
+        // Protokoll je Upload unter Einstellungen → Hintergrund & Importe → Importe/Exporte
+        await page.goto("/einstellungen/hintergrund#importe-exporte");
         const zeilen = page.getByTestId("bq-upload-zeile");
         await expect(zeilen.filter({ hasText: "FR" }).first()).toContainText("fehlgeschlagen");
         await expect(zeilen.filter({ hasText: "DE" }).first()).toContainText("hochgeladen");
