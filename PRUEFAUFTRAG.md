@@ -915,6 +915,26 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
    - Für den Rest bekommst du Aufgaben.
 5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
 
+## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen
+
+Anlass: Unter Aufträge → „Meldung offen“ ließen sich nur Amazon-Meldungen gesammelt schließen (Versandbestätigung
+hochgeladen). Temu, Kleinanzeigen, WhatsApp und von Hand angelegte Aufträge blieben offen und mussten einzeln
+erledigt werden.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Sammel-Schließen | ❌ | ✅ Häkchen je Nicht-Amazon-Auftrag (vorausgewählt), „Ausgewählte als erledigt markieren“ mit Rückfrage. Es wird nichts an den Kanal gemeldet, nur hier geschlossen | `meldungenErledigtAction` (`src/app/(app)/auftraege/actions.ts`), `meldungenSchliessen` (`src/lib/orders/bestaetigung.ts`) |
+| Einzeln am Auftrag | ❌ nur „Erneut melden“ | ✅ „Im Kanal erledigt – schließen“ (nicht bei Amazon) | `src/app/(app)/auftraege/[id]/page.tsx` |
+| Nachvollziehbar | – | ✅ „Meldung von Hand als erledigt markiert am …“ statt „An … gemeldet“ (Spalte `tracking_upload_manuell`, Migration 0131) | `src/db/tables/orders.ts` |
+| Amazon | – | bleibt beim Weg über die Versandbestätigungs-Datei, sonst endete die Erinnerung, ohne dass Amazon etwas weiß | – |
+
+Abnahme: ✅ automatisch (`e2e/meldungen-schliessen.spec.ts`): WhatsApp und Kleinanzeigen angehakt und geschlossen,
+Temu und Amazon bleiben offen; Amazon ohne Häkchen und ohne Knopf; Temu einzeln auf der Detailseite geschlossen.
+Regression: `amazon-todos-versand`, `labels`.
+
+Offene Frage: Sollen WhatsApp- und von Hand angelegte Aufträge gar nicht erst unter „Meldung offen“ erscheinen? Dort
+gibt es nie einen Kanal, dem man etwas melden kann.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
