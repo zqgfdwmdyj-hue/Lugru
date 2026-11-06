@@ -1,5 +1,9 @@
 // Versandbestätigung an Amazon als Datei (B15.1) – reine Logik.
 
+/** Kanäle ohne Plattform, der man den Versand melden könnte (Wunsch 06.11.): nie unter „Meldung offen“. */
+export const OHNE_MELDUNG_KANAELE = ["manual", "whatsapp"] as const;
+export const ohneMeldung = (channel: string) => (OHNE_MELDUNG_KANAELE as readonly string[]).includes(channel);
+
 /** Amazon-„carrier-code“ (Seller Central akzeptiert diese Namen; sonst „Other“ + Name). */
 export function carrierCode(carrier: string | null): { code: string; name: string } {
   const c = (carrier ?? "").trim();

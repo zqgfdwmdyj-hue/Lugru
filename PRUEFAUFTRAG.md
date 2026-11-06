@@ -928,12 +928,15 @@ erledigt werden.
 | Nachvollziehbar | – | ✅ „Meldung von Hand als erledigt markiert am …“ statt „An … gemeldet“ (Spalte `tracking_upload_manuell`, Migration 0131) | `src/db/tables/orders.ts` |
 | Amazon | – | bleibt beim Weg über die Versandbestätigungs-Datei, sonst endete die Erinnerung, ohne dass Amazon etwas weiß | – |
 
-Abnahme: ✅ automatisch (`e2e/meldungen-schliessen.spec.ts`): WhatsApp und Kleinanzeigen angehakt und geschlossen,
+Abnahme: ✅ automatisch (`e2e/meldungen-schliessen.spec.ts`): eBay und Kleinanzeigen angehakt und geschlossen,
 Temu und Amazon bleiben offen; Amazon ohne Häkchen und ohne Knopf; Temu einzeln auf der Detailseite geschlossen.
 Regression: `amazon-todos-versand`, `labels`.
 
-Offene Frage: Sollen WhatsApp- und von Hand angelegte Aufträge gar nicht erst unter „Meldung offen“ erscheinen? Dort
-gibt es nie einen Kanal, dem man etwas melden kann.
+WhatsApp und von Hand angelegte Aufträge (Entscheidung 06.11.: ausblenden): Dort gibt es nie einen Kanal, dem man
+etwas melden kann. Sie stehen nicht mehr unter „Meldung offen“, beim Versand entsteht kein Meldefehler mehr
+(`OHNE_MELDUNG_KANAELE` in `src/lib/orders/bestaetigung-logic.ts`). Bestehende offene Meldungen dort schließt die
+Migration 0132 als „von Hand erledigt“ (nichts gelöscht). Geprüft in `e2e/meldungen-schliessen.spec.ts` und
+`tests/meldung-ohne-kanal.test.ts`.
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 

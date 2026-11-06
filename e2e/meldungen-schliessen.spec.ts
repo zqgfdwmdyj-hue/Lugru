@@ -1,5 +1,6 @@
-// Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen (Temu, Kleinanzeigen, WhatsApp, von Hand …) auf einmal schließen
-// statt jede einzeln. Amazon bleibt beim Weg über die Versandbestätigungs-Datei. Alle Daten erfunden.
+// Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen (Temu, eBay, Kleinanzeigen …) auf einmal schließen statt jede
+// einzeln. Amazon bleibt beim Weg über die Versandbestätigungs-Datei. WhatsApp und von Hand angelegte Aufträge stehen
+// dort gar nicht (kein Kanal zum Melden). Alle Daten erfunden.
 import { anmelden, expect, marke, sql, test } from "./helfer";
 
 test.describe("Aufträge – Meldungen anderer Kanäle schließen", () => {
@@ -14,7 +15,9 @@ test.describe("Aufträge – Meldungen anderer Kanäle schließen", () => {
         )
       )[0].id;
     const keine = "Keine Schnittstelle – bitte manuell im Kanal eintragen oder per Datei melden.";
-    const wa = await auftrag("whatsapp", `WA-${m}-1`, keine);
+    const wa = await auftrag("ebay", `EB-${m}-1`, "eBay: Sendungsnummer abgelehnt (Testfehler)");
+    const wh = await auftrag("whatsapp", `WH-${m}-5`, null);
+    const ha = await auftrag("manual", `HA-${m}-6`, keine);
     const ka = await auftrag("kleinanzeigen", `KA-${m}-2`, keine);
     const te = await auftrag("temu", `TE-${m}-3`, "Temu: Sendungsnummer abgelehnt (Testfehler)");
     const am = await auftrag("amazon", `AM-${m}-4`, null);
@@ -23,18 +26,21 @@ test.describe("Aufträge – Meldungen anderer Kanäle schließen", () => {
       await anmelden(page, "inhaber");
       await page.goto("/auftraege?ansicht=fehler");
       await expect(page.getByTestId("meldungen-andere")).toContainText("Meldungen bei anderen Kanälen");
+      // WhatsApp und von Hand: nie unter „Meldung offen“
+      await expect(zeile(`WH-${m}-5`)).toHaveCount(0);
+      await expect(zeile(`HA-${m}-6`)).toHaveCount(0);
       // Häkchen nur bei anderen Kanälen, Amazon ohne
-      await expect(zeile(`WA-${m}-1`).getByTestId("meldung-auswahl")).toBeChecked();
+      await expect(zeile(`EB-${m}-1`).getByTestId("meldung-auswahl")).toBeChecked();
       await expect(zeile(`AM-${m}-4`).getByTestId("meldung-auswahl")).toHaveCount(0);
       await expect(zeile(`TE-${m}-3`).getByTestId("meldung-auswahl")).toBeChecked();
-      // Nur WhatsApp + Kleinanzeigen schließen: alles abwählen (auch fremde Testaufträge), dann die zwei anhaken
+      // Nur eBay + Kleinanzeigen schließen: alles abwählen (auch fremde Testaufträge), dann die zwei anhaken
       for (const box of await page.getByTestId("meldung-auswahl").all()) await box.uncheck();
-      await zeile(`WA-${m}-1`).getByTestId("meldung-auswahl").check();
+      await zeile(`EB-${m}-1`).getByTestId("meldung-auswahl").check();
       await zeile(`KA-${m}-2`).getByTestId("meldung-auswahl").check();
       page.once("dialog", (d) => d.accept());
       await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("meldungen-schliessen").click()]);
       await expect(page.getByTestId("orders-msg")).toContainText("2 Meldungen als erledigt markiert");
-      await expect(zeile(`WA-${m}-1`)).toHaveCount(0);
+      await expect(zeile(`EB-${m}-1`)).toHaveCount(0);
       await expect(zeile(`KA-${m}-2`)).toHaveCount(0);
       await expect(zeile(`TE-${m}-3`)).toHaveCount(1);
       await expect(zeile(`AM-${m}-4`)).toHaveCount(1);
@@ -44,11 +50,11 @@ test.describe("Aufträge – Meldungen anderer Kanäle schließen", () => {
       );
       expect(stand.map((s) => [s.external_id.slice(0, 2), s.gemeldet, s.manuell])).toEqual([
         ["AM", false, false],
+        ["EB", true, true],
         ["KA", true, true],
         ["TE", false, false],
-        ["WA", true, true],
       ]);
-      expect(stand.find((s) => s.external_id.startsWith("WA"))!.fehler).toBeNull();
+      expect(stand.find((s) => s.external_id.startsWith("EB"))!.fehler).toBeNull();
 
       // Einzeln auf der Detailseite: Temu „Im Kanal erledigt – schließen“
       await page.goto(`/auftraege/${te}`);
@@ -62,7 +68,7 @@ test.describe("Aufträge – Meldungen anderer Kanäle schließen", () => {
       await expect(zeile(`TE-${m}-3`)).toHaveCount(0);
       await expect(zeile(`AM-${m}-4`)).toHaveCount(1);
     } finally {
-      await sql("delete from orders where id in ($1, $2, $3, $4)", [wa, ka, te, am]);
+      await sql("delete from orders where id in ($1, $2, $3, $4, $5, $6)", [wa, ka, te, am, wh, ha]);
     }
   });
 });

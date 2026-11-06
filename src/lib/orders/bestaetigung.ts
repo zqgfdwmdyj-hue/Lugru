@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-export { bestaetigungsDatei, carrierCode } from "./bestaetigung-logic";
+export { bestaetigungsDatei, carrierCode, OHNE_MELDUNG_KANAELE, ohneMeldung } from "./bestaetigung-logic";
 
 // B15.1 Versandbestätigung an Amazon: FBM-Aufträge, die intern versendet sind (selbst, Prep Center, Label), deren
 // Versand Amazon aber nicht kennt – ohne Schnittstelle per Datei (Seller Central → Bestellberichte hochladen).

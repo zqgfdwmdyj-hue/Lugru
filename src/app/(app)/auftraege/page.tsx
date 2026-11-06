@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ConfirmButton } from "@/components/confirm-button";
-import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { qcol } from "@/db/qcol";
 import { CHANNELS } from "@/db/schema";
@@ -9,7 +9,7 @@ import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
 import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
 import { bestaetigungHochgeladen, createManualOrder, fetchOrdersNow, markAllLabeledShipped, meldungenErledigtAction } from "./actions";
-import { offeneBestaetigungen } from "@/lib/orders/bestaetigung";
+import { OHNE_MELDUNG_KANAELE, offeneBestaetigungen } from "@/lib/orders/bestaetigung";
 import { BatchForm } from "./batch-form";
 import { openLabels } from "@/lib/shipping/label-pdfs";
 import { searchOrderIds } from "@/lib/orders/search";
@@ -33,7 +33,8 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     case "label": where.push(eq(O.status, "label_created")); break;
     case "versendet": where.push(eq(O.fulfillment, "FBM"), inArray(O.status, ["shipped", "delivered"])); break;
     // Meldung offen: versendet, aber dem Kanal nicht gemeldet – Amazon auch ohne Sendungsnummer (z. B. Prep Center).
-    case "fehler": where.push(eq(O.fulfillment, "FBM"), sql`${O.trackingUploadedAt} is null and ((${O.channel} = 'amazon' and ${O.status} in ('shipped', 'delivered') and coalesce(lower(${O.externalStatus}), '') not in ('shipped', 'delivered', 'canceled', 'cancelled')) or ${O.trackingNumber} is not null or (${O.carrier} = 'Deutsche Post' and ${O.status} = 'shipped'))`); break;
+    // WhatsApp / von Hand: kein Kanal zum Melden → nie hier (Wunsch 06.11.).
+    case "fehler": where.push(eq(O.fulfillment, "FBM"), notInArray(O.channel, [...OHNE_MELDUNG_KANAELE]), sql`${O.trackingUploadedAt} is null and ((${O.channel} = 'amazon' and ${O.status} in ('shipped', 'delivered') and coalesce(lower(${O.externalStatus}), '') not in ('shipped', 'delivered', 'canceled', 'cancelled')) or ${O.trackingNumber} is not null or (${O.carrier} = 'Deutsche Post' and ${O.status} = 'shipped'))`); break;
     case "fba": where.push(eq(O.fulfillment, "FBA")); break;
   }
   const orders = await db
@@ -173,7 +174,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
         <form action={meldungenErledigtAction}>
           <input type="hidden" name="kanal" value={sp.kanal ?? ""} />
           <div className="notice notice-info" data-testid="meldungen-andere" style={{ marginBottom: 12 }}>
-            <strong>{andere.length} Meldung{andere.length === 1 ? "" : "en"} bei anderen Kanälen</strong> ({[...new Set(andere.map(({ o }) => CHANNEL_LABEL[o.channel]))].join(", ")}) – Sendungsnummer im Kanal selbst eingetragen oder dort nichts zu melden (z. B. WhatsApp, von Hand)? Dann hier schließen. Häkchen in der Liste abwählen, was offen bleiben soll.
+            <strong>{andere.length} Meldung{andere.length === 1 ? "" : "en"} bei anderen Kanälen</strong> ({[...new Set(andere.map(({ o }) => CHANNEL_LABEL[o.channel]))].join(", ")}) – Sendungsnummer im Kanal selbst eingetragen? Dann hier schließen. (WhatsApp und von Hand angelegte Aufträge stehen hier nie – dort gibt es nichts zu melden.) Häkchen in der Liste abwählen, was offen bleiben soll.
             {bestaetigung.length > 0 && <> Amazon-Aufträge bleiben offen, bis die Versandbestätigung hochgeladen ist (oben).</>}
             <div style={{ marginTop: 6 }}>
               <ConfirmButton className="btn btn-small" testid="meldungen-schliessen" confirm="Ausgewählte Meldungen als erledigt markieren? Gemeldet wird dabei nichts – nur hier geschlossen.">

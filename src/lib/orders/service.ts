@@ -8,6 +8,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { syncSoon, wawiSku } from "@/lib/stock/channel-sync";
 import { adjustStock } from "@/lib/stock/sets";
+import { ohneMeldung } from "./bestaetigung-logic";
 import { untrackedPost } from "./tracking";
 
 export const PACKAGING_GRAMS = 150;
@@ -174,6 +175,8 @@ export async function uploadTracking(tenantId: string, orderId: string) {
   const data = await loadOrder(tenantId, orderId);
   // Ohne Sendungsnummer nur die Warensendung bei Amazon melden (Deutsche Post, keine Sendungsverfolgung).
   if (!data || (!data.order.trackingNumber && !untrackedPost(data.order))) return;
+  // WhatsApp / von Hand: keine Plattform, nichts zu melden – kein Fehler, nicht unter „Meldung offen“.
+  if (ohneMeldung(data.order.channel)) return;
   const fn = uploaders.get(data.order.channel);
   if (!fn) {
     await db.update(schema.orders).set({ trackingUploadError: "Keine Schnittstelle – bitte manuell im Kanal eintragen oder per Datei melden." }).where(eq(schema.orders.id, orderId));
