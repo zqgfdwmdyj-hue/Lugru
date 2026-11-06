@@ -948,6 +948,7 @@ fehlen (ASIN, SKU und EK)“.
 | Abruf übergibt `ao_einkaeufe` | ✅ | `AO_EXPORTE` |
 | Manueller Upload | ✅ Kopfzeile mit ASIN + Menge + Datum/Bestellnummer und Dateiname „PurchaseOrders“/„Einkäufe“/„Bestellungen“ → „ArbitrageOne – Bestellungen“. Über Claude: `import_link` mit Art `ao_einkaeufe` | `dateiArt`, `IMPORT_ARTEN` |
 | Fehlertext | ✅ „ArbitrageOne – Bestellungen: Spalten fehlen – gefunden: …; fehlt: ….“ (auch wenn die Kopfzeile hinter Titelzeilen steht) | `spaltenFehlerText` |
+| Lugru „gekauft“ aus ArbitrageOne-Einkäufen | ✅ wie bisher über die Einkaufszeile mit echtem Kaufdatum; die neue Bestellung zählt nicht ein zweites Mal (ihr Anlagedatum wäre nur der Importzeitpunkt) | `lugruKaufAbgleich` (`src/lib/lugru-deals/discord.ts`) |
 | Nachverarbeiten | ✅ „Erneut verarbeiten“ stellt `ek_liste` auf `ao_einkaeufe` um (die alte Art steht im Ergebnis). Automatisch stündlich, im Nachtlauf und jetzt auch bei „Jetzt abholen“: Fehlimporte der letzten 14 Tage, älteste zuerst, auch die schon einmal nachverarbeiteten Einkäufe. Scheitert eine Datei wieder, wird sie erst nach einer Parser-Änderung erneut versucht (kein Fehler jede Stunde) | `importErneutVerarbeiten`, `aoFehlimporteNachverarbeiten`, `aoJetztAbholenAction` |
 
 **Verhaltensänderungen (bitte bestätigen oder ändern):**
@@ -980,8 +981,9 @@ Dazu automatisch geprüft:
 - Liquidität ohne die Bestellung.
 - Fehlende Spalten → „gefunden: …; fehlt: …“.
 
-Unit-Tests: `tests/b30-ao-bestellungen.test.ts` (16 Tests). Angepasst: `e2e/arbitrageone.spec.ts` und
-`e2e/b27-automatik.spec.ts` (Einkäufe als Bestellung statt Charge).
+Unit-Tests: `tests/b30-ao-bestellungen.test.ts` (16 Tests), dazu alle übrigen Unit-Tests grün. Angepasst:
+`e2e/arbitrageone.spec.ts` und `e2e/b27-automatik.spec.ts` (Einkäufe als Bestellung statt Charge). Regression grün:
+ArbitrageOne, B27, EK-Import, Uploads, Datei-Import, Einkauf (B20), Werkzeuge, Lugru (B22), Kaufen mit einem Tap.
 
 **Werkzeuge:** `import_link` kennt die neue Art `ao_einkaeufe`. Das Schema ändert sich, deshalb kommt
 `notifications/tools/list_changed`. Sonst keine neuen Werkzeuge; `import_status` und `importe` zeigen das neue

@@ -105,7 +105,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
-| Einstellungen | Anbindungen `/anbindungen` | ○ 0/4 Abläufe | – | 2 |
+| Einstellungen | Anbindungen `/anbindungen` | ○ 0/6 Abläufe | – | 3 |
 | Einstellungen | Claude & KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
 | Einstellungen | Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -476,8 +476,11 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ | Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung | ○ im letzten Lauf nicht gelaufen | `postfach.spec.ts` |
 | B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ | z. B. „Amazon-Bestellungen: alle 15 Min.“; Zeitplan aus dem letzten Lauf | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 | B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau | Zähler „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“ = Aufrufe beim Nachbau, höchstens 5; Verkauf lief (Vorrang), übrige Abrufe „übersprungen (Tagesbudget)“, kein Fehler | ○ im letzten Lauf nicht gelaufen | `b29-sellerboard-budget.spec.ts` |
+| B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag | „fertig“ mit „2 Bestellungen, 3 Positionen, 2 ohne Zuordnung“, Art ao_einkaeufe; Bestellungen mit Lieferant, Datum, Menge, EK, Status, „1 ohne Zuordnung“; Upload erkannt als „ArbitrageOne – Bestellungen“, „schon bekannt: 3 Positionen“; EK-Vorschlag mit Warnung gegen sellerboard-COG, keine Charge; Liquidität ohne die Bestellung | ○ im letzten Lauf nicht gelaufen | `b30-ao-bestellungen.spec.ts` |
+| B30.3 Fehlimporte beim nächsten Abruf nachverarbeitet; fehlende Spalten | Fehlimport von vor 4 Tagen „fertig“ als ao_einkaeufe; Einkäufe · ok · 1 Bestellung, 1 Position; Fehler nennt „gefunden: …; fehlt: …“ | ○ im letzten Lauf nicht gelaufen | `b30-ao-bestellungen.spec.ts` |
 | B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung | genau ein Eintrag „pausiert bis 01:00 Uhr“ (auch unter nur_probleme), keine Fehlerzeilen, während der Pause kein Aufruf; danach nachgeholt Verkauf → Gewinn je Produkt → Bestand → Tagesabrufe, Eintrag weg | ○ im letzten Lauf nicht gelaufen | `b29-sellerboard-budget.spec.ts` |
 
+- – Offen: B30 mit der echten PurchaseOrders-Datei: Import vom 06.11. nach dem Update „fertig“, Spaltenzuordnung (EK netto/brutto, Menge, Status) prüfen; Lauf am 07.11. 05:30 Einkäufe · ok – nur live (To-dos 90/91)
 - – Offen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
 - – Offen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
 
@@ -560,7 +563,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (124 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 124 nicht gelaufen.
+**Automatisch** (126 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 126 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -666,6 +669,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau – im letzten Lauf nicht gelaufen
+- ○ Anbindungen: B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag – im letzten Lauf nicht gelaufen
+- ○ Anbindungen: B30.3 Fehlimporte beim nächsten Abruf nachverarbeitet; fehlende Spalten – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: B29 Limit-Fehler „used up today's MCP call limit“, danach Rücksetzung – im letzten Lauf nicht gelaufen
 - ○ Claude & KI-Assistent: Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten – im letzten Lauf nicht gelaufen
 - ○ Claude & KI-Assistent: Jedes lesende Werkzeug einzeln – im letzten Lauf nicht gelaufen
@@ -734,6 +739,7 @@ Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · F
 - Calls (Consultant & Gruppe): Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)
 - Übersicht: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - Übersicht: Live nie prüfen (echte private Daten)
+- Anbindungen: B30 mit der echten PurchaseOrders-Datei: Import vom 06.11. nach dem Update „fertig“, Spaltenzuordnung (EK netto/brutto, Menge, Status) prüfen; Lauf am 07.11. 05:30 Einkäufe · ok – nur live (To-dos 90/91)
 - Anbindungen: B29 Abnahme 1 und 4 mit echtem sellerboard: am 06.11. nach 01:00 laufen alle Abrufe wieder, um 12:00 höchstens 45 Aufrufe laut Zähler; ein ganzer Tag mit Morgenbericht und drei Nachfragen endet unter 125 – nur live (Rechnung nach Plan im Unit-Test: 45 bis 12:00, 72 am Tag)
 - Anbindungen: B29 schlanke Feldauswahl (bis 200 Zeilen je Seite) gegen echtes sellerboard – lehnt sellerboard sie ab, fällt der Abruf von selbst auf volle Zeilen zurück
 - Claude & KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
