@@ -16,6 +16,8 @@ export const testMails = pgTable(
     /** Inhalt (verschlüsselt wie andere Mail-Inhalte). */
     text: encryptedText("text"),
     attachments: text("attachments"),
+    /** Antwort auf (Message-ID) – zeigt, dass die Antwort im selben Verlauf landet. */
+    inReplyTo: text("in_reply_to"),
     createdAt: createdAt(),
   },
   (t) => [index("test_mails_idx").on(t.tenantId, t.createdAt)],

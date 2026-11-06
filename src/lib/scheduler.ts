@@ -107,6 +107,13 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Nachfassen bei Einkaufsanfragen", () => autoFollowUps(t));
         await step(t, "Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
         await step(t, "Amazon-Fall-Zentrale", async () => (await import("@/lib/amazon-faelle/service")).faelleAbgleich(t, { sinceDays: 30 }));
+        // B32.5: ausgehende Mails ohne Antwort → Aufgabe „Nachfassen“; B32: „Später“ erinnern; alte Abruf-Merker weg.
+        await step(t, "Nachfassen ausgehender Mails", async () => (await import("@/lib/inbox/ausgang")).nachfassenFaellig(t));
+        await step(t, "Persönliche Mails: Erinnerung", async () => {
+          const p = await import("@/lib/inbox/persoenlich");
+          await p.gesehenAufraeumen(t);
+          return p.spaeterErinnern(t);
+        });
       }
       if (await has("amazon_sp")) {
         if (force || due(`${t}:amz-orders`, 4)) await step(t, "Amazon-Bestellungen", () => syncFbmOrders(t));
@@ -349,6 +356,19 @@ async function vaTakt() {
     }
   }
 }
+// B32: neue Mails im Posteingang jede Minute (persönliche Mails mit Entwurf in ≤ 2 Minuten), nie zwei Läufe gleichzeitig.
+let mailSchnellLaeuft = false;
+async function mailSchnellTakt() {
+  if (mailSchnellLaeuft) return;
+  mailSchnellLaeuft = true;
+  try {
+    const { syncSchnell } = await import("@/lib/inbox/service");
+    for (const t of await db.select({ id: schema.tenants.id }).from(schema.tenants)) await syncSchnell(t.id).catch((e) => console.error("[Mail schnell]", e instanceof Error ? e.message : e));
+  } finally {
+    mailSchnellLaeuft = false;
+  }
+}
+
 // Einzugsscanner: neue PDFs im Scanner-Ordner jede Minute (nur mit BELEG_EINGANG_DIR), nie zwei Läufe gleichzeitig.
 let scanLaeuft = false;
 async function scanOrdnerTakt() {
@@ -372,5 +392,6 @@ export function startScheduler() {
   // VA über Discord: alle 30 Sekunden (Antwort auf Datenfragen in ≤ 1 Minute) – nur mit eingerichtetem VA-Kanal.
   setInterval(() => void vaTakt().catch((e) => console.error("[VA]", e instanceof Error ? e.message : e)), 30_000);
   setInterval(() => void scanOrdnerTakt(), 60_000);
+  setInterval(() => void mailSchnellTakt(), 60_000);
   console.log("[Hintergrund] Abrufe aktiv (alle 5 Minuten).");
 }

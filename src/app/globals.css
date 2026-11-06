@@ -1220,3 +1220,15 @@ h2 { font-size: 16px; margin: 0; }
 .sprungleiste .sprung { font-size: 13px; padding: 4px 10px; border-radius: 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2); text-decoration: none; }
 .sprungleiste .sprung:hover { color: var(--ink); border-color: var(--ink-2); }
 .sprungziel { scroll-margin-top: 64px; }
+
+/* B32 Persönliche Mails: Antwort am Handy – feste Knopfleiste unten, Verlauf abgesetzt. */
+.nachricht-leiste { display: flex; gap: 8px; flex-wrap: wrap; }
+.nachricht-leiste .btn { flex: 1 1 0; min-width: 90px; min-height: 44px; }
+.verlauf-aus { border-left: 3px solid var(--area-privat, #8b5cf6); }
+@media (max-width: 900px) {
+  /* Vollbild am Handy: Knopfleiste fest unten (statt der Tab-Leiste), damit „Senden“ immer mit einem Tipp erreichbar ist. */
+  body:has(.nachricht-vollbild .nachricht-leiste) .handy-tabs { display: none; }
+  .nachricht-vollbild { padding-bottom: 76px; }
+  .nachricht-vollbild .nachricht-leiste { position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; margin: 0; background: var(--surface); border-top: 1px solid var(--border-strong); padding: 8px 12px max(8px, env(safe-area-inset-bottom)); flex-wrap: nowrap; }
+  .nachricht-vollbild .nachricht-entwurf textarea { min-height: 40vh; }
+}

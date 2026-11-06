@@ -62,6 +62,8 @@ export default async function RegelnPage({ searchParams }: { searchParams: Promi
                 <label className="small"><input type="checkbox" name="terminMails" defaultChecked={cfg.terminMails} /> Termin-Mails (Arzt/Doctolib, Handwerker, Amt, Schule) in den Privatkalender statt in den Posteingang</label>
                 <div className="field"><label className="label" htmlFor="vorabend">Vorabend-Erinnerung ab</label><input className="input" id="vorabend" name="vorabendUm" type="time" defaultValue={cfg.vorabendUm} /></div>
                 <div className="field"><label className="label" htmlFor="abfahrt">Abfahrt … Minuten vor dem Termin</label><input className="input" id="abfahrt" name="abfahrtVorher" type="number" min={0} max={240} defaultValue={cfg.abfahrtVorher} /></div>
+                <label className="small"><input type="checkbox" name="ausgangMitlesen" defaultChecked={cfg.ausgangMitlesen !== false} /> Gesendet-Ordner mitlesen: Antworten aus dem Mailprogramm erkennen („beantwortet extern“), neu angeschriebene als „ausgehend“</label>
+                <div className="field"><label className="label" htmlFor="nachfass">„Nachfassen in … Tagen“ (Standard)</label><input className="input" id="nachfass" name="nachfassTage" type="number" min={1} max={60} defaultValue={cfg.nachfassTage ?? 3} /></div>
                 <div><button className="btn btn-small" type="submit">Speichern</button></div>
               </form>
             </section>

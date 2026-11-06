@@ -26,9 +26,10 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: ".eml-Datei hochladen", erwartet: "Rückmeldung, Dateiauswahl danach leer", tests: ["formulare.spec.ts › Posteingang: .eml hochladen"] },
       { ablauf: "Antwort-Entwurf (über Claude) prüfen und senden", erwartet: "Entwurf an der Mail; ohne Häkchen „Geprüft“ wird nicht gesendet; mit Häkchen landet die Mail in den Test-Mails und der Entwurf ist als gesendet markiert", tests: ["geschaeft.spec.ts › Antwort-Entwurf"] },
       { ablauf: "Posteingang auf null: Regel an Zuständigen, Auto-Archiv, Zahlung abgelehnt (IT), Termin-Mail → Privatkalender, Vorschlag für Claude", erwartet: "Aufgabe für die Zuständige, Newsletter archiviert, Zahlung kritisch mit Aufgabe, Termin nur im Privatkalender (nie im Posteingang)", tests: ["posteingang-null.spec.ts › Regel an Zuständigen"] },
+      { ablauf: "B32.5 Antwort aus dem Mailprogramm (Gesendet-Ordner) auf eine Käuferfrage; neue B2B-Anfrage aus dem Mailprogramm", erwartet: "Mail „beantwortet (extern)“ mit Postfach/Name, Aufgabe erledigt, vorbereiteter Entwurf verworfen, Verlauf zeigt die Antwort; neue Anfrage unter „Ausgehend“ mit „Nachfassen in 3 Tagen“ → fällig = Aufgabe, Antwort des Kunden schließt sie", tests: ["persoenliche-mails.spec.ts › Abnahme 5–6"] },
       { ablauf: "Gerichts-/Behörden-Mail und Anwalts-Mails (B14)", erwartet: "Behörde: Entwurf an den Anwalt (nicht gesendet) + Aufgabe; Anwalt mit Aktenzeichen: in den Fall statt in den Posteingang", tests: ["recht-discord.spec.ts › Teil A"] },
     ],
-    offen: ["Mails abrufen (nur echte Postfächer)", "Entwurf echt senden (nur mit echtem Postfach)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test"],
+    offen: ["Mails abrufen (nur echte Postfächer) – inkl. Gesendet-Ordner und Minuten-Abruf", "Entwurf echt senden (nur mit echtem Postfach)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test", "Outlook: Zuordnung gesendeter Mails nur über Betreff + Empfänger (kein In-Reply-To aus Graph)"],
   },
   "/rechtsfaelle": {
     abläufe: [
@@ -288,6 +289,8 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   },
   "/privat": {
     abläufe: [
+      { ablauf: "B32 Persönliche Mail „muss den Termin morgen absagen, bin krank“ (Abnahme 1–4)", erwartet: "nur im Privatbereich (Privat › Nachrichten), Push „Antwort prüfen“ ohne Discord-Kanal (DM nur, wenn eingestellt), Termin als abgesagt markiert (Rückgängig), KI-Entwurf mit gute Besserung und Unterschrift; „Senden“ = Antwort im selben Verlauf, Karte weg; Newsletter/Amazon unverändert; Büro/Familie sehen nichts; Morgenbericht/Überblick nur Anzahl", tests: ["persoenliche-mails.spec.ts › Abnahme 1–4"] },
+      { ablauf: "B32 Handy: persönliche Mail im Vollbild", erwartet: "Senden · Bearbeiten · Später fest unten, kein Querscrollen; Später speichert den Text und lässt die Nachricht offen", tests: ["persoenliche-mails.spec.ts › Handy: persönliche Mail im Vollbild"] },
       { ablauf: "Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen", erwartet: "Ausnahme bleibt bei Serienänderung erhalten; nur die gewählten Termine ändern/verschwinden", tests: ["privat.spec.ts › Serie anlegen"] },
       { ablauf: "Abendritual als Abfolge „zweimal Streicheln, danach Massage“", erwartet: "die nächsten Abende im Voraus: S, S, M, S, S, M", tests: ["privat.spec.ts › Abendritual als Abfolge"] },
       { ablauf: "Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe", erwartet: "nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor", tests: ["privat.spec.ts › Privates bleibt privat"] },

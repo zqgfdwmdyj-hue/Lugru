@@ -198,6 +198,7 @@ export const NAV: NavSection[] = [
       { href: "/privat", label: "Übersicht" },
       { href: "/privat/kalender", label: "Kalender" },
       { href: "/privat/eintragen", label: "Eintragen" },
+      { href: "/privat/nachrichten", label: "Nachrichten" },
       { href: "/privat/rueckblick", label: "Rückblick" },
       { href: "/privat/einstellungen", label: "Einstellungen" },
     ],

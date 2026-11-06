@@ -33,7 +33,7 @@ export const ueberblick = defineTool({
   name: "ueberblick",
   title: "Tagesüberblick",
   description:
-    "Überblick für heute: was ansteht (Versand, Fristen, Ansprüche, Fälle), offene und bis heute fällige Aufgaben, Paletten-Sendungen heute/überfällig, Umsatz heute/gestern/Monat, für den Inhaber die Zeile „VA heute“ (erledigt, Rückfragen, automatisch beantwortet, Fristen verpasst = rot). Nimm das als Einstieg bei Fragen wie „Was steht heute an?“, „Was ist offen?“, „Wie läuft es?“.",
+    "Überblick für heute: was ansteht (Versand, Fristen, Ansprüche, Fälle), offene und bis heute fällige Aufgaben, Paletten-Sendungen heute/überfällig, Umsatz heute/gestern/Monat, für den Inhaber die Zeile „VA heute“ (erledigt, Rückfragen, automatisch beantwortet, Fristen verpasst = rot) und – nur mit Privat-Zugang – die Anzahl wartender persönlicher Nachrichten (nie Inhalte). Nimm das als Einstieg bei Fragen wie „Was steht heute an?“, „Was ist offen?“, „Wie läuft es?“.",
   area: null,
   write: false,
   quelle: { text: "Seller-System: Aufgaben, Aufträge, Paletten, Posteingang", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Postfächer"] },
@@ -66,6 +66,11 @@ export const ueberblick = defineTool({
     if (s.role === "owner") {
       const va = await import("@/lib/va/service").then((x) => x.vaHeute(t, ctx.today)).catch(() => null);
       if (va) out.va = { text: va.text, erledigt: va.erledigt, rueckfragen: va.rueckfragen, automatisch_beantwortet: va.auto, fristen_verpasst: va.fristenVerpasst, stufe: va.stufe, link: abs(ctx, "/delegation/va") };
+    }
+    // B32: persönliche Mails nur als Anzahl – nur für den Inhaber mit Privat-Zugang, nie Absender oder Inhalt.
+    if (s.role === "owner" && s.privateAccess) {
+      const n = await import("@/lib/inbox/persoenlich").then((x) => x.offenePersoenliche(t, s.userId)).catch(() => 0);
+      if (n) out.persoenliche_nachrichten = { anzahl: n, text: `${n} persönliche Nachricht${n === 1 ? " wartet" : "en warten"}`, link: abs(ctx, "/privat/nachrichten") };
     }
     if (s.role === "owner" || canAccess(s, "geld")) {
       const so = await loadSalesOverview(t).catch(() => null);

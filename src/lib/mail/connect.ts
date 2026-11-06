@@ -138,12 +138,42 @@ export async function imapOrdnerListe(a: Account): Promise<ImapOrdner[]> {
   }
 }
 
+/** Kopfdaten einer Mail vor dem Herunterladen (Vorfilter: bekannt, Newsletter, Marktplatz). */
+export type ImapKopf = { messageId: string | null; from: string; subject: string; markt: boolean; gesendet: boolean; kopf: { listUnsubscribe: string | null; listId: string | null; precedence: string | null; autoSubmitted: string | null } };
+
+/** Einzelne Kopfzeilen aus dem Rohtext (mehrzeilig gefaltet) lesen. */
+export function kopfZeilen(raw: Buffer | string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  const text = (typeof raw === "string" ? raw : raw?.toString("utf8") ?? "").replace(/\r?\n[ \t]+/g, " ");
+  for (const z of text.split(/\r?\n/)) {
+    const i = z.indexOf(":");
+    if (i > 0) out[z.slice(0, i).trim().toLowerCase()] = z.slice(i + 1).trim();
+  }
+  return out;
+}
+
+const istMarkt = (from: string, subject: string) => ABSENDER_FILTER.some((x) => from.toLowerCase().includes(x)) || /deal/i.test(subject);
+
+/** Gesendet-Ordner eines Postfachs (Sonderkennung \\Sent, sonst üblicher Name). Gmail: in „Alle Nachrichten“ enthalten. */
+export function gesendetOrdner(liste: { path: string; name: string; specialUse?: string }[]): string | null {
+  return (liste.find((b) => b.specialUse === "\\Sent") ?? liste.find((b) => /^(sent|gesendet|gesendete (objekte|elemente)|sent (items|messages))$/i.test(b.name)))?.path ?? null;
+}
+
 /**
  * Rohdaten (RFC 822) seit `since`, neueste zuerst, höchstens `max` je Ordner. Ordner: eigene Auswahl, sonst
- * automatisch (Gmail „Alle Nachrichten“, sonst Posteingang + Archiv). Nur Marktplätze/Versanddienste und
- * Deal-Weiterleitungen – im Deal-Postfach (`alleAbsender`) alles.
+ * automatisch (Gmail „Alle Nachrichten“, sonst Posteingang + Archiv). Mit `gesendet` zusätzlich der
+ * Gesendet-Ordner (bei Gmail nur, wenn „Alle Nachrichten“ nicht dabei ist – dort steckt Gesendetes schon drin).
+ * `nurPosteingang`: schneller Abruf nur des Posteingangs (Gmail: weiter „Alle Nachrichten“).
+ *
+ * Ohne `vorfilter` (alt): nur Marktplätze/Versanddienste und Deal-Weiterleitungen – im Deal-Postfach
+ * (`alleAbsender`) alles. Mit `vorfilter` (B32): alle Absender, aber erst nach einem Blick auf die Kopfzeilen –
+ * bekannte Mails und Newsletter werden gar nicht erst heruntergeladen.
  */
-export async function imapFetchRaw(a: Account, since: Date, o: { max?: number; ordner?: string[] | null; alleAbsender?: boolean } = {}): Promise<{ id: string; raw: Buffer; ordner: string }[]> {
+export async function imapFetchRaw(
+  a: Account,
+  since: Date,
+  o: { max?: number; ordner?: string[] | null; alleAbsender?: boolean; gesendet?: boolean; nurPosteingang?: boolean; vorfilter?: (k: ImapKopf[]) => Promise<boolean[]> } = {},
+): Promise<{ id: string; raw: Buffer; ordner: string; gesendet?: boolean }[]> {
   const max = o.max ?? 150;
   const c = imap(a);
   try {
@@ -152,19 +182,41 @@ export async function imapFetchRaw(a: Account, since: Date, o: { max?: number; o
     c.close();
     throw fehler(e, "IMAP", a.imapPort);
   }
-  const out: { id: string; raw: Buffer; ordner: string }[] = [];
+  const out: { id: string; raw: Buffer; ordner: string; gesendet?: boolean }[] = [];
   try {
     const liste = (await c.list()).map((b) => ({ path: b.path, name: b.name, specialUse: b.specialUse || undefined }));
     const vorhanden = new Set(liste.map((b) => b.path));
-    const ordner = (o.ordner?.length ? o.ordner : standardOrdner(liste, a.imapHost)).filter((p) => p.toUpperCase() === "INBOX" || vorhanden.has(p));
-    const filter = o.alleAbsender ? { since } : { since, or: [...ABSENDER_FILTER.map((from) => ({ from })), { subject: "deal" }] };
-    for (const pfad of ordner) {
+    const gmail = /(^|\.)(gmail|googlemail)\.com$/i.test(a.imapHost);
+    const basis = o.nurPosteingang && !gmail ? ["INBOX"] : (o.ordner?.length ? o.ordner : standardOrdner(liste, a.imapHost)).filter((p) => p.toUpperCase() === "INBOX" || vorhanden.has(p));
+    // Gmail: Gesendetes steckt in „Alle Nachrichten“ – nur wenn die nicht abgerufen wird, „[Gmail]/Gesendet“ dazu.
+    const alleNachrichten = liste.find((b) => b.specialUse === "\\All")?.path;
+    const sent = o.gesendet && !o.nurPosteingang && !(gmail && alleNachrichten && basis.includes(alleNachrichten)) ? gesendetOrdner(liste) : null;
+    const ordner = [...basis.map((p) => ({ p, gesendet: false })), ...(sent && !basis.includes(sent) ? [{ p: sent, gesendet: true }] : [])];
+    for (const { p: pfad, gesendet } of ordner) {
       const lock = await c.getMailboxLock(pfad);
       try {
-        const uids = ((await c.search(filter, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
+        let uids: number[];
+        if (o.vorfilter && !o.alleAbsender) {
+          const alle = ((await c.search({ since }, { uid: true })) || []).sort((x, y) => y - x).slice(0, 1000);
+          const koepfe: (ImapKopf & { uid: number })[] = [];
+          if (alle.length) {
+            for await (const m of c.fetch(alle, { uid: true, envelope: true, headers: ["list-unsubscribe", "list-id", "precedence", "auto-submitted"] }, { uid: true })) {
+              const h = kopfZeilen(m.headers);
+              const from = m.envelope?.from?.[0]?.address ?? "";
+              const subject = m.envelope?.subject ?? "";
+              koepfe.push({ uid: m.uid, messageId: m.envelope?.messageId ?? null, from, subject, markt: istMarkt(from, subject), gesendet, kopf: { listUnsubscribe: h["list-unsubscribe"] ?? null, listId: h["list-id"] ?? null, precedence: h["precedence"] ?? null, autoSubmitted: h["auto-submitted"] ?? null } });
+            }
+          }
+          koepfe.sort((x, y) => y.uid - x.uid);
+          const behalten = koepfe.length ? await o.vorfilter(koepfe) : [];
+          uids = koepfe.filter((_, i) => behalten[i]).map((k) => k.uid).slice(0, max);
+        } else {
+          const filter = o.alleAbsender || gesendet ? { since } : { since, or: [...ABSENDER_FILTER.map((from) => ({ from })), { subject: "deal" }] };
+          uids = ((await c.search(filter, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
+        }
         if (uids.length > 0) {
           for await (const m of c.fetch(uids, { uid: true, source: true }, { uid: true })) {
-            if (m.source) out.push({ id: `imap:${pfad}:${m.uid}`, raw: m.source, ordner: pfad });
+            if (m.source) out.push({ id: `imap:${pfad}:${m.uid}`, raw: m.source, ordner: pfad, ...(gesendet ? { gesendet: true } : {}) });
           }
         }
       } finally {
@@ -190,9 +242,8 @@ export async function smtpSend(a: Account, raw: Buffer, envelope: { from: string
   const c = imap(a);
   try {
     await c.connect();
-    const boxes = await c.list();
-    const sent = boxes.find((b) => b.specialUse === "\\Sent") ?? boxes.find((b) => /^(sent|gesendet|gesendete (objekte|elemente)|sent (items|messages))$/i.test(b.name));
-    if (sent) await c.append(sent.path, raw, ["\\Seen"]);
+    const sent = gesendetOrdner((await c.list()).map((b) => ({ path: b.path, name: b.name, specialUse: b.specialUse || undefined })));
+    if (sent) await c.append(sent, raw, ["\\Seen"]);
     await c.logout();
   } catch {
     c.close(); // Ablage unter „Gesendet“ ist nur ein Komfort – der Versand hat geklappt.

@@ -59,6 +59,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
+            <Link href="/posteingang/ausgehend" className="chip" data-testid="link-ausgehend">Ausgehend</Link>
           </div>
           <form action={archiveMails} className="card" style={{ overflow: "auto" }}>
             <table className="table sticky-head">
@@ -75,7 +76,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
                       <td className="small">{m.fromName ?? m.fromAddress}{(m.an || m.ordner) && <div className="muted" data-testid="mail-an-ordner">{m.an ? `an ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? ordnerName(m.ordner) : ""}</div>}</td>
                       <td className="num small">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
                       <td className="small" data-testid="mail-vorschlag">{VORSCHLAG_TEXT[m.vorschlag]}</td>
-                      <td>{m.taskId ? <Link href="/" className="small">✓ To-do</Link> : "–"}</td>
+                      <td>{m.beantwortetAm ? <span className="tag tag-ok" title={m.beantwortetVon ?? ""} data-testid="mail-beantwortet">beantwortet</span> : m.taskId ? <Link href="/" className="small">✓ To-do</Link> : "–"}</td>
                     </tr>
                   );
                 })}

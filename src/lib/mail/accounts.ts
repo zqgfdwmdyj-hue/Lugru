@@ -7,6 +7,8 @@ import { gmailSend, googleToken, graphSend, microsoftToken, MS_SCOPES, MS_SCOPES
 import { getIntegration } from "@/lib/integrations/store";
 import { smtpSend, type Account } from "./connect";
 import { isTestEnv } from "@/lib/testenv";
+import { gesehenMerken } from "@/lib/inbox/gesehen";
+import { randomUUID } from "node:crypto";
 import type { ServerSettings } from "./servers";
 
 // Postfächer als Konten: Zugang lesen (OAuth-Token oder IMAP/SMTP-Passwort) und zentral senden.
@@ -87,6 +89,8 @@ export type OutgoingMail = {
   replyTo?: string;
   /** Antwort auf eine Mail: deren Message-ID (hält den Verlauf im Mailprogramm zusammen). */
   inReplyTo?: string;
+  /** Ganzer Verlauf (Message-IDs) für References – sonst nur In-Reply-To. */
+  references?: string[];
   /** Kopie (sichtbar), z. B. an den eigenen Posteingang. */
   cc?: string;
   /** Eigene Message-ID (für die Zuordnung von Antworten über In-Reply-To). */
@@ -120,7 +124,7 @@ export async function buildRaw(from: { name?: string; address: string }, mail: O
     messageId: mail.messageId,
     replyTo: mail.replyTo,
     inReplyTo: mail.inReplyTo,
-    references: mail.inReplyTo,
+    references: mail.references?.length ? [...new Set([...mail.references, ...(mail.inReplyTo ? [mail.inReplyTo] : [])])] : mail.inReplyTo,
     subject: mail.subject,
     text: mail.text,
     html: mail.html,
@@ -134,12 +138,15 @@ export async function buildRaw(from: { name?: string; address: string }, mail: O
  * Gibt die Absenderadresse zurück.
  */
 export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mailboxId?: string | null; fromName?: string } = {}): Promise<{ from: string }> {
+  // Eigene Message-ID merken: die Kopie im Gesendet-Ordner ist dann bekannt (kein „ausgehend“, keine Doppelung).
+  if (!mail.messageId) mail = { ...mail, messageId: `<${randomUUID()}@seller-system>` };
+  await gesehenMerken(tenantId, mail.messageId!, "system_gesendet").catch(() => null);
   const { boxes, defaultId } = await senderMailboxes(tenantId);
   const id = opts.mailboxId || defaultId;
   const box = boxes.find((b) => b.id === id);
   // Testumgebung: nie wirklich senden – die Mail landet unter Einstellungen → Testumgebung.
   if (isTestEnv()) {
-    await db.insert(schema.testMails).values({ tenantId, to: (mail.cc ? `${mail.to} (Kopie: ${mail.cc})` : mail.to).slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null });
+    await db.insert(schema.testMails).values({ tenantId, to: (mail.cc ? `${mail.to} (Kopie: ${mail.cc})` : mail.to).slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null, inReplyTo: mail.inReplyTo ?? null });
     return { from: box?.address ?? "testumgebung@example.invalid" };
   }
   if (!box) {

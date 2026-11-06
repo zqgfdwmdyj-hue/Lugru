@@ -16,11 +16,11 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "haushaltshilfe" | "frist" | "geburtstag" | "schulbrief" | "reflexion" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "haushaltshilfe" | "frist" | "geburtstag" | "schulbrief" | "reflexion" | "nachricht" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
-const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld", "reflexion"]);
-/** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
-const PERSONAL_KINDS = new Set<string>(["medplan", "routine", "privatgeld", "reflexion"]);
+const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld", "reflexion", "nachricht"]);
+/** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). „nachricht“ = persönliche Mail (B32), nur der Inhaber. */
+const PERSONAL_KINDS = new Set<string>(["medplan", "routine", "privatgeld", "reflexion", "nachricht"]);
 /**
  * Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos (Kinderzeit, Familienliste,
  * Briefe von Schule/Kita, Familien-Termine), sonst nichts. Termine nur mit „mit: Familie“ (`familieDarf`) – nie

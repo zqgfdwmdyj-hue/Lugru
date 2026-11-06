@@ -174,7 +174,7 @@ export const DEFAULT_SETTINGS = {
    * „Verkauft, jetzt liefern“ bleiben für den Versand-Abgleich); Termin-Mails (Arzt, Handwerker, Amt, Schule) in
    * den Privatkalender des Inhabers statt in den Posteingang; Vorabend-Erinnerung mit Abfahrt (Minuten vorher).
    */
-  posteingang: { autoArchiv: true, terminMails: true, vorabendUm: "18:00", abfahrtVorher: 30 },
+  posteingang: { autoArchiv: true, terminMails: true, vorabendUm: "18:00", abfahrtVorher: 30, persoenlich: { aktiv: true, discordDm: false, discordDmId: "", slots: false, kiEntwurf: true }, nachfassTage: 3, ausgangMitlesen: true },
   /** Rechtsfälle (B14): Anwalts-Domains für Mails, private Asana-Projekte (gid oder Name), Vorlauf, Stillstand. */
   rechtsfaelle: { anwaltDomains: [] as string[], anwaltAdresse: "", privatProjekte: [] as string[], vorlaufTage: 3, stillstandTage: 21 },
   /** Discord-Kanäle (B14): Rohnachrichten höchstens so viele Tage. */
@@ -263,7 +263,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
     // B25.3: „Lugru Deals=60“ ist ein echter Standardwert (im Feld sichtbar und gespeichert), eigene Werte gehen vor.
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}), wertSchwelleJe: { ...d.dealEingang.wertSchwelleJe, ...(s.dealEingang?.wertSchwelleJe ?? {}) } },
-    posteingang: { ...d.posteingang, ...(s.posteingang ?? {}) },
+    posteingang: { ...d.posteingang, ...(s.posteingang ?? {}), persoenlich: { ...d.posteingang.persoenlich, ...(s.posteingang?.persoenlich ?? {}) } },
     rechtsfaelle: { ...d.rechtsfaelle, ...(s.rechtsfaelle ?? {}) },
     discordWissen: { ...d.discordWissen, ...(s.discordWissen ?? {}) },
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },

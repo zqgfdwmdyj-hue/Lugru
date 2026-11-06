@@ -9,6 +9,8 @@ export const MELDE_ARTEN = [
   { key: "morgenbericht", titel: "Morgenbericht liegt vor", text: "Morgens ein Überblick mit Link – dabei auch, was über Nacht zurückgehalten wurde.", standard: true },
   { key: "va_rueckfrage", titel: "VA-Rückfrage", text: "Die VA hat eine Frage zu einer Aufgabe (❓ oder Frage im Thread).", standard: true },
   { key: "aufgabe_wichtig", titel: "Neue wichtige Aufgabe", text: "Aufgaben mit Priorität „wichtig“ (Apple Watch: „Erledigt“ schließt sie).", standard: true },
+  { key: "persoenlich", titel: "Persönliche Mail", text: "Persönliche Mails (Privatbereich) mit fertigem Antwortentwurf – nur an den Inhaber, nie in Discord-Kanäle.", standard: true },
+  { key: "mail_entwurf", titel: "Antwort vorbereitet", text: "Käuferfrage oder Lieferanten-Antwort mit fertigem Antwortentwurf im Posteingang.", standard: true },
   { key: "sonstiges", titel: "Sonstiges", text: "Übrige Hinweise (Tesla, Calls, Frühwarnungen, Termine …).", standard: true },
 ] as const;
 
@@ -55,11 +57,13 @@ export const ZUSTAND_TEXT: Record<string, string> = {
   zurueckgehalten: "Ruhezeit – kommt morgens",
   ausgeschaltet: "Art ausgeschaltet",
   ausgeliefert: "morgens nachgereicht",
+  erledigt: "erledigt – Karte geschlossen",
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number }): string {
+export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number }): string {
   const teile = [
+    o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,
     o.fristen ? `${o.fristen} Frist${o.fristen === 1 ? "" : "en"} heute` : null,
     o.wichtig ? `${o.wichtig} wichtige Aufgabe${o.wichtig === 1 ? "" : "n"}` : null,
     o.paletten ? `${o.paletten} Paletten-Sendung${o.paletten === 1 ? "" : "en"} heute` : null,

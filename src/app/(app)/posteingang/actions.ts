@@ -1,4 +1,5 @@
 "use server";
+import { randomUUID } from "node:crypto";
 
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -171,11 +172,18 @@ export async function draftAction(fd: FormData) {
   await db.update(D).set({ to, subject, body, updatedAt: new Date() }).where(and(eq(D.tenantId, session.tenantId), eq(D.id, d.id)));
   if (op !== "senden") back("gespeichert");
   if (fd.get("geprueft") !== "on") back("nicht-bestaetigt");
-  const [m] = await db.select({ key: schema.emails.messageKey }).from(schema.emails).where(and(eq(schema.emails.tenantId, session.tenantId), eq(schema.emails.id, d.emailId)));
+  const [m] = await db.select({ key: schema.emails.messageKey, mailboxId: schema.emails.mailboxId }).from(schema.emails).where(and(eq(schema.emails.tenantId, session.tenantId), eq(schema.emails.id, d.emailId)));
   let ok = false;
   try {
-    const { from } = await sendMail(session.tenantId, { to, subject, text: body, inReplyTo: m?.key?.startsWith("<") ? m.key : undefined });
+    // Antwort aus dem Postfach, in dem die Mail ankam (sonst Standard) – mit eigener Message-ID für den Gesendet-Abgleich.
+    const { senderMailboxes } = await import("@/lib/mail/accounts");
+    const { boxes } = await senderMailboxes(session.tenantId);
+    const mailboxId = m?.mailboxId && boxes.some((b) => b.id === m.mailboxId) ? m.mailboxId : null;
+    const messageId = `<${randomUUID()}@seller-system>`;
+    const { from } = await sendMail(session.tenantId, { to, subject, text: body, inReplyTo: m?.key?.startsWith("<") ? m.key : undefined, messageId }, { mailboxId });
     await db.update(D).set({ sentAt: new Date(), sentFrom: from }).where(eq(D.id, d.id));
+    const { antwortGesendet } = await import("@/lib/inbox/ausgang");
+    await antwortGesendet(session.tenantId, d.emailId, { messageKey: messageId, mailboxId, von: from, vonName: session.name || null, an: to.split(/[,;]\s*/)[0], betreff: subject, text: body });
     ok = true;
   } catch (e) {
     console.error("[Posteingang] Entwurf senden:", e);
@@ -250,4 +258,24 @@ export async function nurAbrufAction(fd: FormData) {
   if (!box) return;
   await db.update(M).set({ nurAbruf: !box.nurAbruf, updatedAt: new Date() }).where(eq(M.id, box.id));
   revalidatePath("/", "layout");
+}
+
+/** B32.5 „Nachfassen in n Tagen“ an einer ausgehenden Mail (aus = 0) – fällig ohne Antwort → Aufgabe. */
+export async function nachfassenAction(fd: FormData) {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("id"));
+  const tage = Number(fd.get("tage"));
+  const { nachfassenSetzen } = await import("@/lib/inbox/ausgang");
+  const ok = await nachfassenSetzen(session.tenantId, id, Number.isFinite(tage) && tage > 0 ? tage : null);
+  revalidatePath("/posteingang/ausgehend");
+  redirect(`/posteingang/ausgehend?meldung=${encodeURIComponent(ok ? (tage > 0 ? `Nachfassen in ${Math.round(tage)} Tag${Math.round(tage) === 1 ? "" : "en"}, falls keine Antwort kommt.` : "Nachfassen aus.") : "Schon beantwortet – kein Nachfassen nötig.")}#a-${id}`);
+}
+
+/** „Fällige jetzt prüfen“ (sonst alle 15 Min. im Hintergrund): ausgehende Mails ohne Antwort → Aufgabe „Nachfassen“. */
+export async function nachfassenPruefenAction() {
+  const session = await requireArea("posteingang");
+  const { nachfassenFaellig } = await import("@/lib/inbox/ausgang");
+  const n = await nachfassenFaellig(session.tenantId);
+  revalidatePath("/", "layout");
+  redirect(`/posteingang/ausgehend?meldung=${encodeURIComponent(n ? `${n} Aufgabe${n === 1 ? "" : "n"} „Nachfassen“ angelegt.` : "Nichts fällig.")}`);
 }

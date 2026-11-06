@@ -57,6 +57,8 @@ export function discord(token: string) {
 
   return {
     ich: () => anfrage<{ id: string; username?: string }>("GET", "/users/@me"),
+    /** Direktnachrichten-Kanal mit einer Person (B32: persönliche Mails nur per DM an Ludwig, nie in einen Kanal). */
+    dmKanal: (userId: string) => anfrage<{ id: string; type?: number }>("POST", "/users/@me/channels", { recipient_id: userId }),
     kanal: (id: string) => anfrage<{ id: string; name?: string; guild_id?: string; type?: number }>("GET", `/channels/${encodeURIComponent(id)}`),
     /** Öffentlicher Thread ohne Startnachricht (Aufgaben). */
     threadAnlegen: (kanalId: string, name: string) => anfrage<{ id: string }>("POST", `/channels/${encodeURIComponent(kanalId)}/threads`, { name, type: 11, auto_archive_duration: 10080 }),

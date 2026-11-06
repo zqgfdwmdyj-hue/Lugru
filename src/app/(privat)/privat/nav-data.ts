@@ -17,6 +17,7 @@ export const GROUPS = [
     tabs: [
       { key: "start", href: "/privat", label: "Heute" },
       { key: "aufgaben", href: "/privat/aufgaben", label: "Aufgaben & Termine" },
+      { key: "nachrichten", href: "/privat/nachrichten", label: "Nachrichten" },
       { key: "routinen", href: "/privat/routinen", label: "Routinen" },
       { key: "fristen", href: "/privat/fristen", label: "Fristen & Verträge" },
       { key: "rechtsfaelle", href: "/privat/rechtsfaelle", label: "Rechtsfälle" },

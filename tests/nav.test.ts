@@ -3,7 +3,7 @@ import { areaForPath, canAccess } from "@/lib/auth/areas";
 import { VA_BEREICHE } from "@/lib/auth/rollen";
 import { activeItem, badgeSumme, HANDY_TABS, MAX_BLOCK, MAX_FAVORITEN, NAV, navBloecke, navCounters, navOrt, NEBENSEITEN, offeneAusCookie, sichtbareNebenseiten, startZustand, SUBPAGES, visibleNav, zustandAlsCookie } from "@/lib/nav";
 
-// Menü-Umbau 06.11.: 11 Gruppen, 82 Einträge (35 in Untergruppen), kein Block über 8 Zeilen, Nebenseiten als Reiter,
+// Menü-Umbau 06.11.: 11 Gruppen, 82 Einträge (+1 „Privat › Nachrichten“ aus B32 = 83; 35 in Untergruppen), kein Block über 8 Zeilen, Nebenseiten als Reiter,
 // Akkordeon-Zustand, Zähler-Chips, Sichtbarkeit nach Rollen wie vorher.
 
 const act = (url: string) => {
@@ -36,13 +36,14 @@ const ALT: [string, string][] = [
 const ENTFALLEN = ["/?ansicht=liste", "/kalender/tagesplan?anrufe=1", "/ebay?ansicht=artikel", "/ebay?ansicht=verlauf", "/ebay?ansicht=rechnungen", "/ebay?ansicht=einstellungen", "/listings/temu#rechner", "/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile"];
 
 describe("Zielstruktur (Abschnitt 4)", () => {
-  it("11 Gruppen in der Reihenfolge des Auftrags, 82 Einträge, 35 in Untergruppen, direkt höchstens 47", () => {
+  it("11 Gruppen in der Reihenfolge des Auftrags, 83 Einträge (82 + Privat › Nachrichten), 35 in Untergruppen, direkt 48", () => {
     expect(NAV.map((s) => s.label)).toEqual(["Heute", "Einkauf & Deals", "Amazon", "eBay & Temu", "Lager & Versand", "Finanzen", "B2B", "Marken & Content", "Team & Verwaltung", "Privat", "Einstellungen"]);
     const alle = NAV.flatMap((s) => s.items);
-    expect(alle).toHaveLength(82);
+    expect(alle).toHaveLength(83);
     expect(alle.filter((i) => i.unter)).toHaveLength(35);
-    expect(alle.filter((i) => !i.unter)).toHaveLength(47);
-    expect(new Set(alle.map((i) => i.href)).size).toBe(82);
+    expect(alle.filter((i) => !i.unter)).toHaveLength(48);
+    expect(new Set(alle.map((i) => i.href)).size).toBe(83);
+    expect(NAV.find((s) => s.key === "privat")!.items.map((i) => i.href)).toContain("/privat/nachrichten");
   });
   it("kein Block länger als 8 Zeilen; Untergruppen nur mit eigenem Thema; Gruppen mit weniger als 4 Einträgen nur für eBay & Temu (3 Seiten) und Einstellungen (1)", () => {
     for (const s of NAV) for (const b of navBloecke(s)) expect(b.items.length, `${s.label} › ${b.unter?.label ?? "direkt"}`).toBeLessThanOrEqual(MAX_BLOCK);
@@ -69,7 +70,7 @@ describe("Zuordnung alt → neu (Abschnitte 5 und 6)", () => {
       const treffer = NAV.flatMap((s) => s.items.filter((i) => i.href === href).map((i) => navOrt(s, i)));
       expect(treffer, href).toEqual([ort]);
     }
-    // 88 verschiedene Seiten: 82 mit Eintrag, dazu /anbindungen und 5 Einstellungs-Unterseiten als Reiter
+    // 88 verschiedene alte Seiten: 82 mit Eintrag, dazu /anbindungen und 5 Einstellungs-Unterseiten als Reiter
     const seiten = new Set([...ALT.map(([h]) => h), ...ENTFALLEN.map((h) => h.split(/[?#]/)[0])]);
     expect(seiten.size).toBe(88);
   });

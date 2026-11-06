@@ -6,12 +6,13 @@ import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { gmailFetchRaw, graphFetch, type GraphMessage } from "@/lib/integrations/clients/mail";
 import { mailboxCredentials } from "@/lib/mail/accounts";
-import { imapFetchRaw, MailFehler } from "@/lib/mail/connect";
+import { imapFetchRaw, MailFehler, type ImapKopf } from "@/lib/mail/connect";
 import { empfaengerAus } from "@/lib/mail/ordner";
 import { getSettings } from "@/lib/settings";
 import { classifyMail, MANUAL_RULE, marktplatzQuelle, regelFuer, TOPIC_LABEL, type Classification, type Topic } from "./classify";
 import { istBestellMail } from "@/lib/amazon-todos/versand";
 import { isAmazonSystemMail, noiseReason, vonFallZentraleErledigt } from "@/lib/amazon-todos/logic";
+import type { MassenKopf } from "./persoenlich-logic";
 
 export type ParsedMail = {
   messageKey: string;
@@ -33,6 +34,10 @@ export type ParsedMail = {
   antwortAuf?: string[];
   /** Namen aller Anhänge (z. B. „Rechnung_123.pdf“). */
   anhangNamen?: string[];
+  /** Listen-/Bulk-Kopfzeilen (Newsletter, Systemmails) – persönliche Mails sind das nie. */
+  kopf?: MassenKopf;
+  /** Alle Empfänger (An) – bei gesendeten Mails die Gegenseite. */
+  empfaenger?: { adresse: string; name: string | null }[];
 };
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
@@ -60,6 +65,11 @@ export async function parseRaw(raw: Buffer, providerMessageId?: string, ordner?:
   const from = m.from?.value?.[0];
   const an = empfaengerAus([...headerTexte(m.headers.get("delivered-to")), ...headerTexte(m.headers.get("x-original-to"))], (Array.isArray(m.to) ? m.to : m.to ? [m.to] : []).flatMap((t) => t.value.map((v) => v.address ?? "")));
   const text = m.text?.trim() || (typeof m.html === "string" ? htmlToText(m.html) : "");
+  const zeile = (k: string) => {
+    const l = m.headerLines?.find((h) => h.key === k)?.line;
+    return l ? l.slice(l.indexOf(":") + 1).trim() : null;
+  };
+  const empfaenger = (Array.isArray(m.to) ? m.to : m.to ? [m.to] : []).flatMap((t) => t.value.map((v) => ({ adresse: (v.address ?? "").toLowerCase(), name: v.name || null }))).filter((e) => e.adresse);
   return {
     messageKey: m.messageId ?? createHash("sha1").update(raw).digest("hex"),
     providerMessageId,
@@ -80,6 +90,8 @@ export async function parseRaw(raw: Buffer, providerMessageId?: string, ordner?:
     ordner: ordner ?? null,
     antwortAuf: [...new Set([...(m.inReplyTo ? [m.inReplyTo] : []), ...(Array.isArray(m.references) ? m.references : m.references ? [m.references] : [])])],
     anhangNamen: (m.attachments ?? []).map((a) => a.filename ?? "").filter(Boolean),
+    kopf: { listUnsubscribe: zeile("list-unsubscribe"), listId: zeile("list-id"), precedence: zeile("precedence"), autoSubmitted: zeile("auto-submitted") },
+    empfaenger,
   };
 }
 
@@ -95,6 +107,7 @@ function fromGraph(g: GraphMessage): ParsedMail {
     text: body,
     an: empfaengerAus([], (g.toRecipients ?? []).map((r) => r.emailAddress?.address ?? "")),
     ordner: "Outlook (alle Ordner)",
+    empfaenger: (g.toRecipients ?? []).map((r) => ({ adresse: (r.emailAddress?.address ?? "").toLowerCase(), name: r.emailAddress?.name ?? null })).filter((e) => e.adresse),
   };
 }
 
@@ -131,6 +144,21 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   const fromLine = `${m.fromName ?? ""} <${m.fromAddress}>`;
   const quelle = marktplatzQuelle(fromLine);
   const cfg = (await getSettings(tenantId)).posteingang;
+  // B32.5 Postausgang: eigene Absenderadresse (Gesendet-Ordner, Gmail „Alle Nachrichten“) → Verlauf zuordnen.
+  const P = await import("./persoenlich");
+  const eigene = await P.eigeneAdressen(tenantId);
+  const vonMir = eigene.has(m.fromAddress.trim().toLowerCase());
+  if (vonMir && (m.empfaenger ?? []).some((e) => !eigene.has(e.adresse))) {
+    if (cfg.ausgangMitlesen === false) return "ignored";
+    // Vom System selbst verschickt (Rechnungen, Anfragen, Antworten) – schon bekannt.
+    if (!(await P.unbekannt(tenantId, [m.messageKey])).has(m.messageKey)) return "duplicate";
+    const { ausgangErfassen } = await import("./ausgang");
+    const r = await ausgangErfassen(tenantId, mailboxId, m, new Set(eigene.keys())).catch((e) => {
+      console.error("[Postausgang]", e instanceof Error ? e.message : e);
+      return "bekannt" as const;
+    });
+    return r === "bekannt" ? "duplicate" : "new";
+  }
   // Rechtsfälle (B14): Mails vom Anwalt bzw. mit bekanntem Aktenzeichen → in den Verlauf des Falls, nicht hierher.
   if (!quelle) {
     const { rechtsMailZuordnen } = await import("@/lib/recht/service");
@@ -140,8 +168,16 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     });
     if (rf) return rf.ergebnis === "bekannt" ? "duplicate" : "new";
   }
+  // Antworten bekannter Lieferanten (Profil-E-Mail bzw. Firmen-Domain) gelten als wichtig.
+  const lieferant = quelle ? null : await import("@/lib/b2b/preislisten-mail").then((x) => x.lieferantZuAbsender(tenantId, m.fromAddress)).catch(() => null);
+  // Gericht/Behörde/Gegenseite (B14) ist nie unwichtig – auch von unbekannten Absendern.
+  const behoerde = !quelle && (await import("@/lib/recht/logic")).behoerdenMail({ from: fromLine, subject: m.subject, body: m.text });
+  // B32.5: Antwort auf eine eigene ausgehende Mail (B2B-Anfrage, Lieferant …) – immer wichtig, Nachfassen erledigt.
+  const ausgang = quelle ? null : await import("./ausgang").then((x) => x.antwortAufAusgang(tenantId, m)).catch(() => null);
+  const kontakt = quelle ? null : await P.kontaktLesen(tenantId, m.fromAddress).catch(() => null);
   // Termin-Mails (Arzt, Handwerker, Amt, Schule) sind privat: nur in den Privatkalender des Inhabers, nie hier.
-  if (!quelle && cfg.terminMails) {
+  // (Absender, die ausdrücklich als „persönlich“ festgelegt sind, bekommen stattdessen Nachricht + Entwurf.)
+  if (!quelle && cfg.terminMails && kontakt?.art !== "persoenlich") {
     const { terminMailUebernehmen, terminMelden } = await import("@/lib/private/termin-mail-service");
     const t = await terminMailUebernehmen(tenantId, { messageKey: m.messageKey, from: fromLine, subject: m.subject, body: m.text, receivedAt: m.receivedAt }, todayIso()).catch((e) => {
       console.error("[Termin-Mail]", e instanceof Error ? e.message : e);
@@ -152,20 +188,42 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
       return t.ergebnis === "bekannt" ? "duplicate" : "new";
     }
   }
-  // Antworten bekannter Lieferanten (Profil-E-Mail bzw. Firmen-Domain) gelten als wichtig.
-  const lieferant = quelle ? null : await import("@/lib/b2b/preislisten-mail").then((x) => x.lieferantZuAbsender(tenantId, m.fromAddress)).catch(() => null);
   const c = classifyMail({ from: fromLine, subject: m.subject, body: m.text }, new Date(), { lieferant: Boolean(lieferant) });
   // Eigene Regeln je Absender/Betreff/Thema: archivieren, als Aufgabe, an Zuständigen.
   const regeln = await db.select().from(schema.mailRegeln).where(and(eq(schema.mailRegeln.tenantId, tenantId), eq(schema.mailRegeln.aktiv, true))).orderBy(schema.mailRegeln.createdAt);
   const regel = regeln.length ? regelFuer({ from: fromLine, subject: m.subject, topic: c.relevant ? c.topic : null }, regeln) : null;
-  // Gericht/Behörde/Gegenseite (B14) ist nie unwichtig – auch von unbekannten Absendern.
-  const behoerde = !quelle && (await import("@/lib/recht/logic")).behoerdenMail({ from: fromLine, subject: m.subject, body: m.text });
-  if (!c.relevant && !behoerde && (!regel || regel.aktion === "archivieren")) return "ignored";
-  const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: behoerde && !regel ? "Gericht/Behörde" : "eigene Regel", dueInDays: behoerde && !regel ? 1 : 2 };
+  // B32 Persönliche Mails (Personen, Praxen, Dienstleister) → nur Privatbereich des Inhabers, nie hierher. Vorrang
+  // haben: Marktplätze, Rechtsfälle, Lieferanten, Behörden, Antworten auf eigene Mails, eigene Regeln und alles, was
+  // die Einstufung schon als geschäftlich erkennt (außer der Absender ist ausdrücklich „persönlich“).
+  if (!quelle && !vonMir && !lieferant && !behoerde && !ausgang && !regel && (!c.relevant || kontakt?.art === "persoenlich") && cfg.persoenlich.aktiv !== false) {
+    const kunden = await db.select({ email: schema.b2bKunden.email }).from(schema.b2bKunden).where(eq(schema.b2bKunden.tenantId, tenantId));
+    const istKunde = kunden.some((k) => (k.email ?? "").trim().toLowerCase() === m.fromAddress.trim().toLowerCase());
+    if (!istKunde) {
+      const owner = await import("@/lib/private/termin-mail-service").then((x) => x.inhaberPrivatSitzung(tenantId)).catch(() => null);
+      const eingang = { messageKey: m.messageKey, fromAddress: m.fromAddress, fromName: m.fromName, subject: m.subject, text: m.text, receivedAt: m.receivedAt, antwortAuf: m.antwortAuf, kopf: m.kopf };
+      const p = await P.persoenlichPruefen(tenantId, eingang, owner?.name ?? null).catch((e) => {
+        console.error("[Persönliche Mail] Prüfen:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (p?.stufe === "ignorieren") return "ignored";
+      if (p) {
+        const r = await P.persoenlichErfassen(tenantId, mailboxId, eingang, p.stufe, p.einstufung).catch((e) => {
+          console.error("[Persönliche Mail] Erfassen:", e instanceof Error ? e.message : e);
+          return null;
+        });
+        // Ohne Inhaber mit Privat-Zugang: nicht in den geschäftlichen Posteingang (VA sähe sie sonst).
+        return r ?? "ignored";
+      }
+    }
+  }
+  // Absender als „geschäftlich“ festgelegt bzw. Antwort auf eigene ausgehende Mail: wichtig, auch wenn unbekannt.
+  const erzwungen = !c.relevant && (Boolean(ausgang) || kontakt?.art === "geschaeftlich") ? (ausgang ? "Antwort auf ausgehende Mail" : "Kontakt: geschäftlich") : null;
+  if (!c.relevant && !behoerde && !erzwungen && (!regel || regel.aktion === "archivieren")) return "ignored";
+  const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: behoerde && !regel ? "Gericht/Behörde" : erzwungen && !regel ? erzwungen : "eigene Regel", dueInDays: behoerde && !regel ? 1 : 2 };
   const regelZeile = regel ? regeln.find((x) => x.id === regel.id)! : null;
   // Beim Eingang archivieren: eigene Regel „archivieren“ oder (Einstellung) Newsletter und Versand-/Lieferbestätigungen.
   // Bestell-Mails („Verkauft, jetzt liefern“) bleiben offen – der Versand-Abgleich der Amazon-ToDos braucht sie.
-  const autoArchiv = !behoerde && (regel?.aktion === "archivieren" || (cfg.autoArchiv && !regel && (r.topic === "marketing" || (r.topic === "order_info" && !istBestellMail(m.subject)))));
+  const autoArchiv = !behoerde && !erzwungen && (regel?.aktion === "archivieren" || (cfg.autoArchiv && !regel && (r.topic === "marketing" || (r.topic === "order_info" && !istBestellMail(m.subject)))));
   const [row] = await db
     .insert(schema.emails)
     .values({
@@ -187,10 +245,12 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
       references: r.references,
       archived: autoArchiv,
       regelId: regel?.id ?? null,
+      antwortAuf: (m.antwortAuf ?? []).slice(0, 30),
     })
     .onConflictDoNothing()
     .returning();
   if (!row) return "duplicate";
+  if (ausgang) await import("./ausgang").then((x) => x.antwortVerknuepfen(tenantId, ausgang.id, row.id)).catch((e) => console.error("[Postausgang] Antwort:", e instanceof Error ? e.message : e));
   // B28.5: Antwort des Lieferanten auf eine Bestellmail (Rechnung, Sendungsnummer) → am Deal und im Einkauf vermerken.
   await import("@/lib/deal-eingang/bestellmail")
     .then((b) => b.antwortZuordnen(tenantId, { id: row.id, fromAddress: m.fromAddress, subject: m.subject, text: m.text, receivedAt: m.receivedAt, antwortAuf: m.antwortAuf ?? [], anhangNamen: m.anhangNamen ?? [] }))
@@ -214,6 +274,12 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     erzwingen,
     zustaendigId: regel?.aktion === "weiterleiten" ? (regelZeile?.zustaendigId ?? null) : null,
   });
+  // B32: Käuferfrage bzw. Lieferanten-Antwort → Antwortentwurf vorbereiten (gesendet wird nur nach Prüfung).
+  if (r.topic === "buyer_message" || (lieferant && r.category !== "noise")) {
+    await import("./entwurf-geschaeftlich")
+      .then((x) => x.geschaeftsEntwurf(tenantId, { id: row.id, fromAddress: m.fromAddress, fromName: m.fromName ?? null, subject: m.subject, text: m.text, lieferant: lieferant?.name ?? null }))
+      .catch((e) => console.error("[Antwortentwurf]", e instanceof Error ? e.message : e));
+  }
   return "new";
 }
 
@@ -305,28 +371,87 @@ export async function applyMailUpgrades(tenantId: string): Promise<number> {
 
 // --- Postfächer abrufen ---------------------------------------------------------------
 
-export async function syncMailbox(tenantId: string, mailboxId: string) {
+/** Termin-Hinweise im Betreff (Arzt, Doctolib …) – solche Systemmails nie schon beim Vorfilter verwerfen. */
+const TERMIN_BETREFF = /termin|erinnerung|appointment|buchung|absage|verschieb/i;
+
+/**
+ * Postfach abrufen. `schnell` (jede Minute): nur Posteingang der letzten 2 Stunden, `lastSyncAt` bleibt – der volle
+ * Abruf (alle 14 Min.) liest weiter alle Ordner samt Gesendet. Bekannte Mails werden nicht noch einmal geladen.
+ */
+const laufend = new Map<string, Promise<unknown>>();
+
+export async function syncMailbox(tenantId: string, mailboxId: string, o: { schnell?: boolean } = {}): Promise<{ new: number }> {
+  // Nie zwei Abrufe desselben Postfachs gleichzeitig (sonst doppelte Einträge): der schnelle setzt aus, der volle wartet.
+  const vorher = laufend.get(mailboxId);
+  if (vorher && o.schnell) return { new: 0 };
+  const lauf = (vorher ?? Promise.resolve()).catch(() => null).then(() => abrufen(tenantId, mailboxId, o));
+  laufend.set(mailboxId, lauf);
+  try {
+    return await lauf;
+  } finally {
+    if (laufend.get(mailboxId) === lauf) laufend.delete(mailboxId);
+  }
+}
+
+async function abrufen(tenantId: string, mailboxId: string, o: { schnell?: boolean }): Promise<{ new: number }> {
   const [mb] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, mailboxId), eq(schema.mailboxes.tenantId, tenantId)));
   if (!mb || mb.provider === "upload" || !mb.active) return { new: 0 };
-  const since = mb.lastSyncAt ? new Date(mb.lastSyncAt.getTime() - 3600_000) : new Date(Date.now() - 14 * 86400_000);
+  const since = o.schnell ? new Date(Date.now() - 2 * 3600_000) : mb.lastSyncAt ? new Date(mb.lastSyncAt.getTime() - 3600_000) : new Date(Date.now() - 14 * 86400_000);
   let count = 0;
+  const { gesehenMerken, unbekannt } = await import("./persoenlich");
   try {
     const creds = await mailboxCredentials(mb);
+    const settings = await getSettings(tenantId);
     // Deal-Postfach (Einstellung Deal-Eingang): alle Absender abrufen, nicht nur Marktplätze.
-    const dealAdresse = (await getSettings(tenantId)).dealEingang.mailAdresse?.trim().toLowerCase();
+    const dealAdresse = settings.dealEingang.mailAdresse?.trim().toLowerCase();
+    const gesendet = settings.posteingang.ausgangMitlesen !== false;
+    // B32: alle Absender – aber nur, was neu ist; Newsletter (Listen-Kopf) gar nicht erst laden.
+    const vorfilter = async (k: ImapKopf[]) => {
+      const neu = await unbekannt(tenantId, k.map((x) => x.messageId ?? "").filter(Boolean));
+      return Promise.all(
+        k.map(async (x) => {
+          if (x.messageId && !neu.has(x.messageId)) return false;
+          const massen = Boolean(x.kopf.listUnsubscribe || x.kopf.listId || /^(bulk|list|junk)$/i.test(x.kopf.precedence ?? ""));
+          if (massen && !x.markt && !x.gesendet && !TERMIN_BETREFF.test(x.subject)) {
+            if (x.messageId) await gesehenMerken(tenantId, x.messageId, "massen");
+            return false;
+          }
+          return true;
+        }),
+      );
+    };
     const mails =
       creds.kind === "gmail"
-        ? await Promise.all((await gmailFetchRaw(creds.accessToken, Math.floor(since.getTime() / 1000))).map((r) => parseRaw(r.raw, r.id, "Alle Nachrichten (Gmail)")))
+        ? await Promise.all((await gmailFetchRaw(creds.accessToken, Math.floor(since.getTime() / 1000), 150, async (ids) => new Set([...(await unbekannt(tenantId, ids.map((id) => `p:${id}`)))].map((k) => k.slice(2))))).map((r) => parseRaw(r.raw, r.id, r.gesendet ? "Gesendet (Gmail)" : "Alle Nachrichten (Gmail)")))
         : creds.kind === "outlook"
           ? (await graphFetch(creds.accessToken, since)).map(fromGraph)
-          : await Promise.all((await imapFetchRaw(creds.account, since, { ordner: mb.ordner, alleAbsender: Boolean(dealAdresse) && mb.address.trim().toLowerCase() === dealAdresse })).map((r) => parseRaw(r.raw, r.id, r.ordner)));
-    for (const m of mails) if ((await ingestMail(tenantId, mb.id, m)) === "new") count++;
-    await db.update(schema.mailboxes).set({ lastSyncAt: new Date(), lastError: null, fehlerArt: null, updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
+          : await Promise.all(
+              (await imapFetchRaw(creds.account, since, { ordner: mb.ordner, alleAbsender: Boolean(dealAdresse) && mb.address.trim().toLowerCase() === dealAdresse, gesendet, nurPosteingang: o.schnell, vorfilter })).map((r) => parseRaw(r.raw, r.id, r.ordner)),
+            );
+    for (const m of mails) {
+      const r = await ingestMail(tenantId, mb.id, m);
+      if (r === "new") count++;
+      await gesehenMerken(tenantId, m.messageKey, r);
+      if (m.providerMessageId && creds.kind === "gmail") await gesehenMerken(tenantId, `p:${m.providerMessageId}`, r);
+    }
+    if (!o.schnell) await db.update(schema.mailboxes).set({ lastSyncAt: new Date(), lastError: null, fehlerArt: null, updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
   } catch (e) {
     await db.update(schema.mailboxes).set({ lastError: e instanceof Error ? e.message : String(e), fehlerArt: e instanceof MailFehler ? e.art : "sonst", updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
     throw e;
   }
   return { new: count };
+}
+
+/** Schneller Abruf (jede Minute): nur neue Mails im Posteingang – damit persönliche Mails in ≤ 2 Min. gemeldet werden. */
+export async function syncSchnell(tenantId: string) {
+  const boxes = await db.select({ id: schema.mailboxes.id, provider: schema.mailboxes.provider, lastSyncAt: schema.mailboxes.lastSyncAt }).from(schema.mailboxes).where(and(eq(schema.mailboxes.tenantId, tenantId), eq(schema.mailboxes.active, true)));
+  let neu = 0;
+  for (const b of boxes) {
+    // Erst nach dem ersten vollen Abruf (sonst holt der volle Abruf die letzten 14 Tage).
+    if (b.provider === "upload" || b.provider === "outlook" || !b.lastSyncAt) continue;
+    neu += (await syncMailbox(tenantId, b.id, { schnell: true }).catch(() => ({ new: 0 }))).new;
+  }
+  return neu;
 }
 
 export async function syncAllMailboxes(tenantId: string) {

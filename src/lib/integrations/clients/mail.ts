@@ -52,10 +52,15 @@ export async function gmailProfile(accessToken: string): Promise<string> {
 }
 
 /** Liefert die Rohdaten (RFC 822) neuer Nachrichten. */
-export async function gmailFetchRaw(accessToken: string, sinceUnix: number, max = 150): Promise<{ id: string; raw: Buffer }[]> {
+/**
+ * Rohdaten aller Nachrichten seit `sinceUnix` (ohne Chats; Gesendetes eingeschlossen). `neu` (B32): nur diese
+ * IDs herunterladen – bekannte überspringen, damit der häufige Abruf nichts doppelt lädt.
+ */
+export async function gmailFetchRaw(accessToken: string, sinceUnix: number, max = 150, neu?: (ids: string[]) => Promise<Set<string>>): Promise<{ id: string; raw: Buffer; gesendet?: boolean }[]> {
   const q = `after:${sinceUnix} -in:chats`;
-  const ids: string[] = [];
+  let ids: string[] = [];
   let pageToken: string | undefined;
+  const grenze = neu ? 1000 : max;
   do {
     const u = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
     u.searchParams.set("q", q);
@@ -66,13 +71,17 @@ export async function gmailFetchRaw(accessToken: string, sinceUnix: number, max 
     const j = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string };
     ids.push(...(j.messages ?? []).map((m) => m.id));
     pageToken = j.nextPageToken;
-  } while (pageToken && ids.length < max);
-  const out: { id: string; raw: Buffer }[] = [];
+  } while (pageToken && ids.length < grenze);
+  if (neu) {
+    const offen = await neu(ids);
+    ids = ids.filter((id) => offen.has(id));
+  }
+  const out: { id: string; raw: Buffer; gesendet?: boolean }[] = [];
   for (const id of ids.slice(0, max)) {
     const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=raw`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!res.ok) continue;
-    const j = (await res.json()) as { raw: string };
-    out.push({ id, raw: Buffer.from(j.raw, "base64url") });
+    const j = (await res.json()) as { raw: string; labelIds?: string[] };
+    out.push({ id, raw: Buffer.from(j.raw, "base64url"), ...(j.labelIds?.includes("SENT") ? { gesendet: true } : {}) });
   }
   return out;
 }
@@ -103,7 +112,7 @@ export type GraphMessage = {
   subject?: string;
   receivedDateTime: string;
   from?: { emailAddress?: { name?: string; address?: string } };
-  toRecipients?: { emailAddress?: { address?: string } }[];
+  toRecipients?: { emailAddress?: { address?: string; name?: string } }[];
   body?: { contentType: string; content: string };
   bodyPreview?: string;
 };

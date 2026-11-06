@@ -1037,6 +1037,67 @@ Regression: 174 Ablaufprüfungen, 171 im ersten Lauf grün; nachgeprüft und gr�
 
 **Werkzeuge:** keine neuen oder geänderten Claude-Werkzeuge.
 
+## Bauauftrag 06.11.: Persönliche Mails im Posteingang · Push mit fertigem Antwortentwurf (+ Abschnitt 5 Postausgang)
+
+**Prüfung (vorher):**
+
+| Punkt | vorher | Fundstelle |
+|---|---|---|
+| 1. Persönliche Mails erfassen (alle Absender, beide Postfächer) | ❌ IMAP holte nur Marktplätze/DHL (Absender-Filter am Server), unbekannte Absender wurden verworfen; nur Termin-Mails mit Dienst-Stichwort + festem Datum kamen in den Privatkalender | `imapFetchRaw` (`ABSENDER_FILTER`), `ingestMail` |
+| Newsletter/Werbung/Systemmails ausschließen | 🟡 nur über die Einstufung (marketing); kein Blick auf List-/Bulk-Kopf, noreply, Abmelde-Link | `classify.ts` |
+| „persönlich“ / „persönlich?“, Festlegung je Absender | ❌ | – |
+| Nur Privatbereich, VA unsichtbar, Morgenbericht nur Anzahl | ❌ (es gab keine persönlichen Mails) | – |
+| 2. Termine: Absage → abgesagt, Verschiebung/Vorschlag mit Bestätigung | 🟡 nur Modul 6 (Praxis/Doctolib mit Datum, automatisch) | `termin-mail-service.ts` |
+| 3. Push sofort + Discord-DM, KI-Entwurf (Sie/Du, Unterschrift, Slots), Senden im Thread, Handy-Vollbild | ❌ Entwürfe nur von Claude/von Hand an Geschäftsmails, Senden mit Häkchen; kein Push, keine DM; In-Reply-To ja, References nur eine ID | `draftAction`, `buildRaw` |
+| Geschäftliche Mails mit klarer Antwort (Käufer, Lieferant): gleicher Ablauf | ❌ | – |
+| 4. Datenschutz (KI ohne Speicherung, nie in Kanäle) | – | – |
+| 5. Gesendet-Ordner mitlesen, „beantwortet (extern)“, Aufgabe erledigt, Entwurf verworfen | ❌ Gesendet-Ordner wurde nicht gelesen (nur zum Ablegen eigener Mails) | `smtpSend` |
+| Verlauf chronologisch in der Mail-Ansicht | ❌ nur die eine Mail + Entwürfe | `posteingang/[id]` |
+| „ausgehend“ + „Nachfassen in n Tagen“ | 🟡 nur für Einkaufsanfragen, die über das System gingen | `detectReplies`, `autoFollowUps` |
+| Notizen an Auftrag/Fall, „beantwortet von“ | ❌ | – |
+
+**Nachher:**
+
+| Punkt | Stand | Fundstelle |
+|---|---|---|
+| Abruf | ✅ IMAP holt alle Absender: erst Kopfzeilen (Message-ID, Absender, List-Unsubscribe/List-Id/Precedence/Auto-Submitted), Bekanntes und Newsletter werden gar nicht geladen; Gesendet-Ordner (Gmail: „Alle Nachrichten“ enthält ihn, sonst „Gesendet“/„Sent“/„Gesendete Elemente“). Gmail-API lädt nur neue IDs. Jede Minute ein schneller Abruf des Posteingangs (persönliche Mails in ≤ 2 Min.), alle 14 Min. der volle Abruf mit Gesendet-Ordner; nie zwei Abrufe desselben Postfachs gleichzeitig | `imapFetchRaw`, `gmailFetchRaw`, `syncSchnell`, `mail_gesehen` |
+| Einstufung | ✅ „persönlich“ (Freemail, Personenname, Praxis, Anrede mit eigenem Vornamen/Nachnamen, private Inhalte) / „persönlich?“ (unsicher) / sonst geschäftlich. Nie persönlich: Listen-/Bulk-Kopf, Auto-Submitted, noreply, Abmelde-Link, Marktplätze, Rechtsfälle, Lieferanten, B2B-Kunden, Behörden, Antworten auf eigene Mails, Mails mit eigener Regel, alles was die Einstufung schon als geschäftlich erkennt. Termin-Mails mit festem Datum (Modul 6) laufen wie bisher | `persoenlich-logic.ts`, `persoenlichPruefen`, `ingestMail` |
+| Festlegung je Absender | ✅ „persönlich?“ mit Knöpfen Persönlich · Geschäftlich → Posteingang · Ignorieren; gilt dauerhaft (Kontakte, Adresse verschlüsselt) | `mail_kontakte`, `nachrichtEinordnen` |
+| Privatbereich | ✅ Privat › Nachrichten (neuer Menüpunkt, Art „nachricht“, verschlüsselt, nur der Inhaber sieht sie – auch nicht die Partnerin/Familie); im Geschäft, bei der VA und im Posteingang nichts. Ohne Inhaber mit Privat-Zugang wird nichts gespeichert | `/privat/nachrichten`, `PERSONAL_KINDS` |
+| Morgenbericht / Überblick | ✅ nur „1 persönliche Nachricht wartet“ (Inhaber mit Privat-Zugang); `ueberblick` liefert nur die Anzahl | `morgenText`, `ueberblick` |
+| Termine | ✅ Absage mit passendem Termin (Tag + Name) → „ausgefallen“ mit Notiz und „Rückgängig“; Verschiebung → Knopf „Termin verschieben“; neuer Vorschlag/Bestätigung → „In den Privatkalender“; nie gelöscht, nie automatisch verschoben | `terminAktion` |
+| Push + DM | ✅ sofort per Web-Push (Art „Persönliche Mail“, nie Discord-Kanal): Absender, ein Satz, „Antwort prüfen“; wahlweise Discord-Direktnachricht über den VA-Bot (Einstellung mit eigener Discord-ID) | `benachrichtigen`, `discordDm` |
+| Entwurf | ✅ KI (Anthropic-Anbindung) bzw. Vorlage: Sie/Du aus früherem Schriftverkehr, sonst aus der Mail, sonst Sie (umschaltbar, je Kontakt gemerkt); kurz, freundlich, Unterschrift = Name des Inhabers; Absage → Dank, gute Besserung, neuer Termin (+ 2 freie Slots, wenn eingestellt); Bestätigung kurz; Rückfragen mit [Platzhaltern] | `entwurfErstellen`, `entwurfPrompt` |
+| Senden | ✅ nur auf „Senden“ (ein Tipp) über das Postfach, in dem die Mail ankam: In-Reply-To + References, eigene Message-ID, Kopie im Gesendet-Ordner (Anbieter bzw. IMAP-Ablage); danach „beantwortet“, Push-Karte weg (auch auf dem Gerät beim Öffnen) | `nachrichtSenden`, `KartenSchliessen` |
+| Handy | ✅ Vollbild-Ansicht, unten fest: Senden · Bearbeiten · Später (Später = Erinnerung nach 3 Std.), „Ohne Antwort erledigt“ | `entwurf-form.tsx`, `.nachricht-leiste` |
+| Geschäftlich gleicher Ablauf | ✅ Käuferfrage bzw. Lieferanten-Antwort → Entwurf an der Mail + Push „Antwort vorbereitet“ an alle mit Posteingang; Senden wie bisher mit „Geprüft“ – darf jeder mit Bereich Posteingang (also auch die VA, wenn freigegeben); persönliche nur der Inhaber | `geschaeftsEntwurf` |
+| Datenschutz | ✅ Inhalte nur im Privatbereich und an die KI-Anfrage (kein Training über die API; Null-Speicherung nur mit Vertrag, siehe To-do); Discord nur als DM mit einem Satz, nie in Kanäle | – |
+| Postausgang | ✅ Gesendete Mail (eigene Absenderadresse) → Zuordnung über In-Reply-To/References, sonst Betreff + Empfänger (30 Tage). Antwort auf Geschäftsmail → „beantwortet (extern, am …) von Postfach + Name“, Aufgabe `mail:<id>` erledigt, offene Entwürfe verworfen, Push-Karten weg, Notiz an Auftrag (Bestellnummer) bzw. Anspruch (Fall-ID). Persönlich → in den Verlauf im Privatbereich, „beantwortet (extern)“ | `ausgangErfassen`, `alsBeantwortet` |
+| Verlauf | ✅ Mail-Ansicht zeigt eure Mail davor, die Mail, gesendete Antworten und Antworten darauf chronologisch; Liste „beantwortet“. VA sieht nur geschäftliche Verläufe | `geschaeftsVerlauf`, `posteingang/[id]` |
+| Ausgehend + Nachfassen | ✅ Posteingang › Ausgehend: neu angeschriebene Kontakte (B2B-Kunde, Lieferant, Kontakt) mit „Nachfassen in 3 Tagen“ (Standard einstellbar) → ohne Antwort Aufgabe „Nachfassen“; Antwort schließt sie und gilt als wichtig. Persönliche gesendete Mails → Privat › Nachrichten „ausgehend“ mit eigener Nachfass-Erinnerung | `/posteingang/ausgehend`, `nachfassenFaellig` |
+| Einstellungen | ✅ Privat › Nachrichten › Einstellungen (an/aus, KI, Slots, Discord-DM + ID); Posteingang › Regeln (Gesendet-Ordner mitlesen, Nachfass-Tage). Das Speichern der Posteingang-Einstellungen überschreibt die übrigen Werte nicht mehr | `persoenlichEinstellungenAction`, `posteingangEinstellungen` |
+
+**Verhaltensänderungen / Entscheidungen (bitte bestätigen oder ändern):**
+- Reihenfolge beim Eingang: Deal-Eingang → Postausgang (eigene Absenderadresse) → Rechtsfall → Termin-Mail (Modul 6, automatisch wie bisher) → eigene Regeln/Einstufung → persönlich. Eine Praxis-Mail mit festem Datum („Termin am 10.11. fällt aus“) wird also weiter direkt im Kalender umgesetzt (ohne Entwurf); Mails von Personen bzw. ohne festes Datum („morgen“) bekommen Nachricht + Entwurf. Wer als „persönlich“ festgelegt ist, bekommt immer Nachricht + Entwurf.
+- „persönlich?“-Mails waren früher stillschweigend verworfen; jetzt stehen sie in Privat › Nachrichten zum Einordnen (einmal je Absender) – ohne Push und ohne KI-Kosten (Entwurf aus der Vorlage), damit unbekannte Werbe-Absender nicht aufs Handy klingeln. Sie zählen im Morgenbericht mit.
+- Vom System selbst verschickte Mails (eBay-Rechnungen, Einkaufsanfragen, Bestellmails, Antworten) merkt sich das System beim Senden; ihre Kopie im Gesendet-Ordner erscheint nicht unter „Ausgehend“. Mails an die eigenen Adressen gelten nie als persönlich.
+- Absage mit eindeutigem Termin (gleicher Tag + Name im Titel) wird automatisch als „ausgefallen“ markiert (laut Auftrag), mit „Rückgängig“. Alles andere nur mit Klick.
+- Entwürfe zu Käuferfragen und Lieferanten-Antworten entstehen jetzt automatisch (mit Push „Antwort vorbereitet“). Wer das nicht will: Meldeart „Antwort vorbereitet“ unter Benachrichtigungen ausschalten; KI-Entwurf aus → Vorlage.
+- „Senden“ im Posteingang nutzt jetzt das Postfach, in dem die Mail ankam (vorher immer das Standardpostfach).
+- Outlook: gesendete Mails werden über Betreff + Empfänger zugeordnet (Graph liefert hier kein In-Reply-To).
+- „Jetzt abrufen“ ist unverändert; neu: „Fällige jetzt prüfen“ unter Ausgehend.
+
+**Abnahme (automatisch, `e2e/persoenliche-mails.spec.ts`, Unit `tests/persoenlich.test.ts`):**
+1. ✅ Private Test-Mail „muss den Termin morgen leider absagen, bin krank“ → sofort Push „Antwort prüfen“ (ohne Discord-Kanal, DM an die eingestellte ID), KI-Entwurf mit „gute Besserung“ und Unterschrift, „Senden“ mit einem Tipp → Antwort mit In-Reply-To der Mail (gleicher Verlauf), Karte erledigt. (Zeit: im Test sofort beim Eingang; live Minuten-Abruf → ≤ 2 Min.)
+2. ✅ Termin morgen „Physio Petra Probe“ als „ausgefallen“ markiert, Hinweis mit „Rückgängig“, im Entwurf neuer Termin angeboten.
+3. ✅ Newsletter (List-Unsubscribe) und Amazon-Mail laufen wie bisher (Amazon im Posteingang); nichts davon im Privatbereich, kein persönlicher Push.
+4. ✅ Büro (mit Posteingang) und Familie sehen die Mail nicht (Posteingang leer, Nachricht nicht aufrufbar); Morgenbericht „1 persönliche Nachricht wartet“, Überblick nur `anzahl` – ohne Namen.
+5. ✅ Käuferfrage → Aufgabe + vorbereiteter Entwurf; Antwort aus dem Mailprogramm (Gesendet) → „Beantwortet (extern) … von Ina Inhaber“, Aufgabe erledigt, Entwurf verworfen, Verlauf zeigt die Antwort. (Live: Gesendet-Ordner alle 14 Min. → ≤ 15 Min.)
+6. ✅ Neue B2B-Anfrage aus dem Mailprogramm → „Ausgehend“ mit „Nachfassen in 3 Tagen“; fällig → Aufgabe „Nachfassen“; Antwort des Kunden → wichtig, Nachfassen erledigt, Verlauf zeigt eure Mail.
+Dazu Handy: Vollbild, Senden · Bearbeiten · Später unten erreichbar, kein Querscrollen, Später speichert den Text.
+
+**Werkzeuge:** keine neuen Claude-Werkzeuge. Geändert: `ueberblick` (Beschreibung + Feld `persoenliche_nachrichten` nur Anzahl, nur Inhaber mit Privat-Zugang) → die Werkzeugliste ändert sich, Claude erhält `notifications/tools/list_changed`.
+
 ## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen
 
 Anlass: Unter Aufträge → „Meldung offen“ ließen sich nur Amazon-Meldungen gesammelt schließen (Versandbestätigung
@@ -1857,3 +1918,15 @@ nie in Chats oder Mails.
      Inhaber-Konten deaktivieren oder ihnen die richtige Rolle geben; das VA-Konto über die Warnung „als VA“ auf die Rolle
      „VA“ stellen (dann kein Privat, kein Geld, keine Einstellungen); das Test-Konto prüfen und ggf. deaktivieren. Das
      System löscht hier nichts selbst.
+103. **Persönliche Mails – Discord-DM (optional)**: Privat › Nachrichten › Einstellungen → „Discord-Direktnachricht“ an und
+     die eigene Discord-Benutzer-ID eintragen (Entwicklermodus → Rechtsklick auf den Namen → „ID kopieren“). Der VA-Bot
+     muss mit dir einen gemeinsamen Server haben, sonst lehnt Discord DMs ab.
+104. **Postfächer neu abrufen lassen**: Beide Postfächer sind über IMAP/Gmail verbunden – nach dem Update holt der erste
+     volle Abruf die letzten Stunden einmal komplett (danach nur Neues). Bei IMAP-Postfächern mit eigener Ordnerauswahl
+     prüfen, ob „Gesendet“ existiert (wird automatisch erkannt). Gmail mit eigener Auswahl ohne „Alle Nachrichten“:
+     „[Gmail]/Gesendet“ wird dann zusätzlich gelesen.
+105. **KI ohne Speicherung**: Die Anthropic-API nutzt Eingaben nicht zum Training. Echte Null-Speicherung (Zero Data
+     Retention) gibt es nur per Vertrag mit Anthropic – bei Bedarf dort anfragen; sonst „KI-Entwurf“ in den Einstellungen
+     ausschalten (dann Vorlage).
+106. **VA und Antworten**: Die VA kann vorbereitete Antworten an Käufer/Lieferanten nur senden, wenn ihr der Bereich
+     „Posteingang“ freigegeben ist (Einstellungen → Benutzer). Persönliche Mails sieht sie nie.

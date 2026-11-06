@@ -65,6 +65,33 @@ function kiAnswer(req, b) {
     const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
+  // B32: Antwortentwurf (persönlich/geschäftlich) – JSON mit Zusammenfassung und kurzem Entwurf, Regeln wie im Auftrag.
+  if (/^Schreibe einen Antwortentwurf für eine (persönliche|geschäftliche) Mail\./.test(text) && !stale) {
+    const du = /Anrede: Du/.test(text);
+    const unterschrift = /Unterschrift: ([^.\n]*)\./.exec(text)?.[1]?.trim() ?? "";
+    const name = (/Absender: ([^<\n]*)</.exec(text)?.[1] ?? "").trim();
+    const art = /Erkannter Termin-Bezug: (\w+)/.exec(text)?.[1] ?? null;
+    const slots = /Freie Termine zum Vorschlagen: ([^\n]*)\./.exec(text)?.[1] ?? "";
+    const mail = text.split("\nMail:\n")[1] ?? "";
+    const gruss = du ? `Hallo ${name.split(/\s+/)[0] || "zusammen"},` : name ? `Guten Tag ${name},` : "Guten Tag,";
+    let kern;
+    let zus;
+    if (art === "absage") {
+      kern = du ? `danke, dass du Bescheid gibst – gute Besserung! Lass uns einen neuen Termin finden${slots ? `, z. B. ${slots}` : ""}.` : `vielen Dank für Ihre Nachricht und gute Besserung! Gern finden wir einen neuen Termin${slots ? `, etwa ${slots}` : ""}.`;
+      zus = "Termin abgesagt (krank) – neuer Termin gewünscht.";
+    } else if (art === "bestaetigung") {
+      kern = du ? "danke, ist notiert – bis dann!" : "vielen Dank, der Termin ist notiert.";
+      zus = "Termin bestätigt.";
+    } else if (art === "verschiebung" || art === "vorschlag") {
+      kern = du ? "danke, der neue Termin passt mir [bitte prüfen]." : "vielen Dank, der vorgeschlagene Termin passt mir [bitte prüfen].";
+      zus = "Neuer Terminvorschlag.";
+    } else {
+      kern = du ? "danke für deine Nachricht! [Antwort ergänzen]" : "vielen Dank für Ihre Nachricht. [Antwort ergänzen]";
+      zus = (mail.replace(/^\s*(hallo|guten tag|sehr geehrte[rs]?)[^\n,]*,?\s*/i, "").split(/[.!?\n]/)[0] ?? "").trim().slice(0, 120) || "Nachricht ohne klaren Bezug.";
+    }
+    const entwurf = [gruss, "", kern, "", du ? "Viele Grüße" : "Freundliche Grüße", unterschrift].join("\n");
+    return [200, reply(b, [{ type: "text", text: "```json\n" + JSON.stringify({ zusammenfassung: zus, entwurf }) + "\n```" }], "end_turn")];
+  }
   // Deal-Eingang: Angebote aus der Nachricht – je Zeile mit Preis ein Angebot (wie eine KI, erfundene Regeln):
   // ASIN/EAN übernehmen, Preis vor „netto/brutto/€“, „ab N“ = Mindestmenge, „6x/6er“ = Packung; Absender aus „Name:“.
   if (/Erkenne die Angebote in dieser Nachricht/.test(text) && !stale) {
@@ -456,6 +483,13 @@ function dcThread(id, name, k, owner, archiviert = false) {
 
 function discordVa(req, p, url, body) {
   if (p === "/discord-api/users/@me") return [200, { id: DC_BOT, username: "Seller-Bot (Test)", bot: true }];
+  // Direktnachricht (DM) an eine Person: eigener Kanal je Empfänger (type 1, ohne Server).
+  if (p === "/discord-api/users/@me/channels" && req.method === "POST") {
+    const b = JSON.parse(body || "{}");
+    const id = `85${String(b.recipient_id ?? "0").slice(-16).padStart(16, "0")}`;
+    if (!dcVa.kanaele.has(id)) dcVa.kanaele.set(id, { id, type: 1, name: null, recipients: [{ id: String(b.recipient_id ?? "") }] });
+    return [200, dcVa.kanaele.get(id)];
+  }
   const gilde = /^\/discord-api\/guilds\/(\d+)\/threads\/active$/.exec(p);
   if (gilde && req.method === "GET") return [200, { threads: [...dcVa.kanaele.values()].filter((x) => x.type === 11 && x.guild_id === gilde[1] && !x.thread_metadata?.archived), members: [] }];
   const t = /^\/discord-api\/channels\/(\d+)(\/.*)?$/.exec(p);

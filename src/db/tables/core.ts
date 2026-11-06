@@ -207,7 +207,11 @@ export type TenantSettings = {
   faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
   dealEingang?: { zielRoi?: number; zielMarge?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string; budgetJeDeal?: number; budgetJeTag?: number; budgetJeWoche?: number; wertSchwelle?: number; wertSchwelleJe?: Record<string, number>; monatsrahmen?: number; paybackEingerichtet?: boolean; /** B28.5 Bestellmail: Liefer- und Rechnungsadresse (mehrzeilig), USt-IdNr., Kopie an das eigene Postfach. */ bestellAdresse?: string; bestellUstId?: string; bestellKopie?: boolean };
   /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
-  posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
+  posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number;
+    /** B32 Persönliche Mails: erfassen, Discord-Direktnachricht an Ludwig (nur DM, nie VA-Kanal), freie Termin-Slots im Entwurf. */
+    persoenlich?: { aktiv?: boolean; discordDm?: boolean; discordDmId?: string; slots?: boolean; kiEntwurf?: boolean };
+    /** B32.5 Postausgang: Nachfassen nach n Tagen (Standard 3), Gesendet-Ordner mitlesen. */
+    nachfassTage?: number; ausgangMitlesen?: boolean };
   /** Rechtsfälle (Anwalt): Absender-Domains, private Asana-Projekte, Vorlauf für Fristen, „nichts passiert“ nach Tagen. */
   rechtsfaelle?: { anwaltDomains?: string[]; anwaltAdresse?: string; privatProjekte?: string[]; vorlaufTage?: number; stillstandTage?: number };
   /** Discord-Kanäle der Deal-Gruppe: Rohnachrichten höchstens so viele Tage. */

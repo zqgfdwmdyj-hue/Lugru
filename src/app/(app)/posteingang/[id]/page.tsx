@@ -10,6 +10,7 @@ import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
 import { archiveMails, correctMail, createTaskFromMail, draftAction } from "../actions";
 import { desc } from "drizzle-orm";
 import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
+import { geschaeftsVerlauf } from "@/lib/inbox/ausgang";
 
 const TOPIC_SEARCH: Partial<Record<Topic, string>> = { a_to_z: "A-bis-Z", buyer_message: "Kunde", ebay_case: "eBay", return_request: "Rücksendung", inbound_problem: "Wareneingang", listing_blocked: "Rechnung", negative_feedback: "Bewertung" };
 
@@ -39,6 +40,10 @@ export default async function MailPage({ params, searchParams }: { params: Promi
   const drafts = await db.select().from(schema.emailDrafts).where(and(eq(schema.emailDrafts.tenantId, session.tenantId), eq(schema.emailDrafts.emailId, m.id))).orderBy(desc(schema.emailDrafts.createdAt));
   const draftMsg = DRAFT_MSG[(await searchParams).entwurf ?? ""];
   const uncertain = isUncertainRule(m.matchedRule);
+  // B32.5 Verlauf: gesendete Antworten (System oder Mailprogramm), Antworten darauf, ggf. eigene Mail davor.
+  const verlauf = await geschaeftsVerlauf(session.tenantId, m.id);
+  const [vorher] = m.ausgangId ? await db.select().from(schema.mailAusgang).where(and(eq(schema.mailAusgang.tenantId, session.tenantId), eq(schema.mailAusgang.id, m.ausgangId))) : [];
+  const zeit = (d: Date) => d.toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
 
   return (
     <>
@@ -50,7 +55,27 @@ export default async function MailPage({ params, searchParams }: { params: Promi
           <div className="small muted" style={{ marginTop: 4 }}>{m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress}</div>
           {(m.an || m.ordner) && <div className="small muted" style={{ marginTop: 2 }} data-testid="mail-an-ordner">{m.an ? `An: ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? `Ordner: ${ordnerName(m.ordner)}` : ""}</div>}
           <div className="small muted" style={{ marginTop: 2 }} data-testid="mail-rule">Einordnung: {describeRule(m.matchedRule)}{uncertain ? " – bitte prüfen und rechts korrigieren" : ""} · <Link href={`/posteingang/regeln?absender=${encodeURIComponent((m.fromAddress ?? "").toLowerCase())}`}>Regel für diesen Absender</Link></div>
+          {m.beantwortetAm && <div className="notice notice-ok small" style={{ marginTop: 10 }} data-testid="mail-beantwortet">✓ Beantwortet{m.beantwortetVon?.includes("extern") ? " (extern)" : ""} am {zeit(m.beantwortetAm)}{m.beantwortetVon ? ` – von ${m.beantwortetVon.replace(/ · extern$/, "")}` : ""}</div>}
+          {vorher && (
+            <div className="card card-pad small verlauf-aus" style={{ marginTop: 12 }} data-testid="mail-vorher">
+              <div className="muted">Antwort auf eure Mail vom {zeit(vorher.gesendetAm)} an {vorher.an} (von {vorher.absenderName ? `${vorher.absenderName} · ` : ""}{vorher.absender}):</div>
+              <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{(vorher.bodyText ?? vorher.snippet ?? "").slice(0, 1500)}</div>
+            </div>
+          )}
           <div className="article-body" style={{ marginTop: 16, fontSize: 14 }}>{m.bodyText}</div>
+          {(verlauf.antworten.length > 0 || verlauf.folge.length > 0) && (
+            <section className="stack" style={{ marginTop: 20, gap: 8 }} data-testid="mail-verlauf">
+              <h2 style={{ fontSize: 16 }}>Verlauf</h2>
+              {[...verlauf.antworten.map((a) => ({ k: `a-${a.id}`, am: a.gesendetAm, aus: true, kopf: `Gesendet von ${a.absenderName ? `${a.absenderName} · ` : ""}${a.absender ?? "?"} an ${a.an}`, text: a.bodyText ?? a.snippet ?? "" })), ...verlauf.folge.map((f) => ({ k: `e-${f.id}`, am: f.receivedAt, aus: false, kopf: `Von ${f.fromName ?? f.fromAddress ?? "?"}`, text: f.bodyText ?? "" }))]
+                .sort((x, y) => x.am.getTime() - y.am.getTime())
+                .map((v) => (
+                  <article key={v.k} className={`card card-pad small${v.aus ? " verlauf-aus" : ""}`} data-testid={v.aus ? "verlauf-aus" : "verlauf-ein"}>
+                    <div className="between muted"><span>{v.kopf}</span><span>{zeit(v.am)}</span></div>
+                    <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{v.text.slice(0, 4000)}</div>
+                  </article>
+                ))}
+            </section>
+          )}
           {(drafts.length > 0 || draftMsg) && (
             <section id="entwurf" className="stack" style={{ marginTop: 24, gap: 12 }} data-testid="mail-drafts">
               <h2 style={{ fontSize: 16 }}>Antwort-Entwurf</h2>

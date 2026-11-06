@@ -63,7 +63,12 @@ export async function posteingangEinstellungen(fd: FormData) {
   const cur = (await getSettings(session.tenantId)).posteingang;
   const um = String(fd.get("vorabendUm") ?? "");
   const vor = Number(fd.get("abfahrtVorher"));
+  const tage = Number(fd.get("nachfassTage"));
+  // Bestehende Werte (u. a. persönliche Mails) bleiben – nur die Felder dieses Formulars ändern sich.
   const neu = {
+    ...cur,
+    ausgangMitlesen: fd.get("ausgangMitlesen") === "on",
+    nachfassTage: Number.isFinite(tage) && tage > 0 ? Math.min(60, Math.round(tage)) : cur.nachfassTage,
     autoArchiv: fd.get("autoArchiv") === "on",
     terminMails: fd.get("terminMails") === "on",
     vorabendUm: /^([01]\d|2[0-3]):[0-5]\d$/.test(um) ? um : cur.vorabendUm,
