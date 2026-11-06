@@ -57,16 +57,24 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await expect(page.getByTestId("ao-meldung")).toContainText("alle Exporte abgeholt");
       const zeilen = page.getByTestId("ao-import");
       for (const k of ["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement", "accountone"]) await expect(zeilen.and(page.locator(`[data-export="${k}"]`)).first()).toBeVisible();
-      await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("Einkäufe: 2 neu");
+      // B30: Einkäufe = Bestellliste (Lieferant + Datum, ohne Bestellnummer-Spalte → eine Bestellung)
+      await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("1 Bestellung, 2 Positionen, 2 ohne Zuordnung");
       await expect(zeilen.and(page.locator('[data-export="lagerbestand"]')).first()).toContainText("Stück");
       // Einkaufs-Karte über den Zeitraum-Dialog, AccountOne NEU (nicht alt), keine Datei doppelt geholt
       expect((await (await fetch(`${TD}/__ao`)).json()).downloads.map((d: { key: string }) => d.key)).toEqual(["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement", "accountone"]);
 
       // Ergebnis im System
       expect((await sql("select 1 from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, A2])).length).toBe(2);
-      // Charge aus dem Einkauf (Kaufdatum + Menge); der EK selbst wird unten über fehlende_einkaufspreise geprüft
-      const [lot] = await sql<{ quantity: number; purchase_date: string }>("select quantity, purchase_date::text from lots where tenant_id = $1 and sku = $2", [T, S1]);
-      expect(lot).toMatchObject({ quantity: 3, purchase_date: iso(heute) });
+      // B30: Bestellung in Einkauf → Bestellungen (Lieferant, Datum, Menge, EK); der EK je SKU kommt nur als Vorschlag,
+      // gültig wird er hier über den sellerboard-Export (unten über fehlende_einkaufspreise geprüft)
+      const pos = await sql<{ status: string; order_date: string; quantity: number; unit_cost_gross: string; supplier: string; quelle: string }>(
+        "select po.status, po.order_date::text, i.quantity, i.unit_cost_gross::text, s.name as supplier, po.quelle from purchase_orders po join purchase_order_items i on i.po_id = po.id left join suppliers s on s.id = po.supplier_id where po.tenant_id = $1 and i.asin in ($2, $3) order by i.quantity desc",
+        [T, A1, A2],
+      );
+      expect(pos).toHaveLength(2);
+      expect(pos[0]).toMatchObject({ status: "ordered", order_date: iso(heute), quantity: 3, supplier: "Testshop AO", quelle: "arbitrageone" });
+      expect(Number(pos[0].unit_cost_gross)).toBeCloseTo(14.875, 3); // 12,50 netto + 19 % USt
+      expect((await sql("select 1 from lots where tenant_id = $1 and sku = $2 and quantity = 3", [T, S1])).length).toBe(0);
       expect((await sql("select menge from ao_lagerbestand where tenant_id = $1 and sku = $2", [T, S1]))[0]).toMatchObject({ menge: 3 });
       expect((await sql<{ monat: string }>("select monat from ao_accountone_cog where tenant_id = $1 and zeilen @> $2::jsonb", [T, JSON.stringify([{ sku: S1 }])]))[0].monat).toBe(vormonat);
       expect((await sql("select 1 from amazon_reimbursements where tenant_id = $1 and reimbursement_id = $2", [T, `AOTR${m}`])).length).toBe(1);
@@ -118,6 +126,7 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await ao({ zuruecksetzen: true });
       await sql("update tasks set status = 'done' where tenant_id = $1 and system_key like 'automatik-arbitrageone%' and status = 'open'", [T]);
       await sql("delete from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, A2]);
+      await sql("delete from purchase_orders where tenant_id = $1 and quelle = 'arbitrageone' and id in (select po_id from purchase_order_items where tenant_id = $1 and asin in ($2, $3))", [T, A1, A2]);
       await sql("delete from ao_lagerbestand where tenant_id = $1 and sku = $2", [T, S1]);
       await sql("delete from ao_accountone_cog where tenant_id = $1 and zeilen @> $2::jsonb", [T, JSON.stringify([{ sku: S1 }])]);
       await sql("delete from amazon_reimbursements where tenant_id = $1 and reimbursement_id = $2", [T, `AOTR${m}`]);

@@ -31,6 +31,7 @@ export const IMPORT_ARTEN = {
   ek_liste: { text: "EK-Liste (ArbitrageOne/AccountOne)", upload: "ek_liste", endungen: [".xlsx", ".xls", ".csv"] },
   bqool_datei: { text: "BQool-Datei (Repricing-Export bzw. Manage Listings)", endungen: [".txt", ".csv", ".xlsx"] },
   ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag): Bestandsabgleich eigenes Lager, Lagerwert", upload: "ao_lagerbestand", endungen: [".csv", ".xlsx", ".xls"] },
+  ao_einkaeufe: { text: "ArbitrageOne – Bestellungen (Export „Einkäufe“/PurchaseOrders): Einkauf → Bestellungen, Einkaufszeilen, EK-Vorschlag aus Lieferungen", upload: "ao_einkaeufe", endungen: [".xls", ".xlsx", ".csv"] },
   ao_accountone_cog: { text: "ArbitrageOne – AccountOne COG (NEU): Monatsdatei für den Steuerberater (Monat im Hinweis, sonst Vormonat)", endungen: [".csv", ".xlsx", ".xls"] },
   ao_bqool_vergleich: { text: "ArbitrageOne – BQool-Export: nur Vergleich mit dem Soll des Seller-Systems (keine Übernahme, kein Upload)", endungen: [".txt", ".csv"] },
   preisliste: { text: "Lieferanten-Preisliste → Preislisten-Scanner", endungen: [".csv", ".xlsx", ".xls"] },

@@ -4,6 +4,8 @@ export const COST_SOURCE_LABEL: Record<string, string> = {
   sellerboard: "Sellerboard",
   inherited: "geerbt",
   manual: "manuell",
+  einkaeufe: "ArbitrageOne-Einkäufe",
+  ao_bestellungen: "aus ArbitrageOne-Bestellungen (Ø Lieferungen)",
 };
 
 export const INBOUND_STATUS_LABEL: Record<string, string> = {

@@ -24,6 +24,10 @@ export type UploadOptionen = {
   saldo: number | null;
   /** B27.1: Art steht schon fest (z. B. ArbitrageOne-Abruf weiß, welchen Export er geladen hat) – keine Erkennung. */
   art?: UploadArt;
+  /** Datei-Import, aus dem die Datei kommt (für die Herkunft gespeicherter Zeilen). */
+  dateiImportId?: string | null;
+  /** Stand der Datei (ursprünglich geholt am) – beim Nachverarbeiten älterer Dateien. */
+  stand?: Date;
 };
 
 const MAX = 25 * 1024 * 1024;
@@ -56,6 +60,12 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
       const f = t.length ? (aoFormatSuchen(t)?.format ?? aoFormat(t[0])) : null;
       const n = name.toLowerCase();
       if (/lagerbestand|inventory|bestand/.test(n) && t.length && hatBestandSpalten(t[kopfzeile(t, hatBestandSpalten)] ?? [])) return "ao_lagerbestand";
+      // B30: Export „Einkäufe“ (PurchaseOrders) = Bestellliste → Einkauf → Bestellungen. Die eigene EK-Vorlage
+      // („EK netto (mit VSK)“/„EK netto (Standard)“) bleibt EK-Liste.
+      const { istBestellKopf } = await import("@/lib/arbitrageone/bestellungen-logic");
+      const kopf = t.length ? (t[kopfzeile(t, istBestellKopf)] ?? []) : [];
+      const vorlage = kopf.some((h) => /^ek netto \((mit vsk|standard)\)$/i.test(String(h ?? "").trim()));
+      if (!vorlage && t.length && istBestellKopf(kopf) && (/purchase.?orders?|einkaeufe|einkäufe|bestellungen/.test(n) || f === "einkaeufe")) return "ao_einkaeufe";
       if (f === "sellerboard" || f === "einkaeufe") return "ek_liste";
       if (f === "lagerbestand") return "ao_lagerbestand";
       if (/purchase.?orders?|einkaeufe|einkäufe/.test(n) && t.length && hatEinkaufSpalten(t[kopfzeile(t, hatEinkaufSpalten)] ?? [])) return "ek_liste";
@@ -120,6 +130,18 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
         throw e;
       }
       return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.${einText}`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}`, details: { ek: { id: r.id, zeilen: r.zeilen, ...r.anzahl }, ...(ein ? { einkaeufe: ein } : {}) } };
+    }
+    case "ao_einkaeufe": {
+      // B30: Bestellliste → Einkauf → Bestellungen (+ Einkaufszeilen, EK-Vorschlag). Fehlen Spalten: gefunden/fehlt.
+      const { readSheet } = await import("@/lib/imports/arbitrageone");
+      const { AoBestellFehler, aoBestellungenImportieren } = await import("@/lib/arbitrageone/bestellungen");
+      try {
+        const r = await aoBestellungenImportieren(session.tenantId, session.userId, name, readSheet(bytes), o.dateiImportId ?? null, { stand: o.stand });
+        return { ok: true, text: r.text, hinweise: r.preis === "netto angenommen" ? ["EK-Spalte ohne netto/brutto im Namen – als netto gelesen."] : [], link: r.link, details: { bestellungen: r } };
+      } catch (e) {
+        if (e instanceof AoBestellFehler) return { ok: false, text: e.message, hinweise: [] };
+        throw e;
+      }
     }
     case "ao_lagerbestand": {
       const { readSheet } = await import("@/lib/imports/arbitrageone");

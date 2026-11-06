@@ -45,9 +45,11 @@ test.describe("B27 – nächtliche Automatik", () => {
 
       // B27.1: Einkäufe (PurchaseOrders .xls) und Lagerbestand (.xlsx) verarbeitet – keine „Falsche Art“
       const zeilen = page.getByTestId("ao-import");
-      await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("Einkäufe: 1 neu");
+      // B30: PurchaseOrders = Bestellliste → Einkauf → Bestellungen (nicht mehr EK-Liste)
+      await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("1 Bestellung, 1 Position, 1 ohne Zuordnung");
       await expect(zeilen.and(page.locator('[data-export="lagerbestand"]')).first()).toContainText("4 Stück");
       expect((await sql("select menge from ao_einkaeufe where tenant_id = $1 and asin = $2", [T, A1]))[0]).toMatchObject({ menge: 3 });
+      expect((await sql<{ number: string; status: string; quantity: number }>("select po.number, po.status, i.quantity from purchase_orders po join purchase_order_items i on i.po_id = po.id where po.tenant_id = $1 and po.quelle = 'arbitrageone' and i.asin = $2", [T, A1]))[0]).toMatchObject({ number: `AO-PO-${m}`, status: "ordered", quantity: 3 });
       expect((await sql("select menge from ao_lagerbestand where tenant_id = $1 and sku = $2", [T, S1]))[0]).toMatchObject({ menge: 4 });
       // B27.2: BQool kam über „Meine Exporte“, Reimbursement über den ausgefüllten Dialog; AccountOne ohne Reaktion
       const geladen = (await (await fetch(`${TD}/__ao`)).json()).downloads.map((d: { key: string }) => d.key);
@@ -99,6 +101,7 @@ test.describe("B27 – nächtliche Automatik", () => {
       await sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'arbitrageone_web'", [T, JSON.stringify(aoVorher)]);
       await sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'sellerboard_web'", [T, JSON.stringify(sbVorher)]);
       await ao({ zuruecksetzen: true });
+      await sql("delete from purchase_orders where tenant_id = $1 and quelle = 'arbitrageone' and number = $2", [T, `AO-PO-${m}`]);
     }
   });
 

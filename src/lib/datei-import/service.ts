@@ -122,8 +122,8 @@ export async function importVerarbeiten(id: string): Promise<void> {
   }
 }
 
-async function zentral(session: Session, name: string, bytes: Uint8Array, art?: UploadArt) {
-  const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null, art });
+async function zentral(session: Session, name: string, bytes: Uint8Array, art?: UploadArt, dateiImportId?: string, stand?: Date) {
+  const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null, art, dateiImportId: dateiImportId ?? null, stand });
   if (!r) throw new ImportFehler("Die Datei konnte nicht verarbeitet werden.");
   if (!r.ok) throw new ImportFehler(r.text);
   return r;
@@ -208,7 +208,7 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     const erkannt = fest ? def.upload : await dateiArt(name, bytes);
     if (erkannt !== def.upload) throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
     await fortschritt(30);
-    const r = await zentral(session, name, bytes, fest ? def.upload : undefined);
+    const r = await zentral(session, name, bytes, fest ? def.upload : undefined, id, h.hochgeladenAm);
     const basis = { art, text: r.text, hinweise: r.hinweise, link: r.link };
     // ArbitrageOne-Abruf: EK-Zeilen ohne Warnung gleich übernehmen (Nachtlauf ohne Handarbeit), Rest zur Prüfung.
     if (art === "ek_liste" && h.herkunft === "arbitrageone") {
@@ -335,6 +335,10 @@ export async function importErneutVerarbeiten(tenantId: string, id: string): Pro
   if (!a.ablage) return { ok: false, status: a.status, text: "Die Datei liegt nicht mehr vor (nach der Aufbewahrungszeit gelöscht) – bitte neu hochladen bzw. abholen." };
   const vorher = a.fehlerText;
   const jetzt = new Date();
+  // B30.3: ArbitrageOne-Export „Einkäufe“ ist eine Bestellliste – mit der neuen Art verarbeiten, nicht mit der
+  // gespeicherten „ek_liste“.
+  const artVorher = a.art;
+  if (a.herkunft === "arbitrageone" && a.quelleExport === "einkaeufe" && a.art === "ek_liste") await db.update(D).set({ art: "ao_einkaeufe" }).where(eq(D.id, a.id));
   if (a.sha256) {
     const [schon] = await db
       .select({ id: D.id, fertigAm: D.fertigAm })
@@ -350,7 +354,7 @@ export async function importErneutVerarbeiten(tenantId: string, id: string): Pro
   await importVerarbeiten(a.id);
   const [x] = await db.select({ status: D.status, fehler: D.fehlerText, ergebnis: D.ergebnis }).from(D).where(eq(D.id, a.id));
   if (x?.status === "fertig") {
-    await db.update(D).set({ ergebnis: { ...(x.ergebnis ?? {}), erneut_verarbeitet: { am: jetzt.toISOString(), vorheriger_fehler: vorher } } }).where(eq(D.id, a.id));
+    await db.update(D).set({ ergebnis: { ...(x.ergebnis ?? {}), erneut_verarbeitet: { am: jetzt.toISOString(), vorheriger_fehler: vorher, ...(artVorher !== "ao_einkaeufe" && a.quelleExport === "einkaeufe" ? { art_vorher: artVorher } : {}) } } }).where(eq(D.id, a.id));
     return { ok: true, status: "fertig", text: String((x.ergebnis as { text?: string } | null)?.text ?? "verarbeitet") };
   }
   return { ok: false, status: x?.status ?? "fehler", text: x?.fehler ?? "Verarbeitung fehlgeschlagen" };
@@ -361,10 +365,22 @@ export async function importErneutVerarbeiten(tenantId: string, id: string): Pro
  * der letzten 14 Tage, die noch nie nachverarbeitet wurden – älteste zuerst (neuere Stände gewinnen).
  */
 export async function aoFehlimporteNachverarbeiten(tenantId: string): Promise<{ id: string; dateiname: string; ok: boolean; text: string }[]> {
+  const { AO_BESTELL_PARSER_STAND } = await import("@/lib/arbitrageone/bestellungen-logic");
   const rows = await db
     .select({ id: D.id, dateiname: D.dateiname })
     .from(D)
-    .where(and(eq(D.tenantId, tenantId), eq(D.herkunft, "arbitrageone"), eq(D.status, "fehler"), isNotNull(D.ablage), sql`${D.nachverarbeitetAm} is null`, sql`${D.art} in ('ek_liste', 'ao_lagerbestand')`, sql`${D.createdAt} > now() - interval '14 days'`))
+    .where(
+      and(
+        eq(D.tenantId, tenantId),
+        eq(D.herkunft, "arbitrageone"),
+        eq(D.status, "fehler"),
+        isNotNull(D.ablage),
+        sql`${D.createdAt} > now() - interval '14 days'`,
+        // B30.3: „Einkäufe“ (bisher als ek_liste gescheitert, auch schon einmal nachverarbeitet) mit der neuen Art; mit
+        // neuem Parser-Stand gescheiterte Bestelllisten noch einmal; sonst wie bisher einmal.
+        sql`((${D.art} in ('ek_liste', 'ao_lagerbestand') and ${D.nachverarbeitetAm} is null) or (${D.quelleExport} = 'einkaeufe' and ${D.art} = 'ek_liste') or (${D.art} = 'ao_einkaeufe' and (${D.nachverarbeitetAm} is null or ${D.nachverarbeitetAm} < ${AO_BESTELL_PARSER_STAND}::timestamptz)))`,
+      ),
+    )
     .orderBy(D.createdAt)
     .limit(20);
   const out: { id: string; dateiname: string; ok: boolean; text: string }[] = [];

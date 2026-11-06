@@ -157,7 +157,8 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     .select({ id: PO.id, nr: PO.number, status: PO.status, datum: PO.orderDate, versand: PO.shippingCostGross, summe: sql<string>`coalesce(sum(${POI.quantity} * ${POI.unitCostGross}), 0)`, asins: sql<string[]>`coalesce(array_agg(${POI.asin}) filter (where ${POI.asin} is not null), '{}')` })
     .from(PO)
     .leftJoin(POI, eq(POI.poId, PO.id))
-    .where(and(eq(PO.tenantId, t), inArray(PO.status, ["draft", "ordered", "shipped", "partial"]), sql`${PO.invoiceId} is null`))
+    // B30: ArbitrageOne-Bestellungen sind online schon bezahlt (stehen im Konto/Amex) – keine offene Zahlung.
+    .where(and(eq(PO.tenantId, t), inArray(PO.status, ["draft", "ordered", "shipped", "partial"]), sql`${PO.invoiceId} is null`, sql`${PO.quelle} is distinct from 'arbitrageone'`))
     .groupBy(PO.id);
   const freigegebeneAsins = new Set<string>();
   for (const b of offeneBestellungen) {

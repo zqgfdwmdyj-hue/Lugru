@@ -221,7 +221,8 @@ export async function applyImport(opts: {
 }
 
 /**
- * Gültiger EK je Charge: manuell > eigene Vorlage (mit Versandkosten) > AccountOne > Sellerboard.
+ * Gültiger EK je Charge: manuell > eigene Vorlage (mit Versandkosten) > ArbitrageOne-Bestellungen (B30, Ø der letzten
+ * Lieferungen, nur nach Übernahme von Hand) > AccountOne > Sellerboard.
  */
 export async function applyCostPriority(tx: Tx, tenantId: string) {
   await tx.execute(sql`
@@ -234,7 +235,7 @@ export async function applyCostPriority(tx: Tx, tenantId: string) {
           from cost_observations
          where tenant_id = ${tenantId}
          order by lot_id,
-                  case source when 'template' then 1 when 'accountone' then 2 when 'sellerboard' then 3 else 9 end
+                  case source when 'template' then 1 when 'ao_bestellungen' then 2 when 'accountone' then 3 when 'sellerboard' then 4 else 9 end
       ) o
      where l.id = o.lot_id
        and l.tenant_id = ${tenantId}

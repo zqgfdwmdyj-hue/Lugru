@@ -10,7 +10,8 @@ import { parseAmount, parseDate } from "@/lib/numbers";
 //  - Einkäufe (Export „Einkäufe“): ASIN | (SKU) | Kaufdatum | Menge | EK netto | (Lieferant, Rechnung) – Spalten
 //    tolerant erkannt (src/lib/arbitrageone/logic.ts); Zeilen ohne SKU zählen nur als Einkauf (ao_einkaeufe).
 
-export type ImportSource = "sellerboard" | "accountone" | "template" | "einkaeufe";
+/** ao_bestellungen = B30: EK je SKU aus gelieferten ArbitrageOne-Bestellungen (nur als Vorschlag, übernommen von Hand). */
+export type ImportSource = "sellerboard" | "accountone" | "template" | "einkaeufe" | "ao_bestellungen";
 
 export type ImportRow = {
   line: number;

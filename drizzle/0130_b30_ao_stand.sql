@@ -1,0 +1,1 @@
+ALTER TABLE "purchase_order_items" ADD COLUMN "externer_stand_am" timestamp with time zone;

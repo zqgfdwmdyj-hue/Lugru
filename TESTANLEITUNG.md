@@ -25,7 +25,7 @@ Stoppen: `docker compose down` (die Daten bleiben erhalten). Alles löschen: `do
 
 | Bereich | So testest du es |
 |---|---|
-| **Daten importieren** | Arbitrage-One-Exporte (Vorlage „Tool“, AccountOne COG, Sellerboard) und Amazon-Reports hochladen – mehrere Dateien auf einmal. Wo es die Reports gibt, steht rechts auf der Seite. |
+| **Daten importieren** | Arbitrage-One-Exporte (Vorlage „Tool“, AccountOne COG, Sellerboard) und Amazon-Reports hochladen – mehrere Dateien auf einmal. Wo es die Reports gibt, steht rechts auf der Seite. Der Export „Einkäufe“ (PurchaseOrders) wird als **„ArbitrageOne – Bestellungen“** erkannt (B30): Er landet unter **Einkauf → Bestellungen** (Ansicht „ArbitrageOne“), mit „n Bestellungen, m Positionen, k ohne Zuordnung“. Den EK je SKU gibt es nur als Vorschlag unter Einkauf → EK-Import. Fehlen Spalten, nennt die Meldung „gefunden: …; fehlt: …“. |
 | **Chargen** | Nach dem Import: EK je SKU, Retouren mit geerbtem EK, Filter „Ohne EK“, „EK-Abweichung“. |
 | **Ansprüche** | Nach dem Import von Bestandsprotokoll, Erstattungen, Kundenrücksendungen, Remissionen und Abrechnungen. Warteschlange, Tageslimit, Nachweis-Mappe, Text für den Amazon-Fall. |
 | **Kunden (für Rechnungen)** | Einkauf & Buchhaltung → **Kunden**: Firmenkunden anlegen (Firma, Ansprechpartner, Anschrift, Land, USt-IdNr., E-Mail, Kundennummer – die nächste Nummer wird nach deinem Muster vorgeschlagen, z. B. K-1008 nach K-1007), bearbeiten, suchen, löschen (Rechnungen bleiben). Je Kunde Anzahl und Summe der Rechnungen. „Rechnung schreiben“ (oder „Anlegen und Rechnung schreiben“) öffnet die B2B-Rechnung mit allen Kundendaten und dem passenden Steuerfall; im Rechnungsformular gibt es außerdem „Gespeicherter Kunde“. Doppelte Namen werden abgelehnt. |

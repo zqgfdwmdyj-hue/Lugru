@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, lots, money, products, suppliers, tenantId, updatedAt, users } from "./core";
 import { invoices } from "./invoices";
@@ -28,10 +29,14 @@ export const purchaseOrders = pgTable(
     invoiceId: uuid("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
     receivedAt: timestamp("received_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    /** B30: Herkunft – leer = im Seller-System angelegt, „arbitrageone“ = aus dem Export „Einkäufe“ (schon bezahlt). */
+    quelle: text("quelle"),
+    /** B30: Schlüssel der Bestellung in der Quelle (Bestellnummer, sonst Lieferant + Datum). */
+    externeId: text("externe_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("po_number_uq").on(t.tenantId, t.number), index("po_status_idx").on(t.tenantId, t.status)],
+  (t) => [uniqueIndex("po_number_uq").on(t.tenantId, t.number), index("po_status_idx").on(t.tenantId, t.status), uniqueIndex("po_extern_uq").on(t.tenantId, t.quelle, t.externeId).where(sql`${t.externeId} is not null`)],
 );
 
 export const purchaseOrderItems = pgTable(
@@ -59,7 +64,13 @@ export const purchaseOrderItems = pgTable(
     /** SKU der Charge (Schema C: SHOP_TTMONJJ_ASIN_EKBRUTTO_VK). */
     sku: text("sku"),
     lotId: uuid("lot_id").references(() => lots.id, { onDelete: "set null" }),
+    /** B30: Schlüssel der Position in der Quelle – dieselbe Position aus der nächsten Tagesdatei wird nicht neu angelegt. */
+    externerSchluessel: text("externer_schluessel"),
+    /** B30: Status der Position laut Quelle (bestellt, versendet, teilweise, geliefert, storniert) und wie er dort hieß. */
+    externerStatus: text("externer_status"),
+    /** B30: Stand der Datei, aus der die Position zuletzt kam – eine ältere Datei dreht Status/Menge nicht zurück. */
+    externerStandAm: timestamp("externer_stand_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("poi_po_idx").on(t.poId), index("poi_asin_idx").on(t.tenantId, t.asin)],
+  (t) => [index("poi_po_idx").on(t.poId), index("poi_asin_idx").on(t.tenantId, t.asin), uniqueIndex("poi_extern_uq").on(t.tenantId, t.externerSchluessel).where(sql`${t.externerSchluessel} is not null`)],
 );

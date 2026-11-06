@@ -140,6 +140,10 @@ export async function sellerboardDisconnectAction() {
 export async function aoJetztAbholenAction(): Promise<void> {
   const session = await requireOwner();
   const { aoAbholen } = await import("@/lib/arbitrageone/abruf");
+  // B30.3: wie der Nachtlauf zuerst fehlgeschlagene Importe der letzten 14 Tage mit der aktuellen Verarbeitung nachholen
+  // (sonst erst im Stundentakt) – ältere Dateien zuerst, damit die neue Tagesdatei den Stand bestimmt.
+  const { aoFehlimporteNachverarbeiten } = await import("@/lib/datei-import/service");
+  await aoFehlimporteNachverarbeiten(session.tenantId).catch((e) => console.error("ArbitrageOne nachverarbeiten", e instanceof Error ? e.message : e));
   const r = await aoAbholen(session.tenantId, { ausloeser: "knopf" });
   revalidatePath("/anbindungen");
   redirect(`/anbindungen?ao=${r.status}#importe-arbitrageone`);

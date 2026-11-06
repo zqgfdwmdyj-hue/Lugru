@@ -23,7 +23,8 @@ export type AoExport = {
 
 /** Reihenfolge = Abruf-Reihenfolge: Einkäufe vor dem sellerboard-COG (Bauauftrag: „täglich nach Einkäufe“). */
 export const AO_EXPORTE: AoExport[] = [
-  { key: "einkaeufe", titel: "Einkäufe", takt: "taeglich", art: "ek_liste", taktText: "täglich 05:30", nutzen: "EK je SKU, Lugru „gekauft“, Monatsrahmen, Wareneinkauf in der Liquidität" },
+  // B30: Bestellliste (PurchaseOrders) → Einkauf → Bestellungen; EK je SKU nur als Vorschlag aus den Lieferungen.
+  { key: "einkaeufe", titel: "Einkäufe", takt: "taeglich", art: "ao_einkaeufe", taktText: "täglich 05:30", nutzen: "Einkauf → Bestellungen, EK-Vorschlag aus Lieferungen, Lugru „gekauft“, Monatsrahmen, Wareneinkauf in der Liquidität" },
   { key: "lagerbestand", titel: "Lagerbestand", takt: "taeglich", art: "ao_lagerbestand", taktText: "täglich 05:30", nutzen: "Bestandsabgleich eigenes Lager ↔ Wawi, Lagerwert" },
   { key: "sellerboard", titel: "Sellerboard", takt: "taeglich", art: "ek_liste", taktText: "täglich nach den Einkäufen", nutzen: "EK je SKU; auf Wunsch unverändert an sellerboard weitergereicht" },
   { key: "bqool", titel: "BQool", takt: "taeglich", art: "ao_bqool_vergleich", taktText: "täglich – nur Vergleich", nutzen: "Abweichung ArbitrageOne ↔ Seller-System (wird nie übernommen oder hochgeladen)" },

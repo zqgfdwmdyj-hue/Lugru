@@ -915,6 +915,78 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
    - Für den Rest bekommst du Aufgaben.
 5. Fehlende Rechnungen im System hochladen und der Charge zuordnen. Dann schickt das System sie beim nächsten Mal selbst.
 
+## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
+
+Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
+Der EK-Listen-Parser erwartet aber den sellerboard-Export (ASIN | SKU | Cost). Die Datei ist eine **Bestellliste** (eine
+Zeile je Einkaufsposition). Deshalb scheiterten alle Läufe vom 02.–06.11. und „Erneut verarbeiten“ mit „Pflichtspalten
+fehlen (ASIN, SKU und EK)“.
+
+**Prüfung (vorher):**
+
+| Punkt | vorher | Fundstelle |
+|---|---|---|
+| B30.1.1 Kopfzeile der Datei vom 06.11. ausgeben, Parser darauf bauen | ❌ Die Datei liegt nur verschlüsselt auf dem Server und ist hier nicht lesbar. Deshalb erkennt der Parser die Spalten über Synonyme (deutsch/englisch) und schreibt ins Ergebnis, welche Spalte er wofür gelesen hat (To-do 91) | – |
+| B30.1.2 Ziel Einkauf → Bestellungen, Zuordnung über ASIN, „ohne Zuordnung“ | ❌ Datei ging an den EK-Listen-Parser | `AO_EXPORTE` (`art: "ek_liste"`) |
+| B30.1.3 EK je SKU aus Lieferungen als Vorschlag, Warnung > 10 % gegen sellerboard-COG | ❌ EK-Zeilen ohne Warnung wurden sofort übernommen (wenn die Datei gepasst hätte) | `ekImportAutomatisch` |
+| B30.1.4 Positionen aus der nächsten Tagesdatei nicht doppelt | 🟡 nur gleiche Datei (Prüfsumme) bzw. gleiche Einkaufszeile | `aoEinkaeufeSpeichern` |
+| B30.2 Abruf übergibt `ao_einkaeufe` | ❌ `ek_liste` | `src/lib/arbitrageone/logic.ts` |
+| B30.2 Erkennung beim manuellen Upload | ❌ erkannt als „EK-Liste“ | `dateiArt` (`src/lib/uploads/service.ts`) |
+| B30.2 Fehlertext „gefunden: …, fehlt: …“ | ❌ nur „Pflichtspalten fehlen (ASIN, SKU und EK)“ | `parseArbitrageOne` |
+| B30.3 Fehlimporte 02.–06.11. nachverarbeiten, „Erneut verarbeiten“ mit neuer Art | ❌ gespeicherte Art `ek_liste`; nach dem Versuch vom 06.11. 08:05 nie wieder automatisch | `aoFehlimporteNachverarbeiten` |
+
+**Nachher:**
+
+| Punkt | Stand | Fundstelle |
+|---|---|---|
+| Neue Importart `ao_einkaeufe` „ArbitrageOne – Bestellungen“ | ✅ | Parser (rein, getestet): `src/lib/arbitrageone/bestellungen-logic.ts`; Übernahme: `src/lib/arbitrageone/bestellungen.ts` |
+| Spalten | ✅ Pflicht: ASIN, Menge, Bestelldatum und EK (Einzel- oder Gesamtpreis). Optional: Bestellnummer, Positions-ID, Lieferant/Shop, SKU, FNSKU, Produktname, USt-Satz, Versandkosten, Status, Lager, Charge, Währung. Netto/brutto aus dem Spaltennamen, umgerechnet mit dem USt-Satz der Zeile (sonst 19 %). Summenspalten gelten nie als Stückpreis (Gesamtpreis ÷ Menge). „Menge geliefert“ zählt nicht als Bestellmenge. Titelzeilen vor der Kopfzeile werden übersprungen | `aoBestellSpalten`, `aoBestellungenLesen` |
+| Ziel Einkauf → Bestellungen | ✅ Eine Bestellung je Bestellnummer (ohne Nummer: Lieferant + Datum), Nummer `AO-<Bestellnummer>`. Neue Lieferanten werden angelegt. Je Position: Menge, geliefert, EK brutto + USt-Satz, Status (bestellt/versendet/teilweise/geliefert/storniert), SKU. Zuordnung zum Produkt über ASIN; ohne Produkt „ohne Zuordnung“ in Liste und Detail. Neue Ansicht „ArbitrageOne“ unter Einkauf | `src/app/(app)/einkauf/page.tsx`, `src/app/(app)/einkauf/[id]/page.tsx` |
+| Ergebnistext | ✅ „n Bestellungen, m Positionen, k ohne Zuordnung · neu: … · aktualisiert: … · schon bekannt: …“; im Ergebnis zusätzlich `spalten` (Feld → Spaltenname) und `status_werte` | `bestellText` |
+| EK je SKU aus Lieferungen | ✅ Mengengewichteter Ø der letzten 3 gelieferten Positionen (netto, ohne stornierte) → EK-Vorschlag „EK-Vorschlag aus ArbitrageOne-Bestellungen“ unter Einkauf → EK-Import. Weicht er mehr als 10 % vom sellerboard-COG ab, steht dort „weicht +x % vom sellerboard-COG (y €) ab“. Übernahme nur von Hand; übernommene Chargen tragen die Quelle „aus ArbitrageOne-Bestellungen (Ø Lieferungen)“. Derselbe Vorschlag wird nicht jeden Tag neu angelegt | `ekAusLieferungen`, `sbCogWarnung`, `ekVorschlagAusBestellungen` |
+| Positionen aus der nächsten Tagesdatei | ✅ Schlüssel je Position (Positions-ID, sonst Bestellung + ASIN + SKU + laufende Nr.) → „schon bekannt“. Geänderter Status, Menge oder Preis wird nachgeführt. Eine ältere Datei (beim Nachverarbeiten) dreht nichts zurück | Spalten `externe_id`, `externer_schluessel`, `externer_stand_am` (Migrationen 0129, 0130) |
+| Abruf übergibt `ao_einkaeufe` | ✅ | `AO_EXPORTE` |
+| Manueller Upload | ✅ Kopfzeile mit ASIN + Menge + Datum/Bestellnummer und Dateiname „PurchaseOrders“/„Einkäufe“/„Bestellungen“ → „ArbitrageOne – Bestellungen“. Über Claude: `import_link` mit Art `ao_einkaeufe` | `dateiArt`, `IMPORT_ARTEN` |
+| Fehlertext | ✅ „ArbitrageOne – Bestellungen: Spalten fehlen – gefunden: …; fehlt: ….“ (auch wenn die Kopfzeile hinter Titelzeilen steht) | `spaltenFehlerText` |
+| Nachverarbeiten | ✅ „Erneut verarbeiten“ stellt `ek_liste` auf `ao_einkaeufe` um (die alte Art steht im Ergebnis). Automatisch stündlich, im Nachtlauf und jetzt auch bei „Jetzt abholen“: Fehlimporte der letzten 14 Tage, älteste zuerst, auch die schon einmal nachverarbeiteten Einkäufe. Scheitert eine Datei wieder, wird sie erst nach einer Parser-Änderung erneut versucht (kein Fehler jede Stunde) | `importErneutVerarbeiten`, `aoFehlimporteNachverarbeiten`, `aoJetztAbholenAction` |
+
+**Verhaltensänderungen (bitte bestätigen oder ändern):**
+- ArbitrageOne-Bestellungen zählen in der Liquidität **nicht** als offene Zahlung (online schon bezahlt). Im
+  Ø-Wareneinkauf (Ersatzrechnung „eigene Bestellungen“) zählen sie mit.
+- Der EK aus dem Export „Einkäufe“ wird nicht mehr automatisch als Charge übernommen, er kommt nur als Vorschlag. Der
+  Export „Sellerboard“ (ASIN | SKU | Cost) wird wie bisher automatisch übernommen. Weil die Einkaufs-Datei seit 02.11.
+  ohnehin scheiterte, fällt nichts weg, was zuletzt lief.
+- Positionen ohne Status gelten nach 21 Tagen als geliefert.
+- Offene ArbitrageOne-Bestellungen stehen unter Einkauf → Offen. Ihre ASINs gelten bei den Bestellvorschlägen als
+  „schon bestellt“, bis die Bestellung ganz geliefert oder storniert ist.
+- Wareneingang ins eigene Lager bucht der Import nicht (die Ware geht meist übers Prep Center zu FBA).
+- Rangfolge der EK-Quelle beim Übernehmen: eigene Vorlage → ArbitrageOne-Bestellungen → AccountOne → sellerboard.
+
+**Abnahme:**
+1. ✅ automatisch (`e2e/b30-ao-bestellungen.spec.ts`, erfundene PurchaseOrders-Datei als HTML-.xls mit Titelzeile):
+   Ein Fehlimport mit Art `ek_liste`, der schon einmal erfolglos erneut verarbeitet wurde → „Erneut verarbeiten“ →
+   „fertig“ mit „2 Bestellungen, 3 Positionen, 2 ohne Zuordnung“, Art `ao_einkaeufe`, alte Art im Ergebnis.
+   *(live)* Der echte Import vom 06.11. nach dem Update (To-do 90).
+2. ✅ automatisch: Einkauf → Bestellungen (Ansicht „ArbitrageOne“) zeigt beide Bestellungen mit Lieferant, Datum,
+   Menge, EK und Status (teilweise bzw. storniert) und „1 ohne Zuordnung“. Das Detail zeigt „schon bezahlt“.
+3. ✅ automatisch: Der nächste Abruf holt einen Fehlimport von vor 4 Tagen selbst nach, die neue Tagesdatei läuft als
+   `ao_einkaeufe`. `anbindungen_status` zeigt „Einkäufe · ok · 1 Bestellung, 1 Position …“ und keinen Einkäufe-Fehler.
+   *(live)* Lauf am 07.11. um 05:30.
+4. ✅ automatisch: Manueller Upload derselben Datei unter Uploads → „ArbitrageOne – Bestellungen“, „schon bekannt:
+   3 Positionen“, nichts doppelt, kein zweiter EK-Vorschlag.
+
+Dazu automatisch geprüft:
+- EK-Vorschlag mit Warnung gegen den sellerboard-COG (+25 %), keine Charge angelegt.
+- Liquidität ohne die Bestellung.
+- Fehlende Spalten → „gefunden: …; fehlt: …“.
+
+Unit-Tests: `tests/b30-ao-bestellungen.test.ts` (16 Tests). Angepasst: `e2e/arbitrageone.spec.ts` und
+`e2e/b27-automatik.spec.ts` (Einkäufe als Bestellung statt Charge).
+
+**Werkzeuge:** `import_link` kennt die neue Art `ao_einkaeufe`. Das Schema ändert sich, deshalb kommt
+`notifications/tools/list_changed`. Sonst keine neuen Werkzeuge; `import_status` und `importe` zeigen das neue
+Ergebnis.
+
 ## Nachtrag B29 (05.11.): sellerboard-Aufruflimit (125/Tag) – Abrufe drosseln, Budget verwalten
 
 Befund: Seit 04.11. scheiterten alle sellerboard-Abrufe mit „used up today's MCP call limit (125 of 125)“. Das Limit
@@ -1600,3 +1672,13 @@ nie in Chats oder Mails.
     Bescheid geben. Dann baue ich den Import (wie bei ArbitrageOne), das spart ca. 15 Aufrufe am Tag.
 89. **B29 „Jetzt abgleichen“ sparsam**: Der Knopf holt alles auf einmal (ca. 40–60 Aufrufe). Für Nachzügler reicht
     „Fällige Abrufe nachholen“.
+90. **B30 nach dem Update**: Unter Anbindungen → ArbitrageOne → Importe prüfen, ob die Einkäufe vom 02.–06.11. auf
+    „fertig“ stehen („n Bestellungen, m Positionen, k ohne Zuordnung“). Das passiert innerhalb einer Stunde von selbst,
+    sofort mit „Jetzt abholen“. Steht dort ein Fehler, nennt er die gefundenen Spalten – diese Zeile bitte schicken.
+    Danach Einkauf → Bestellungen → „ArbitrageOne“ ansehen.
+91. **B30 Spalten prüfen**: Ich konnte die echte Datei nicht öffnen (sie liegt nur verschlüsselt auf dem Server). Im
+    Import steht unter „bestellungen → spalten“, welche Spalte wofür gelesen wurde, und unter „status_werte“, welche
+    Statuswerte vorkamen (Claude: `import_status`). Bitte ansehen, ob EK netto/brutto, Menge und Status stimmen. Am
+    einfachsten: die Kopfzeile der Datei schicken (nur die Spaltennamen, keine Werte).
+92. **B30 EK-Vorschläge**: Sobald Positionen geliefert sind, erscheinen unter Einkauf → EK-Import Vorschläge
+    „EK-Vorschlag aus ArbitrageOne-Bestellungen“. Ansehen und übernehmen oder verwerfen – nichts geht automatisch.

@@ -8,9 +8,9 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { PO_STATUS_LABEL } from "@/lib/purchasing/calc";
 import { NewPoForm } from "./forms";
 
-const VIEWS = { offen: "Offen", entwuerfe: "Entwürfe", eingegangen: "Eingegangen", alle: "Alle" } as const;
+const VIEWS = { offen: "Offen", entwuerfe: "Entwürfe", eingegangen: "Eingegangen", arbitrageone: "ArbitrageOne", alle: "Alle" } as const;
 type View = keyof typeof VIEWS;
-const STATUS_BY_VIEW: Record<View, string[] | null> = { offen: ["ordered", "shipped", "partial"], entwuerfe: ["draft"], eingegangen: ["received"], alle: null };
+const STATUS_BY_VIEW: Record<View, string[] | null> = { offen: ["ordered", "shipped", "partial"], entwuerfe: ["draft"], eingegangen: ["received"], arbitrageone: null, alle: null };
 
 export default async function EinkaufPage({ searchParams }: { searchParams: Promise<{ ansicht?: string }> }) {
   const session = await requireSession();
@@ -28,10 +28,11 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
         qty: sql<number>`(select coalesce(sum(i.quantity), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
         received: sql<number>`(select coalesce(sum(i.received), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
         total: sql<number>`(select coalesce(sum(i.quantity * i.unit_cost_gross), 0)::float from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        ohneZuordnung: sql<number>`(select count(*)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)} and i.product_id is null and i.asin is not null)`,
       })
       .from(PO)
       .leftJoin(schema.suppliers, eq(schema.suppliers.id, PO.supplierId))
-      .where(and(eq(PO.tenantId, t), statuses ? inArray(PO.status, statuses as (typeof schema.PO_STATUSES)[number][]) : undefined))
+      .where(and(eq(PO.tenantId, t), statuses ? inArray(PO.status, statuses as (typeof schema.PO_STATUSES)[number][]) : undefined, view === "arbitrageone" ? eq(PO.quelle, "arbitrageone") : undefined))
       .orderBy(desc(PO.createdAt))
       .limit(300),
     db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, t), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
@@ -59,12 +60,12 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
               <thead><tr><th>Nummer</th><th>Lieferant</th><th>Status</th><th>Bestellt</th><th>Erwartet</th><th className="right">Menge</th><th className="right">Summe brutto</th></tr></thead>
               <tbody>
                 {orders.length === 0 && <tr><td colSpan={7} className="muted">Keine Bestellungen in dieser Ansicht.</td></tr>}
-                {orders.map(({ po, supplier, items, qty, received, total }) => {
+                {orders.map(({ po, supplier, items, qty, received, total, ohneZuordnung }) => {
                   const [label, cls] = PO_STATUS_LABEL[po.status];
                   const late = po.expectedDate && po.expectedDate < today && ["ordered", "shipped", "partial"].includes(po.status);
                   return (
-                    <tr key={po.id}>
-                      <td><Link href={`/einkauf/${po.id}`} style={{ fontWeight: 600 }} className="num">{po.number}</Link>{po.supplierOrderNo && <div className="small muted">{po.supplierOrderNo}</div>}{gesendet.has(po.id) && <div><span className="tag tag-ok" data-testid="ek-bestellung-gesendet">Bestellung gesendet</span></div>}</td>
+                    <tr key={po.id} data-testid="po-zeile" data-nummer={po.number}>
+                      <td><Link href={`/einkauf/${po.id}`} style={{ fontWeight: 600 }} className="num">{po.number}</Link>{po.quelle === "arbitrageone" && <> <span className="tag tag-neutral" data-testid="po-quelle-ao">ArbitrageOne</span></>}{po.supplierOrderNo && <div className="small muted">{po.supplierOrderNo}</div>}{ohneZuordnung > 0 && <div className="small" style={{ color: "var(--warn)" }} data-testid="po-ohne-zuordnung">{ohneZuordnung} ohne Zuordnung</div>}{gesendet.has(po.id) && <div><span className="tag tag-ok" data-testid="ek-bestellung-gesendet">Bestellung gesendet</span></div>}</td>
                       <td>{supplier ?? "–"}</td>
                       <td><span className={`tag ${cls}`}>{label}</span>{po.invoiceId && <div className="small muted">Rechnung ✓</div>}</td>
                       <td className="num small">{po.orderDate ? formatDate(po.orderDate) : "–"}</td>

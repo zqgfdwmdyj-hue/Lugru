@@ -51,6 +51,7 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
+      {po.quelle === "arbitrageone" && <div className="notice notice-info" style={{ marginBottom: 12 }} data-testid="po-ao-hinweis">Aus ArbitrageOne (Export „Einkäufe“, täglich 05:30). Schon bezahlt – zählt nicht als offene Zahlung in der Liquidität. Status, Menge und EK kommen aus der Tagesdatei; „ohne Zuordnung“ = ASIN ist noch kein Produkt im Seller-System. Wareneingang ins eigene Lager nur von Hand.</div>}
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
           <section className="card" style={{ overflow: "auto" }}>
@@ -60,14 +61,14 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
                 {items.length === 0 && <tr><td colSpan={9} className="muted">Noch keine Positionen – unten ASIN, Menge und Einkaufspreis eintragen.</td></tr>}
                 {items.map((i) => (
                   <tr key={i.id}>
-                    <td className="num">{i.asin ?? <span className="small muted">Bestandteil<br />{i.supplierSku}</span>}</td>
+                    <td className="num">{i.asin ?? <span className="small muted">Bestandteil<br />{i.supplierSku}</span>}{i.asin && !i.productId && po.quelle === "arbitrageone" && <div><span className="tag tag-warn" data-testid="poi-ohne-zuordnung">ohne Zuordnung</span></div>}{i.externerStatus && <div className="small muted">{i.externerStatus}</div>}</td>
                     <td style={{ maxWidth: 280 }}>{i.url ? <a href={i.url} target="_blank" rel="noopener noreferrer">{i.title ?? i.url} ↗</a> : (i.title ?? <span className="muted">–</span>)}</td>
                     <td className="num right">{i.quantity}</td>
                     <td className="num right" style={{ color: i.received >= i.quantity ? "var(--ok)" : i.received > 0 ? "var(--warn)" : undefined }}>{i.received}</td>
                     <td className="num right">{formatEuro(Number(i.unitCostGross))}<div className="small muted">{Number(i.vatRate)} %</div></td>
                     <td className="num right">{formatEuro(netFromGross(Number(i.unitCostGross), Number(i.vatRate)))}</td>
                     <td className="num right">{i.targetPrice ? formatEuro(Number(i.targetPrice)) : "–"}</td>
-                    <td className="small" style={{ overflowWrap: "anywhere", minWidth: 160 }}>{i.lotId ? <Link href={`/chargen/${i.lotId}`} className="num">{i.sku}</Link> : <span className="muted">beim Eingang</span>}</td>
+                    <td className="small" style={{ overflowWrap: "anywhere", minWidth: 160 }}>{i.lotId ? <Link href={`/chargen/${i.lotId}`} className="num">{i.sku}</Link> : po.quelle === "arbitrageone" && i.sku ? <span className="num">{i.sku}</span> : <span className="muted">beim Eingang</span>}</td>
                     <td>{editable && i.received === 0 && <form action={removeItemAction}><input type="hidden" name="id" value={i.id} /><button className="btn-link small danger" type="submit">Entfernen</button></form>}</td>
                   </tr>
                 ))}

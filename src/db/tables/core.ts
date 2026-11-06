@@ -455,7 +455,7 @@ export const lots = pgTable(
     /** Gültiger Netto-EK je Einheit – die eine Wahrheit für alle Exporte. */
     unitCostNet: numeric("unit_cost_net", { precision: 12, scale: 4 }),
     unitCostSource: text("unit_cost_source", {
-      enum: ["template", "accountone", "sellerboard", "inherited", "manual"],
+      enum: ["template", "accountone", "sellerboard", "inherited", "manual", "einkaeufe", "ao_bestellungen"],
     }),
     /** Werte, die in der SKU selbst stehen (nur zur Kontrolle). */
     skuCostNet: numeric("sku_cost_net", { precision: 12, scale: 4 }),
