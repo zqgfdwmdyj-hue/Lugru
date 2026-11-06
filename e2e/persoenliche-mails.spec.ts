@@ -55,7 +55,7 @@ test.describe("Persönliche Mails und Postausgang", () => {
 
       // Abnahme 1: private Mail „muss den Termin morgen leider absagen, bin krank“
       const t0 = new Date(Date.now() - 1000);
-      const r = await hochladen(page, [{ name: "p.eml", buffer: eml({ von: "Petra Probe <petra.probe@example.com>", betreff: `Termin morgen ${m}`, text: "Hallo Ina,\nich muss den Termin morgen leider absagen, bin krank.\nViele Grüße\nPetra", id: `pm-${m}` }) }]);
+      const r = await hochladen(page, [{ name: "p.eml", buffer: eml({ von: "Petra Probe <petra.probe@familie-test.example>", betreff: `Termin morgen ${m}`, text: "Hallo Ina,\nich muss den Termin morgen leider absagen, bin krank.\nViele Grüße\nPetra", id: `pm-${m}` }) }]);
       expect(r).toContain("1 neu");
       // nie im geschäftlichen Posteingang
       expect(await sql("select 1 from emails where subject like $1", [`%${m}%`])).toHaveLength(0);
@@ -105,7 +105,7 @@ test.describe("Persönliche Mails und Postausgang", () => {
       await Promise.all([page.waitForURL(/\/privat\/nachrichten\?meldung=/), page.getByTestId("nachricht-senden").click()]);
       await expect(page.getByTestId("nachricht-meldung")).toContainText("Antwort gesendet");
       const [gesendet] = await sql<{ to: string; subject: string; in_reply_to: string | null }>('select "to", subject, in_reply_to from test_mails where subject like $1 order by created_at desc limit 1', [`%${m}%`]);
-      expect(gesendet.to).toBe("petra.probe@example.com");
+      expect(gesendet.to).toBe("petra.probe@familie-test.example");
       expect(gesendet.subject).toBe(`Re: Termin morgen ${m}`);
       expect(gesendet.in_reply_to).toBe(`<pm-${m}@example.invalid>`); // im selben Verlauf
       expect((await sql<{ zustand: string }>("select zustand from meldungen where id = $1", [push.id]))[0].zustand).toBe("erledigt"); // Push-Karte weg
@@ -208,7 +208,7 @@ test.describe("Persönliche Mails und Postausgang", () => {
     test.setTimeout(120_000);
     const m = marke();
     await anmelden(page, "inhaber");
-    await hochladen(page, [{ name: "h.eml", buffer: eml({ von: "Hanna Huber <hanna.huber@example.com>", betreff: `Kurze Frage ${m}`, text: "Hallo Ina,\nhast du am Wochenende Zeit für einen Kaffee? Melde dich gern bei mir.\nLiebe Grüße\nHanna", id: `hd-${m}` }) }]);
+    await hochladen(page, [{ name: "h.eml", buffer: eml({ von: "Hanna Huber <hanna.huber@familie-test.example>", betreff: `Kurze Frage ${m}`, text: "Hallo Ina,\nhast du am Wochenende Zeit für einen Kaffee? Melde dich gern bei mir.\nLiebe Grüße\nHanna", id: `hd-${m}` }) }]);
     await page.goto("/privat/nachrichten");
     await page.getByTestId("nachricht-zeile").filter({ hasText: "Hanna Huber" }).first().click();
     await expect(page.getByTestId("nachricht-detail")).toBeVisible();
