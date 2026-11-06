@@ -24,8 +24,8 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
     const [{ tenant_id: T, asin: PA }] = await sql<{ tenant_id: string; asin: string }>("select l.tenant_id, p.asin from lots l join products p on p.id = l.product_id where l.sku = 'TEST-SOCKEN' limit 1");
     const S1 = `TEST-SKU-B30-${m}-1`;
     const S2 = `TEST-SKU-B30-${m}-2`;
-    const A2 = `B0B30Y${m}`;
-    const A3 = `B0B30Z${m}`;
+    const A2 = `B0B3Y${m}`;
+    const A3 = `B0B3Z${m}`;
     const datei = poDatei([
       [`B30-${m}-1`, tt(tag(5)), "Testshop B30", PA, S1, "Testartikel B30 eins (erfunden)", "2", "10,00", "Geliefert"],
       [`B30-${m}-1`, tt(tag(5)), "Testshop B30", A2, S2, "Testartikel B30 zwei (erfunden)", "1", "5,00", "Bestellt"],
@@ -35,7 +35,7 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
     const altName = `ArbitrageOne_PurchaseOrders_Export_${iso(tag(1))}_${m}.xls`;
     // sellerboard-COG 8,00 € – der EK aus den Lieferungen (10,00 €) weicht um 25 % ab
     await sql("insert into sellerboard_products (tenant_id, sb_id, sku, asin, name, cost, synced_at) values ($1, $2, $3, $4, 'Testartikel B30 eins (erfunden)', 8, now())", [T, `b30-${m}`, S1, PA]);
-    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
+    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
     try {
       // Datei ablegen (wie der Abruf) und daraus einen Fehlimport wie vom 02.–06.11. bauen: Art ek_liste, schon einmal
       // erfolglos „erneut verarbeitet“ (06.11., 08:05)
@@ -124,10 +124,10 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
     test.setTimeout(300_000);
     const m = marke();
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
-    const A1 = `B0B30N${m}`;
+    const A1 = `B0B3N${m}`;
     const datei = poDatei([[`B30N-${m}`, tt(tag(4)), "Testshop B30 Nacht", A1, `TEST-SKU-B30N-${m}`, "Testartikel B30 Nacht (erfunden)", "3", "7,50", "Bestellt"]]);
     const name = `ArbitrageOne_PurchaseOrders_Export_${iso(tag(4))}_${m}.xls`;
-    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
+    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
     try {
       // Fehlimport wie vom 02.11. (Art ek_liste), am 06.11. schon einmal erfolglos erneut verarbeitet
       const l = JSON.parse(await mcp.call("import_link", { art: "sonstiges", dateiname: name })) as Link;
@@ -141,7 +141,7 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
 
       // B30.3 + Abnahme 3: nächster Abruf (hier „Jetzt abholen“ – gleicher Ablauf wie 05:30) holt den Fehlimport nach;
       // die neue Tagesdatei „Einkäufe“ läuft mit Art ao_einkaeufe durch
-      const AT = `B0B30T${m}`;
+      const AT = `B0B3T${m}`;
       const tagesdatei = poDatei([[`B30T-${m}`, tt(tag(0)), "Testshop B30 Tag", AT, `TEST-SKU-B30T-${m}`, "Testartikel B30 Tag (erfunden)", "1", "4,00", "Bestellt"]]);
       await ao({ zuruecksetzen: true, dateien: { einkaeufe: tagesdatei }, namen: { einkaeufe: `ArbitrageOne_PurchaseOrders_Export_${iso(tag(0))}.xls` } });
       await anmelden(page, "inhaber");
@@ -173,7 +173,7 @@ test.describe("B30 – ArbitrageOne-Einkäufe als Bestellungen", () => {
       await ao({ zuruecksetzen: true });
       await sql("update tasks set status = 'done' where tenant_id = $1 and system_key like 'automatik-arbitrageone%' and status = 'open'", [T]);
       await sql("delete from purchase_orders where tenant_id = $1 and quelle = 'arbitrageone' and number in ($2, $3)", [T, `AO-B30N-${m}`, `AO-B30T-${m}`]);
-      await sql("delete from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, `B0B30T${m}`]);
+      await sql("delete from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, `B0B3T${m}`]);
     }
   });
 });

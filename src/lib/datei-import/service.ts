@@ -204,8 +204,11 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
   // Übrige Arten mit eigener Upload-Erkennung (Kontoauszug, Amex, EK-Liste, USt-Bericht).
   if ("upload" in def && def.upload) {
     // B27.1: Dateien aus dem ArbitrageOne-Abruf – der Abruf weiß, welchen Export er geladen hat: Art fest, keine Erkennung.
-    const fest = h.herkunft === "arbitrageone";
-    const erkannt = fest ? def.upload : await dateiArt(name, bytes);
+    // B30.2: Bestellliste ausdrücklich gewählt, aber nur als allgemeine Tabelle erkannt (z. B. Spalte Menge fehlt) →
+    // trotzdem an den Parser, damit der Fehler die gefundenen und fehlenden Spalten nennt.
+    const roh = h.herkunft === "arbitrageone" ? null : await dateiArt(name, bytes);
+    const fest = h.herkunft === "arbitrageone" || (def.upload === "ao_einkaeufe" && roh === "tabelle");
+    const erkannt = fest ? def.upload : roh!;
     if (erkannt !== def.upload) throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
     await fortschritt(30);
     const r = await zentral(session, name, bytes, fest ? def.upload : undefined, id, h.hochgeladenAm);
