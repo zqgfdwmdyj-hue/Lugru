@@ -359,7 +359,9 @@ export async function lugruKaufAbgleichMitStand(tenantId: string, jetzt = new Da
       .select({ asin: POI.asin, am: PO.createdAt, nr: PO.number, status: PO.status, menge: POI.quantity, brutto: POI.unitCostGross, mwst: POI.vatRate })
       .from(POI)
       .innerJoin(PO, eq(PO.id, POI.poId))
-      .where(and(eq(POI.tenantId, tenantId), inArray(POI.asin, teil), gte(PO.createdAt, seit)));
+      // B30: ArbitrageOne-Bestellungen nicht doppelt – die stehen oben als „ArbitrageOne-Einkauf“ mit echtem Kaufdatum
+      // (createdAt wäre hier nur der Zeitpunkt des Imports).
+      .where(and(eq(POI.tenantId, tenantId), inArray(POI.asin, teil), gte(PO.createdAt, seit), sql`${PO.quelle} is distinct from 'arbitrageone'`));
     kaeufe.push(...pos.filter((p) => p.asin && p.status !== "draft" && p.status !== "cancelled").map((p) => ({ asin: p.asin!, am: p.am, ref: `Bestellung ${p.nr}`, menge: p.menge ?? null, ekNetto: Math.round((Number(p.brutto) / (1 + Number(p.mwst ?? 19) / 100)) * 100) / 100 })));
     // Chargen: Kaufdatum aus der SKU bzw. dem EK-Import – Rücksendungen zählen nicht.
     const chargen = await db
