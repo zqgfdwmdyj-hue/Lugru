@@ -1,6 +1,7 @@
 // Lädt alle API-Clients, damit sie ihre Verbindungstests registrieren.
 import "./dhl";
 import "./dhl-tracking";
+import "./ups";
 import "./deutschepost";
 import "./mail";
 import "./drive";

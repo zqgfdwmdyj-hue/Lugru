@@ -6,7 +6,7 @@ const mitStandardStrategien = <T extends { katalog: (typeof KATALOG_STANDARD)[nu
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { ClaimType, TenantSettings } from "@/db/schema";
+import type { AbholOrt, ClaimType, TenantSettings } from "@/db/schema";
 import { GELDKONTEN_STANDARD } from "@/lib/buchhaltung/kontierung";
 import { DEAL_AMPEL_STANDARD } from "@/lib/deal-ampel/logic";
 import { STANDARD_EXTERN, type Regel } from "@/lib/delegieren/logic";
@@ -203,6 +203,8 @@ export const DEFAULT_SETTINGS = {
   benachrichtigungen: { personen: {} as Record<string, MeldePrefs> },
   /** DHL-Label aus Chat: zweiter Absender und Preisliste (Standard: DHL-Geschäftskunden-Listenpreise netto, bitte anpassen). */
   versandLabel: { absender2: null as null | NonNullable<TenantSettings["shipper"]>, preise: VERSAND_PREISE_STANDARD as Record<string, number> },
+  /** Abholung DHL/UPS: keine Orte vorbelegt (Stammdaten trägt der Inhaber ein), Vorschlag ab mehr als 5 fertigen Labels. */
+  abholung: { orte: [] as AbholOrt[], vorschlagAb: 5, vorschlagAn: true },
   /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
   liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0, wareneinkaufPlanen: true },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
@@ -272,6 +274,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     amazonBusiness: { ...d.amazonBusiness, ...(s.amazonBusiness ?? {}) },
     benachrichtigungen: { personen: { ...(s.benachrichtigungen?.personen ?? {}) } },
     versandLabel: { absender2: s.versandLabel?.absender2 ?? null, preise: { ...d.versandLabel.preise, ...(s.versandLabel?.preise ?? {}) } },
+    abholung: { ...d.abholung, ...(s.abholung ?? {}), orte: s.abholung?.orte ?? [] },
     liquiditaet: { ...d.liquiditaet, ...(s.liquiditaet ?? {}) },
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },

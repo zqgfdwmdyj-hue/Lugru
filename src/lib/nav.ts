@@ -132,6 +132,7 @@ export const NAV: NavSection[] = [
       { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
       { href: "/versand/label", label: "Label aus Chat (DHL)", short: "Label erstellen" },
+      { href: "/versand/abholung", label: "Abholung DHL/UPS", short: "Abholung" },
       { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
       { href: "/retouren", label: "Retouren" },
       { href: "/remissionen", label: "Remissionen" },

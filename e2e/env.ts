@@ -19,6 +19,8 @@ export const E2E_ENV: Record<string, string> = {
   INTERNETMARKE_BASE_URL: `${TD}/im`,
   DHL_API_BASE_URL: `${TD}/dhl`,
   DHL_TRACKING_BASE_URL: `${TD}/dhl-track`,
+  DHL_PICKUP_BASE_URL: `${TD}/dhl-pickup`,
+  UPS_API_BASE_URL: `${TD}/ups`,
   AMAZON_SP_BASE_URL: `${TD}/amazon`,
   AMAZON_LWA_URL: `${TD}/amazon-lwa`,
   EBAY_API_BASE_URL: `${TD}/ebay`,

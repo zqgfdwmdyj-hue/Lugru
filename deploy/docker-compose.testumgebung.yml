@@ -31,6 +31,8 @@ services:
       INTERNETMARKE_BASE_URL: http://testdienste:4010/im
       DHL_API_BASE_URL: http://testdienste:4010/dhl
       DHL_TRACKING_BASE_URL: http://testdienste:4010/dhl-track
+      DHL_PICKUP_BASE_URL: http://testdienste:4010/dhl-pickup
+      UPS_API_BASE_URL: http://testdienste:4010/ups
       AMAZON_SP_BASE_URL: http://testdienste:4010/amazon
       AMAZON_LWA_URL: http://testdienste:4010/amazon-lwa
       EBAY_API_BASE_URL: http://testdienste:4010/ebay

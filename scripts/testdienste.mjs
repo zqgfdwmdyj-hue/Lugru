@@ -8,7 +8,7 @@
 //   ANTHROPIC_BASE_URL=http://testdienste:4010/anthropic   INTERNETMARKE_BASE_URL=http://testdienste:4010/im
 // Übersicht:  GET /__log (alle Aufrufe), GET /__ki (Anfragen an die Test-KI), POST /__reset
 import http from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 
@@ -467,6 +467,12 @@ function discordVa(req, p, url, body) {
   return [404, { message: "nicht nachgebildet", code: 0 }];
 }
 
+// Abholungen (DHL/UPS): empfangene Aufträge und Stornos – Prüf-Hilfe GET /__abholung.
+const abholungen = [];
+const dhlAbholAuftraege = new Set();
+const upsAbholAuftraege = new Set();
+let upsPrn = 0;
+
 async function route(req, url, body) {
   const p = url.pathname;
   const json = (o) => [200, o];
@@ -489,6 +495,46 @@ async function route(req, url, body) {
     return json({ link: `${SELF}/im/pdf/${b.shopOrderId}`, shoppingCart: { shopOrderId: b.shopOrderId, voucherList: (b.positions ?? []).map((_, i) => ({ voucherId: `A00TEST${b.shopOrderId}${i}`, trackId: "" })) }, walletBallance: 100000 - (b.total ?? 0), type: "CheckoutShoppingCartAppResponse" });
   }
   if (p.startsWith("/im/pdf/")) return [200, await pdf((carts.get(p.split("/").pop()) ?? []).map((x) => `Warensendung an ${x}`)), "application/pdf"];
+  // DHL Abholung (Parcel DE Pickup v1) – erfundene Regeln: PLZ „00000“ = 422; über 10 Pakete = EMA (einmalige Abholung,
+  // nur Anfrage), mit Abrechnungsnummer = EZA, sonst BDA. Storno nur für bekannte Auftragsnummern.
+  if (p === "/dhl-pickup/orders" && req.method === "POST") {
+    if (!req.headers["dhl-api-key"]) return [401, { title: "Unauthorized", detail: "API-Key fehlt" }];
+    const b = parsed();
+    abholungen.push({ dienst: "dhl", body: b });
+    if (b.pickupLocation?.pickupAddress?.postalCode === "00000") return [422, [{ errorCode: "PU-422", title: "Ungültige Abholadresse", detail: "Die Postleitzahl ist unbekannt." }]];
+    const pakete = (b.shipmentDetails?.shipments ?? []).filter((x) => x.transportationType === "PAKET").length;
+    const orderID = randomUUID().replace(/-/g, "");
+    const pickupType = pakete > 10 ? "EMA" : b.customerDetails?.billingNumber ? "EZA" : "BDA";
+    dhlAbholAuftraege.add(orderID);
+    return [201, { confirmation: { type: "ORDERPICKUP", value: { orderID, pickupDate: b.pickupDetails?.pickupDate?.value, freeOfCharge: pickupType !== "EZA", pickupType, confirmedShipments: (b.shipmentDetails?.shipments ?? []).map((x) => ({ transportationType: x.transportationType })) } } }];
+  }
+  if (p === "/dhl-pickup/orders" && req.method === "DELETE") {
+    const id = url.searchParams.get("orderID") ?? "";
+    abholungen.push({ dienst: "dhl", storno: id });
+    if (!dhlAbholAuftraege.delete(id)) return json({ confirmedCancellations: [], failedCancellations: [{ orderID: id, message: "Auftrag unbekannt" }] });
+    return json({ confirmedCancellations: [{ orderID: id, orderState: "STORNIERT" }], failedCancellations: [] });
+  }
+  // UPS (OAuth + Pickup v2409) – erfundene Regeln: Secret „falsch“ = 401, PLZ „00000“ = 400; PRN fortlaufend.
+  if (p === "/ups/security/v1/oauth/token" && req.method === "POST") {
+    const [, secret] = Buffer.from(String(req.headers.authorization ?? "").replace(/^Basic /, ""), "base64").toString().split(":");
+    if (!secret || secret === "falsch") return [401, { response: { errors: [{ code: "10401", message: "ClientId is Invalid" }] } }];
+    return json({ token_type: "Bearer", access_token: "test-ups-token", expires_in: "14399", status: "approved" });
+  }
+  if (p === "/ups/api/pickupcreation/v2409/pickup" && req.method === "POST") {
+    if (req.headers.authorization !== "Bearer test-ups-token") return [401, { response: { errors: [{ code: "250002", message: "Invalid Authentication Information." }] } }];
+    const b = parsed();
+    abholungen.push({ dienst: "ups", body: b });
+    if (b.PickupCreationRequest?.PickupAddress?.PostalCode === "00000") return [400, { response: { errors: [{ code: "9510113", message: "Die Postleitzahl ist ungültig." }] } }];
+    const prn = `2929TEST${String(++upsPrn).padStart(3, "0")}`;
+    upsAbholAuftraege.add(prn);
+    return json({ PickupCreationResponse: { Response: { ResponseStatus: { Code: "1", Description: "Success" } }, PRN: prn } });
+  }
+  if (p === "/ups/api/shipments/v2409/pickup/02" && req.method === "DELETE") {
+    const prn = String(req.headers.prn ?? "");
+    abholungen.push({ dienst: "ups", storno: prn });
+    if (!upsAbholAuftraege.delete(prn)) return [400, { response: { errors: [{ code: "9510151", message: "Keine Abholung zu dieser PRN." }] } }];
+    return json({ PickupCancelResponse: { Response: { ResponseStatus: { Code: "1", Description: "Success" } }, PickupType: "01" } });
+  }
   // DHL Paket (Labels)
   // Erfundene Prüfregeln: PLZ „00000“ ungültig (abgelehnt), über 31,5 kg abgelehnt; 12345 erwartet „Musterstadt“
   // (sonst Hinweis mit Vorschlag). validate=true prüft nur (kein Label).
@@ -992,7 +1038,7 @@ ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
   return true;
 }
 
-const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
+const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -1004,6 +1050,7 @@ http
       res.end(Buffer.isBuffer(data) || typeof data === "string" ? data : JSON.stringify(data));
     };
     if (url.pathname === "/__log") return send(200, log);
+    if (url.pathname === "/__abholung") return send(200, abholungen);
     if (url.pathname === "/__web") return send(200, webUploads);
     if (url.pathname === "/__ao" && req.method === "POST") {
       const b = JSON.parse(body || "{}");

@@ -67,6 +67,33 @@ export type Address = {
   phone?: string;
 };
 
+/** Abholort für DHL/UPS-Abholungen (Stammdaten, nur Inhaber). */
+export type AbholOrt = {
+  key: string;
+  name: string;
+  name2?: string;
+  strasse: string;
+  hausnr: string;
+  plz: string;
+  ort: string;
+  kontakt: string;
+  telefon: string;
+  email?: string;
+  /** DHL-Kundennummer (EKP, 10 Ziffern) des Absenders an diesem Ort. */
+  dhlKundennummer?: string;
+  /** DHL-Abrechnungsnummer (14 Stellen: EKP + Verfahren + Teilnahme), z. B. die Paket-Abrechnungsnummer. */
+  dhlAbrechnungsnummer?: string;
+  /** UPS-Kontonummer (6 Zeichen) – sonst die aus Anbindungen → UPS. */
+  upsKonto?: string;
+  /** Standard-Zeitfenster HH:MM. */
+  von?: string;
+  bis?: string;
+  /** Hinweis für den Fahrer (max. 100 Zeichen bei DHL). */
+  hinweis?: string;
+  /** Standardort für neue Abholungen. */
+  standard?: boolean;
+};
+
 export type TenantSettings = {
   /** MwSt-Satz, mit dem Brutto-EK aus SKUs in Netto umgerechnet wird. */
   vatRate?: number;
@@ -199,6 +226,8 @@ export type TenantSettings = {
   benachrichtigungen?: { personen?: Record<string, { aus?: string[]; ruheVon?: string; ruheBis?: string }> };
   /** DHL-Label aus Chat: zweiter Absender, Preisliste (€ je Produkt/Gewichtsklasse) für das Protokoll. */
   versandLabel?: { absender2?: Address; preise?: Record<string, number> };
+  /** Abholung DHL/UPS: Abholorte (je Absender) einmal hinterlegen, Vorschlag ab n fertigen Labels ohne gebuchte Abholung. */
+  abholung?: { orte?: AbholOrt[]; vorschlagAb?: number; vorschlagAn?: boolean };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
   /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */

@@ -76,6 +76,8 @@ const [tenant] = await db
       pallets: { shipmentMail: true },
       assistant: { enabled: true, allowWrite: true, model: "claude-opus-5-5" },
       // Handy & Tesla: erfundene Orte und Testnummer; Ruhezeit so, dass die Prüfungen tagsüber und nachts laufen.
+      // Abholung DHL/UPS: ein erfundener Abholort (Testumgebung zum Ausprobieren; Prüfungen legen eigene an).
+      abholung: { orte: [{ key: "testlager", name: "Testfirma GmbH", name2: "Lager", strasse: "Lagerweg", hausnr: "1", plz: "12345", ort: "Musterstadt", kontakt: "Erika Test", telefon: "0123 4567890", email: "abholung@example.invalid", dhlKundennummer: "3333333333", von: "09:00", bis: "16:00", hinweis: "Bitte an der Rampe klingeln (Test)", standard: true }], vorschlagAb: 5, vorschlagAn: true },
       mobil: { orte: { lager: ["Lagerweg 1, 12345 Musterstadt"], prep: ["Prepstraße 5, 12345 Musterstadt"], palettenlager: [], zuhause: "Wohnweg 9, 12345 Musterstadt" }, fahrzeitMin: 20, jeAnrufMin: 5, sms: { an: true, nummer: "+4900000000002", limit: 50, ruheVon: "23:59", ruheBis: "00:00", dealSchwelle: 50 }, verspaetungToleranz: 10, tesla: { vin: "TESTVIN0000000001", vorheizen: false } },
     } as never,
   })
@@ -107,6 +109,7 @@ await integ("anthropic", {}, { apiKey: "test-ki-schluessel" });
 await integ("deutschepost", { clientId: "test-client", username: "portokasse@example.invalid" }, { clientSecret: "test-secret", password: "test-passwort" });
 await integ("dhl", { username: "test-dhl" }, { apiKey: "test-dhl-key", password: "test-passwort" });
 await integ("dhl_tracking", {}, { apiKey: "test-track-key" });
+await integ("ups", { clientId: "test-ups-client", kontonummer: "T3ST01", umgebung: "test" }, { clientSecret: "test-ups-secret" });
 await integ("keepa", {}, { apiKey: "test-keepa-schluessel" });
 await integ("discord_calls", { kanalId: "123456789012345678", art: "consultant" }, { botToken: "test-bot-token" });
 await integ("amazon_sp", { clientId: "amzn.test", sellerId: "TESTSELLER", marketplaceIds: "A1PA6795UKMFR9,A13V1IB3VIYZZH" }, { clientSecret: "test-secret", refreshToken: "test-refresh" });

@@ -76,6 +76,24 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "Im DHL Geschäftskundenportal einen System-Benutzer für die API anlegen.",
       "Abrechnungsnummern (EKP + Verfahren + Teilnahme) unter Einstellungen → Versand eintragen.",
       "Zum Testen in den Einstellungen „Sandbox“ aktiv lassen.",
+      "Für Abholungen (Versand → Abholung): in derselben App zusätzlich die API „Parcel DE Pickup (Post & Parcel Germany)“ hinzufügen; der Benutzer braucht im Geschäftskundenportal das Recht „Abholung beauftragen“.",
+    ],
+  },
+  {
+    provider: "ups",
+    name: "UPS (Abholung)",
+    purpose: "UPS-Abholungen aus dem Seller-System buchen und stornieren (Versand → Abholung, auch per Claude).",
+    fields: [
+      { key: "clientId", label: "Client-ID (UPS Developer Portal)" },
+      { key: "clientSecret", label: "Client-Secret", secret: true },
+      { key: "kontonummer", label: "UPS-Kontonummer (6 Zeichen)", placeholder: "A1B2C3", help: "Gilt für alle Abholorte ohne eigene Kontonummer." },
+      { key: "umgebung", label: "Umgebung", options: [{ value: "produktion", label: "Produktion (echte Abholungen)" }, { value: "test", label: "Testumgebung (wwwcie.ups.com)" }] },
+    ],
+    setup: [
+      "developer.ups.com → mit dem UPS-Konto anmelden → „Apps“ → neue App anlegen, Kontonummer zuordnen.",
+      "APIs „Authorization (OAuth)“ und „Pickup“ hinzufügen → Client-ID und Client-Secret kopieren.",
+      "Hier eintragen (nie im Chat), Umgebung wählen und „Verbindung testen“.",
+      "Abholorte (Adresse, Ansprechpartner, Telefon) stehen unter Einstellungen → Abholung.",
     ],
   },
   {

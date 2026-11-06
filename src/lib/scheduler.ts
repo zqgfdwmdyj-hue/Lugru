@@ -204,6 +204,12 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
       // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
+      // Bauauftrag Abholung: abends (17–22 Uhr, stündlich) „Abholung buchen?“, wenn mehr als n Labels fertig sind und für
+      // den nächsten Abholtag nichts gebucht ist – Aufgabe + Push, nie automatisch buchen.
+      {
+        const std = Number(new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+        if (force || (std >= 17 && std < 22 && due(`${t}:abholung-vorschlag`, 59))) await step(t, "Abholung: Vorschlag am Abend", async () => (await import("@/lib/abholung/service")).abholVorschlag(t));
+      }
       if (force || due(`${t}:amazon-bestaetigung`, 59)) await step(t, "Amazon: Versandbestätigung", async () => (await import("@/lib/orders/bestaetigung")).bestaetigungErinnern(t));
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // B20.1: Konten, die sich nie angemeldet haben und älter als 30 Tage sind, deaktivieren (mit Aufgabe als Hinweis).

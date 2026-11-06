@@ -228,6 +228,9 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input type="checkbox" name="dhl_sandbox" defaultChecked={s.dhl.sandbox} /> DHL-Sandbox verwenden (Testlabels, nichts wird berechnet)
           </label>
+          <div className="small" data-testid="settings-abholung-link">
+            Abholorte für DHL-/UPS-Abholungen (Adresse, Ansprechpartner, Kundennummer, Zeitfenster): <Link href="/einstellungen/abholung">Einstellungen → Abholung</Link> ({s.abholung.orte.length} hinterlegt)
+          </div>
         </section>
 
         <section className="card card-pad stack" style={{ gap: 14 }} id="prep" data-testid="settings-prep">

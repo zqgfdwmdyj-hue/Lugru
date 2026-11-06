@@ -932,6 +932,13 @@
       "when": 1793962464338,
       "tag": "0132_meldung_ohne_kanal",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1793965261953,
+      "tag": "0133_b31_abholung",
+      "breakpoints": true
     }
   ]
 }

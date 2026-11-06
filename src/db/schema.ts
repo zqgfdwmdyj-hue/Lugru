@@ -48,3 +48,4 @@ export * from "./tables/automatik";
 export * from "./tables/apple-watch";
 export * from "./tables/amazon-konto";
 export * from "./tables/versand-label";
+export * from "./tables/abholung";
