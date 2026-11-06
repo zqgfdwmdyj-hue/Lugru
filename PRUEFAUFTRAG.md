@@ -1096,6 +1096,8 @@ Regression: 174 Ablaufprüfungen, 171 im ersten Lauf grün; nachgeprüft und gr�
 6. ✅ Neue B2B-Anfrage aus dem Mailprogramm → „Ausgehend“ mit „Nachfassen in 3 Tagen“; fällig → Aufgabe „Nachfassen“; Antwort des Kunden → wichtig, Nachfassen erledigt, Verlauf zeigt eure Mail.
 Dazu Handy: Vollbild, Senden · Bearbeiten · Später unten erreichbar, kein Querscrollen, Später speichert den Text.
 
+Regression: 177 Ablaufprüfungen, 174 im ersten Lauf grün. Rot: Keepa (bekannter Ausreißer) und die beiden neuen Tests, weil ein früherer Test einen Lieferanten mit @example.com-Adresse anlegt – die Test-Absenderin galt dadurch zu Recht als „bekannter Lieferant“ (Testadresse geändert). Nachlauf mit neuem Build (persönliche Mails, Posteingang auf null, Fall-Zentrale, Formulare, Push, Recht, Postfach, B2B-Preislisten, Bestellmail, Keepa): 29/29 grün. 2264 Unit-Tests grün.
+
 **Werkzeuge:** keine neuen Claude-Werkzeuge. Geändert: `ueberblick` (Beschreibung + Feld `persoenliche_nachrichten` nur Anzahl, nur Inhaber mit Privat-Zugang) → die Werkzeugliste ändert sich, Claude erhält `notifications/tools/list_changed`.
 
 ## Wunsch 06.11.: „Meldung offen“ bei anderen Kanälen auf einmal schließen

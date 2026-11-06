@@ -13,7 +13,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Heute | Tagesübersicht `/` | ○ 0/3 Abläufe | – | 2 |
 | Heute | Tagesplan (Anrufe) `/kalender/tagesplan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Heute | Termine `/kalender` | ○ 0/2 Abläufe | – | – |
-| Heute | Posteingang `/posteingang` | ○ 0/4 Abläufe | – | 3 |
+| Heute | Posteingang `/posteingang` | ○ 0/5 Abläufe | – | 4 |
 | Heute | Uploads `/uploads` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Heute | Schnellerfassung `/schnell` | ○ 0/2 Abläufe | – | 3 |
 | Heute | Feierabend `/kalender/feierabend` | ○ 0/2 Abläufe | – | – |
@@ -97,9 +97,10 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
 | Team & Verwaltung | Rechtsfälle (Anwalt) `/rechtsfaelle` | ○ 0/1 Abläufe | – | 2 |
-| Privat | Übersicht `/privat` | ○ 0/10 Abläufe | – | 2 |
+| Privat | Übersicht `/privat` | ○ 0/12 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Privat | Nachrichten `/privat/nachrichten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
@@ -150,11 +151,13 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | .eml-Datei hochladen | Rückmeldung, Dateiauswahl danach leer | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 | Antwort-Entwurf (über Claude) prüfen und senden | Entwurf an der Mail; ohne Häkchen „Geprüft“ wird nicht gesendet; mit Häkchen landet die Mail in den Test-Mails und der Entwurf ist als gesendet markiert | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
 | Posteingang auf null: Regel an Zuständigen, Auto-Archiv, Zahlung abgelehnt (IT), Termin-Mail → Privatkalender, Vorschlag für Claude | Aufgabe für die Zuständige, Newsletter archiviert, Zahlung kritisch mit Aufgabe, Termin nur im Privatkalender (nie im Posteingang) | ○ im letzten Lauf nicht gelaufen | `posteingang-null.spec.ts` |
+| B32.5 Antwort aus dem Mailprogramm (Gesendet-Ordner) auf eine Käuferfrage; neue B2B-Anfrage aus dem Mailprogramm | Mail „beantwortet (extern)“ mit Postfach/Name, Aufgabe erledigt, vorbereiteter Entwurf verworfen, Verlauf zeigt die Antwort; neue Anfrage unter „Ausgehend“ mit „Nachfassen in 3 Tagen“ → fällig = Aufgabe, Antwort des Kunden schließt sie | ○ im letzten Lauf nicht gelaufen | `persoenliche-mails.spec.ts` |
 | Gerichts-/Behörden-Mail und Anwalts-Mails (B14) | Behörde: Entwurf an den Anwalt (nicht gesendet) + Aufgabe; Anwalt mit Aktenzeichen: in den Fall statt in den Posteingang | ○ im letzten Lauf nicht gelaufen | `recht-discord.spec.ts` |
 
-- – Offen: Mails abrufen (nur echte Postfächer)
+- – Offen: Mails abrufen (nur echte Postfächer) – inkl. Gesendet-Ordner und Minuten-Abruf
 - – Offen: Entwurf echt senden (nur mit echtem Postfach)
 - – Offen: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
+- – Offen: Outlook: Zuordnung gesendeter Mails nur über Betreff + Empfänger (kein In-Reply-To aus Graph)
 
 ### Heute › Schnellerfassung (`/schnell`)
 
@@ -474,6 +477,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
+| B32 Persönliche Mail „muss den Termin morgen absagen, bin krank“ (Abnahme 1–4) | nur im Privatbereich (Privat › Nachrichten), Push „Antwort prüfen“ ohne Discord-Kanal (DM nur, wenn eingestellt), Termin als abgesagt markiert (Rückgängig), KI-Entwurf mit gute Besserung und Unterschrift; „Senden“ = Antwort im selben Verlauf, Karte weg; Newsletter/Amazon unverändert; Büro/Familie sehen nichts; Morgenbericht/Überblick nur Anzahl | ○ im letzten Lauf nicht gelaufen | `persoenliche-mails.spec.ts` |
+| B32 Handy: persönliche Mail im Vollbild | Senden · Bearbeiten · Später fest unten, kein Querscrollen; Später speichert den Text und lässt die Nachricht offen | ○ im letzten Lauf nicht gelaufen | `persoenliche-mails.spec.ts` |
 | Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen | Ausnahme bleibt bei Serienänderung erhalten; nur die gewählten Termine ändern/verschwinden | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Abendritual als Abfolge „zweimal Streicheln, danach Massage“ | die nächsten Abende im Voraus: S, S, M, S, S, M | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
@@ -591,7 +596,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (133 Abläufe + Oberfläche auf 108 Seiten): 0 bestanden, 0 fehlgeschlagen, 133 nicht gelaufen.
+**Automatisch** (136 Abläufe + Oberfläche auf 109 Seiten): 0 bestanden, 0 fehlgeschlagen, 136 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -601,6 +606,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Posteingang: .eml-Datei hochladen – im letzten Lauf nicht gelaufen
 - ○ Posteingang: Antwort-Entwurf (über Claude) prüfen und senden – im letzten Lauf nicht gelaufen
 - ○ Posteingang: Posteingang auf null: Regel an Zuständigen, Auto-Archiv, Zahlung abgelehnt (IT), Termin-Mail → Privatkalender, Vorschlag für Claude – im letzten Lauf nicht gelaufen
+- ○ Posteingang: B32.5 Antwort aus dem Mailprogramm (Gesendet-Ordner) auf eine Käuferfrage; neue B2B-Anfrage aus dem Mailprogramm – im letzten Lauf nicht gelaufen
 - ○ Posteingang: Gerichts-/Behörden-Mail und Anwalts-Mails (B14) – im letzten Lauf nicht gelaufen
 - ○ Schnellerfassung: Diktat per Handy-Schlüssel: Aufgabe, Eingangsliste, Privates nur mit Zugang, Widerruf – im letzten Lauf nicht gelaufen
 - ○ Schnellerfassung: Widget, Anrufe in der Fahrzeit, Briefing je Ziel, SMS-Codes, Ins Auto, Fahrtenbuch, Scan, Auto-Status/Klima – im letzten Lauf nicht gelaufen
@@ -687,6 +693,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Calls (Consultant & Gruppe): B25.12 Suchfeld über alle Transkripte – im letzten Lauf nicht gelaufen
 - ○ Calls (Consultant & Gruppe): Gruppen-Kanäle (Discord, nur lesen): Nachrichten mehrerer Nutzer, Deal, Kanal „aus“, alter Rohtext – im letzten Lauf nicht gelaufen
 - ○ Rechtsfälle (Anwalt): Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude – im letzten Lauf nicht gelaufen
+- ○ Übersicht: B32 Persönliche Mail „muss den Termin morgen absagen, bin krank“ (Abnahme 1–4) – im letzten Lauf nicht gelaufen
+- ○ Übersicht: B32 Handy: persönliche Mail im Vollbild – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Abendritual als Abfolge „zweimal Streicheln, danach Massage“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe – im letzten Lauf nicht gelaufen
@@ -734,17 +742,18 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 58 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 59 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
+Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
 
 **Bekannte offene Punkte:**
 
 - Tagesübersicht: Aufgaben anlegen, erledigen, verschieben
 - Tagesübersicht: Tageskennzahlen
-- Posteingang: Mails abrufen (nur echte Postfächer)
+- Posteingang: Mails abrufen (nur echte Postfächer) – inkl. Gesendet-Ordner und Minuten-Abruf
 - Posteingang: Entwurf echt senden (nur mit echtem Postfach)
 - Posteingang: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
+- Posteingang: Outlook: Zuordnung gesendeter Mails nur über Betreff + Empfänger (kein In-Reply-To aus Graph)
 - Schnellerfassung: Echtes Handy (Kurzbefehle/Widget)
 - Schnellerfassung: Echter Tesla (Fleet-API-App, virtueller Schlüssel, Befehls-Proxy)
 - Schnellerfassung: Echte SMS über Twilio
