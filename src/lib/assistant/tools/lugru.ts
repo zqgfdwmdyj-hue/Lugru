@@ -42,7 +42,7 @@ export const lugruDealsTool = defineTool({
   name: "lugru_deals",
   title: "Lugru Deals: Liste",
   description:
-    "Gepostete Deals der Lugru-Gruppe (neueste zuerst) mit Kanal, ASIN, Shop, EK/VK/Gewinn laut Post, Reaktionen je Emoji (nur Anzahl, ✅ = Gruppen-Käufe; bei Weg A nur ✅/❌, dann mit reaktionen_hinweis), Ampel, Deal-Wert 0–100, Eintrag im Deal-Eingang und ob Ludwig selbst gekauft hat. Testkanäle („test“, „test1“) nur mit mit_test. Filter: seit (Datum), ampel, gekauft (eigener Kauf), min_wert, kanal, suche (Titel/ASIN/Shop).",
+    "Gepostete Deals der Lugru-Gruppe (neueste zuerst) mit Kanal, ASIN, Shop, EK/VK/Gewinn laut Post, Marge, erwartete Umschlagszeit (geschätzte Spanne) und ROI p. a. (ROI × 365 ÷ Umschlag), Reaktionen je Emoji (nur Anzahl, ✅ = Gruppen-Käufe; bei Weg A nur ✅/❌, dann mit reaktionen_hinweis), Ampel, Deal-Wert 0–100, Eintrag im Deal-Eingang und ob Ludwig selbst gekauft hat. Testkanäle („test“, „test1“) nur mit mit_test. Filter: seit (Datum), ampel, gekauft (eigener Kauf), min_wert, kanal, suche (Titel/ASIN/Shop).",
   area: "dealeingang",
   write: false,
   quelle: QUELLE,

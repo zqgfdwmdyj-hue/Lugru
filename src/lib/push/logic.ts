@@ -11,6 +11,7 @@ export const MELDE_ARTEN = [
   { key: "aufgabe_wichtig", titel: "Neue wichtige Aufgabe", text: "Aufgaben mit Priorität „wichtig“ (Apple Watch: „Erledigt“ schließt sie).", standard: true },
   { key: "persoenlich", titel: "Persönliche Mail", text: "Persönliche Mails (Privatbereich) mit fertigem Antwortentwurf – nur an den Inhaber, nie in Discord-Kanäle.", standard: true },
   { key: "bqool", titel: "BQool-Freigabe", text: "Täglicher BQool-Upload wartet auf Freigabe (Änderungen je Land, Regelwechsel, Warnungen) und Abweichungen der Nachkontrolle.", standard: true },
+  { key: "lernschleife", titel: "Lernschleife Verlustprodukte", text: "Am 3. des Monats: Produkte mit Verlust oder Marge unter 3 % im Vormonat – Nie wieder / Pech / Weiß nicht warum (nur Inhaber).", standard: true },
   { key: "mail_entwurf", titel: "Antwort vorbereitet", text: "Käuferfrage oder Lieferanten-Antwort mit fertigem Antwortentwurf im Posteingang.", standard: true },
   { key: "sonstiges", titel: "Sonstiges", text: "Übrige Hinweise (Tesla, Calls, Frühwarnungen, Termine …).", standard: true },
 ] as const;
@@ -62,10 +63,11 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null }): string {
+export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null }): string {
   const teile = [
     o.bqool || null,
     o.buybox || null,
+    o.treffer || null,
     o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,
     o.fristen ? `${o.fristen} Frist${o.fristen === 1 ? "" : "en"} heute` : null,
     o.wichtig ? `${o.wichtig} wichtige Aufgabe${o.wichtig === 1 ? "" : "n"}` : null,

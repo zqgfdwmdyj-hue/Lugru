@@ -3,6 +3,7 @@
 // Trefferquote je Quelle. Die Marktdaten kommen aus der Deal-Ampel (Modul 4).
 
 import type { DealAngebot } from "@/db/tables/deal-eingang";
+import { umschlagKurz, type Umschlag } from "./umschlag-logic";
 
 export type Angebot = DealAngebot;
 
@@ -191,13 +192,15 @@ export function eingangAmpel(zeilen: { ampel: Ampel }[]): { ampel: Ampel | null;
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 /** Push-Text für ein Angebot (Beispiel im Bauauftrag) bzw. die Zusammenfassung bei mehreren. */
-export function pushText(zeilen: (ZeilenPruefung & { name: string | null })[]): string {
+export function pushText(zeilen: (ZeilenPruefung & { name: string | null; umschlag?: Umschlag | null })[]): string {
   if (!zeilen.length) return "Keine Angebote erkannt – bitte im Deal-Eingang ansehen.";
   if (zeilen.length > 1) return eingangAmpel(zeilen).text;
   const z = zeilen[0];
   const teile = [`${AMPEL_EMOJI[z.ampel]} ${(z.titel ?? z.name ?? z.asin ?? "Angebot").slice(0, 40)}`];
   if (z.ekNetto) teile.push(`EK ${eur(z.ekNetto)}`);
   if (z.bestesLand && z.roi !== null) teile.push(`bestes Land ${z.bestesLand}: ${z.margeBrutto !== null && z.margeBrutto !== undefined ? `Marge ${Math.round(z.margeBrutto)} %, ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
+  // B28.6: erwartete Umschlagszeit und ROI p. a. (bestes Land)
+  if (z.umschlag) teile.push(umschlagKurz(z.umschlag)!);
   if (z.angebote !== null) teile.push(`${z.angebote} Angebote${z.amazonProzent !== null ? (z.amazonProzent >= 50 ? `, Amazon ${z.amazonProzent} %` : z.amazonProzent > 0 ? "" : ", Amazon nicht drin") : ""}`);
   if (z.empfohlen) teile.push(`Empf. ${z.empfohlen} Stk${z.kapitalbedarf ? ` (${Math.round(z.kapitalbedarf).toLocaleString("de-DE")} €)` : ""}`);
   if (!z.ekNetto && z.maxEk.length) teile.push(`lohnt bis EK ${eur(z.maxEk[0].ek)} netto (${z.maxEk[0].land})`);

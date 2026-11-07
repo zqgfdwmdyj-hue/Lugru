@@ -6,6 +6,7 @@ import { AMPEL_TEXT, profitgoLink } from "@/lib/deal-ampel/logic";
 import { getSettings } from "@/lib/settings";
 import { margeBrutto } from "@/lib/deal-eingang/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
+import { umschlagErklaerung, umschlagSchaetzen } from "@/lib/deal-eingang/umschlag-logic";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
 import { anVaGeben } from "@/lib/va/service";
@@ -25,7 +26,7 @@ export const dealPruefenTool = defineTool({
   name: "deal_pruefen",
   title: "Deal-Ampel: Einkauf prüfen",
   description:
-    "Bewertet einen Einkauf (z. B. Deal aus der Deal-Gruppe) in Sekunden: ASIN, EAN oder Amazon-Link + Einkaufspreis (+ Menge). Je Land Gewinn, Marge (Gewinn ÷ Buy-Box-Preis brutto) und ROI beim aktuellen Buy-Box-Preis und beim 90-Tage-Mittel (USt je Land), Verkäufe/Monat, Angebote, Amazon-Anteil, Tief der letzten 12 Monate und Aktionsmuster; empfohlene Menge für 30–45 Tage; Ampel grün/gelb/rot mit Begründung. Für „Lohnt sich das?“, „Soll ich das kaufen?“.",
+    "Bewertet einen Einkauf (z. B. Deal aus der Deal-Gruppe) in Sekunden: ASIN, EAN oder Amazon-Link + Einkaufspreis (+ Menge). Je Land Gewinn, Marge (Gewinn ÷ Buy-Box-Preis brutto) und ROI beim aktuellen Buy-Box-Preis und beim 90-Tage-Mittel (USt je Land), Verkäufe/Monat, Angebote, Amazon-Anteil, Tief der letzten 12 Monate und Aktionsmuster; empfohlene Menge für 30–45 Tage; je Land erwartete Umschlagszeit (geschätzte Spanne aus Verkäufen, Angeboten, Menge, eigenem Vorlauf Wareneingang/Prep Center/Amazon-Eingang und 14 Tagen bis Auszahlung) und ROI p. a. (ROI × 365 ÷ Umschlag) mit Reichweiten-Warnung über 60 Tage; Ampel grün/gelb/rot mit Begründung. Für „Lohnt sich das?“, „Soll ich das kaufen?“.",
   area: "lieferanten",
   write: false,
   quelle: { text: "Keepa (DE/FR/IT/ES/UK), Amazon-Angebote (SP-API), Gebühren aus dem Seller-System" },
@@ -38,6 +39,17 @@ export const dealPruefenTool = defineTool({
   }),
   run: async (ctx, i) => {
     const r = await dealPruefen(ctx.session.tenantId, { code: i.code, ek: i.ek, ekIstNetto: i.ek_ist_netto, menge: i.menge ?? null, laender: i.laender });
+    // B28.6: Umschlagszeit und ROI p. a. je Land (Vorlauf aus den eigenen Durchlaufzeiten, sonst Standardwerte)
+    const { vorlaufFuer } = await import("@/lib/money/durchlauf");
+    const vorlauf = await vorlaufFuer(ctx.session.tenantId, null).catch(() => undefined);
+    const minRoiPa = (await getSettings(ctx.session.tenantId)).dealEingang.minRoiPa ?? 100;
+    const um = new Map(
+      r.laender.map((l) => [
+        l.land,
+        umschlagSchaetzen({ verkaeufeMonat: l.verkaeufeMonat ?? l.verkaeufeGeschaetzt ?? (l.land === r.bestes?.land ? (r.verkaeufeGeschaetzt?.wert ?? null) : null), angebote: l.angebote, amazonProzent: l.amazonProzent, menge: i.menge ?? r.abverkauf.empfohlen?.bis ?? null, roi: l.schnitt90?.roi ?? null, vorlauf }),
+      ]),
+    );
+    const umBest = r.bestes ? (um.get(r.bestes.land) ?? null) : null;
     return json({
       asin: r.asin,
       titel: r.titel ?? undefined,
@@ -58,6 +70,8 @@ export const dealPruefenTool = defineTool({
         gewinn_schnitt_90: l.schnitt90?.gewinn ?? null,
         marge_schnitt_90_prozent: margeBrutto(l.schnitt90?.gewinn ?? null, l.vk90Eur ?? l.vkEur),
         roi_schnitt_90_prozent: l.schnitt90?.roi ?? null,
+        umschlag: um.get(l.land) ? `${um.get(l.land)!.text} (geschätzt)` : null,
+        roi_pa_prozent: um.get(l.land)?.roiPa ?? null,
         netto_marge_schnitt_90_prozent: l.schnitt90?.marge ?? null,
         verkaeufe_monat: l.verkaeufeMonat ?? (l.verkaeufeGeschaetzt ? `${l.verkaeufeGeschaetzt} (geschätzt aus dem Verkaufsrang)` : r.verkaeufeGeschaetzt && l.land === r.bestes?.land ? `${r.verkaeufeGeschaetzt.wert} (geschätzt aus ${r.verkaeufeGeschaetzt.aus})` : null),
         angebote: l.angebote,
@@ -66,6 +80,9 @@ export const dealPruefenTool = defineTool({
         aktionsmuster: l.aktionsmuster ?? undefined,
         fehler: l.fehler ?? undefined,
       })),
+      umschlag_bestes_land: umBest
+        ? { spanne: umBest.text, geschaetzt: true, roi_pa_prozent: umBest.roiPa, mindest_roi_pa_prozent: minRoiPa, unter_mindestwert: umBest.roiPa !== null && umBest.roiPa < minRoiPa ? true : undefined, warnung: umBest.warnung ?? undefined, menge_fuer_45_tage: umBest.menge45 ?? undefined, rechnung: umschlagErklaerung(umBest) }
+        : undefined,
       eigener_bestand: r.eigen ?? undefined,
       gebuehren_pauschale: { provision_prozent: Math.round(r.gebuehren.provision * 100), fba: r.gebuehren.fba, geschaetzt: r.gebuehren.geschaetzt || undefined },
       hinweise: r.hinweise.length ? r.hinweise : undefined,

@@ -7,6 +7,7 @@ import { prozentText, runde1 } from "@/lib/numbers";
 import { GRUND_ZAHLEN as ZAHLEN, grundAusAntwort, grundFrageText } from "./wert-logic";
 import { bewaehrt, dealWert, eigenesLabel, lernBericht, lugruHarteGruende, lugruLabel, lugruMerkmale, merkmaleAus, modellLernen, modellMerkmale, type HistorieDeal, type KeepaLite, type Modell } from "./wert-logic";
 import { margeBrutto, wertSchwelleFuer } from "./logic";
+import { umschlagSchaetzen, type Umschlag } from "./umschlag-logic";
 import { kanalName } from "@/lib/lugru-deals/historie-logic";
 
 // Abschnitt 11 „Lernender Deal-Wert“: Merkmale beim Eingang (Keepa aus dem Zwischenspeicher, keine Extra-Tokens),
@@ -71,17 +72,34 @@ async function keepaLite(tenantId: string, asin: string, land: string | null, je
   }
 }
 
+/**
+ * B28.6: ROI p. a. und Umschlag-Tage als Merkmal – aus der Umschlag-Schätzung der Zeile, sonst aus den Merkmalen
+ * (Verkäufe/Monat, Angebote, Amazon-Anteil; Menge unbekannt = Menge für 30 Tage).
+ */
+function mitUmschlag<T extends Partial<DealMerkmale>>(m: T, u?: Umschlag | null): T {
+  if (m.roiPa != null) return m;
+  const x = u ?? umschlagSchaetzen({ verkaeufeMonat: m.monatlichVerkauft ?? null, angebote: m.angebote ?? null, amazonProzent: m.amazonAnteil ?? null, menge: m.menge ?? null, roi: m.roi ?? null });
+  return x ? { ...m, roiPa: x.roiPa, umschlagTage: x.tage.mitte } : m;
+}
+
+/** Einstellungen + Fehlkäufe der Lernschleife für den Deal-Wert (einmal je Lauf laden). */
+async function wertKontext(tenantId: string) {
+  const s = (await getSettings(tenantId)).dealEingang;
+  const fehlkaeufe = await import("./lernschleife").then((x) => x.fehlkaeufe(tenantId)).catch(() => []);
+  return { zielRoi: s.zielRoi, minRoiPa: s.minRoiPa ?? 100, fehlkaeufe };
+}
+
 /** Beim Prüfen: je Zeile Merkmale (Keepa-Schnappschuss) und Deal-Wert anhängen. */
 export async function wertAnhaengen(tenantId: string, zeilen: DealEingangZeile[], o: { weg: string; quelle: string | null; jetzt: Date; ohneId?: string }) {
   if (!zeilen.some((z) => z.asin)) return;
-  const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
+  const { zielRoi, minRoiPa, fehlkaeufe } = await wertKontext(tenantId);
   const h = await historie(tenantId, zielRoi, o.ohneId);
   const modell = await modellFuer(tenantId, h);
   for (const z of zeilen) {
     if (!z.asin) continue;
     const k = await keepaLite(tenantId, z.asin, z.bestesLand, o.jetzt);
-    z.merkmale = merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote, laender: z.laender, menge: z.angebot.menge }, { marke: z.angebot.marke ?? k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null });
-    z.wert = dealWert(z.merkmale, { zielRoi, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell, quelle: o.quelle, harte: lugruHarteGruende(z.merkmale, z) });
+    z.merkmale = mitUmschlag(merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote, laender: z.laender, menge: z.angebot.menge }, { marke: z.angebot.marke ?? k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null }), z.umschlag);
+    z.wert = dealWert(z.merkmale, { zielRoi, minRoiPa, fehlkaeufe, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell, quelle: o.quelle, harte: lugruHarteGruende(z.merkmale, z) });
   }
 }
 
@@ -94,14 +112,14 @@ export async function dealWertFuer(tenantId: string, q: { asin?: string; dealId?
       const l = z.laender.find((x) => x.land === z.bestesLand);
       return z.margeBrutto ?? margeBrutto(z.gewinn, l ? (l.vk90Eur ?? l.vkEur) : null);
     };
-    return { art: "eingang" as const, deal_id: e.id, zeilen: e.zeilen.filter((z) => z.wert).map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel ?? z.angebot.name, ampel: z.ampel, roi: z.roi, marge: marge(z), wert: z.wert! })) };
+    return { art: "eingang" as const, deal_id: e.id, zeilen: e.zeilen.filter((z) => z.wert).map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel ?? z.angebot.name, ampel: z.ampel, roi: z.roi, marge: marge(z), wert: z.wert!, roiPa: z.umschlag?.roiPa ?? z.merkmale?.roiPa ?? null, umschlag: z.umschlag ? { text: z.umschlag.text, tage_mitte: z.umschlag.tage.mitte, warnung: z.umschlag.warnung } : null })) };
   }
   if (!q.asin) return null;
-  const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
+  const { zielRoi, minRoiPa, fehlkaeufe } = await wertKontext(tenantId);
   const h = await historie(tenantId, zielRoi);
   const k = await keepaLite(tenantId, q.asin, "DE", jetzt);
   const m = merkmaleAus(k, { land: "DE", ekNetto: null, roi: null, marge: null, amazonProzent: null, angebote: null }, { marke: k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: null, weg: "claude", jetzt, kapitalAmpel: null, bestand: null });
-  return { art: "asin" as const, asin: q.asin, ohne_ek: true, wert: dealWert(m, { zielRoi, ampel: "gelb", historie: h.filter((x) => x.asin !== q.asin || x.quelle === "lugru"), modell: await modellFuer(tenantId, h) }), merkmale: m };
+  return { art: "asin" as const, asin: q.asin, ohne_ek: true, wert: dealWert(m, { zielRoi, minRoiPa, fehlkaeufe, ampel: "gelb", historie: h.filter((x) => x.asin !== q.asin || x.quelle === "lugru"), modell: await modellFuer(tenantId, h) }), merkmale: m };
 }
 
 /**
@@ -407,13 +425,13 @@ export type { DealMerkmale };
 export async function lugruWerte(tenantId: string, rows: { id: string; asin: string; gepostetAm: Date; ampel: "gruen" | "gelb" | "rot" | null; ekEur: number | null; gewinnEur: number | null; margeProzent: number | null; verkaeufeMonat: number | null; keepa: import("@/db/schema").LugruKeepa | null }[]) {
   const out = new Map<string, import("@/db/tables/deal-eingang").DealWert>();
   if (!rows.length) return out;
-  const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
+  const { zielRoi, minRoiPa, fehlkaeufe } = await wertKontext(tenantId);
   const h = await historie(tenantId, zielRoi);
   const modell = await modellFuer(tenantId, h);
   for (const r of rows) {
-    const m = lugruMerkmaleMitKeepa(r);
+    const m = mitUmschlag(lugruMerkmaleMitKeepa(r));
     const tag = r.gepostetAm.toISOString().slice(0, 10);
-    out.set(r.id, dealWert(m, { zielRoi, ampel: r.ampel ?? "gelb", historie: h.filter((x) => !(x.asin === r.asin && x.datum === tag)), modell, quelle: "Lugru Deals" }));
+    out.set(r.id, dealWert(m, { zielRoi, minRoiPa, fehlkaeufe, ampel: r.ampel ?? "gelb", historie: h.filter((x) => !(x.asin === r.asin && x.datum === tag)), modell, quelle: "Lugru Deals" }));
   }
   return out;
 }
@@ -458,7 +476,7 @@ export async function wertNachholen(tenantId: string, max = 300, jetzt = new Dat
   const rows = await db.select({ id: E.id, zeilen: E.zeilen, quelle: E.quelle, weg: E.weg, createdAt: E.createdAt }).from(E).where(offenWo).orderBy(desc(E.createdAt)).limit(Math.max(1, Math.min(1000, max)));
   let neu = 0;
   if (rows.length) {
-    const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
+    const { zielRoi, minRoiPa, fehlkaeufe } = await wertKontext(tenantId);
     const h = await historie(tenantId, zielRoi);
     const modell = await modellFuer(tenantId, h);
     const lugru = new Map<string, typeof L.$inferSelect>();
@@ -469,12 +487,14 @@ export async function wertNachholen(tenantId: string, max = 300, jetzt = new Dat
       const quelle = l ? "Lugru Deals" : e.quelle;
       const zeilen = e.zeilen.map((z) => {
         if (!z.asin || (z.wert && z.merkmale)) return z;
-        const m: Partial<DealMerkmale> =
+        const m: Partial<DealMerkmale> = mitUmschlag(
           z.merkmale ??
           (l && l.asin.toUpperCase() === z.asin.toUpperCase()
             ? lugruMerkmaleMitKeepa(l)
-            : merkmaleAus(null, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote }, { marke: z.angebot.marke ?? null, kategorie: null, quelle: e.quelle, weg: e.weg, jetzt: e.createdAt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null }));
-        const wert = z.wert ?? dealWert(m, { zielRoi, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell, quelle, harte: lugruHarteGruende(m, z) });
+            : merkmaleAus(null, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote }, { marke: z.angebot.marke ?? null, kategorie: null, quelle: e.quelle, weg: e.weg, jetzt: e.createdAt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null })),
+          z.umschlag,
+        );
+        const wert = z.wert ?? dealWert(m, { zielRoi, minRoiPa, fehlkaeufe, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell, quelle, harte: lugruHarteGruende(m, z) });
         return { ...z, merkmale: m as DealMerkmale, wert };
       });
       await db.update(E).set({ zeilen }).where(and(eq(E.tenantId, tenantId), eq(E.id, e.id)));

@@ -16,6 +16,8 @@ import { angebotsLink } from "@/lib/deal-eingang/kauf-logic";
 import { kaufVorschlag } from "@/lib/deal-eingang/kauf";
 import { kaufNrGueltig } from "@/lib/deal-eingang/shop-logic";
 import { CopyButton } from "@/components/copy-button";
+import { umschlagErklaerung, umschlagSchaetzen } from "@/lib/deal-eingang/umschlag-logic";
+import { vorlaufFuer } from "@/lib/money/durchlauf";
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : formatEuro(n));
 const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${String(Math.round(n * 10) / 10).replace(".", ",")} %`);
@@ -51,6 +53,8 @@ export default async function DealEingangDetail({ params, searchParams }: { para
   const de = (await getSettings(session.tenantId)).dealEingang;
   const zielRoi = de.zielRoi;
   const zielMarge = de.zielMarge ?? 10;
+  // B28.6: Vorlauf aus den eigenen Durchlaufzeiten – für ältere Prüfungen ohne gespeicherte Umschlagszeit.
+  const vorlauf = e.zeilen.some((z) => z.laender.some((l) => l.umschlag === undefined)) ? await vorlaufFuer(session.tenantId, e.quelle).catch(() => undefined) : undefined;
   const bilder = e.dateiIds.map((fid, i) => ({ id: fid, name: e.dateiNamen[i] ?? `Datei ${i + 1}` }));
   // Kaufen mit einem Tap: vorbereiteter Kauf aus dem Push bzw. jetzt berechnet (Shop-Profil, Menge, Gutschein).
   const vorschlag = e.pruefung === "fertig" ? await kaufVorschlag(e).catch(() => null) : null;
@@ -118,6 +122,8 @@ export default async function DealEingangDetail({ params, searchParams }: { para
 
       {e.zeilen.map((z) => {
         const kz = new Map(z.laender.map((l) => [l.land, landKennzahlen(l, z.ekNetto, zielMarge)]));
+        const um = new Map(z.laender.map((l) => [l.land, l.umschlag !== undefined ? l.umschlag : umschlagSchaetzen({ verkaeufeMonat: l.verkaeufeMonat ?? l.verkaeufeGeschaetzt ?? null, angebote: l.angebote, amazonProzent: l.amazonProzent, menge: z.angebot.menge ?? z.angebot.moq ?? z.empfohlen, roi: l.roi, vorlauf })]));
+        const umBest = um.get(z.bestesLand ?? "") ?? null;
         const bestLand = z.laender.find((l) => l.land === z.bestesLand);
         const margeBest = z.margeBrutto ?? (bestLand ? margeBrutto(bestLand.gewinn, bestLand.vk90Eur ?? bestLand.vkEur) : null);
         const maxEkMarge = z.laender.filter((l) => kz.get(l.land)?.maxEkMarge != null).map((l) => ({ land: l.land, ek: kz.get(l.land)!.maxEkMarge! })).sort((a, b) => b.ek - a.ek);
@@ -160,7 +166,7 @@ export default async function DealEingangDetail({ params, searchParams }: { para
           {z.laender.length > 0 && (
             <div className="table-wrap">
               <table className="table small">
-                <thead><tr><th>Land</th><th>Buy Box</th><th>Ø 90 T</th><th>Tief 12 M</th><th>Verk./Monat</th><th>Angebote</th><th>Amazon</th><th>Gewinn</th><th title="Gewinn ÷ Buy-Box-Preis brutto (90-Tage-Mittel)">Marge</th><th>ROI</th><th>max. EK (ROI)</th><th>max. EK (Marge)</th></tr></thead>
+                <thead><tr><th>Land</th><th>Buy Box</th><th>Ø 90 T</th><th>Tief 12 M</th><th>Verk./Monat</th><th>Angebote</th><th>Amazon</th><th>Gewinn</th><th title="Gewinn ÷ Buy-Box-Preis brutto (90-Tage-Mittel)">Marge</th><th>ROI</th><th title="Erwartete Umschlagszeit: Vorlauf (Wareneingang, Prep Center, Amazon-Eingang) + Verkauf der Menge + 14 Tage bis Auszahlung – geschätzt">Umschlag</th><th title="ROI × 365 ÷ Umschlagszeit (Mitte der Spanne)">ROI p. a.</th><th>max. EK (ROI)</th><th>max. EK (Marge)</th></tr></thead>
                 <tbody>
                   {z.laender.map((l) => (
                     <tr key={l.land} data-testid="de-land" data-land={l.land}>
@@ -168,6 +174,20 @@ export default async function DealEingangDetail({ params, searchParams }: { para
                       <td data-testid="de-verkaeufe">{l.verkaeufeMonat ?? (l.verkaeufeGeschaetzt ? <span title="Keepa hat keine „x+ gekauft“-Angabe – geschätzt aus dem Verkaufsrang (Rang-Verbesserungen in 30 Tagen)">≈ {l.verkaeufeGeschaetzt} (geschätzt)</span> : "–")}</td>
                       <td>{l.angebote ?? "–"}</td><td>{l.amazonProzent !== null ? `${l.amazonProzent} %` : "–"}</td>
                       <td data-testid="de-gewinn">{eur(l.gewinn)}</td><td data-testid="de-marge">{pz(kz.get(l.land)?.marge)}</td><td data-testid="de-roi">{pz(l.roi)}</td>
+                      {(() => {
+                        const u = um.get(l.land);
+                        return u ? (
+                          <>
+                            <td data-testid="de-umschlag" title={umschlagErklaerung(u)}>{u.text.replace("ca. ", "")} <span className="muted">(geschätzt)</span></td>
+                            <td data-testid="de-roipa">{u.roiPa === null ? "–" : u.roiPa < (de.minRoiPa ?? 100) ? <span className="tag tag-warn" title={`unter dem Mindestwert ${de.minRoiPa ?? 100} %`}>{u.roiPa} %</span> : `${u.roiPa} %`}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td data-testid="de-umschlag" className="muted" title="Ohne Verkäufe/Monat keine Schätzung">–</td>
+                            <td data-testid="de-roipa">–</td>
+                          </>
+                        );
+                      })()}
                       <td>{eur(l.maxEk)}</td><td data-testid="de-maxek-marge-land">{eur(kz.get(l.land)?.maxEkMarge)}</td>
                     </tr>
                   ))}
@@ -175,6 +195,12 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               </table>
             </div>
           )}
+          {umBest && (
+            <div className="small muted" data-testid="de-umschlag-info">
+              Umschlag {z.bestesLand}: {umBest.text} (geschätzt{umBest.mengeAngenommen ? ", Menge für 30 Tage angenommen" : `, ${umBest.menge} Stk`}){umBest.roiPa !== null ? ` · ROI p. a. ${umBest.roiPa} % (Ziel ≥ ${de.minRoiPa ?? 100} %)` : ""} · Vorlauf {umBest.vorlauf.quelle === "eigene Daten" ? `aus eigenen Daten${umBest.vorlauf.basis ? ` (${umBest.vorlauf.basis} Einkäufe)` : ""}` : "Standardwerte"}
+            </div>
+          )}
+          {umBest?.warnung && <div className="notice notice-warn small" data-testid="de-umschlag-warnung">{umBest.warnung}</div>}
           {z.vorschlaege.length > 1 && <div className="small muted">Weitere Treffer: {z.vorschlaege.map((v) => `${v.asin} (${v.titel.slice(0, 40)})`).join(" · ")}</div>}
           {szenario.length > 0 && <PreisSzenario nr={z.nr} ekNetto={z.ekNetto} laender={szenario} />}
           {z.laender.length > 0 && !szenario.length && z.asin && <div className="small muted">Preis-Szenario („Was wäre bei VK x?“): nach „Neu prüfen“ verfügbar.</div>}

@@ -25,6 +25,10 @@ const zeileKurz = (z: DealEingangZeile) => ({
   gewinn_stueck: z.gewinn,
   marge_prozent: z.margeBrutto ?? margeBrutto(z.gewinn, z.laender.find((l) => l.land === z.bestesLand)?.vk90Eur ?? z.laender.find((l) => l.land === z.bestesLand)?.vkEur ?? null),
   roi_prozent: z.roi,
+  // B28.6: erwartete Umschlagszeit (geschätzt) und ROI p. a. im besten Land
+  umschlag: z.umschlag ? `${z.umschlag.text} (geschätzt)` : undefined,
+  roi_pa_prozent: z.umschlag?.roiPa ?? undefined,
+  umschlag_warnung: z.umschlag?.warnung ?? undefined,
   empfohlene_menge: z.empfohlen,
   kapitalbedarf: z.kapitalbedarf,
   lohnt_bis_ek: z.maxEk.length ? z.maxEk : undefined,
@@ -195,7 +199,7 @@ export const dealWertTool = defineTool({
   name: "deal_wert",
   title: "Deal-Wert",
   description:
-    "Wie gut passt ein Deal zu Ludwig (0–100) mit Begründung („Passt zu dir (78/100): … Gegen: …“), Pro/Contra und ähnlichen früheren Deals (eigene Käufe/👍/👎/reale Ergebnisse, Lugru-Gruppe). deal_id = gespeicherter Wert eines Deal-Eingangs (je Angebot); asin = Markt-Sicht ohne EK. Rote Ampel deckelt auf 30 – der Wert ersetzt keine Prüfung.",
+    "Wie gut passt ein Deal zu Ludwig (0–100) mit Begründung („Passt zu dir (78/100): … Gegen: …“), Pro/Contra und ähnlichen früheren Deals (eigene Käufe/👍/👎/reale Ergebnisse, Lugru-Gruppe). Je Angebot auch erwartete Umschlagszeit (geschätzte Spanne) und ROI p. a. (ROI × 365 ÷ Umschlag; unter dem Mindestwert der Deal-Einstellungen zieht es ab) sowie ähnliche Fehlkäufe aus der monatlichen Lernschleife („ähnlicher Fehlkauf am …“ unter dagegen). deal_id = gespeicherter Wert eines Deal-Eingangs (je Angebot); asin = Markt-Sicht ohne EK. Rote Ampel deckelt auf 30 – der Wert ersetzt keine Prüfung.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE_WERT,
@@ -211,7 +215,7 @@ export const dealWertTool = defineTool({
       if (!r.zeilen.length) return json({ deal_id: r.deal_id, hinweis: "Für diesen Eingang wurde noch kein Deal-Wert berechnet (vor Abschnitt 11 geprüft oder ohne ASIN) – im Deal-Eingang „Neu rechnen“.", link: abs(ctx, `/deal-eingang/${r.deal_id}`) });
       return json({
         deal_id: r.deal_id,
-        angebote: r.zeilen.map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel, ampel: AMPEL[z.ampel], marge_prozent: z.marge, roi_prozent: z.roi, deal_wert: z.wert.wert, begruendung: z.wert.begruendung, dafuer: z.wert.dafuer, dagegen: z.wert.dagegen, verfahren: z.wert.verfahren, gedeckelt_wegen_rot: z.wert.gedeckelt || undefined, aehnliche_deals: aehnlich(z.wert) })),
+        angebote: r.zeilen.map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel, ampel: AMPEL[z.ampel], marge_prozent: z.marge, roi_prozent: z.roi, roi_pa_prozent: z.roiPa ?? undefined, umschlag: z.umschlag ? `${z.umschlag.text} (geschätzt)` : undefined, umschlag_warnung: z.umschlag?.warnung ?? undefined, deal_wert: z.wert.wert, begruendung: z.wert.begruendung, dafuer: z.wert.dafuer, dagegen: z.wert.dagegen, verfahren: z.wert.verfahren, gedeckelt_wegen_rot: z.wert.gedeckelt || undefined, aehnliche_deals: aehnlich(z.wert) })),
         link: abs(ctx, `/deal-eingang/${r.deal_id}`),
       });
     }

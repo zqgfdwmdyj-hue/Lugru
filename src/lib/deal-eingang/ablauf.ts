@@ -3,6 +3,7 @@ import { and, eq, gte, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { DealEingangZeile } from "@/db/tables/deal-eingang";
 import { AMPEL_EMOJI } from "./logic";
+import { umschlagKurz } from "./umschlag-logic";
 import { DealEingangFehler } from "./service";
 
 // Deal-Eingang nach der Prüfung: Meldung (Push/Discord), Knöpfe „In Bestellvorschläge“ (Einkaufsentwurf) und
@@ -31,7 +32,8 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
     console.error("[Deal-Eingang] Kauf-Meldung:", err instanceof Error ? err.message : err);
     return null;
   });
-  const text = kauf && e.zeilen.length === 1 ? kauf.text : [e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", kauf ? kauf.text : null].filter(Boolean).join("\n");
+  const umschlag = e.zeilen.length === 1 ? umschlagKurz(e.zeilen[0].umschlag) : null;
+  const text = kauf && e.zeilen.length === 1 ? [kauf.text, umschlag].filter(Boolean).join("\n") : [e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", kauf ? kauf.text : null].filter(Boolean).join("\n");
   // Ohne Kauf-Knöpfe (kein Shop, gelb unter der Schwelle): 👍/👎 direkt aus der Meldung – öffnet die Seite mit
   // vorgewählter Bewertung (Grund wählbar), gespeichert erst mit dem Knopf dort.
   const bewerten = [

@@ -270,6 +270,7 @@ export async function einstellungenAction(fd: FormData) {
     zielRoi: fd.has("zielRoi") ? Math.max(1, Math.min(500, Math.round(parseAmount(fd.get("zielRoi")) ?? alt.zielRoi ?? 20))) : alt.zielRoi,
     // B28.1: Ziel-Marge (vom Brutto-VK) für „max. EK für Ziel-Marge“, eine Nachkommastelle
     zielMarge: fd.has("zielMarge") ? Math.max(0.5, Math.min(80, Math.round((parseAmount(fd.get("zielMarge")) ?? alt.zielMarge ?? 10) * 10) / 10)) : alt.zielMarge,
+    minRoiPa: fd.has("minRoiPa") ? Math.max(0, Math.min(2000, Math.round(parseAmount(fd.get("minRoiPa")) ?? alt.minRoiPa ?? 100))) : alt.minRoiPa,
     budgetJeDeal: fd.has("budgetJeDeal") ? euro("budgetJeDeal") : alt.budgetJeDeal,
     budgetJeTag: fd.has("budgetJeTag") ? euro("budgetJeTag") : alt.budgetJeTag,
     budgetJeWoche: fd.has("budgetJeWoche") ? euro("budgetJeWoche") : alt.budgetJeWoche,

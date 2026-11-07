@@ -6,6 +6,15 @@ import { lugruStatistik, NUR_KAUFZEICHEN, reaktionenVon, type StatDeal } from ".
 import { kanalName, TEST_KANAL_SQL } from "./historie-logic";
 import { nachrichtLink } from "./post-logic";
 import { runde1 } from "@/lib/numbers";
+import { lugruMerkmale } from "@/lib/deal-eingang/wert-logic";
+import { umschlagSchaetzen } from "@/lib/deal-eingang/umschlag-logic";
+
+/** B28.6: Umschlagszeit und ROI p. a. aus den Post-Zahlen (ROI aus Gewinn ÷ EK netto) und dem Keepa-Schnappschuss – geschätzt. */
+function umschlagLugru(z: Zeile) {
+  const m = lugruMerkmale(z);
+  const u = umschlagSchaetzen({ verkaeufeMonat: z.verkaeufeMonat ?? z.keepa?.gekauftImMonat ?? null, angebote: z.keepa?.angebote ?? null, amazonProzent: z.keepa?.amazonAnteil ?? null, menge: z.maxMenge ?? null, roi: m.roi ?? null });
+  return u ? { umschlag: `${u.text} (geschätzt${u.mengeAngenommen ? ", Menge für 30 Tage" : ""})`, roi_pa: u.roiPa, umschlag_warnung: u.warnung ?? undefined } : { umschlag: null, roi_pa: null, umschlag_warnung: undefined };
+}
 
 // Lugru Deals im Seller-System: Liste mit Filtern, Detail und Statistik – aus der Tabelle lugru_deals_historie
 // (Discord gelesen bzw. aus Lugru Deals übertragen) plus Deal-Eingang (Ampel, Entscheidung, reales Ergebnis).
@@ -59,6 +68,7 @@ function zeileAus(z: Zeile, e: Eingang | undefined, wert: number | null) {
     zielmarkt: z.zielmarkt,
     gewinn: z.gewinnEur,
     marge: runde1(z.margeProzent),
+    ...umschlagLugru(z),
     verkaeufe_monat: z.verkaeufeMonat,
     max_menge: z.maxMenge,
     status: z.status,

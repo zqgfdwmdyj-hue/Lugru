@@ -285,7 +285,9 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
     const bqool = inhaber ? await bqoolMorgenZeile(tenantId, jetzt).catch(() => null) : null;
     // B31.5: Buy-Box-Anteil je Land aus den letzten Listing-Performance-Berichten – nur für den Inhaber.
     const buybox = inhaber ? await import("@/lib/bqool/berichte").then((x) => x.buyboxMorgenZeile(tenantId)).catch(() => null) : null;
-    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool, buybox };
+    // B28.8: einmal im Monat (am 3.) die Trefferquote des Vormonats – nur für den Inhaber.
+    const treffer = inhaber ? await import("@/lib/deal-eingang/lernschleife").then((x) => x.trefferMorgenZeile(tenantId)).catch(() => null) : null;
+    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool, buybox, treffer };
     // Zurückgehaltene gelten als nachgereicht (im Bericht gezählt); die neueste kommt einzeln (mit ihren Knöpfen).
     if (gehalten.length) {
       await db.update(M).set({ zustand: "ausgeliefert" }).where(inArray(M.id, gehalten.map((g) => g.id)));
