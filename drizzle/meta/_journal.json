@@ -967,6 +967,13 @@
       "when": 1794049914239,
       "tag": "0137_b31_5_bqool_berichte",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1794066093305,
+      "tag": "0138_b28_lernschleife",
+      "breakpoints": true
     }
   ]
 }

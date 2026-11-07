@@ -46,6 +46,8 @@ export type DealLandZeile = {
   verkaeufeGeschaetzt?: number | null;
   /** B28.1/B28.2 (Prüfungen ab 05.11.): VK netto − Gebühren − Prep beim 90-Tage-Mittel, USt, Provision, FBA, Prep. */
   rest?: number | null;
+  /** B28.6: erwartete Umschlagszeit (Spanne) und ROI p. a. – geschätzt. */
+  umschlag?: import("@/lib/deal-eingang/umschlag-logic").Umschlag | null;
   mwstSatz?: number;
   provision?: number;
   fba?: number;
@@ -90,6 +92,8 @@ export type DealEingangZeile = {
   wert?: DealWert | null;
   /** Stand der Ampel-Regeln bei der Prüfung (B20.2: 2 = Angebote gelb, Amazon > 90 % rot); fehlt = alte Regeln. */
   regeln?: number;
+  /** B28.6: Umschlag/ROI p. a. im besten Land (Spanne, geschätzt) und die gerechnete Menge. */
+  umschlag?: import("@/lib/deal-eingang/umschlag-logic").Umschlag | null;
 };
 
 /** Merkmale eines Deals beim Eingang (Keepa DE bzw. bestes Land + Rechnung + Kontext). null = unbekannt. */
@@ -135,6 +139,9 @@ export type DealMerkmale = {
   angeboteMinLandName?: string | null;
   /** Angebotene Menge (Stück) – für 👍-Grund „Großer Posten“. */
   menge?: number | null;
+  /** B28.6: ROI pro Jahr (ROI × 365 ÷ erwartete Umschlagszeit) und Umschlag in Tagen (Mitte der Spanne). */
+  roiPa?: number | null;
+  umschlagTage?: number | null;
 };
 
 export type DealAehnlich = { id: string | null; quelle: "eigen" | "lugru"; titel: string | null; asin: string | null; datum: string; ergebnis: string; abstand: number };
@@ -480,4 +487,41 @@ export const dealBestellmails = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("deal_bestellmails_deal_idx").on(t.tenantId, t.dealId), index("deal_bestellmails_bestellung_idx").on(t.tenantId, t.bestellungId), index("deal_bestellmails_msg_idx").on(t.tenantId, t.messageId)],
+);
+
+/**
+ * B28.8 Monatliche Lernschleife: am 3. die Produkte mit Verlust bzw. Marge unter 3 % im Vormonat (nur Einkäufe der
+ * letzten 6 Monate). Ludwig ordnet ein: „Nie wieder kaufen“ / „Würde ich wieder kaufen (Pech)“ / „Weiß nicht warum“,
+ * optional Gründe. Antworten fließen in Deal-Wert und Lernbericht (ähnliche Deals: Abschlag bzw. Hinweis).
+ */
+export const lernschleifeFragen = pgTable(
+  "lernschleife_fragen",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Monat der Zahlen (JJJJ-MM), gefragt am 3. des Folgemonats. */
+    monat: text("monat").notNull(),
+    /** ASIN, sonst erste SKU – je Monat einmal. */
+    schluessel: text("schluessel").notNull(),
+    asin: text("asin"),
+    skus: jsonb("skus").$type<string[]>().notNull().default([]),
+    titel: text("titel"),
+    units: integer("units"),
+    umsatz: real("umsatz"),
+    gewinn: real("gewinn"),
+    marge: real("marge"),
+    /** Für „ähnliche Deals“: Marke, Kategorie, Quelle, Angebote (aus dem Deal-Eingang bzw. Einkauf). */
+    marke: text("marke"),
+    kategorie: text("kategorie"),
+    quelle: text("quelle"),
+    angebote: integer("angebote"),
+    letzterEinkauf: text("letzter_einkauf"),
+    antwort: text("antwort", { enum: ["nie_wieder", "pech", "unklar"] }),
+    gruende: jsonb("gruende").$type<string[]>().notNull().default([]),
+    freitext: text("freitext"),
+    beantwortetAm: timestamp("beantwortet_am", { withTimezone: true }),
+    beantwortetVon: uuid("beantwortet_von").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lernschleife_uq").on(t.tenantId, t.monat, t.schluessel), index("lernschleife_tenant_idx").on(t.tenantId, t.createdAt)],
 );

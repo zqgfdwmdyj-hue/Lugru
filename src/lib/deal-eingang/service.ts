@@ -1,4 +1,5 @@
 import "server-only";
+import { umschlagSchaetzen } from "./umschlag-logic";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -262,6 +263,18 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
   const empfohlen = empfohleneMenge(p.abverkauf.unsProMonat, de.maxReichweiteTage, eigen);
   if (empfohlen !== null && a.moq && a.moq > empfohlen && empfohlen > 0) gelb.push(`Mindestmenge ${a.moq} Stk über der empfohlenen Menge (${empfohlen}).`);
 
+  // B28.6: erwartete Umschlagszeit und ROI p. a. je Land (Vorlauf aus den eigenen Durchlaufzeiten, B28.7)
+  const { vorlaufFuer } = await import("@/lib/money/durchlauf");
+  const vorlauf = await vorlaufFuer(tenantId, o.quelle ?? null).catch(() => undefined);
+  const mengeGeplant = a.menge ?? a.moq ?? empfohlen;
+  for (const l of laender) l.umschlag = umschlagSchaetzen({ verkaeufeMonat: l.verkaeufeMonat ?? l.verkaeufeGeschaetzt ?? null, angebote: l.angebote, amazonProzent: l.amazonProzent, menge: mengeGeplant, roi: l.roi, vorlauf });
+  const umschlag = laender.find((l) => l.land === p.bestes?.land)?.umschlag ?? null;
+  if (umschlag && !ohneEk) {
+    const minPa = de.minRoiPa ?? 100;
+    if (umschlag.roiPa !== null && umschlag.roiPa < minPa) gelb.push(`ROI p. a. nur ${umschlag.roiPa} % (Umschlag ${umschlag.text}, Ziel ≥ ${minPa} %).`);
+    if (umschlag.warnung) gelb.push(umschlag.warnung);
+  }
+
   // Freigabe (Listing-Restrictions) – nur mit SP-API
   const risiken: string[] = [];
   try {
@@ -302,6 +315,7 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
     amazonProzent: b?.amazonProzent ?? null,
     verkaeufeMonat: b?.verkaeufeMonat ?? null,
     empfohlen,
+    umschlag,
     kapitalbedarf: empfohlen && !ohneEk ? r2(empfohlen * p.ekNetto) : null,
     maxEk: maxListe,
     laender,

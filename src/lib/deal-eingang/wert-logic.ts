@@ -5,6 +5,7 @@
 // Signal (nur Anzahl, keine Mitglieder); eine fehlende Reaktion heißt nicht „nicht gekauft“.
 
 import { DAUMEN_GRUENDE_HOCH, type DealAehnlich, type DealMerkmale, type DealWert } from "@/db/tables/deal-eingang";
+import { fehlkaufBeitraege, type Fehlkauf } from "./lernschleife-logic";
 
 type Verlauf = [tag: string, buybox: number | null, amazon: number | null, angebote: number | null, rang: number | null];
 export type KeepaLite = {
@@ -106,12 +107,17 @@ export function merkmaleAus(
 type Beitrag = { punkte: number; text: string };
 
 /** Startwert 50, je Kennzahl Zu-/Abschläge mit Text (für „dafür/dagegen“). */
-export function kennzahlenWert(m: Partial<DealMerkmale>, zielRoi: number): { wert: number; beitraege: Beitrag[] } {
+export function kennzahlenWert(m: Partial<DealMerkmale>, zielRoi: number, minRoiPa = 100): { wert: number; beitraege: Beitrag[] } {
   const b: Beitrag[] = [];
   const add = (punkte: number, text: string) => b.push({ punkte, text });
   if (m.roi !== null && m.roi !== undefined) {
     if (m.roi >= zielRoi) add(Math.min(20, (m.roi - zielRoi) * 0.8 + 4), `ROI ${Math.round(m.roi)} %`);
     else add(-Math.min(25, (zielRoi - m.roi) * 1.2 + 4), `ROI nur ${Math.round(m.roi)} %`);
+  }
+  // B28.6: ROI pro Jahr (Umschlagszeit) zusätzlich zur Marge – schnell drehende Deals vor langsamen.
+  if (m.roiPa !== null && m.roiPa !== undefined) {
+    if (m.roiPa >= minRoiPa) add(Math.min(10, (m.roiPa - minRoiPa) / 25 + 3), `ROI p. a. ${Math.round(m.roiPa)} %`);
+    else add(-Math.min(15, (minRoiPa - m.roiPa) / 8 + 4), `ROI p. a. nur ${Math.round(m.roiPa)} %`);
   }
   if (m.schwankung90 != null) {
     if (m.schwankung90 < 8) add(8, "Chart stabil");
@@ -339,8 +345,8 @@ export function lugruHarteGruende(m: Partial<DealMerkmale>, z?: { eigen?: { kapi
  * zusätzlich das Lernmodell. Lugru-Deals (Quelle „Lugru …“) starten mit 60, nur harte Rot-Kriterien drücken darunter.
  * Ampel rot → höchstens 30 (gedeckelt).
  */
-export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: "gruen" | "gelb" | "rot"; historie: HistorieDeal[]; modell?: Modell | null; quelle?: string | null; harte?: string[] }): DealWert {
-  const kz = kennzahlenWert(m, o.zielRoi);
+export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: "gruen" | "gelb" | "rot"; historie: HistorieDeal[]; modell?: Modell | null; quelle?: string | null; harte?: string[]; /** B28.6 */ minRoiPa?: number; /** B28.8: beantwortete Verlustprodukte der Lernschleife */ fehlkaeufe?: Fehlkauf[] }): DealWert {
+  const kz = kennzahlenWert(m, o.zielRoi, o.minRoiPa);
   const nb = aehnliche(m, o.historie);
   const eigen = nb.filter((x) => x.quelle === "eigen");
   const lugru = nb.filter((x) => x.quelle === "lugru");
@@ -365,6 +371,9 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
   // B28.3: deine begründeten 👍/👎 bei früheren Deals
   const gb = grundBeitraege(m, o.historie);
   wert += gb.reduce((n, x) => n + x.punkte, 0);
+  // B28.8: ähnliche Fehlkäufe aus der Lernschleife (Abschlag bzw. Hinweis)
+  const fk = fehlkaufBeitraege({ marke: m.marke, kategorie: m.kategorie, quelle: m.quelle ?? o.quelle ?? null, angebote: m.angebote }, o.fehlkaeufe ?? []);
+  wert += fk.reduce((n, x) => n + x.punkte, 0);
   wert = Math.round(Math.max(0, Math.min(100, wert)));
   // Lugru-Vorwissen: Startwert 60, solange kein hartes Rot-Kriterium vorliegt.
   const lugru0 = istLugruQuelle(o.quelle);
@@ -385,7 +394,7 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
     ...kz.beitraege.filter((x) => x.punkte > 0).sort((a, b) => b.punkte - a.punkte).map((x) => x.text),
   ];
   if (lugru0 && !harte.length && o.ampel !== "rot") dafuer.unshift(`Lugru-Deal: Vorwissen „nahezu blind kaufen“ (Start ${LUGRU_START})`);
-  const dagegen = [...harte, ...gb.filter((x) => x.punkte < 0).map((x) => x.text), ...kz.beitraege.filter((x) => x.punkte < 0 && !harte.includes(x.text)).sort((a, b) => a.punkte - b.punkte).map((x) => x.text)];
+  const dagegen = [...harte, ...fk.map((x) => x.text), ...gb.filter((x) => x.punkte < 0).map((x) => x.text), ...kz.beitraege.filter((x) => x.punkte < 0 && !harte.includes(x.text)).sort((a, b) => a.punkte - b.punkte).map((x) => x.text)];
   if (gedeckelt) dagegen.unshift("Ampel rot – der Deal-Wert ersetzt keine Prüfung");
   const begruendung = `Passt zu dir (${wert}/100)${dafuer.length ? `: ${dafuer.slice(0, 3).join(", ")}` : ""}.${dagegen.length ? ` Gegen: ${dagegen.slice(0, 2).join(", ")}.` : ""}`;
   const aehnlicheListe: DealAehnlich[] = nb.slice(0, 5).map((x) => ({ id: x.id, quelle: x.quelle, titel: x.titel, asin: x.asin, datum: x.datum, ergebnis: x.ergebnis, abstand: Math.round(x.abstand * 1000) / 1000 }));
