@@ -51,9 +51,10 @@ test.describe("B27 – nächtliche Automatik", () => {
       expect((await sql("select menge from ao_einkaeufe where tenant_id = $1 and asin = $2", [T, A1]))[0]).toMatchObject({ menge: 3 });
       expect((await sql<{ number: string; status: string; quantity: number }>("select po.number, po.status, i.quantity from purchase_orders po join purchase_order_items i on i.po_id = po.id where po.tenant_id = $1 and po.quelle = 'arbitrageone' and i.asin = $2", [T, A1]))[0]).toMatchObject({ number: `AO-PO-${m}`, status: "ordered", quantity: 3 });
       expect((await sql("select menge from ao_lagerbestand where tenant_id = $1 and sku = $2", [T, S1]))[0]).toMatchObject({ menge: 4 });
-      // B27.2: BQool kam über „Meine Exporte“, Reimbursement über den ausgefüllten Dialog; AccountOne ohne Reaktion
+      // B27.2: Reimbursement über den ausgefüllten Dialog; AccountOne ohne Reaktion (B31.1: BQool wird nicht mehr geholt)
       const geladen = (await (await fetch(`${TD}/__ao`)).json()).downloads.map((d: { key: string }) => d.key);
-      expect(geladen).toEqual(expect.arrayContaining(["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement"]));
+      expect(geladen).toEqual(expect.arrayContaining(["einkaeufe", "lagerbestand", "sellerboard", "reimbursement"]));
+      expect(geladen).not.toContain("bqool");
       expect(geladen).not.toContain("accountone");
 
       // B27.6: je Export eine Zeile; Fehler mit Bildschirmfoto und Seite, ohne Browser-Protokoll

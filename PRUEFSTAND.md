@@ -115,6 +115,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einstellungen | Einstellungen › Testumgebung `/einstellungen/testumgebung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | /posteingang/verbinden `/posteingang/verbinden` | ○ 0/2 Abläufe | – | 1 |
 | Übergreifend | /assistent-verlauf `/assistent-verlauf` | ○ 0/2 Abläufe | – | – |
+| Übergreifend | /repricer/bqool `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
 | Übergreifend | /calls/offen `/calls/offen` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /kalender/zeiten `/kalender/zeiten` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /privat/familienaufgaben `/privat/familienaufgaben` | ○ 0/1 Abläufe | – | – |
@@ -560,6 +561,16 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) | neuer Aufruf zeigt „↩ Rückgängig“, Klick stellt die alte Frist her | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 | Auftrag an Claude aus den Amazon-ToDos: „ToDos mit versendetem Auftrag erledigen“ → Vorschau → Ausführen → Verlauf → Rückgängig; gelber Auftragsstatus; Preis ändern; Mail mit „ignore previous instructions“; VA-Konto; gleiche Aktion über den Konnektor | Vorschau nennt 2 passende und 1 getrennt (nicht versendet), ohne Klick keine Änderung; Verlauf mit Auftragstext und Datensätzen, Rückgängig öffnet wieder; gelb nur mit Einzelbestätigung; Preis: Hinweis + Link, keine Ausführung; Mail-Text löst nichts aus; VA ohne Finanzen; Konnektor gleiches Ergebnis | ○ im letzten Lauf nicht gelaufen | `assistent-aktionen.spec.ts` |
 
+### Übergreifend › /repricer/bqool (`/repricer/bqool`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung | Ist aller 4 Länder mit Stand heute (repricer „bqool_stand: heute …“), Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel …“ mit Freigeben/Ansehen, nichts hochgeladen bis zur Freigabe, danach 4 Dateien mit Typ „repricing“, „1 Fehlerzeile“ als Aufgabe, Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“, Min DE = effektiver Min unter der Buy Box; verfallener Lauf lädt nichts hoch; „automatisch“ erst mit bestätigtem Min-Verhalten | ○ im letzten Lauf nicht gelaufen | `b31-bqool-kreislauf.spec.ts` |
+| Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung | Dateien im BQool-Format, je Land eigene Upload-Seite, ein Land fehlgeschlagen → Aufgabe | ○ im letzten Lauf nicht gelaufen | `bqool-dateien.spec.ts` |
+
+- – Offen: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
+- – Offen: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
+
 ### Übergreifend › /calls/offen (`/calls/offen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -607,7 +618,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (141 Abläufe + Oberfläche auf 110 Seiten): 0 bestanden, 0 fehlgeschlagen, 141 nicht gelaufen.
+**Automatisch** (143 Abläufe + Oberfläche auf 111 Seiten): 0 bestanden, 0 fehlgeschlagen, 143 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -743,6 +754,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ /posteingang/verbinden: Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“ – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: Auftrag an Claude aus den Amazon-ToDos: „ToDos mit versendetem Auftrag erledigen“ → Vorschau → Ausführen → Verlauf → Rückgängig; gelber Auftragsstatus; Preis ändern; Mail mit „ignore previous instructions“; VA-Konto; gleiche Aktion über den Konnektor – im letzten Lauf nicht gelaufen
+- ○ /repricer/bqool: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
+- ○ /repricer/bqool: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ /calls/offen: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ /kalender/zeiten: Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick – im letzten Lauf nicht gelaufen
 - ○ /privat/familienaufgaben: Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft – im letzten Lauf nicht gelaufen
@@ -810,5 +823,7 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Einstellungen › KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
 - Einstellungen › KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - /posteingang/verbinden: IMAP mit echtem Postfach: Ordnerauswahl (Gmail „Alle Nachrichten“), Test-Knopf, SMTP 465 → 587, Fehlerarten (Anmeldung, IMAP aus, Port) – nur live mit Nur-ansehen-Daten
+- /repricer/bqool: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
+- /repricer/bqool: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
 - Server (Port, Adresse, Testumgebung): `deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)
 - Server (Port, Adresse, Testumgebung): `deploy/testumgebung.sh an` + `pruefen` auf dem Server

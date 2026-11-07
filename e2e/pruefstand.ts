@@ -157,6 +157,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen"],
   },
+  "/repricer/bqool": {
+    abläufe: [
+      { ablauf: "B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung", erwartet: "Ist aller 4 Länder mit Stand heute (repricer „bqool_stand: heute …“), Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel …“ mit Freigeben/Ansehen, nichts hochgeladen bis zur Freigabe, danach 4 Dateien mit Typ „repricing“, „1 Fehlerzeile“ als Aufgabe, Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“, Min DE = effektiver Min unter der Buy Box; verfallener Lauf lädt nichts hoch; „automatisch“ erst mit bestätigtem Min-Verhalten", tests: ["b31-bqool-kreislauf.spec.ts › Ist aller Länder"] },
+      { ablauf: "Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung", erwartet: "Dateien im BQool-Format, je Land eigene Upload-Seite, ein Land fehlgeschlagen → Aufgabe", tests: ["bqool-dateien.spec.ts › Ist hochladen"] },
+    ],
+    offen: ["Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)", "Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)"],
+  },
   "/bestand": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl, keine kaputten Werte", tests: ["kennzahlen.spec.ts › Bestand"] },

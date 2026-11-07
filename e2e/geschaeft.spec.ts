@@ -113,7 +113,9 @@ test.describe("Claude & KI-Assistent – BQool und Amazon je Land", () => {
     const alle = JSON.parse(await c.call("repricer", { ansicht: "alle", suche: "socken" }));
     expect(alle.zeilen).toHaveLength(1);
     expect(alle.zeilen[0]).toMatchObject({ sku: "TEST-SOCKEN", preis: 21.99, min_bqool: 19.5, max_bqool: 29.99, regel: "Standard", status: "aktiv", buybox_bei: "uns" });
-    expect(r.datenstand.stand).toContain("BQool-Export eingelesen");
+    // B31.4: „BQool-Stand: heute 06:05“ statt Datum des Uploads
+    expect(r.datenstand.stand).toMatch(/^BQool-Stand: heute \d\d:\d\d$/);
+    expect(r.bqool_stand).toMatch(/^heute \d\d:\d\d$/);
     expect(r.upload_datei).toBe(`${baseURL}/repricer/export?format=bqool`);
   });
 

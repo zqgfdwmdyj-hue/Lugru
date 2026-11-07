@@ -5,7 +5,7 @@ import { todayIso } from "@/lib/dates";
 import type { KeepaStand } from "@/lib/keepa/auswertung";
 import { aeltesteTage } from "@/lib/money/kapital";
 import { repricerRows } from "@/lib/repricer";
-import type { TenantSettings } from "@/db/schema";
+import type { BqoolLaufZusammenfassung, TenantSettings } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import {
@@ -78,11 +78,11 @@ function format(s: Awaited<ReturnType<typeof getSettings>>): BqoolFormat {
 }
 
 /** BQool-Repricing-Datei (eigene Vorlage „Listings_…txt“ oder ArbitrageOne-Datei) als Ist-Stand eines Landes speichern. */
-export async function bqoolDateiEinlesen(tenantId: string, name: string, bytes: Uint8Array): Promise<{ ok: boolean; message: string; land: ExportLand | null }> {
+export async function bqoolDateiEinlesen(tenantId: string, name: string, bytes: Uint8Array, o: { /** B31.2: Land fest (Export-Seite je Land), sonst aus Dateiname/Channel. */ land?: ExportLand; ohneAbgleich?: boolean; via?: "upload" | "automatik" } = {}): Promise<{ ok: boolean; message: string; land: ExportLand | null; skus?: number }> {
   const text = new TextDecoder("utf-8").decode(bytes);
   const r = liesBqoolDatei(text, name);
-  if (!r.land) return { ok: false, message: "Land der BQool-Datei nicht erkennbar (Channel „Amazon DE/FR/IT/ES“ fehlt).", land: null };
-  const land = r.land;
+  const land = o.land ?? r.land;
+  if (!land) return { ok: false, message: "Land der BQool-Datei nicht erkennbar (Channel „Amazon DE/FR/IT/ES“ fehlt).", land: null };
   const now = new Date();
   const zeilen = [...new Map(r.zeilen.map((z) => [z.sku, z])).values()];
   await db.transaction(async (tx) => {
@@ -97,11 +97,11 @@ export async function bqoolDateiEinlesen(tenantId: string, name: string, bytes: 
         .onConflictDoUpdate({ target: [L.tenantId, L.marktplatz, L.sku], set: { regel: sql`excluded.regel`, min: sql`excluded.min`, max: sql`excluded.max`, status: sql`excluded.status`, zusatz: sql`${L.zusatz} || excluded.zusatz`, datei: sql`excluded.datei`, eingelesenAm: sql`excluded.eingelesen_am` } });
     }
   });
-  await db.insert(schema.reportImports).values({ tenantId, reportType: "BQool Repricing-Datei", fileName: name.slice(0, 200), via: "upload", rows: r.zeilen.length, inserted: zeilen.length, message: land });
+  await db.insert(schema.reportImports).values({ tenantId, reportType: "BQool Repricing-Datei", fileName: name.slice(0, 200), via: o.via === "automatik" ? "api" : "upload", rows: r.zeilen.length, inserted: zeilen.length, message: land });
   const regeln = new Map<string, number>();
   for (const z of zeilen) regeln.set(z.regel || "–", (regeln.get(z.regel || "–") ?? 0) + 1);
-  await bqoolAbgleichAufgabe(tenantId).catch(() => undefined);
-  return { ok: true, land, message: `BQool ${land}: ${zeilen.length} SKUs als Ist-Stand übernommen (${[...regeln.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}).` };
+  if (!o.ohneAbgleich) await bqoolAbgleichAufgabe(tenantId).catch(() => undefined);
+  return { ok: true, land, skus: zeilen.length, message: `BQool ${land}: ${zeilen.length} SKUs als Ist-Stand übernommen (${[...regeln.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}).` };
 }
 
 async function istStand(tenantId: string, laender: ExportLand[]) {
@@ -116,11 +116,13 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
   const b = s.bqool;
   const laender = (o.laender?.length ? o.laender : b.laender).filter((l): l is ExportLand => (EXPORT_LAENDER as readonly string[]).includes(l));
   const heute = o.heute ?? todayIso();
-  const [rows, zuw, ist, letzter] = await Promise.all([
+  const [rows, zuw, ist, letzter, hochgeladen] = await Promise.all([
     repricerRows(tenantId),
     db.select().from(Z).where(eq(Z.tenantId, tenantId)),
     istStand(tenantId, laender),
     db.select().from(E).where(eq(E.tenantId, tenantId)).orderBy(desc(E.createdAt)).limit(1),
+    // B31: zuletzt bei BQool hochgeladene Exporte (für den Vergleich, wenn der Ist danach nicht neu geholt wurde)
+    db.select({ createdAt: E.createdAt, zeilen: E.zeilen, protokoll: E.protokoll }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.uebertragung, ["fertig", "teilweise", "pruefen"]))).orderBy(desc(E.createdAt)).limit(20),
   ]);
   const skus = rows.map((r) => r.sku);
   const asins = [...new Set(rows.map((r) => r.asin).filter((a): a is string => !!a))];
@@ -161,13 +163,14 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const kat = katalogRegel(b.katalog, rf.regel);
       const kosten = { ek: r.unitCost, fba: r.fbaFee, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: r.referralRate };
       const be0 = breakEvenMin({ ...kosten, margeProzent: 0 });
-      const min = dateiMin({ regel: kat, untergrenze: rf.untergrenze, breakEven: be0 });
+      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage: alterJe.get(r.sku) ?? null });
+      // B31.3: Min in der Datei – Standard effektiver Min (harte Untergrenze), auf Wunsch Break-even als Sicherheitsnetz.
+      const min = dateiMin({ regel: kat, untergrenze: rf.untergrenze, breakEven: be0, effMin: eff.min, modus: b.kreislauf.minInDatei });
       if (min === null) continue;
       const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
       const max = maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
       const enable = (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
-      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage: alterJe.get(r.sku) ?? null });
       const buybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
       const w = warnungen({ min: eff.min ?? min, max }, { buybox, breakEven: kat?.festeUntergrenze ? be0 : null });
       if (!kat) w.push(`Regel „${rf.regel}“ steht nicht im Katalog`);
@@ -184,6 +187,16 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
         ? istRows.map((x) => [x.sku, { regel: x.regel, min: x.min, max: x.max, cost: (x.zusatz as Record<string, string>)?.cost ? Number((x.zusatz as Record<string, string>).cost) : undefined }])
         : letzteZeilen.filter((z) => z.land === land).map((z) => [z.sku, { regel: z.regel, min: z.min, max: z.max, cost: z.cost }]),
     );
+    // B31: Ist älter als ein erfolgreicher Upload dieses Landes (Export-Seite fehlt, Abruf fehlgeschlagen) → für die SKUs
+    // der hochgeladenen Datei gilt deren Stand; sonst meldete der nächste Lauf dieselben Änderungen noch einmal.
+    if (vergleichMit === "bqool") {
+      const istAm = istRows.reduce<Date | null>((m, x) => (!m || x.eingelesenAm > m ? x.eingelesenAm : m), null);
+      for (const ex of [...hochgeladen].reverse()) {
+        if (istAm && ex.createdAt <= istAm) continue;
+        if (!ex.protokoll.some((p) => p.land === land && (p.ok || p.unklar))) continue;
+        for (const z of ex.zeilen) if (z.land === land) istMap.set(z.sku, { regel: z.regel, min: z.min, max: z.max, cost: z.cost });
+      }
+    }
     const v = new Map(vergleiche(zeilen, istMap).map((a) => [a.sku, a]));
     for (const z of zeilen) {
       const a = v.get(z.sku)!;
@@ -218,12 +231,21 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
 }
 
 /** Export erzeugen und speichern (Download je Land / ZIP). Nur Änderungen = neue und geänderte Zeilen. */
-export async function bqoolExportErzeugen(tenantId: string, userId: string | null, o: { laender?: ExportLand[]; nurAenderungen: boolean }): Promise<{ id: string; anzahl: Record<string, number> }> {
+export async function bqoolExportErzeugen(tenantId: string, userId: string | null, o: { laender?: ExportLand[]; nurAenderungen: boolean }): Promise<{ id: string; anzahl: Record<string, number>; zusammenfassung: BqoolLaufZusammenfassung }> {
   const v = await bqoolVorschau(tenantId, { laender: o.laender });
-  const zeilen = v.laender.flatMap((l) => l.zeilen.filter((z) => !o.nurAenderungen || z.art !== "gleich").map((z) => ({ land: z.land, sku: z.sku, cost: z.cost, zusatz: z.zusatz, regel: z.regel, min: z.min, max: z.max, enable: z.enable })));
+  const gewaehlt = v.laender.flatMap((l) => l.zeilen.filter((z) => !o.nurAenderungen || z.art !== "gleich"));
+  const zeilen = gewaehlt.map((z) => ({ land: z.land, sku: z.sku, cost: z.cost, zusatz: z.zusatz, regel: z.regel, min: z.min, max: z.max, enable: z.enable }));
   const anzahl = Object.fromEntries(v.laender.map((l) => [l.land, zeilen.filter((z) => z.land === l.land).length]));
+  // B31.2: Zusammenfassung für Freigabe-Push und „automatisch hochladen“ (nur über die Zeilen der Datei).
+  const zusammenfassung: BqoolLaufZusammenfassung = {
+    jeLand: anzahl,
+    gesamt: zeilen.length,
+    regelWechsel: gewaehlt.filter((z) => z.regelWechsel).length,
+    warnungen: gewaehlt.filter((z) => z.warnungen.length).length,
+    unterBreakEven: gewaehlt.filter((z) => z.warnungen.some((w) => /unter Break-even/i.test(w))).length,
+  };
   const [e] = await db.insert(E).values({ tenantId, userId, laender: v.laender.map((l) => l.land), nurAenderungen: o.nurAenderungen, zeilen, anzahl }).returning({ id: E.id });
-  return { id: e.id, anzahl };
+  return { id: e.id, anzahl, zusammenfassung };
 }
 
 /** Dateien eines Exports: je Land eine .txt im BQool-Format. */

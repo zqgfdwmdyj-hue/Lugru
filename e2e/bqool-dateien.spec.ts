@@ -69,7 +69,8 @@ test.describe("BQool-Dateien", () => {
       expect(hoch.map((w) => w.name.replace(/_\d{4}-\d{2}-\d{2}/, ""))).toEqual(["BQool_DE.txt", "BQool_FR.txt"]);
       // B23: je Land die eigene Upload-Seite (FR aus der DE-Adresse abgeleitet: amazonde → amazonfr)
       expect(hoch.map((w) => w.land)).toEqual(["amazonde", "amazonfr"]);
-      await expect(page.getByRole("status")).toContainText("DE: 1 Zeile hochgeladen · FR: 1 Zeile hochgeladen");
+      // B31.2: mit Rückmeldung von BQool („1 übernommen“)
+      await expect(page.getByRole("status")).toContainText("DE: 1 Zeile hochgeladen, 1 übernommen · FR: 1 Zeile hochgeladen, 1 übernommen");
       await expect(page.getByTestId("bq-uebertragung")).toContainText("hochgeladen");
       await expect(page.getByTestId("bq-adressen")).toContainText("FR ✓ (aus DE)");
 

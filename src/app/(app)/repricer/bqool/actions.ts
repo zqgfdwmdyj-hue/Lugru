@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireArea } from "@/lib/auth/session";
+import { requireArea, requireOwner } from "@/lib/auth/session";
 import { EXPORT_LAENDER, type ExportLand, type KatalogRegel, type MarkenRegel } from "@/lib/bqool/export-logic";
 import { bqoolAbgleichAufgabe, bqoolEinstellungenSpeichern, bqoolExportErzeugen, istAlsSollUebernehmen, vorschlagFreigeben, zuweisungLoeschen, zuweisungSetzen } from "@/lib/bqool/export-service";
 import { lesbarerFehler } from "@/lib/fehler-text";
@@ -136,3 +136,63 @@ export async function anBqoolAction(fd: FormData) {
   zurueck(r.text, `&export=${id}`);
 }
 
+
+// ---- B31.2 Täglicher BQool-Kreislauf: Freigabe, Jetzt starten, Nachkontrolle, Einstellungen (nur Inhaber) ----------
+
+const laufZiel = (id: string | null) => (id ? `&lauf=${id}#freigabe` : "#freigabe");
+
+/** Kreislauf jetzt starten: Ist je Land holen, Soll erzeugen, Freigabe anfragen (bzw. automatisch hochladen). */
+export async function kreislaufStartenAction() {
+  const s = await requireOwner();
+  const { kreislaufStarten } = await import("@/lib/bqool/kreislauf");
+  const r = await kreislaufStarten(s.tenantId, "knopf");
+  revalidatePath(PFAD);
+  zurueck(r.text, laufZiel(r.laufId));
+}
+
+/** Freigeben und hochladen – nur der Inhaber; danach Nachkontrolle in 30 Minuten. */
+export async function kreislaufFreigebenAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("lauf") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) zurueck("Lauf nicht gefunden.");
+  const { kreislaufFreigeben } = await import("@/lib/bqool/kreislauf");
+  const r = await kreislaufFreigeben(s.tenantId, id, s.name || s.email);
+  revalidatePath(PFAD);
+  zurueck(r.text, laufZiel(id));
+}
+
+/** Heute nicht hochladen. */
+export async function kreislaufAblehnenAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("lauf") ?? "");
+  const { kreislaufAblehnen } = await import("@/lib/bqool/kreislauf");
+  const ok = /^[0-9a-f-]{36}$/i.test(id) && (await kreislaufAblehnen(s.tenantId, id, s.name || s.email));
+  revalidatePath(PFAD);
+  zurueck(ok ? "Heute wird nichts zu BQool hochgeladen – morgen 06:00 kommt ein neuer Lauf." : "Lauf ist nicht mehr offen.", laufZiel(id));
+}
+
+/** Nachkontrolle jetzt (sonst automatisch 30 Minuten nach dem Upload). */
+export async function nachkontrolleAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("lauf") ?? "");
+  const { nachkontrolleAusfuehren } = await import("@/lib/bqool/kreislauf");
+  const r = /^[0-9a-f-]{36}$/i.test(id) ? await nachkontrolleAusfuehren(s.tenantId, id) : { text: "Lauf nicht gefunden." };
+  revalidatePath(PFAD);
+  zurueck(`Nachkontrolle: ${r.text}`, laufZiel(id));
+}
+
+/**
+ * Einstellungen: automatisch hochladen (nur mit bestätigtem Min-Verhalten in BQool), Min in der Datei
+ * (effektiver Min bzw. Break-even als Sicherheitsnetz).
+ */
+export async function kreislaufEinstellungenAction(fd: FormData) {
+  const s = await requireOwner();
+  const minGeprueft = fd.get("min_geprueft") === "1";
+  const automatisch = fd.get("automatisch") === "1";
+  const minInDatei = fd.get("min_in_datei") === "sicherheitsnetz" ? "sicherheitsnetz" : "effektiv";
+  const { getSettings } = await import("@/lib/settings");
+  const alt = (await getSettings(s.tenantId)).bqool.kreislauf;
+  await bqoolEinstellungenSpeichern(s.tenantId, { kreislauf: { minGeprueft, minGeprueftAm: minGeprueft ? (alt.minGeprueft ? alt.minGeprueftAm : new Date().toISOString()) : null, automatisch: automatisch && minGeprueft, minInDatei } });
+  revalidatePath(PFAD);
+  zurueck(automatisch && !minGeprueft ? "Automatisch hochladen geht erst, wenn das Min-Verhalten in BQool bestätigt ist – bleibt bei „Freigabe nötig“." : `Gespeichert: ${automatisch && minGeprueft ? "täglich automatisch hochladen (außer bei Regelwechsel oder Min unter Break-even)" : "Freigabe nötig"} · Min in der Datei: ${minInDatei === "effektiv" ? "effektiver Min" : "Break-even (Sicherheitsnetz)"}.`, "#kreislauf-einstellungen");
+}

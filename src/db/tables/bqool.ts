@@ -75,3 +75,48 @@ export const bqoolExporte = pgTable(
   },
   (t) => [index("bqool_exporte_tenant_idx").on(t.tenantId, t.createdAt)],
 );
+
+/** B31.2: Ergebnis je Land beim Holen des BQool-Ist (Download „Repricing Central File – Full Template“ bzw. „Manage Listings“). */
+export type BqoolIstLand = { land: string; ok: boolean; datei?: string; skus?: number; text: string; bild?: string };
+/** B31.2: Rückmeldung von BQool je Land nach dem Upload. */
+export type BqoolUploadLand = { land: string; ok: boolean; zeilen: number; uebernommen: number | null; fehler: number | null; fehlerZeilen: { sku: string; text: string }[]; text: string; unklar?: boolean };
+/** B31.2: Zusammenfassung des Soll-Exports für Freigabe-Push und Anzeige. */
+export type BqoolLaufZusammenfassung = { jeLand: Record<string, number>; gesamt: number; regelWechsel: number; warnungen: number; unterBreakEven: number };
+/** B31.2: Nachkontrolle – Abweichungen zwischen hochgeladener Datei und BQool-Ist 30 Minuten später. */
+export type BqoolKontrolle = { geprueft: number; ok: number; abweichungen: { land: string; sku: string; text: string }[]; text: string };
+
+/**
+ * B31.2 Täglicher BQool-Kreislauf (06:00): Ist holen → Soll erzeugen → Freigabe (Push) → Upload je Land → Nachkontrolle.
+ * Ein Eintrag je Tag und Mandant (Knopf „Jetzt starten“ legt einen weiteren an). Hochgeladen wird nur nach Freigabe
+ * bzw. – wenn eingeschaltet – automatisch ohne Regelwechsel und ohne Min unter Break-even.
+ */
+export const bqoolLaeufe = pgTable(
+  "bqool_laeufe",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    /** Tag (Berlin, JJJJ-MM-TT), an dem der Lauf begann. */
+    tag: text("tag").notNull(),
+    ausloeser: text("ausloeser", { enum: ["zeitplan", "knopf"] }).notNull(),
+    phase: text("phase", { enum: ["ist", "soll", "freigabe", "upload", "kontrolle", "fertig", "abgebrochen", "verfallen"] }).notNull().default("ist"),
+    ist: jsonb("ist").$type<BqoolIstLand[]>().notNull().default([]),
+    istAm: timestamp("ist_am", { withTimezone: true }),
+    exportId: uuid("export_id"),
+    zusammenfassung: jsonb("zusammenfassung").$type<BqoolLaufZusammenfassung>(),
+    freigabe: text("freigabe", { enum: ["offen", "freigegeben", "automatisch", "verfallen", "nicht_noetig", "abgelehnt"] }),
+    freigabeVon: text("freigabe_von"),
+    freigabeAm: timestamp("freigabe_am", { withTimezone: true }),
+    erinnertAm: timestamp("erinnert_am", { withTimezone: true }),
+    upload: jsonb("upload").$type<BqoolUploadLand[]>(),
+    uploadStatus: text("upload_status", { enum: ["laeuft", "fertig", "teilweise", "fehler", "pruefen"] }),
+    uploadAm: timestamp("upload_am", { withTimezone: true }),
+    kontrolleFaelligAm: timestamp("kontrolle_faellig_am", { withTimezone: true }),
+    kontrolleAm: timestamp("kontrolle_am", { withTimezone: true }),
+    kontrolle: jsonb("kontrolle").$type<BqoolKontrolle>(),
+    protokoll: jsonb("protokoll").$type<{ zeit: string; text: string; bildId?: string }[]>().notNull().default([]),
+    fehler: text("fehler"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("bqool_laeufe_tenant_idx").on(t.tenantId, t.createdAt)],
+);

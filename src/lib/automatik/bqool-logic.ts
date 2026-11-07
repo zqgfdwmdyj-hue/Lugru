@@ -36,13 +36,35 @@ export function bqoolZeilen(text: string): number {
   return Math.max(0, text.split("\n").filter((z) => z.trim()).length - 2);
 }
 
-export type BqoolLandErgebnis = { land: string; datei: string; zeilen: number; ok: boolean; fehler?: string; /** Hochgeladen, aber keine Bestätigung erkannt – kein Fehler, bitte in BQool prüfen. */ unklar?: boolean; wie?: string };
+export type BqoolLandErgebnis = {
+  land: string;
+  datei: string;
+  zeilen: number;
+  ok: boolean;
+  fehler?: string;
+  /** Hochgeladen, aber keine Bestätigung erkannt – kein Fehler, bitte in BQool prüfen. */
+  unklar?: boolean;
+  wie?: string;
+  /** B31.2: Rückmeldung von BQool – Anzahl übernommen/fehlerhaft (wenn genannt) und Fehlerzeilen mit SKU. */
+  uebernommen?: number | null;
+  fehlerAnzahl?: number | null;
+  fehlerZeilen?: { sku: string; text: string }[];
+};
+
+/** SKUs einer BQool-Datei (Spalte „SellerSKU“). */
+export function bqoolSkus(text: string): string[] {
+  const zeilen = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+  const kopf = (zeilen[1] ?? "").split("\t").map((h) => h.trim().toLowerCase());
+  const i = kopf.indexOf("sellersku");
+  return i < 0 ? [] : zeilen.slice(2).map((z) => (z.split("\t")[i] ?? "").trim()).filter(Boolean);
+}
 
 /** „DE: 824 Zeilen hochgeladen · FR: Fehler Login“ */
 export const zeilenText = (n: number) => `${n.toLocaleString("de-DE")} ${n === 1 ? "Zeile" : "Zeilen"}`;
 
 export function bqoolErgebnisText(r: BqoolLandErgebnis[]): string {
-  return r.map((x) => (x.ok ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen` : x.unklar ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen, Bestätigung nicht erkannt – bitte in BQool prüfen` : `${x.land}: Fehler – ${x.fehler ?? "unbekannt"}`)).join(" · ");
+  const rm = (x: BqoolLandErgebnis) => (x.uebernommen !== undefined && x.uebernommen !== null ? `, ${x.uebernommen.toLocaleString("de-DE")} übernommen` : "") + (x.fehlerAnzahl ? `, ${x.fehlerAnzahl} Fehlerzeile${x.fehlerAnzahl === 1 ? "" : "n"}` : "");
+  return r.map((x) => (x.ok ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen${rm(x)}` : x.unklar ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen, Bestätigung nicht erkannt – bitte in BQool prüfen` : `${x.land}: Fehler – ${x.fehler ?? "unbekannt"}`)).join(" · ");
 }
 
 type ProtokollEintrag = { zeit: string; land?: string; ok?: boolean; unklar?: boolean };
@@ -57,4 +79,18 @@ export function bqoolStatusAusProtokoll(protokoll: ProtokollEintrag[]): "fertig"
   const ok = l.filter((x) => x.ok).length;
   if (fehler) return ok || l.some((x) => x.unklar) ? "teilweise" : "fehler";
   return l.some((x) => x.unklar) ? "pruefen" : "fertig";
+}
+
+/** B31.2: Export-Seite je Land (Ist holen: „Repricing Central File – Full Template“ bzw. „Manage Listings“). */
+export const bqoolExportFeld = (land: BqoolLand) => (land === "DE" ? "exportUrl" : `exportUrl${land}`);
+
+/** B31.2: Export-Adresse je Land: eigenes Feld, sonst (FR/IT/ES) aus der DE-Adresse abgeleitet (amazonde → amazonfr). */
+export function bqoolExportAdressen(cfg: Record<string, string | null | undefined>): BqoolAdresse[] {
+  const de = (cfg.exportUrl ?? "").trim() || null;
+  return BQOOL_LAENDER.map((land) => {
+    const eigen = (cfg[bqoolExportFeld(land)] ?? "").trim() || null;
+    if (eigen) return { land, url: eigen, abgeleitet: false };
+    const ab = BQOOL_ABGELEITET.has(land) ? bqoolAbleiten(de, land) : null;
+    return { land, url: ab, abgeleitet: Boolean(ab) };
+  });
 }

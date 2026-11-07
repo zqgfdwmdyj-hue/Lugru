@@ -10,6 +10,7 @@ export const MELDE_ARTEN = [
   { key: "va_rueckfrage", titel: "VA-Rückfrage", text: "Die VA hat eine Frage zu einer Aufgabe (❓ oder Frage im Thread).", standard: true },
   { key: "aufgabe_wichtig", titel: "Neue wichtige Aufgabe", text: "Aufgaben mit Priorität „wichtig“ (Apple Watch: „Erledigt“ schließt sie).", standard: true },
   { key: "persoenlich", titel: "Persönliche Mail", text: "Persönliche Mails (Privatbereich) mit fertigem Antwortentwurf – nur an den Inhaber, nie in Discord-Kanäle.", standard: true },
+  { key: "bqool", titel: "BQool-Freigabe", text: "Täglicher BQool-Upload wartet auf Freigabe (Änderungen je Land, Regelwechsel, Warnungen) und Abweichungen der Nachkontrolle.", standard: true },
   { key: "mail_entwurf", titel: "Antwort vorbereitet", text: "Käuferfrage oder Lieferanten-Antwort mit fertigem Antwortentwurf im Posteingang.", standard: true },
   { key: "sonstiges", titel: "Sonstiges", text: "Übrige Hinweise (Tesla, Calls, Frühwarnungen, Termine …).", standard: true },
 ] as const;
@@ -61,8 +62,9 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number }): string {
+export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null }): string {
   const teile = [
+    o.bqool || null,
     o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,
     o.fristen ? `${o.fristen} Frist${o.fristen === 1 ? "" : "en"} heute` : null,
     o.wichtig ? `${o.wichtig} wichtige Aufgabe${o.wichtig === 1 ? "" : "n"}` : null,

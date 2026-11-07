@@ -1,6 +1,6 @@
 // ArbitrageOne-Anbindung (Bauauftrag Datei-Import, Ergänzung 01.11.): „Verbindung testen“ grün → Abruf (gleicher
-// Ablauf wie der Nachtlauf 05:30) holt Einkäufe, Lagerbestand, sellerboard-COG, BQool (nur Vergleich), Inventory
-// Reimbursement und AccountOne COG (NEU) → Lugru „gekauft“ erkannt, EK fehlt verschwindet, Liquidität zeigt den
+// Ablauf wie der Nachtlauf 05:30) holt Einkäufe, Lagerbestand, sellerboard-COG, Inventory
+// Reimbursement und AccountOne COG (NEU) (B31.1: BQool entfällt) → Lugru „gekauft“ erkannt, EK fehlt verschwindet, Liquidität zeigt den
 // Wareneinkauf des Monats. Zweiter Abruf: gleiche Dateien übersprungen. Fehlender Export → Aufgabe; Zwei-Faktor →
 // Abbruch mit Aufgabe. Alle Daten erfunden (Test-Nachbau der Export-Seite).
 import { TD } from "./env";
@@ -48,7 +48,7 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await page.locator("#arbitrageone_web").getByRole("button", { name: "Verbindung testen" }).click();
       const t = page.locator("#arbitrageone_web .notice");
       await expect(t).toContainText("Anmeldung ok", { timeout: 90_000 });
-      for (const k of ["Einkäufe: gefunden", "Lagerbestand: gefunden", "Sellerboard: gefunden", "BQool: gefunden", "Inventory Reimbursement: gefunden", "AccountOne COG (NEU): gefunden"]) await expect(t).toContainText(k);
+      for (const k of ["Einkäufe: gefunden", "Lagerbestand: gefunden", "Sellerboard: gefunden", "Inventory Reimbursement: gefunden", "AccountOne COG (NEU): gefunden"]) await expect(t).toContainText(k);
       expect((await (await fetch(`${TD}/__ao`)).json()).downloads).toEqual([]);
 
       // Abruf wie der Nachtlauf (Knopf „Jetzt abholen“ unter Einstellungen → Hintergrund & Importe)
@@ -57,12 +57,15 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await Promise.all([page.waitForURL(/ao=/, { timeout: 180_000 }), page.getByTestId("ao-jetzt").click()]);
       await expect(page.getByTestId("ao-meldung")).toContainText("alle Exporte abgeholt");
       const zeilen = page.getByTestId("ao-import");
-      for (const k of ["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement", "accountone"]) await expect(zeilen.and(page.locator(`[data-export="${k}"]`)).first()).toBeVisible();
+      for (const k of ["einkaeufe", "lagerbestand", "sellerboard", "reimbursement", "accountone"]) await expect(zeilen.and(page.locator(`[data-export="${k}"]`)).first()).toBeVisible();
+      // B31.1: BQool kommt nicht mehr von ArbitrageOne – im Lauf nur die Zeile „entfällt“, kein Fehler, kein Import
+      await expect(page.getByTestId("ao-lauf").first().getByTestId("ao-lauf-export").filter({ hasText: "BQool" })).toHaveText("BQool: entfällt (Seller-System erzeugt die Datei)");
+      await expect(zeilen.and(page.locator('[data-export="bqool"]'))).toHaveCount(0);
       // B30: Einkäufe = Bestellliste (Lieferant + Datum, ohne Bestellnummer-Spalte → eine Bestellung)
       await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("1 Bestellung, 2 Positionen, 2 ohne Zuordnung");
       await expect(zeilen.and(page.locator('[data-export="lagerbestand"]')).first()).toContainText("Stück");
       // Einkaufs-Karte über den Zeitraum-Dialog, AccountOne NEU (nicht alt), keine Datei doppelt geholt
-      expect((await (await fetch(`${TD}/__ao`)).json()).downloads.map((d: { key: string }) => d.key)).toEqual(["einkaeufe", "lagerbestand", "sellerboard", "bqool", "reimbursement", "accountone"]);
+      expect((await (await fetch(`${TD}/__ao`)).json()).downloads.map((d: { key: string }) => d.key)).toEqual(["einkaeufe", "lagerbestand", "sellerboard", "reimbursement", "accountone"]);
 
       // Ergebnis im System
       expect((await sql("select 1 from ao_einkaeufe where tenant_id = $1 and asin in ($2, $3)", [T, A1, A2])).length).toBe(2);
@@ -91,9 +94,8 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await expect(page.locator("body")).toContainText("Lagerwert (ArbitrageOne)");
       await page.goto("/deal-eingang");
       await expect(page.getByTestId("de-monatsrahmen")).toContainText("ArbitrageOne-Einkäufen");
-      // BQool: nur Vergleich, nicht als Ist übernommen
-      await page.goto("/repricer/bqool");
-      await expect(page.getByTestId("ao-bqool-vergleich")).toContainText("Abweichung ArbitrageOne ↔ Seller-System");
+      // B31.1: kein BQool-Vergleich mehr aus ArbitrageOne, nichts als Ist übernommen
+      expect((await sql("select 1 from datei_importe where tenant_id = $1 and herkunft = 'arbitrageone' and quelle_export = 'bqool'", [T])).length).toBe(0);
       expect((await sql("select 1 from bqool_listings where tenant_id = $1 and sku = $2", [T, S1])).length).toBe(0);
       // Werkzeuge: importe (Herkunft), buchhaltung_status (AccountOne COG), anbindungen_status (Auslöser)
       expect(await mcp.call("importe", { limit: 10 })).toContain("ArbitrageOne-Abruf (einkaeufe)");

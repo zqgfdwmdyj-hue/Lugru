@@ -77,6 +77,8 @@ export type AoLaufErgebnis = {
   roh?: string;
   /** B27.3: Export bewusst nicht ausgeführt (z. B. nicht eingerichtet) – kein Fehler. */
   uebersprungen?: boolean;
+  /** B31.1: Export wird nicht mehr abgeholt (BQool) – nur Hinweiszeile. */
+  entfaellt?: boolean;
 };
 
 export const aoLaeufe = pgTable(

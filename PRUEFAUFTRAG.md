@@ -1145,6 +1145,45 @@ etwas melden kann. Sie stehen nicht mehr unter „Meldung offen“, beim Versand
 Migration 0132 als „von Hand erledigt“ (nichts gelöscht). Geprüft in `e2e/meldungen-schliessen.spec.ts` und
 `tests/meldung-ohne-kanal.test.ts`.
 
+## Nachtrag B31 (07.11.): BQool-Upload aus dem Seller-System, nicht über ArbitrageOne
+
+Befund 07.11.: Der ArbitrageOne-Lauf versuchte täglich den Export „BQool“ und scheiterte (Vergleichswerkzeug, das
+erst die BQool-Datei hochgeladen braucht). Die eigene BQool-Datei wurde nie hochgeladen: Der Upload lief bisher nur
+auf Knopfdruck (AU-1) – es gab weder einen Zeitplan noch eine Freigabe-Meldung.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B31.1 ArbitrageOne-Schritt „BQool“ | ❌ täglich versucht, Fehler nach 300 s | ✅ aus dem Nachtlauf genommen; Lauf-Ergebnis „BQool: entfällt (Seller-System erzeugt die Datei)“, kein Import, „Verbindung testen“ sucht die Karte nicht mehr | `AO_EXPORTE`, `AO_BQOOL_ENTFAELLT` (`src/lib/arbitrageone/logic.ts`), `aoAbholen` (`abruf.ts`) |
+| B31.2.1 Ist holen 06:00 | ❌ nur Datei-Upload von Hand | ✅ je Land DE/FR/IT/ES die Export-Seite (FR/IT/ES aus DE abgeleitet), „Download File → Full Template“ (oder eigener Knopf-Text), Einlesen als Repricing-Datei bzw. „Manage Listings“; Zwei-Faktor → Bildschirmfoto, Aufgabe, Lauf abgebrochen | `src/lib/automatik/bqool-ist.ts`, `istHolen` (`src/lib/bqool/kreislauf.ts`) |
+| B31.2.2 Soll erzeugen | 🟡 nur Knopf/Werkzeug | ✅ automatisch nach dem Ist, nur Änderungen, mit Zusammenfassung (je Land, Regelwechsel, Warnungen, Min unter Break-even) | `bqoolExportErzeugen` (`src/lib/bqool/export-service.ts`) |
+| B31.2.3 Freigabe | ❌ nur Häkchen auf der Seite | ✅ Push „BQool-Upload freigeben“ (Freigeben / Ansehen) + Aufgabe; Kasten „Täglicher BQool-Lauf“ auf Repricer → BQool-Dateien („Freigeben und hochladen“, „Heute nicht hochladen“); Erinnerung 12:00, Verfall 18:00 (später Lauf: frühestens +2 / +6 Std.); Standard Freigabe nötig, „automatisch“ nur eingeschaltet + Min-Verhalten bestätigt, nie bei Regelwechsel oder Min unter Break-even | `kreislauf.ts`, `kreislauf-logic.ts`, `src/app/(app)/repricer/bqool/kreislauf-karte.tsx` |
+| B31.2.4 Upload | 🟡 nur Knopf, ohne Dateityp und Rückmeldung | ✅ nach Freigabe je Land, Dateityp „Repricing Central“ (in der Anbindung änderbar), Rückmeldung übernommen/Fehler, Bildschirmfoto je Schritt; Fehlerzeilen als Aufgabe mit SKU und Fehlertext | `anBqoolUebertragen`, `rueckmeldungLesen`, `dateiHochladen` (`src/lib/automatik/runner.ts`) |
+| B31.2.5 Nachkontrolle | ❌ | ✅ 30 Min. nach dem Upload Ist erneut holen, Min/Regel je SKU gegen die Datei; Abweichungen → Aufgabe + Push; Knopf „Nachkontrolle jetzt“ | `nachkontrolleAusfuehren`, `nachkontrolle` |
+| B31.3 Soll-Export vorlegen | – | ✅ nach dem Update startet der erste Hintergrund-Takt nach 06:00 den Lauf (oder „Jetzt starten“) und schickt den Push zur Freigabe; hochgeladen wird erst nach Ludwigs Freigabe. Die Zahlen werden mit dem frischen Ist neu gerechnet | `kreislaufTakt` (`src/lib/scheduler.ts`) |
+| B31.3 Datei-Min vs. effektiver Min | 🟡 Datei-Min bei Margen-Regeln = Break-even ohne Marge (Annahme „BQool rechnet den Min selbst“), nie geprüft | ✅ Standard jetzt **effektiver Min** (Break-even + Mindestmarge der Altersstufe) als harte Untergrenze – sicher in beiden Fällen; umstellbar auf „Break-even (Sicherheitsnetz)“, falls das Nachsehen in BQool zeigt, dass BQool den Min selbst rechnet; „automatisch hochladen“ geht erst mit Häkchen „Min-Verhalten in BQool geprüft“ | `dateiMin` (`src/lib/bqool/export-logic.ts`), Einstellung `bqool.kreislauf.minInDatei` |
+| B31.4 `anbindungen_status` | ❌ | ✅ Abrufe „BQool: Ist holen“, „BQool: Upload“, „BQool: Nachkontrolle“ mit letztem Erfolg; Block `bqool`: Ist je Land, heutiger Lauf mit Freigabe-Status, letzter Upload (übernommen je Land, Fehler, Nachkontrolle) | `src/lib/assistant/tools/geschaeft.ts`, `src/lib/today/abruf-plan.ts` |
+| B31.4 `repricer` | Stand = Datum des Datei-Uploads | ✅ `bqool_stand: "heute 06:05"`, Datenstand „BQool-Stand: …“ | `repricer` (`geschaeft.ts`), `standText` |
+| B31.4 Morgenbericht | ❌ | ✅ „BQool-Upload gestern: freigegeben 12:10, DE … übernommen, 0 Fehler“ bzw. „BQool-Upload wartet auf Freigabe (…)“ – nur Inhaber | `morgenZeile`, `morgenText` (`src/lib/push/logic.ts`) |
+
+Hinweis zum Standard „effektiver Min“: Bei Margen-Regeln liegt der Datei-Min jetzt höher als bisher (Marge der
+Altersstufe statt 0 %). Der erste Lauf zeigt deshalb mehr Änderungen als die Vorschau vom 07.11. – genau das ist die
+Absicherung gegen Verkäufe unter Break-even, solange das Min-Verhalten in BQool nicht geprüft ist.
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. Nachtlauf ArbitrageOne ohne BQool-Fehler | ✅ automatisch (`e2e/arbitrageone.spec.ts`): Lauf-Zeile „BQool: entfällt (Seller-System erzeugt die Datei)“, kein BQool-Download, kein Import; `b27-automatik` ohne BQool |
+| 2. 06:00 Ist aller vier Länder, `repricer` Datenstand heute | ✅ automatisch (`e2e/b31-bqool-kreislauf.spec.ts`, Lauf über „Jetzt starten“ = gleicher Ablauf wie 06:00): DE/FR/IT/ES eingelesen mit Stand heute, `repricer.bqool_stand` „heute …“, `anbindungen_status.bqool` |
+| 3. Push mit Zusammenfassung, Freigeben → Datei bei BQool, Rückmeldung, Nachkontrolle bestätigt neue Min | ✅ automatisch gegen den BQool-Nachbau: Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel, …“ mit Freigeben/Ansehen; nach „Freigeben“ 4 Dateien mit Typ „Repricing Central“, Rückmeldung „DE 1 / FR 1 / IT 1 / ES 1 übernommen, 1 Fehler“, Fehlerzeilen-Aufgabe; Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“; neuer Min DE = effektiver Min und liegt unter der Buy Box. Mit den echten BQool-Seiten nur live (To-dos 107–109) |
+| 4. Ohne Freigabe wird nichts hochgeladen | ✅ automatisch: vor der Freigabe kein Upload; verfallener Lauf lädt nichts hoch; „automatisch“ lässt sich erst mit bestätigtem Min-Verhalten einschalten |
+
+Regression: `bqool-dateien`, `bqool-upload-erkennung`, `b24-automatik`, `b27-automatik`, `b30-ao-bestellungen`,
+`werkzeuge`, `geschaeft`, `push-handy`; Unit-Tests `tests/bqool-kreislauf.test.ts`, `tests/bqool-export.test.ts`,
+`tests/arbitrageone.test.ts`.
+
+**Werkzeuge:** keine neuen Claude-Werkzeuge, keine neuen ändernden. Geändert: `repricer` (Beschreibung + Feld
+`bqool_stand`), `anbindungen_status` (Block `bqool`, drei neue Abrufe), `bqool_export_vorschau` (Hinweis folgt der
+Einstellung „Min in der Datei“) → Claude erhält `notifications/tools/list_changed`.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -1954,3 +1993,16 @@ nie in Chats oder Mails.
      ausschalten (dann Vorlage).
 106. **VA und Antworten**: Die VA kann vorbereitete Antworten an Käufer/Lieferanten nur senden, wenn ihr der Bereich
      „Posteingang“ freigegeben ist (Einstellungen → Benutzer). Persönliche Mails sieht sie nie.
+107. **BQool-Export-Seite eintragen (B31)**: Anbindungen → BQool – Anmeldung → „Export-Seite DE“: in BQool die Seite mit
+     „Download File → Full Template“ (Repricing Central) für Amazon DE öffnen und die Adresse einfügen (FR/IT/ES werden
+     abgeleitet). Findet die Automatik den Knopf nicht, „Knopf-Text Export“ eintragen. Danach „Verbindung testen“ –
+     prüft Upload- und Export-Seiten je Land. Den BQool-Benutzer ohne Zwei-Faktor anlegen.
+108. **Ersten BQool-Lauf freigeben**: Nach dem Update kommt der Push „BQool-Upload freigeben“ (oder Repricer →
+     BQool-Dateien → „Jetzt starten“). Warnungen ansehen, dann „Freigeben und hochladen“. Die Nachkontrolle folgt
+     30 Minuten später (oder „Nachkontrolle jetzt“).
+109. **Min-Verhalten in BQool prüfen (B31.3)**: Nach dem ersten Upload an einer SKU mit Margen-Regel in BQool nachsehen,
+     welchen Min BQool zeigt und ob es darunter verkauft. Dann im Kasten „Täglicher BQool-Lauf“ das Häkchen „Min-Verhalten
+     in BQool geprüft“ setzen. Rechnet BQool den Min selbst aus Cost + Marge und nimmt den Dateiwert nur als
+     Sicherheitsnetz, kann „Break-even ohne Marge“ gewählt werden – Standard bleibt der effektive Min.
+110. **Automatisch hochladen (optional)**: erst nach Punkt 109 einschalten (Repricer → BQool-Dateien → Einstellungen).
+     Auch dann braucht ein Lauf mit Regelwechsel oder Min unter Break-even die Freigabe.

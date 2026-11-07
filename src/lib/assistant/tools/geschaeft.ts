@@ -422,6 +422,25 @@ export const anbindungenStatus = defineTool({
             };
           })()
         : undefined,
+      // B31.4: täglicher BQool-Kreislauf – Ist je Land, Upload (übernommen je Land, Fehler), Freigabe-Status, Nachkontrolle.
+      bqool: st.get("bqool_web")
+        ? await (async () => {
+            const { kreislaufStand } = await import("@/lib/bqool/kreislauf");
+            const { freigabeText, jeLandText, standText, uebernommenJeLand } = await import("@/lib/bqool/kreislauf-logic");
+            const jetzt = new Date(now);
+            const k = await kreislaufStand(t, jetzt);
+            const up = k.letzterUpload;
+            const u = up?.upload ? uebernommenJeLand(up.upload) : null;
+            const h = k.heute;
+            return {
+              taeglicher_lauf: !k.eingerichtet ? "nicht eingerichtet (Anbindung „BQool – Anmeldung“: E-Mail, Passwort, Upload-Seite)" : k.aus ? "aus (nur auf Knopfdruck)" : "täglich 06:00 – Ist holen, Soll erzeugen, Freigabe per Push",
+              ist_holen: { je_land: k.istJeLand.map((x) => ({ land: x.land, stand: standText(x.am, jetzt) })), export_seite: k.exportSeite ? "eingetragen" : "fehlt – Ist bleibt vom letzten Datei-Upload" },
+              heute: h ? { phase: h.phase, freigabe: h.freigabe ?? undefined, aenderungen: h.zusammenfassung ? freigabeText(h.zusammenfassung) : undefined, freigabe_link: h.freigabe === "offen" ? abs(ctx, `/repricer/bqool?lauf=${h.id}#freigabe`) : undefined } : "heute noch kein Lauf",
+              letzter_upload: up ? { am: berlinDateTime(up.uploadAm), freigabe: up.freigabe === "automatisch" ? "automatisch" : `freigegeben ${berlinDateTime(up.freigabeAm) ?? ""}`.trim(), uebernommen: u && Object.keys(u.jeLand).length ? jeLandText(u.jeLand) : "nichts", fehler: u?.fehler ?? 0, status: up.uploadStatus ?? undefined, nachkontrolle: up.kontrolle?.text ?? (up.kontrolleFaelligAm ? `folgt ab ${berlinDateTime(up.kontrolleFaelligAm)}` : undefined) } : "noch keiner",
+              link: abs(ctx, "/repricer/bqool#freigabe"),
+            };
+          })()
+        : undefined,
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
       postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
       postfaecher: pf.postfaecher
@@ -487,7 +506,7 @@ export const repricer = defineTool({
   name: "repricer",
   title: "Repricer (BQool)",
   description:
-    "BQool-Einstellungen je SKU und Land aus dem zuletzt hochgeladenen Export „Manage Listings“: Regel/Strategie, Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
+    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie, Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "BQool-Export (hochgeladen unter Repricer), EK und Gebühren im Seller-System" },
@@ -501,6 +520,7 @@ export const repricer = defineTool({
   }),
   run: async (ctx, i) => {
     const { zeilen, stand } = await bqoolStand(ctx.session.tenantId);
+    const { standText } = await import("@/lib/bqool/kreislauf-logic");
     const q = i.suche?.toLowerCase();
     const list = zeilen
       .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!i.regel || (z.regel?.trim() || "(ohne Regel)").toLowerCase() === i.regel.toLowerCase()) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
@@ -509,6 +529,8 @@ export const repricer = defineTool({
     const aeltester = stand.reduce<Date | null>((m, x) => (x.am && (!m || x.am < m) ? x.am : m), null);
     return json({
       eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – in BQool unter Repricing → Manage Listings je Land exportieren und im Seller-System unter Amazon → Repricer (BQool) hochladen",
+      // B31.4: „BQool-Stand: heute 06:05“ (ältester Marktplatz; je Marktplatz unter „eingelesen“)
+      bqool_stand: aeltester ? standText(aeltester) : "noch kein BQool-Ist",
       anzahl_skus: zeilen.length,
       auffaelligkeiten: zaehle,
       je_regel: regelUebersicht(zeilen).map((u) => ({ regel: u.regel, skus: u.gesamt, aktiv: u.aktiv, pausiert: u.pausiert, status_unbekannt: u.unbekannt || undefined, auffaellig: u.mitHinweis, je_land: u.laender })),
@@ -541,7 +563,7 @@ export const repricer = defineTool({
       legende: { min_seller_system: "Mindestpreis aus EK + FBA-Gebühr + Provision + Mindestgewinn (mit DE-Gebühren; für andere Länder Richtwert); null = EK oder Bestand unbekannt", effektiver_min: "Preis, bei dem die Mindestmarge der BQool-Regel in der Altersstufe erreicht ist (Regel-Katalog, USt des Landes); Liquidation = feste Untergrenze", buybox_erklaerung: "Equalizer: steht bewusst 1 Cent über der Buy Box, wenn diese unter dem effektiven Min liegt", null: "nicht im Export bzw. unbekannt" },
       upload_datei: abs(ctx, "/repricer/export?format=bqool"),
       link: abs(ctx, "/repricer"),
-      datenstand: { quelle: "BQool-Export (hochgeladen) + Seller-System", stand: aeltester ? `BQool-Export eingelesen ${berlinDateTime(aeltester)}${stand.length > 1 ? " (ältester Marktplatz)" : ""}` : "noch kein BQool-Export", abgerufen: berlinDateTime(new Date()) ?? "" },
+      datenstand: { quelle: "BQool-Ist (täglich 06:00 bzw. hochgeladen) + Seller-System", stand: aeltester ? `BQool-Stand: ${standText(aeltester)}${stand.length > 1 ? " (ältester Marktplatz)" : ""}` : "noch kein BQool-Ist", abgerufen: berlinDateTime(new Date()) ?? "" },
     });
   },
 });

@@ -139,19 +139,48 @@ export async function anmelden(page: Page, o: { loginUrl: string; email: string;
   await log("Angemeldet");
 }
 
+/** B31.2: Dateityp wählen – Auswahlliste mit passender Option oder Radio/Beschriftung mit passendem Text. */
+async function typWaehlen(page: Page, typ: RegExp) {
+  const listen = page.locator("select");
+  for (let i = 0; i < (await listen.count()); i++) {
+    const sel = listen.nth(i);
+    const optionen = await sel.locator("option").evaluateAll((os) => os.map((x) => ({ value: (x as HTMLOptionElement).value, text: (x.textContent ?? "").trim() })));
+    const treffer = optionen.find((x) => typ.test(x.text));
+    if (treffer) {
+      await sel.selectOption(treffer.value);
+      return;
+    }
+  }
+  const radio = page.getByLabel(typ).first();
+  if (await radio.count()) await radio.check({ timeout: 5000 }).catch(() => radio.click({ timeout: 5000 }));
+}
+
 /**
  * Datei auf einer Upload-Seite hochladen und das Ergebnis erkennen (upload-logic.ts): neuer Erfolgs-/Fehlertext (auch
  * kurz eingeblendete Hinweise), Dateiname neu in der Liste, Antwort des Servers auf die Upload-Anfrage. Wirft bei
  * Fehler; „unklar“ (nichts erkannt, aber auch kein Fehler) wird zurückgegeben – der Aufrufer entscheidet.
  */
-export async function dateiHochladen(page: Page, o: { url: string; datei: { name: string; mimeType: string; buffer: Buffer }; erfolg: RegExp; fehler?: RegExp }, log: (t: string) => Promise<void>): Promise<{ wie: "text" | "liste" | "server" | "unklar"; grund: string }> {
+export async function dateiHochladen(page: Page, o: { url: string; datei: { name: string; mimeType: string; buffer: Buffer }; erfolg: RegExp; fehler?: RegExp; /** B31.2: Dateityp auf der Upload-Seite wählen (z. B. „Repricing Central File“), falls es eine Auswahl gibt. */ typ?: RegExp }, log: (t: string) => Promise<void>): Promise<{ wie: "text" | "liste" | "server" | "unklar"; grund: string; /** Seit dem Klick neuer Seitentext (für die Rückmeldung: Anzahl übernommen, Fehlerzeilen). */ text: string }> {
   // Jede Datei auf frisch geladener Upload-Seite (nach dem Hochladen zeigt die Seite oft nur die Erfolgsmeldung).
   await page.goto(o.url, { waitUntil: "domcontentloaded", timeout: 45_000 });
   await cookiesWeg(page);
+  // B31.2: Datei-Feld erst nach „Upload File“ sichtbar? Dann den Knopf drücken (Dialog öffnet sich).
+  if (!(await page.locator('input[type="file"]').count())) {
+    const oeffnen = page.getByRole("button", { name: /upload file|datei hochladen|upload|hochladen/i }).or(page.getByRole("link", { name: /upload file|datei hochladen/i })).first();
+    if (await oeffnen.isVisible().catch(() => false)) await oeffnen.click({ timeout: 10_000 }).catch(() => undefined);
+  }
+  if (o.typ) await typWaehlen(page, o.typ).catch(() => undefined);
   await page.locator('input[type="file"]').first().setInputFiles(o.datei, { timeout: 20_000 });
   await page.waitForTimeout(400);
   const seitenText = () => page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
   const vorher = await seitenText();
+  /** Neuer Text seit dem Klick: eingeblendete Hinweise + Zeilen, die vorher nicht auf der Seite standen. */
+  const neuerText = async () => {
+    const neu = String((await page.evaluate("window.__uploadNeu || ''").catch(() => "")) ?? "");
+    const alt = new Set(vorher.split("\n").map((z) => z.trim()));
+    const jetzt = (await seitenText()).split("\n").filter((z) => z.trim() && !alt.has(z.trim()));
+    return `${neu}\n${jetzt.join("\n")}`.trim().slice(0, 20_000);
+  };
   // Kurz eingeblendete Hinweise („Toasts“) festhalten, auch wenn sie gleich wieder verschwinden.
   // Als Text übergeben (nicht als Funktion), damit der Bundler nichts hineinbaut, was es im Browser nicht gibt.
   await page
@@ -189,12 +218,14 @@ export async function dateiHochladen(page: Page, o: { url: string; datei: { name
       const b = uploadBewerten({ vorher, jetzt: await seitenText(), neu, datei: o.datei.name, antworten, erfolg: o.erfolg, fehler: o.fehler, fertig });
       if (b.art === "fehler") throw new AutomatikAbbruch(`Upload abgelehnt: ${b.grund ?? "Fehler"}`);
       if (b.art === "ok") {
+        // Rückmeldung (Anzahl, Fehlerzeilen) kommt manchmal kurz nach der Erfolgsmeldung – einen Moment warten.
+        await page.waitForTimeout(1500);
         await log(`${o.datei.name} hochgeladen (${WIE_TEXT[b.wie!]}${b.grund && b.wie === "text" ? `: „${b.grund}“` : ""})`);
-        return { wie: b.wie!, grund: b.grund ?? "" };
+        return { wie: b.wie!, grund: b.grund ?? "", text: await neuerText() };
       }
       if (fertig) {
         await log(`${o.datei.name}: keine Bestätigung erkannt (${b.grund ?? "–"}) – bitte im Dienst prüfen`);
-        return { wie: "unklar", grund: b.grund ?? "keine Bestätigung erkannt" };
+        return { wie: "unklar", grund: b.grund ?? "keine Bestätigung erkannt", text: await neuerText() };
       }
       await page.waitForTimeout(300);
     }
@@ -207,13 +238,13 @@ export async function dateiHochladen(page: Page, o: { url: string; datei: { name
  * Lauf mit Browser: Sperre, Protokoll mit Bildschirmfotos (Tabelle files), Aufgabe bei Abbruch. Gibt das Protokoll
  * zurück; wirft nie – das Ergebnis sagt, ob es geklappt hat.
  */
-export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKey: string; link: string; /** Verbindungstest: bei Abbruch keine Aufgabe anlegen. */ ohneAufgabe?: boolean }, fn: (page: Page, log: (t: string) => Promise<void>) => Promise<void>): Promise<{ ok: boolean; protokoll: Schritt[]; fehler: string | null }> {
+export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKey: string; link: string; /** Verbindungstest: bei Abbruch keine Aufgabe anlegen. */ ohneAufgabe?: boolean }, fn: (page: Page, log: (t: string) => Promise<void>) => Promise<void>): Promise<{ ok: boolean; protokoll: Schritt[]; fehler: string | null; /** B31.2: es lief schon eine Automatik – nichts versucht (Zeitplan probiert es später erneut). */ belegt?: boolean; /** Abbruch wegen Zwei-Faktor-Anmeldung. */ zweiFaktor?: boolean }> {
   const protokoll: Schritt[] = [];
   const fehlt = await browserFehlt();
   if (fehlt) return { ok: false, protokoll: [{ zeit: new Date().toISOString(), text: fehlt }], fehler: fehlt };
-  if (laeuft) return { ok: false, protokoll: [], fehler: "Es läuft schon eine Browser-Automatik – bitte kurz warten." };
+  if (laeuft) return { ok: false, protokoll: [], fehler: "Es läuft schon eine Browser-Automatik – bitte kurz warten.", belegt: true };
   const [{ ok: gesperrt }] = (await db.execute<{ ok: boolean }>(sql`select pg_try_advisory_lock(${SPERRE}) as ok`)).rows;
-  if (!gesperrt) return { ok: false, protokoll: [], fehler: "Es läuft schon eine Browser-Automatik – bitte kurz warten." };
+  if (!gesperrt) return { ok: false, protokoll: [], fehler: "Es läuft schon eine Browser-Automatik – bitte kurz warten.", belegt: true };
   laeuft = true;
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
@@ -234,7 +265,7 @@ export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKe
       const grund = mitBildschirmfoto(roh, bild);
       await log(`Abgebrochen: ${grund}`).catch(() => undefined);
       if (!o.ohneAufgabe) await upsertSystemTask(db, tenantId, o.aufgabeKey, { title: `${o.titel}: abgebrochen`, notes: `${grund}\nNicht automatisch wiederholt – Datei bitte herunterladen und selbst hochladen oder Zugang prüfen.`, priority: "critical", category: "system", link: o.link });
-      return { ok: false, protokoll, fehler: grund };
+      return { ok: false, protokoll, fehler: grund, zweiFaktor: e instanceof AutomatikAbbruch && e.zweiFaktor };
     }
   } finally {
     await browser.close().catch(() => undefined);

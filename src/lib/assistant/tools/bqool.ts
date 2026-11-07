@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { getSettings } from "@/lib/settings";
 import { EXPORT_LAENDER, type ExportLand } from "@/lib/bqool/export-logic";
 import { bqoolExportErzeugen, bqoolVorschau } from "@/lib/bqool/export-service";
 import { defineTool } from "../types";
@@ -37,7 +38,8 @@ export const bqoolExportVorschauTool = defineTool({
       vorschlaege_kapital_ampel: v.vorschlaege.slice(0, 20),
       abgleich: { anzahl: v.abgleich.length, faelle: v.abgleich.slice(0, 30).map((f) => f.text) },
       letzter_export: v.letzterExport ? { am: berlinDateTime(v.letzterExport.am), anzahl: v.letzterExport.anzahl, download: abs(ctx, `/repricer/bqool/datei?export=${v.letzterExport.id}`) } : null,
-      hinweis: "Bei Margen-Regeln rechnet BQool den Mindestpreis selbst (Cost + Mindestmarge); Min in der Datei ist dort nur ein Sicherheitsnetz. Bei Liquidation zählt die Untergrenze.",
+      // B31.3: Min in der Datei je nach Einstellung – effektiver Min (Standard) oder Break-even als Sicherheitsnetz
+      hinweis: (await getSettings(ctx.session.tenantId)).bqool.kreislauf.minInDatei === "sicherheitsnetz" ? "Min in der Datei bei Margen-Regeln: Break-even ohne Marge als Sicherheitsnetz (BQool rechnet den Mindestpreis selbst aus Cost + Mindestmarge). Bei Liquidation zählt die Untergrenze." : "Min in der Datei bei Margen-Regeln: effektiver Min (Break-even + Mindestmarge der Altersstufe) als harte Untergrenze. Bei Liquidation zählt die Untergrenze.",
       link: abs(ctx, "/repricer/bqool"),
       datenstand: { quelle: "Seller-System + BQool-Dateien", stand: v.laender.map((l) => `${l.land}: ${l.istStand ? berlinDateTime(l.istStand) : "kein Ist"}`).join(", "), abgerufen: berlinDateTime(new Date()) ?? "" },
     });

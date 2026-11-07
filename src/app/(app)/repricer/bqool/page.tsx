@@ -8,16 +8,20 @@ import { getIntegration } from "@/lib/integrations/store";
 import { bqoolUploadAdressen } from "@/lib/automatik/bqool-logic";
 import { letzterBqoolVergleich } from "@/lib/arbitrageone/service";
 import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { kreislaufStand, letzteLaeufe } from "@/lib/bqool/kreislauf";
+import { KreislaufKarte } from "./kreislauf-karte";
 
 // BQool-Dateien direkt aus dem System: Ist (BQool) → Soll (Regeln hier), Freigabe vor jedem Export, Download je Land/ZIP.
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : formatEuro(n));
 const ART_TEXT = { neu: "neu", geaendert: "geändert", gleich: "gleich" } as const;
 
-export default async function BqoolDateienPage({ searchParams }: { searchParams: Promise<{ meldung?: string; export?: string; land?: string }> }) {
+export default async function BqoolDateienPage({ searchParams }: { searchParams: Promise<{ meldung?: string; export?: string; land?: string; lauf?: string; freigeben?: string }> }) {
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
-  const [v, s, zuw, exporte, bqWeb, aoVergleich] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId)]);
+  const [v, s, zuw, exporte, bqWeb, aoVergleich, kStand, laeufe] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId), kreislaufStand(session.tenantId), letzteLaeufe(session.tenantId, 6)]);
+  // B31.2: angezeigter Lauf – aus dem Push (?lauf=…), sonst der heutige bzw. der letzte
+  const lauf = (sp.lauf ? laeufe.find((l) => l.id === sp.lauf) : null) ?? kStand.heute ?? laeufe[0] ?? null;
   // B23: Upload-Seite je Land (eigene Adresse bzw. aus DE abgeleitet)
   const adressen = bqWeb?.uploadUrl ? bqoolUploadAdressen(bqWeb).filter((a) => (EXPORT_LAENDER as readonly string[]).includes(a.land)) : [];
   const b = s.bqool;
@@ -33,8 +37,10 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <p className="small muted" style={{ marginTop: 0 }}>
-        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Bei Margen-Regeln rechnet BQool den Mindestpreis selbst aus Cost + Mindestmarge; Min Price ist dort nur ein Sicherheitsnetz (Break-even mit landeseigener USt). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
+        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Min Price bei Margen-Regeln: {b.kreislauf.minInDatei === "effektiv" ? "effektiver Min (Break-even mit landeseigener USt + Mindestmarge der Altersstufe) als harte Untergrenze – so verkauft BQool nie darunter, auch wenn es den Dateiwert als harten Min nimmt" : "Break-even ohne Marge als Sicherheitsnetz – BQool rechnet den eigentlichen Mindestpreis selbst aus Cost + Mindestmarge"} (Einstellung im Kasten „Täglicher BQool-Lauf“). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: täglich 06:00 automatisch bzw. BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
       </p>
+
+      <KreislaufKarte stand={kStand} lauf={lauf} laeufe={laeufe} inhaber={session.role === "owner" && !session.readOnly} freigebenHinweis={sp.freigeben === "1"} einstellungen={b.kreislauf} />
 
       <section className="card card-pad stack" data-testid="bq-export">
         <h2 style={{ margin: 0 }}>Freigabe und Export</h2>

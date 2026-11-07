@@ -302,13 +302,17 @@ export async function runScheduledJobs(force = false) {
           const lg = await import("@/lib/lugru-deals/discord");
           if ((await lg.lugruMandanten()).includes(t)) await lg.lugruAbgleich(t);
         });
-      // ArbitrageOne: täglich ab 05:30 fällige Exporte holen (Einkäufe, Lagerbestand, sellerboard-COG, BQool-Vergleich;
+      // ArbitrageOne: täglich ab 05:30 fällige Exporte holen (Einkäufe, Lagerbestand, sellerboard-COG – B31.1: ohne BQool;
       // montags Reimbursement, am 1. AccountOne COG). Ob heute schon gelaufen, steht in der Datenbank (auch nach einem
       // Neustart nur ein Lauf); „force“ (/api/cron) startet keinen zusätzlichen Browser-Lauf.
       if (await has("arbitrageone_web")) if (taeglich(`${t}:arbitrageone`, "05:30")) await step(t, "ArbitrageOne: Exporte abholen", async () => {
         const r = await (await import("@/lib/arbitrageone/abruf")).aoNachtlauf(t);
         if (r && r.status === "fehler") throw new Error(r.text);
       });
+      // B31.2: täglicher BQool-Kreislauf ab 06:00 (Ist je Land → Soll → Freigabe-Push → Upload → Nachkontrolle).
+      // Ob heute schon gelaufen, steht in der Datenbank; „force“ (Jetzt alles abrufen) startet keinen Browser-Lauf.
+      // Die Abrufe „BQool: Ist holen/Upload/Nachkontrolle“ schreiben ihr Ergebnis selbst.
+      if (!force && (await has("bqool_web"))) await (await import("@/lib/bqool/kreislauf")).kreislaufTakt(t).catch((e) => console.error("[Hintergrund] BQool-Kreislauf:", e instanceof Error ? e.message : e));
       // Call-Archiv: noch nicht ausgewertete Calls (Sammel-Import, Discord) nacheinander von der KI auswerten lassen.
       if (force || due(`${t}:call-auswertung`, 29)) await step(t, "Call-Auswertung", async () => (await import("@/lib/calls/service")).offeneCallsAuswerten(t, 20));
       // Planung: Standard-Freizeiten/Retourenwelle einmalig, Aufgaben aus freien Tagen schieben, Anleitungen prüfen.

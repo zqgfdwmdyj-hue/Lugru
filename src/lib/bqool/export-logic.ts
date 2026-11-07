@@ -349,11 +349,17 @@ export const katalogRegel = (katalog: KatalogRegel[], name: string | null | unde
 };
 
 /**
- * Mindestpreis für die Datei: Liquidation = feste Untergrenze; Margen-Regeln = Break-even ohne Marge als
- * Sicherheitsnetz (BQool rechnet den eigentlichen Mindestpreis selbst aus Cost + Mindestmarge der Regel).
+ * Mindestpreis für die Datei: Liquidation = feste Untergrenze. Margen-Regeln (B31.3):
+ * - „effektiv“ (Standard): effektiver Min = Break-even mit der Mindestmarge der Altersstufe – harte Untergrenze. Sicher
+ *   in beiden Fällen: nimmt BQool den Dateiwert als harten Min, verkauft es nie unter Break-even + Marge; rechnet BQool
+ *   den Min selbst aus Cost + Marge, ist er gleich hoch (bei gleichen Gebühren).
+ * - „sicherheitsnetz“: Break-even ohne Marge (bisher) – nur richtig, wenn BQool bei Margen-Regeln den Min selbst
+ *   rechnet und den Dateiwert nur als unterste Grenze nimmt. Erst nach dem Nachsehen in BQool umstellen.
+ * Regeln ohne Staffel (mbb) und unbekannte Regeln: Break-even.
  */
-export function dateiMin(o: { regel: KatalogRegel | null; untergrenze: number | null; breakEven: number | null }): number | null {
+export function dateiMin(o: { regel: KatalogRegel | null; untergrenze: number | null; breakEven: number | null; effMin?: number | null; modus?: "effektiv" | "sicherheitsnetz" }): number | null {
   if (o.regel?.festeUntergrenze || o.untergrenze !== null) return o.untergrenze ?? o.breakEven;
+  if ((o.modus ?? "effektiv") === "effektiv" && o.regel?.staffel && o.effMin !== null && o.effMin !== undefined) return o.breakEven !== null ? Math.max(o.effMin, o.breakEven) : o.effMin;
   return o.breakEven;
 }
 

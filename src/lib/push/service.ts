@@ -281,7 +281,9 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
     const arten = (p?.aus ?? []) as string[];
     // B32: persönliche Mails nur als Anzahl – und nur für den Inhaber mit Privat-Zugang.
     const persoenlich = inhaber ? await import("@/lib/inbox/persoenlich").then((x) => x.offenePersoenliche(tenantId, mg.userId)).catch(() => 0) : 0;
-    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich };
+    // B31.4: BQool-Upload von gestern bzw. heutige Freigabe – nur für den Inhaber.
+    const bqool = inhaber ? await bqoolMorgenZeile(tenantId, jetzt).catch(() => null) : null;
+    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool };
     // Zurückgehaltene gelten als nachgereicht (im Bericht gezählt); die neueste kommt einzeln (mit ihren Knöpfen).
     if (gehalten.length) {
       await db.update(M).set({ zustand: "ausgeliefert" }).where(inArray(M.id, gehalten.map((g) => g.id)));
@@ -309,4 +311,12 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
     anzahl++;
   }
   return { personen: anzahl, nachgereicht };
+}
+
+/** B31.4: Morgenbericht-Zeile zum BQool-Kreislauf (gestern hochgeladen / verfallen, heute wartet auf Freigabe). */
+async function bqoolMorgenZeile(tenantId: string, jetzt: Date): Promise<string | null> {
+  const { laufVomTag } = await import("@/lib/bqool/kreislauf");
+  const { morgenZeile, tagBerlin } = await import("@/lib/bqool/kreislauf-logic");
+  const [gestern, heute] = await Promise.all([laufVomTag(tenantId, tagBerlin(new Date(jetzt.getTime() - 86_400_000))), laufVomTag(tenantId, tagBerlin(jetzt))]);
+  return morgenZeile(gestern, heute);
 }

@@ -27,12 +27,16 @@ export const AO_EXPORTE: AoExport[] = [
   { key: "einkaeufe", titel: "Einkäufe", takt: "taeglich", art: "ao_einkaeufe", taktText: "täglich 05:30", nutzen: "Einkauf → Bestellungen, EK-Vorschlag aus Lieferungen, Lugru „gekauft“, Monatsrahmen, Wareneinkauf in der Liquidität" },
   { key: "lagerbestand", titel: "Lagerbestand", takt: "taeglich", art: "ao_lagerbestand", taktText: "täglich 05:30", nutzen: "Bestandsabgleich eigenes Lager ↔ Wawi, Lagerwert" },
   { key: "sellerboard", titel: "Sellerboard", takt: "taeglich", art: "ek_liste", taktText: "täglich nach den Einkäufen", nutzen: "EK je SKU; auf Wunsch unverändert an sellerboard weitergereicht" },
-  { key: "bqool", titel: "BQool", takt: "taeglich", art: "ao_bqool_vergleich", taktText: "täglich – nur Vergleich", nutzen: "Abweichung ArbitrageOne ↔ Seller-System (wird nie übernommen oder hochgeladen)" },
+  // B31.1: Der ArbitrageOne-Export „BQool“ ist ein Vergleichswerkzeug, das erst die BQool-Datei hochgeladen braucht –
+  // entfällt im Nachtlauf (das Seller-System erzeugt die BQool-Dateien selbst und lädt sie hoch, siehe bqool/kreislauf.ts).
   { key: "reimbursement", titel: "Inventory Reimbursement", takt: "woechentlich", art: "amazon_reimbursements", taktText: "wöchentlich montags", nutzen: "Erstattungs-Abgleich, Ansprüche" },
   { key: "accountone", titel: "AccountOne COG (NEU)", takt: "monatlich", art: "ao_accountone_cog", taktText: "monatlich am 1.", nutzen: "Monatsdatei für den Steuerberater (Stotax-Belegübergabe)" },
 ];
 
 export const AO_UHRZEIT = "05:30";
+
+/** B31.1: Zeile im Lauf-Ergebnis statt Fehler – der BQool-Export wird nicht mehr abgeholt. */
+export const AO_BQOOL_ENTFAELLT: AoExportErgebnis = { key: "bqool", titel: "BQool", ok: true, text: "entfällt (Seller-System erzeugt die Datei)", entfaellt: true };
 
 const BERLIN = "Europe/Berlin";
 const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: BERLIN }).format(d);
@@ -342,6 +346,8 @@ export type AoExportErgebnis = {
   seitentitel?: string;
   /** B27.6: Rohmeldung (nur im Detail). */
   roh?: string;
+  /** B31.1: Export wird nicht mehr abgeholt (nur Hinweiszeile, zählt weder als Erfolg noch als Fehler). */
+  entfaellt?: boolean;
 };
 
 /**
@@ -359,8 +365,8 @@ export function kurzFehler(roh: string): string {
 }
 
 /** B27.6: je Export eine Zeile „Name · Status (ok/übersprungen/Fehler) · Kurztext · Bildschirmfoto“. */
-export function laufZeilen(e: { titel: string; ok: boolean; text: string; bild?: string; uebersprungen?: boolean }[]): string[] {
-  return e.map((x) => `${x.titel} · ${x.uebersprungen ? "übersprungen" : x.ok ? "ok" : "Fehler"} · ${x.text}${x.bild ? ` · Bildschirmfoto ${x.bild}` : ""}`);
+export function laufZeilen(e: { titel: string; ok: boolean; text: string; bild?: string; uebersprungen?: boolean; entfaellt?: boolean }[]): string[] {
+  return e.map((x) => (x.entfaellt ? `${x.titel}: ${x.text}` : `${x.titel} · ${x.uebersprungen ? "übersprungen" : x.ok ? "ok" : "Fehler"} · ${x.text}${x.bild ? ` · Bildschirmfoto ${x.bild}` : ""}`));
 }
 
 export function laufText(e: AoExportErgebnis[]): string {

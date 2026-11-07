@@ -169,7 +169,7 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
           <div className="small" data-testid="ao-plan">
             {aoPlan.text} · letzter Nachtlauf: {zeit(aoLetzterPlan) ?? "noch keiner"} · nächster: {naechsterText(aoPlan, aoLetzterPlan, jetzt)}
           </div>
-          <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")}. Gleiche Datei zweimal wird übersprungen.</div>
+          <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")} · BQool: entfällt (Seller-System erzeugt die Datei). Gleiche Datei zweimal wird übersprungen.</div>
           {ao && AO_MSG[ao] && <div className={`notice ${ao === "ok" ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-meldung">{AO_MSG[ao]}</div>}
           {erneut && <div className={`notice ${erneut.startsWith("ok:") ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-erneut-meldung">{erneut.replace(/^(ok|fehler):/, "").slice(0, 300)}</div>}
           {aoL.length > 0 && (
@@ -189,7 +189,7 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
                         <ul style={{ margin: 0, paddingLeft: 16 }}>
                           {l.ergebnis.map((x) => (
                             <li key={x.key} data-testid="ao-lauf-export" title={x.ok ? undefined : (x.roh ?? x.text)}>
-                              <strong>{x.titel}</strong> · {x.ok ? <span className="tag tag-ok">ok</span> : <span style={{ color: "var(--danger)" }}>Fehler</span>} · {x.ok ? x.text : kurzFehler(x.text)}
+                              <strong>{x.titel}</strong>{x.entfaellt ? <span className="muted">: {x.text}</span> : <> · {x.ok ? <span className="tag tag-ok">ok</span> : <span style={{ color: "var(--danger)" }}>Fehler</span>} · {x.ok ? x.text : kurzFehler(x.text)}</>}
                               {x.bild && <> · <a href={x.bild} target="_blank" rel="noreferrer" data-testid="ao-lauf-bild">Bildschirmfoto</a>{x.seite ? <span className="muted"> ({x.seitentitel || x.seite})</span> : null}</>}
                             </li>
                           ))}

@@ -5,7 +5,9 @@ import { bqoolExportDateien } from "@/lib/bqool/export-service";
 import { sellerboardImportDatei, sellerboardProtokoll } from "@/lib/ek-import/service";
 import { getIntegration } from "@/lib/integrations/store";
 import { upsertSystemTask } from "@/lib/tasks/system";
-import { bqoolErgebnisText, bqoolUploadAdressen, bqoolZeilen, zeilenText, type BqoolLandErgebnis } from "./bqool-logic";
+import { bqoolErgebnisText, bqoolExportAdressen, bqoolSkus, bqoolUploadAdressen, bqoolZeilen, zeilenText, type BqoolLandErgebnis } from "./bqool-logic";
+import { EXPORT_LAENDER } from "@/lib/bqool/export-logic";
+import { rueckmeldungLesen } from "@/lib/bqool/kreislauf-logic";
 import { anmelden, AutomatikAbbruch, cookiesWeg, dateiHochladen, mitBrowser } from "./runner";
 import { UPLOAD_ERFOLG as ERFOLG, UPLOAD_FEHLER as FEHLER } from "./upload-logic";
 
@@ -51,7 +53,7 @@ export async function anSellerboardDateiUebertragen(tenantId: string, datei: { n
  * Land. Ein Fehler in einem Land stoppt die anderen nicht (nur eine fehlgeschlagene Anmeldung bzw. Zwei-Faktor stoppt
  * alles). Protokoll je Upload (Land, Datei, Zeilen, Zeitpunkt, Ergebnis) am Export und unter Anbindungen.
  */
-export async function anBqoolUebertragen(tenantId: string, exportId: string): Promise<{ ok: boolean; text: string; ergebnis?: BqoolLandErgebnis[] }> {
+export async function anBqoolUebertragen(tenantId: string, exportId: string): Promise<{ ok: boolean; text: string; ergebnis?: BqoolLandErgebnis[]; belegt?: boolean; zweiFaktor?: boolean }> {
   const z = await getIntegration(tenantId, "bqool_web");
   if (!z?.email || !z.password || !z.uploadUrl) return { ok: false, text: "BQool-Anmeldung für die Automatik fehlt (Anbindungen → BQool – Anmeldung). Bis dahin das ZIP herunterladen." };
   const dateien = await bqoolExportDateien(tenantId, exportId);
@@ -61,6 +63,8 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
   await db.update(E).set({ uebertragung: "laeuft" }).where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
   const ergebnis: BqoolLandErgebnis[] = [];
   const zeiten = new Map<string, string>();
+  // B31.2: Dateityp auf der Upload-Seite (BQool „Upload File“ → „Repricing Central File“), in der Anbindung änderbar.
+  const typ = new RegExp(((z.uploadTyp ?? "").trim() || "Repricing Central").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
   const r = await mitBrowser(tenantId, { titel: "BQool-Upload", aufgabeKey: `automatik-bqool-${exportId}`, link: `/repricer/bqool?export=${exportId}` }, async (page, log) => {
     await anmelden(page, { loginUrl: z.loginUrl || "https://www.bqool.com/login", email: z.email!, password: z.password!, dienst: "BQool", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
     for (const d of dateien) {
@@ -73,9 +77,12 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
         continue;
       }
       try {
-        const h = await dateiHochladen(page, { url, datei: { name: d.name, mimeType: "text/plain", buffer: Buffer.from(d.text, "utf8") }, erfolg: ERFOLG, fehler: FEHLER }, log);
+        const h = await dateiHochladen(page, { url, datei: { name: d.name, mimeType: "text/plain", buffer: Buffer.from(d.text, "utf8") }, erfolg: ERFOLG, fehler: FEHLER, typ }, log);
+        // B31.2: Rückmeldung von BQool lesen – Anzahl übernommen/Fehler und Fehlerzeilen mit SKU.
+        const rm = rueckmeldungLesen(h.text, bqoolSkus(d.text));
+        const rueck = { uebernommen: rm.uebernommen, fehlerAnzahl: rm.fehler, fehlerZeilen: rm.fehlerZeilen };
         // Nichts erkannt, aber auch kein Fehler → „bitte in BQool prüfen“ (gelb), nicht „Fehler“.
-        ergebnis.push(h.wie === "unklar" ? { land: d.land, datei: d.name, zeilen, ok: false, unklar: true, fehler: h.grund } : { land: d.land, datei: d.name, zeilen, ok: true, wie: h.wie });
+        ergebnis.push(h.wie === "unklar" ? { land: d.land, datei: d.name, zeilen, ok: false, unklar: true, fehler: h.grund, ...rueck } : { land: d.land, datei: d.name, zeilen, ok: true, wie: h.wie, ...rueck });
       } catch (e) {
         const grund = (e instanceof Error ? e.message : String(e)).slice(0, 200);
         ergebnis.push({ land: d.land, datei: d.name, zeilen, ok: false, fehler: grund });
@@ -93,13 +100,16 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
     .update(E)
     .set({ uebertragung: status, protokoll: [...(e?.protokoll ?? []), ...r.protokoll.map((p) => ({ zeit: p.zeit, text: p.text })), ...jeLand, { zeit: new Date().toISOString(), text: r.ok ? `Ergebnis: ${bqoolErgebnisText(ergebnis)}` : `Abgebrochen: ${r.fehler}` }] })
     .where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
+  // B31.2: Fehlerzeilen von BQool als Aufgabe mit SKU und Fehlertext (die übrigen Zeilen sind übernommen).
+  const fz = ergebnis.flatMap((x) => (x.fehlerZeilen ?? []).map((f) => `${x.land} ${f.sku}: ${f.text}`));
+  if (fz.length) await upsertSystemTask(db, tenantId, `bqool-fehlerzeilen-${exportId}`, { title: `BQool-Upload: ${fz.length} Fehlerzeile${fz.length === 1 ? "" : "n"}`, notes: `${fz.slice(0, 40).join("\n")}${fz.length > 40 ? `\n… und ${fz.length - 40} weitere` : ""}\nDiese SKUs hat BQool nicht übernommen – Wert prüfen (Min/Max/Regel) und mit dem nächsten Upload erneut senden.`, priority: "normal", category: "amazon", link: `/repricer/bqool?export=${exportId}` });
   if (r.ok && fehlerLaender.length) {
     await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${fehlerLaender.map((x) => x.land).join(", ")} nicht hochgeladen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie übrigen Länder sind hochgeladen. Für die fehlenden Länder die Upload-Seite unter Anbindungen → BQool prüfen und erneut übertragen oder die Datei selbst hochladen. Hat es doch geklappt: unter Einstellungen → Hintergrund & Importe → BQool-Uploads „hat geklappt“ drücken.`, priority: "critical", category: "system", link: `/repricer/bqool?export=${exportId}` });
   } else if (r.ok && unklarLaender.length) {
     // Kein Fehler, nur keine Bestätigung erkannt → normale Aufgabe zum kurzen Nachsehen.
     await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${unklarLaender.map((x) => x.land).join(", ")} bitte kurz in BQool prüfen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie Dateien wurden hochgeladen, eine Bestätigung von BQool war aber nicht zu erkennen. In BQool nachsehen; hat es geklappt, unter Einstellungen → Hintergrund & Importe → BQool-Uploads „hat geklappt“ drücken.`, priority: "normal", category: "system", link: "/einstellungen/hintergrund#importe-exporte" });
   }
-  if (!r.ok) return { ok: false, text: `Abgebrochen: ${r.fehler}`, ergebnis };
+  if (!r.ok) return { ok: false, text: `Abgebrochen: ${r.fehler}`, ergebnis, belegt: r.belegt, zweiFaktor: r.zweiFaktor };
   const text = fehlerLaender.length
     ? `${okLaender.length} von ${ergebnis.length} Ländern bei BQool hochgeladen – ${bqoolErgebnisText(ergebnis)}.`
     : unklarLaender.length
@@ -122,12 +132,27 @@ export async function bqoolVerbindungTesten(tenantId: string, z: Record<string, 
       try {
         await page.goto(a.url!, { waitUntil: "domcontentloaded", timeout: 45_000 });
         await cookiesWeg(page);
-        const hatUpload = (await page.locator('input[type="file"]').count()) > 0;
+        const hatUpload = (await page.locator('input[type="file"]').count()) > 0 || (await page.getByRole("button", { name: /upload file|datei hochladen/i }).count()) > 0;
         if (!hatUpload) throw new Error("kein Datei-Feld auf der Seite (Adresse prüfen)");
         teile.push(`${a.land}: Upload-Seite erreichbar${a.abgeleitet ? " (aus DE abgeleitet)" : ""}`);
       } catch (e) {
         fehler++;
         teile.push(`${a.land}: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
+      }
+    }
+    // B31.2: Export-Seiten (Ist holen) – Download-Knopf vorhanden? Ohne Export-Seite nur Hinweis, kein Fehler.
+    const exporte = bqoolExportAdressen(z).filter((a) => a.url && (EXPORT_LAENDER as readonly string[]).includes(a.land));
+    if (!exporte.length) teile.push("Export-Seite nicht eingetragen – Ist bleibt vom letzten Datei-Upload");
+    for (const a of exporte) {
+      try {
+        await page.goto(a.url!, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await cookiesWeg(page);
+        const knopf = page.getByRole("button", { name: /full template|download|herunterladen|export/i }).or(page.getByRole("link", { name: /full template|download|herunterladen|export/i }));
+        if (!(await knopf.count())) throw new Error("kein Download-Knopf auf der Export-Seite (Adresse prüfen)");
+        teile.push(`${a.land}: Export-Seite erreichbar${a.abgeleitet ? " (aus DE abgeleitet)" : ""}`);
+      } catch (e) {
+        fehler++;
+        teile.push(`${a.land} Export: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`);
       }
     }
     await log(teile.join(" · "));

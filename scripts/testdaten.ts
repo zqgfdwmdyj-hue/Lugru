@@ -240,7 +240,7 @@ await integ("discord_b2b", {}, { webhookUrl: `${td}/discord/test-webhook` });
 await integ("lexoffice", {}, { apiKey: "test-lexoffice-schluessel" });
 // Browser-Automatik gegen den Web-Nachbau der Testdienste
 await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${td}/web-sellerboard/login`, importUrl: `${td}/web-sellerboard/upload` }, { password: "test-passwort" });
-await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload/amazonde` }, { password: "test-passwort" });
+await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload/amazonde`, exportUrl: `${td}/web-bqool/export/amazonde` }, { password: "test-passwort" });
 await integ("arbitrageone_web", { email: "einkauf-ao@example.invalid", loginUrl: `${td}/web-arbitrageone/login`, exportUrl: `${td}/web-arbitrageone/export`, automatik: "an", sellerboardWeiterreichen: "nein" }, { password: "test-passwort" });
 // VA über Discord: Fantasie-IDs (Testdienste), VA = Konto „buero“ (Bea Büro).
 // Handy & Tesla (B13): erfundenes Fahrzeug und SMS-Konto in den Testdiensten.
