@@ -171,6 +171,36 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
         </div>
       )}
 
+      <h2 style={{ marginTop: 18 }}>Zweite Quelle: BQool (Est. Profit)</h2>
+      <p className="small muted" style={{ margin: "0 0 8px", maxWidth: 860 }}>
+        SKUs mit negativem Est. Profit laut BQool-Bericht „Listing Performance“ – unabhängig von sellerboard. „auch oben“ = derselbe Artikel ist ein sellerboard-Fall. Vorschläge (Min anheben / Liquidation) unter <Link href="/repricer/leistung#verlust">Repricer → Leistung</Link>.
+      </p>
+      {!v.bqoolVerlust.stand ? (
+        <div className="card card-pad small muted" data-testid="verlust-bqool-leer">Noch kein BQool-Bericht „Listing Performance“ eingelesen.</div>
+      ) : v.bqoolVerlust.zeilen.length === 0 ? (
+        <div className="card card-pad small muted" data-testid="verlust-bqool-keine">Laut BQool kein Artikel mit Verlust ({v.bqoolVerlust.stand.map((x) => `${x.land} bis ${dm(x.stichtag)}`).join(" · ")}).</div>
+      ) : (
+        <div className="table-wrap card">
+          <table className="table" data-testid="verlust-bqool">
+            <thead>
+              <tr><th>Land</th><th>Produkt</th><th>Regel</th><th className="right">Stück</th><th className="right">Est. Profit</th><th>Zeitraum</th></tr>
+            </thead>
+            <tbody>
+              {v.bqoolVerlust.zeilen.slice(0, 50).map((z) => (
+                <tr key={`${z.land}|${z.sku}`} data-testid="verlust-bqool-zeile" data-sku={z.sku}>
+                  <td>{z.land}</td>
+                  <td>{z.titel ?? z.sku}<div className="small muted">{z.sku}{v.faelle.some((f) => f.sku === z.sku) ? " · auch oben" : ""}</div></td>
+                  <td className="small">{z.regel ?? "–"}</td>
+                  <td className="num right">{z.units ?? "–"}</td>
+                  <td className="num right" style={{ color: "var(--danger)" }}>{eur(z.profit)}</td>
+                  <td className="small muted">{z.tage} Tage bis {dm(z.stichtag)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <h2 style={{ marginTop: 18 }}>Kosten ohne Verkauf</h2>
       <p className="small muted" style={{ margin: "0 0 8px", maxWidth: 860 }}>
         Tage ohne verkaufte Einheit, an denen trotzdem Kosten anfielen (Lagergebühr, Erstattungskosten …), letzte 7 Tage – nur Hinweis, keine Aufgabe. Angezeigt ab {eur(v.schwelle)} je Artikel und Woche.

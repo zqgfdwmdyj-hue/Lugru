@@ -17,13 +17,16 @@ export type VerlustFallMehr = VerlustFall & {
   aufgabe: { titel: string; notiz: string };
   /** BQool-Regel Liquidation/Abverkauf → als Ausnahme vorschlagen. */
   liquidation: boolean;
+  /** B31.5: Est. Profit laut BQool-Bericht „Listing Performance“ (zweite Quelle) je Land. */
+  bqoolGewinn: { land: string; profit: number; tage: number; stichtag: string }[];
 };
+export type BqoolVerlust = Awaited<ReturnType<typeof import("@/lib/bqool/berichte").bqoolVerlustQuelle>>;
 export type VerlustAusnahme = { sku: string; name: string | null; grund: string; bis: string | null; aktiv: boolean; angelegtAm: Date; woche: { summe: number; stueck: number; tageMitDaten: number } };
 
 export async function verlustStopp(
   tenantId: string,
   heute: string,
-): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; nichtVerkauf: NichtVerkauf[]; amazonBericht: boolean; schwelle: number }> {
+): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; nichtVerkauf: NichtVerkauf[]; amazonBericht: boolean; schwelle: number; bqoolVerlust: BqoolVerlust }> {
   const t = tenantId;
   const D = schema.sellerboardSkuTage;
   const X = schema.amazonTransactions;
@@ -44,12 +47,14 @@ export async function verlustStopp(
 
   const skus = roh.map((f) => f.sku);
   const asins = [...new Set(roh.map((f) => f.asin).filter((a): a is string => !!a))];
-  const [[bqAlle], be, hk, kc, bq] = await Promise.all([
+  const { bqoolVerlustQuelle } = await import("@/lib/bqool/berichte");
+  const [[bqAlle], be, hk, kc, bq, bqoolVerlust] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(schema.bqoolListings).where(eq(schema.bqoolListings.tenantId, t)),
     breakEvenJeSku(t, skus),
     asins.length ? db.select().from(schema.hebelKeepa).where(and(eq(schema.hebelKeepa.tenantId, t), inArray(schema.hebelKeepa.asin, asins))) : [],
     asins.length ? db.select({ asin: schema.keepaCache.asin, stand: schema.keepaCache.stand }).from(schema.keepaCache).where(and(eq(schema.keepaCache.tenantId, t), eq(schema.keepaCache.marktplatz, "DE"), inArray(schema.keepaCache.asin, asins))) : [],
     skus.length ? db.select().from(schema.bqoolListings).where(and(eq(schema.bqoolListings.tenantId, t), inArray(schema.bqoolListings.sku, skus))) : [],
+    bqoolVerlustQuelle(t),
   ]);
   const faelle = roh.map((f) => {
     const h = f.asin ? hk.find((x) => x.asin === f.asin) : undefined;
@@ -58,7 +63,8 @@ export async function verlustStopp(
     const b = bq.filter((x) => x.sku === f.sku).sort((x, y) => (x.marktplatz === "DE" ? -1 : y.marktplatz === "DE" ? 1 : 0))[0];
     const bqool = b ? { regel: b.regel, min: b.min, max: b.max, marktplatz: b.marktplatz } : null;
     const breakEven = be.get(f.sku) ?? null;
-    return { ...f, breakEven, buybox, bqool, liquidation: istLiquidation(bqool?.regel), aufgabe: verlustAufgabe(f, { breakEven, buybox, bqool, bqoolExport: bqAlle.n > 0 }) };
+    const bqoolGewinn = bqoolVerlust.zeilen.filter((z) => z.sku === f.sku).map((z) => ({ land: z.land, profit: z.profit, tage: z.tage, stichtag: z.stichtag }));
+    return { ...f, breakEven, buybox, bqool, liquidation: istLiquidation(bqool?.regel), aufgabe: verlustAufgabe(f, { breakEven, buybox, bqool, bqoolExport: bqAlle.n > 0 }), bqoolGewinn };
   });
   const namen = new Map(rows.map((r) => [r.sku, r.name]));
   const ausnahmen = ausn
@@ -76,6 +82,7 @@ export async function verlustStopp(
     nichtVerkauf: nichtVerkaufAnteile(werte, heute, schwelle, amz),
     amazonBericht: tx.length > 0,
     schwelle,
+    bqoolVerlust: { ...bqoolVerlust, zeilen: bqoolVerlust.zeilen.filter((z) => !aktiv.has(z.sku)) },
   };
 }
 

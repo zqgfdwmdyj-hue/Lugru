@@ -324,6 +324,12 @@ export const SUBPAGES: Record<string, NavItem[]> = {
     { href: "/einstellungen/abholung", label: "Abholung" },
     { href: "/einstellungen/testumgebung", label: "Testumgebung" },
   ],
+  // B31.5: Repricer mit Reitern Übersicht, Leistung (BQool-Berichte) und BQool-Dateien (Freigabe/Upload)
+  "/repricer": [
+    { href: "/repricer", label: "Übersicht" },
+    { href: "/repricer/leistung", label: "Leistung" },
+    { href: "/repricer/bqool", label: "BQool-Dateien" },
+  ],
   "/marken/uhren": [
     { href: "/marken/uhren", label: "Übersicht" },
     { href: "/marken/uhren/lernen", label: "Lernen" },

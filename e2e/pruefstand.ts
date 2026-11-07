@@ -164,6 +164,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)", "Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)"],
   },
+  "/repricer/leistung": {
+    abläufe: [
+      { ablauf: "B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage", erwartet: "Typ und Land erkannt (DE über Regelname, FR/IT/ES über SKU-Abgleich, Daily Sales DE über Umsatzsumme), Buy Box je Land wie in den Dateien, Listen „unter Min ohne Buy Box“ (Min senken), „Verlust“ (Liquidation), „Preisbewegung“ (Aufgabe „BQool-Regel prüfen“), Gewinn-Seite Spalte BQool je Tag, Verlust-Stopp zweite Quelle, Claude repricer/umsatz/verlust_stopp; unbekannte SKUs → „Welches Land?“", tests: ["b31-5-bqool-berichte.spec.ts › Abnahme 5"] },
+      { ablauf: "B31.5 täglicher Lauf holt die Berichte selbst", erwartet: "„Listing Performance“ mit „Last 7 days“ und „Daily Sales“ je Land heruntergeladen und ohne Rückfrage eingelesen, Abruf „BQool: Berichte“", tests: ["b31-5-bqool-berichte.spec.ts › Automatik"] },
+    ],
+    offen: ["Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)", "Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)"],
+  },
   "/bestand": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl, keine kaputten Werte", tests: ["kennzahlen.spec.ts › Bestand"] },

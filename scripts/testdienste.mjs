@@ -1015,6 +1015,22 @@ function bqoolUebernehmen(land, text) {
   });
   return { n, fehler };
 }
+// B31.5: BQool-Berichte je Marktplatz – „Listing Performance“ (Zeitraum wählen, „Download“) und „Daily Sales“.
+// Inhalt per POST /__bqool { leistung: { DE: "<TSV>" }, tages: { DE: "<TSV>" } }; ohne Vorgabe aus dem Ist erzeugt.
+const bqoolBerichte = { leistung: {}, tages: {} };
+const bqoolBerichtAbrufe = [];
+const LP_KOPF = ["Products", "Rules", "Sales", "Sales %", "Orders", "Units Ordered", "Est. Profit", "Buy Box Wins", "Lowest Price Win %", "At Min %", "At Max %", "Below Min %", "Avg Offers", "Avg Position", "Reprice", "Price Up", "Price Down", "Price Changes", "Compete Amazon %", "Buy Box Lost Amazon %", "Buy Box Lost FBA %", "Buy Box Lost FBM %"];
+function bqoolLeistungDatei(land) {
+  if (bqoolBerichte.leistung[land]) return bqoolBerichte.leistung[land];
+  const zeilen = [...(bqoolIst[land] ?? new Map()).entries()].map(([sku, z]) => [`Testartikel ${sku}\nSKU: ${sku}`, z.regel ?? "-", "100,00 €", "10,00%", "2", "2", "10,00 €", "50,00%", "10%", "0%", "0%", "0%", "3", "1", "4", "2", "2", "5,00 €", "0%", "0%", "0%", "0%"].map((v) => (v.includes("\n") ? `"${v}"` : v)).join("\t"));
+  return "\uFEFF" + [LP_KOPF.join("\t"), ...zeilen].join("\r\n") + "\r\n";
+}
+function bqoolTagesDatei(land) {
+  if (bqoolBerichte.tages[land]) return bqoolBerichte.tages[land];
+  const heute = new Date();
+  const tage = Array.from({ length: 7 }, (_, i) => new Date(heute.getTime() - (7 - i) * 86_400_000).toISOString().slice(0, 10));
+  return "\uFEFF" + ["Date\tSales\tSales (FBA)\tSales (FBM)\tOrders\tUnits Ordered\tEst. Profit\tBuy Box Wins", ...tage.map((t) => `${t}\t100,00 €\t100,00 €\t0,00 €\t1\t1\t10,00 €\t50,00%`)].join("\r\n") + "\r\n";
+}
 const multipartFeld = (body, name) => new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)`).exec(body)?.[1] ?? null;
 const multipartDatei = (body) => /filename="[^"]*"\r\nContent-Type:[^\r\n]*\r\n\r\n([\s\S]*?)\r\n--/.exec(body)?.[1] ?? "";
 function webNachbau(req, res, url, body) {
@@ -1057,6 +1073,22 @@ function webNachbau(req, res, url, body) {
       return res.end(bqoolStandDatei(l));
     }
     return html(200, `<main><h2>Repricing Central – Amazon ${l}</h2><button type="button" onclick="document.getElementById('menu').style.display='block'">Download File</button><div id="menu" style="display:none"><a href="/web-bqool/export/${exportLand}/datei" download>Full Template</a> <a href="#">Basic Template</a></div></main>`);
+  }
+  // B31.5: Berichtsseiten je Marktplatz – Auswahl „Last 30 days“/„Last 7 days“, Link „Download“ lädt die Datei.
+  const bericht = /\/(leistung|tages)\/([a-z]+)/.exec(url.pathname);
+  if (dienst === "bqool" && bericht) {
+    const [, art, slug] = bericht;
+    const l = BQ_LAND[slug];
+    if (!l) return html(200, "<p>Keine Berichte für diesen Marktplatz.</p>");
+    const name = art === "leistung" ? "Listing_Performance" : "Daily_Sales";
+    if (url.pathname.endsWith("/datei")) {
+      const tage = url.searchParams.get("tage") ?? "30";
+      bqoolBerichtAbrufe.push({ art, land: l, tage });
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": `attachment; filename="${name}_${Date.now()}.txt"` });
+      return res.end(art === "leistung" ? bqoolLeistungDatei(l) : bqoolTagesDatei(l));
+    }
+    const ziel = `/web-bqool/${art}/${slug}/datei`;
+    return html(200, `<main><h2>${art === "leistung" ? "Listing Performance" : "Daily Sales"} – Amazon ${l}</h2><label>Zeitraum <select onchange="document.getElementById('dl').href='${ziel}?tage='+this.value"><option value="30">Last 30 days</option><option value="7">Last 7 days</option></select></label> <a id="dl" href="${ziel}?tage=30" download>Download</a></main>`);
   }
   // B23: Upload-Seite je Marktplatz (…/upload/amazonde, …/upload/amazonfr …); „kaputt“ = Upload wird abgelehnt.
   const land = /\/upload\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
@@ -1188,11 +1220,18 @@ http
     if (url.pathname === "/__web") return send(200, webUploads);
     if (url.pathname === "/__bqool" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) for (const k of Object.keys(bqoolIst)) delete bqoolIst[k];
+      if (b.zuruecksetzen) {
+        for (const k of Object.keys(bqoolIst)) delete bqoolIst[k];
+        bqoolBerichte.leistung = {};
+        bqoolBerichte.tages = {};
+        bqoolBerichtAbrufe.length = 0;
+      }
+      Object.assign(bqoolBerichte.leistung, b.leistung ?? {});
+      Object.assign(bqoolBerichte.tages, b.tages ?? {});
       for (const [land, rows] of Object.entries(b.ist ?? {})) bqoolIst[land] = new Map(rows.map((r) => [r.sku, { regel: r.regel, min: r.min, max: r.max, cost: r.cost, enable: r.enable ?? "1" }]));
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__bqool") return send(200, { ist: Object.fromEntries(Object.entries(bqoolIst).map(([l, m]) => [l, [...m.entries()].map(([sku, z]) => ({ sku, ...z }))])) });
+    if (url.pathname === "/__bqool") return send(200, { ist: Object.fromEntries(Object.entries(bqoolIst).map(([l, m]) => [l, [...m.entries()].map(([sku, z]) => ({ sku, ...z }))])), berichtAbrufe: bqoolBerichtAbrufe });
     if (url.pathname === "/__ao" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       if (b.zuruecksetzen) Object.assign(ao, { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [], modus: {}, namen: {}, binaer: {}, angefordert: {} });

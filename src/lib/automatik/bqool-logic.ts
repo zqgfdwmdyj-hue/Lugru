@@ -20,6 +20,12 @@ export function bqoolAbleiten(deUrl: string | null | undefined, land: BqoolLand)
 
 export type BqoolAdresse = { land: BqoolLand; url: string | null; abgeleitet: boolean };
 
+/** B31.5: Berichtsseiten („Listing Performance“, „Daily Sales“) je Land – DE eingetragen, FR/IT/ES abgeleitet. */
+export function bqoolBerichtAdressen(cfg: Record<string, string | null | undefined>, feld: "leistungUrl" | "tagesUrl", laender: readonly string[]): { land: string; url: string }[] {
+  const de = (cfg[feld] ?? "").trim() || null;
+  return laender.map((land) => ({ land, url: bqoolAbleiten(de, land as BqoolLand) })).filter((x): x is { land: string; url: string } => !!x.url);
+}
+
 /** Upload-Adresse je Land: eigenes Feld, sonst (FR/IT/ES) aus DE abgeleitet. */
 export function bqoolUploadAdressen(cfg: Record<string, string | null | undefined>): BqoolAdresse[] {
   const de = (cfg.uploadUrl ?? "").trim() || null;

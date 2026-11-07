@@ -37,6 +37,8 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Amazon › Fälle & Erstattungen | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Fälle & Erstattungen | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
 | Amazon › Angebote & Lager | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
+| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/2 Abläufe | – | 2 |
+| Amazon › Angebote & Lager | Repricer (BQool) › BQool-Dateien `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
 | Amazon › Angebote & Lager | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Angebote & Lager | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
 | Amazon › Angebote & Lager | SAS-Programm `/sas` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -115,7 +117,6 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einstellungen | Einstellungen › Testumgebung `/einstellungen/testumgebung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | /posteingang/verbinden `/posteingang/verbinden` | ○ 0/2 Abläufe | – | 1 |
 | Übergreifend | /assistent-verlauf `/assistent-verlauf` | ○ 0/2 Abläufe | – | – |
-| Übergreifend | /repricer/bqool `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
 | Übergreifend | /calls/offen `/calls/offen` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /kalender/zeiten `/kalender/zeiten` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /privat/familienaufgaben `/privat/familienaufgaben` | ○ 0/1 Abläufe | – | – |
@@ -240,6 +241,26 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B25.5 /repricer/export ohne Format | leitet auf die Vorschau „BQool-Dateien“ mit Warnungen je Land; CSV nur mit ?format | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 
 - – Offen: Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
+
+### Amazon › Angebote & Lager › Repricer (BQool) › Leistung (`/repricer/leistung`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage | Typ und Land erkannt (DE über Regelname, FR/IT/ES über SKU-Abgleich, Daily Sales DE über Umsatzsumme), Buy Box je Land wie in den Dateien, Listen „unter Min ohne Buy Box“ (Min senken), „Verlust“ (Liquidation), „Preisbewegung“ (Aufgabe „BQool-Regel prüfen“), Gewinn-Seite Spalte BQool je Tag, Verlust-Stopp zweite Quelle, Claude repricer/umsatz/verlust_stopp; unbekannte SKUs → „Welches Land?“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
+| B31.5 täglicher Lauf holt die Berichte selbst | „Listing Performance“ mit „Last 7 days“ und „Daily Sales“ je Land heruntergeladen und ohne Rückfrage eingelesen, Abruf „BQool: Berichte“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
+
+- – Offen: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
+- – Offen: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
+
+### Amazon › Angebote & Lager › Repricer (BQool) › BQool-Dateien (`/repricer/bqool`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung | Ist aller 4 Länder mit Stand heute (repricer „bqool_stand: heute …“), Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel …“ mit Freigeben/Ansehen, nichts hochgeladen bis zur Freigabe, danach 4 Dateien mit Typ „repricing“, „1 Fehlerzeile“ als Aufgabe, Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“, Min DE = effektiver Min unter der Buy Box; verfallener Lauf lädt nichts hoch; „automatisch“ erst mit bestätigtem Min-Verhalten | ○ im letzten Lauf nicht gelaufen | `b31-bqool-kreislauf.spec.ts` |
+| Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung | Dateien im BQool-Format, je Land eigene Upload-Seite, ein Land fehlgeschlagen → Aufgabe | ○ im letzten Lauf nicht gelaufen | `bqool-dateien.spec.ts` |
+
+- – Offen: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
+- – Offen: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
 
 ### Amazon › Angebote & Lager › FBA-Inbound (`/inbound`)
 
@@ -561,16 +582,6 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) | neuer Aufruf zeigt „↩ Rückgängig“, Klick stellt die alte Frist her | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 | Auftrag an Claude aus den Amazon-ToDos: „ToDos mit versendetem Auftrag erledigen“ → Vorschau → Ausführen → Verlauf → Rückgängig; gelber Auftragsstatus; Preis ändern; Mail mit „ignore previous instructions“; VA-Konto; gleiche Aktion über den Konnektor | Vorschau nennt 2 passende und 1 getrennt (nicht versendet), ohne Klick keine Änderung; Verlauf mit Auftragstext und Datensätzen, Rückgängig öffnet wieder; gelb nur mit Einzelbestätigung; Preis: Hinweis + Link, keine Ausführung; Mail-Text löst nichts aus; VA ohne Finanzen; Konnektor gleiches Ergebnis | ○ im letzten Lauf nicht gelaufen | `assistent-aktionen.spec.ts` |
 
-### Übergreifend › /repricer/bqool (`/repricer/bqool`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung | Ist aller 4 Länder mit Stand heute (repricer „bqool_stand: heute …“), Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel …“ mit Freigeben/Ansehen, nichts hochgeladen bis zur Freigabe, danach 4 Dateien mit Typ „repricing“, „1 Fehlerzeile“ als Aufgabe, Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“, Min DE = effektiver Min unter der Buy Box; verfallener Lauf lädt nichts hoch; „automatisch“ erst mit bestätigtem Min-Verhalten | ○ im letzten Lauf nicht gelaufen | `b31-bqool-kreislauf.spec.ts` |
-| Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung | Dateien im BQool-Format, je Land eigene Upload-Seite, ein Land fehlgeschlagen → Aufgabe | ○ im letzten Lauf nicht gelaufen | `bqool-dateien.spec.ts` |
-
-- – Offen: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
-- – Offen: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
-
 ### Übergreifend › /calls/offen (`/calls/offen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -618,7 +629,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (143 Abläufe + Oberfläche auf 111 Seiten): 0 bestanden, 0 fehlgeschlagen, 143 nicht gelaufen.
+**Automatisch** (145 Abläufe + Oberfläche auf 112 Seiten): 0 bestanden, 0 fehlgeschlagen, 145 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -651,6 +662,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Repricer (BQool): BQool-Export „Manage Listings“ hochladen – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): B15.11 Übersicht je Regel, Filter, alle Länder – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool): B25.5 /repricer/export ohne Format – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.5 täglicher Lauf holt die Berichte selbst – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › BQool-Dateien: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › BQool-Dateien: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ FBA-Inbound: FBA-Sendung scannen – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Geschäftsbericht (CSV) hochladen, Staffelpreis-Vorschlag übernehmen, Freigabe, Upload-Datei – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Kennzahlen – im letzten Lauf nicht gelaufen
@@ -754,8 +769,6 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ /posteingang/verbinden: Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“ – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: Auftrag an Claude aus den Amazon-ToDos: „ToDos mit versendetem Auftrag erledigen“ → Vorschau → Ausführen → Verlauf → Rückgängig; gelber Auftragsstatus; Preis ändern; Mail mit „ignore previous instructions“; VA-Konto; gleiche Aktion über den Konnektor – im letzten Lauf nicht gelaufen
-- ○ /repricer/bqool: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
-- ○ /repricer/bqool: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ /calls/offen: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ /kalender/zeiten: Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick – im letzten Lauf nicht gelaufen
 - ○ /privat/familienaufgaben: Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft – im letzten Lauf nicht gelaufen
@@ -793,6 +806,10 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Fall-Zentrale: Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)
 - Fall-Zentrale: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
+- Repricer (BQool) › Leistung: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
+- Repricer (BQool) › Leistung: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
+- Repricer (BQool) › BQool-Dateien: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
+- Repricer (BQool) › BQool-Dateien: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 - Abholung DHL/UPS: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
 - Abholung DHL/UPS: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
@@ -823,7 +840,5 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Einstellungen › KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
 - Einstellungen › KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - /posteingang/verbinden: IMAP mit echtem Postfach: Ordnerauswahl (Gmail „Alle Nachrichten“), Test-Knopf, SMTP 465 → 587, Fehlerarten (Anmeldung, IMAP aus, Port) – nur live mit Nur-ansehen-Daten
-- /repricer/bqool: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
-- /repricer/bqool: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
 - Server (Port, Adresse, Testumgebung): `deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)
 - Server (Port, Adresse, Testumgebung): `deploy/testumgebung.sh an` + `pruefen` auf dem Server

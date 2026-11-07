@@ -30,6 +30,7 @@ export const IMPORT_ARTEN = {
   kontoauszug_amex: { text: "American Express (CSV/XLSX)", upload: "amex", endungen: [".csv", ".xlsx", ".xls"] },
   ek_liste: { text: "EK-Liste (ArbitrageOne/AccountOne)", upload: "ek_liste", endungen: [".xlsx", ".xls", ".csv"] },
   bqool_datei: { text: "BQool-Datei (Repricing-Export bzw. Manage Listings)", endungen: [".txt", ".csv", ".xlsx"] },
+  bqool_bericht: { text: "BQool-Bericht „Listing Performance“ (je Land, 7/30 Tage) bzw. „Daily Sales“ – Land und Zeitraum im Hinweis (z. B. „FR, 30 Tage“), sonst erkannt", endungen: [".txt", ".csv"] },
   ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag): Bestandsabgleich eigenes Lager, Lagerwert", upload: "ao_lagerbestand", endungen: [".csv", ".xlsx", ".xls"] },
   ao_einkaeufe: { text: "ArbitrageOne – Bestellungen (Export „Einkäufe“/PurchaseOrders): Einkauf → Bestellungen, Einkaufszeilen, EK-Vorschlag aus Lieferungen", upload: "ao_einkaeufe", endungen: [".xls", ".xlsx", ".csv"] },
   ao_accountone_cog: { text: "ArbitrageOne – AccountOne COG (NEU): Monatsdatei für den Steuerberater (Monat im Hinweis, sonst Vormonat)", endungen: [".csv", ".xlsx", ".xls"] },

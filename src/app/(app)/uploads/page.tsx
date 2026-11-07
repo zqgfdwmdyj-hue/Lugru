@@ -15,6 +15,7 @@ const ERKENNT: { was: string; wohin: string }[] = [
   { was: "Amazon-Berichte (Abrechnung, Bestand, Retouren, Erstattungen, Transaktionen …)", wohin: "Daten/Amazon" },
   { was: "Arbitrage One / sellerboard-Export, eigene Vorlagen", wohin: "WaWi" },
   { was: "BQool „Manage Listings“", wohin: "Repricer" },
+  { was: "BQool-Berichte „Listing Performance“ (je Land) und „Daily Sales“", wohin: "Repricer → Leistung, Gewinn, Verlust-Stopp" },
   { was: "Rechnungen und Belege (PDF, Fotos)", wohin: "Rechnungen / Belege" },
   { was: "Call-Transkripte (Word, PDF, Text, Untertitel, ZIP) und Call-Archiv (JSON)", wohin: "Call-Archiv" },
 ];

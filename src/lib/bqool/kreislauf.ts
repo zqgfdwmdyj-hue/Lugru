@@ -18,6 +18,7 @@ import { autoFreigabe, freigabeFristen, freigabeText, KONTROLLE_MINUTEN, KREISLA
 const K = schema.bqoolLaeufe;
 export const JOB_IST = "BQool: Ist holen";
 export const JOB_UPLOAD = "BQool: Upload";
+export const JOB_BERICHTE = "BQool: Berichte";
 export const JOB_KONTROLLE = "BQool: Nachkontrolle";
 const LINK = "/repricer/bqool#freigabe";
 const TASK_FREIGABE = "bqool-freigabe";
@@ -75,15 +76,21 @@ async function istHolen(tenantId: string, laender: string[], laufId: string, zwe
   const z = (await zugang(tenantId))!;
   const { bqoolExportAdressen } = await import("@/lib/automatik/bqool-logic");
   const adressen = bqoolExportAdressen(z).filter((a) => laender.includes(a.land));
+  // B31.5: Berichte „Listing Performance“/„Daily Sales“ nur beim morgendlichen Ist (nicht bei der Nachkontrolle).
+  const berichtLaender = zweck === "ist" && ((z.leistungUrl ?? "").trim() || (z.tagesUrl ?? "").trim()) ? laender : [];
+  const { bqoolIstHerunterladen } = await import("@/lib/automatik/bqool-ist");
   if (!adressen.some((a) => a.url)) {
     const jeLand = laender.map((land) => ({ land, ok: false, text: "keine Export-Seite eingetragen (Anbindungen → BQool) – Ist bleibt vom letzten Stand" }));
     await aendern(tenantId, laufId, zweck === "ist" ? { ist: jeLand } : {}, "Ist holen: keine Export-Seite eingetragen – Ist bleibt vom letzten Stand");
     await recordJobHinweis(tenantId, JOB_IST, "nicht eingerichtet – Export-Seite unter Anbindungen → BQool eintragen", ABRUF_PLAN[JOB_IST]);
+    if (berichtLaender.length) {
+      const b = await bqoolIstHerunterladen(tenantId, [], z, { titel: "BQool: Berichte", aufgabeKey: "automatik-bqool-ist", link: LINK, berichte: berichtLaender });
+      if (!b.belegt) await berichteEinlesen(tenantId, laufId, b.ok ? b.berichte : [], b.ok ? b.berichtFehler : [b.fehler ?? "abgebrochen"]);
+    }
     return { nichtEingerichtet: true, jeLand };
   }
   const t0 = Date.now();
-  const { bqoolIstHerunterladen } = await import("@/lib/automatik/bqool-ist");
-  const r = await bqoolIstHerunterladen(tenantId, laender, z, { titel: zweck === "ist" ? "BQool: Ist holen" : "BQool: Nachkontrolle", aufgabeKey: "automatik-bqool-ist", link: LINK });
+  const r = await bqoolIstHerunterladen(tenantId, laender, z, { titel: zweck === "ist" ? "BQool: Ist holen" : "BQool: Nachkontrolle", aufgabeKey: "automatik-bqool-ist", link: LINK, berichte: berichtLaender });
   if (r.belegt) return { belegt: true, jeLand: [] };
   const protokoll = r.protokoll.map((p) => ({ zeit: p.zeit, text: `${zweck === "ist" ? "Ist" : "Nachkontrolle"}: ${p.text}`, bildId: p.bildId }));
   if (!r.ok) {
@@ -119,7 +126,28 @@ async function istHolen(tenantId: string, laender: string[], laufId: string, zwe
   const fehler = jeLand.filter((x) => !x.ok);
   await aendern(tenantId, laufId, zweck === "ist" ? { ist: jeLand, istAm: new Date() } : {}, [...protokoll, { zeit: new Date().toISOString(), text: `${zweck === "ist" ? "Ist" : "Nachkontrolle"}: ${jeLand.map((x) => `${x.land} ${x.ok ? (x.skus !== undefined ? `${x.skus} SKUs` : "ok") : `Fehler – ${x.text}`}`).join(" · ")}` }]);
   await recordJob(tenantId, JOB_IST, fehler.length ? `${fehler.map((x) => `${x.land}: ${x.text}`).join(" · ")}` : null, Date.now() - t0, ABRUF_PLAN[JOB_IST]);
+  if (berichtLaender.length) await berichteEinlesen(tenantId, laufId, r.berichte, r.berichtFehler);
   return { jeLand };
+}
+
+/** B31.5: heruntergeladene Berichte einlesen (Land kennt der Lauf – keine Rückfrage), Protokoll und Abruf „BQool: Berichte“. */
+async function berichteEinlesen(tenantId: string, laufId: string, dateien: { land: string; art: string; name: string; bytes: Uint8Array }[], fehler: string[]) {
+  const t0 = Date.now();
+  const { bqoolBerichtEinlesen } = await import("./berichte");
+  const { istBerichtLand } = await import("./berichte-logic");
+  const texte: string[] = [];
+  const fehl = [...fehler];
+  for (const d of dateien) {
+    if (!istBerichtLand(d.land)) continue;
+    try {
+      const e = await bqoolBerichtEinlesen(tenantId, d.name, d.bytes, { land: d.land, tage: 7, via: "automatik" });
+      (e.ok ? texte : fehl).push(e.ok ? e.text : `${d.land}: ${e.text}`);
+    } catch (e) {
+      fehl.push(`${d.land} ${d.art}: nicht lesbar – ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+    }
+  }
+  await aendern(tenantId, laufId, {}, [...texte, ...fehl].map((t) => ({ zeit: new Date().toISOString(), text: `Berichte: ${t}`.slice(0, 500) })));
+  await recordJob(tenantId, JOB_BERICHTE, fehl.length ? fehl.join(" · ").slice(0, 900) : null, Date.now() - t0, ABRUF_PLAN[JOB_BERICHTE]);
 }
 
 /**

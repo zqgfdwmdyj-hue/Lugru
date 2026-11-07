@@ -106,7 +106,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
       {v.laender.map((l) => {
         const wichtig = l.zeilen.filter((z) => z.art !== "gleich" || z.warnungen.length || z.erklaerung);
         return (
-          <details key={l.land} className="card card-pad" style={{ marginTop: 12 }} data-testid="bq-tabelle" data-land={l.land} open={l.land === (sp.land ?? v.laender[0]?.land)}>
+          <details key={l.land} id={`vorschau-${l.land}`} className="card card-pad" style={{ marginTop: 12, scrollMarginTop: 70 }} data-testid="bq-tabelle" data-land={l.land} open={l.land === (sp.land ?? v.laender[0]?.land)}>
             <summary><b>{l.land}</b> – {wichtig.length} Zeilen mit Änderung oder Warnung (von {l.zeilen.length})</summary>
             <div className="table-wrap">
               <table className="table small">

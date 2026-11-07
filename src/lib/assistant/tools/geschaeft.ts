@@ -506,7 +506,7 @@ export const repricer = defineTool({
   name: "repricer",
   title: "Repricer (BQool)",
   description:
-    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie, Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
+    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie, Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "BQool-Export (hochgeladen unter Repricer), EK und Gebühren im Seller-System" },
@@ -521,6 +521,7 @@ export const repricer = defineTool({
   run: async (ctx, i) => {
     const { zeilen, stand } = await bqoolStand(ctx.session.tenantId);
     const { standText } = await import("@/lib/bqool/kreislauf-logic");
+    const bb = await import("@/lib/bqool/berichte").then((x) => x.buyboxUebersicht(ctx.session.tenantId));
     const q = i.suche?.toLowerCase();
     const list = zeilen
       .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!i.regel || (z.regel?.trim() || "(ohne Regel)").toLowerCase() === i.regel.toLowerCase()) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
@@ -531,6 +532,10 @@ export const repricer = defineTool({
       eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – in BQool unter Repricing → Manage Listings je Land exportieren und im Seller-System unter Amazon → Repricer (BQool) hochladen",
       // B31.4: „BQool-Stand: heute 06:05“ (ältester Marktplatz; je Marktplatz unter „eingelesen“)
       bqool_stand: aeltester ? standText(aeltester) : "noch kein BQool-Ist",
+      // B31.5: Buy-Box-Anteil je Land und Woche (BQool „Listing Performance“, 7 Tage)
+      buybox_anteil: bb.jeLand.length
+        ? { quelle: "BQool-Bericht „Listing Performance“ (7 Tage)", je_land: bb.jeLand.map((x) => ({ land: x.land, prozent: x.anteil === null ? null : Math.round(x.anteil), zeitraum: `${x.tage} Tage bis ${x.stichtag.split("-").reverse().join(".")}` })), je_woche: bb.wochen.map((w) => ({ woche: w.woche, ...Object.fromEntries(Object.entries(w.je).map(([l, v]) => [l, v === null ? null : Math.round(v)])) })), link: abs(ctx, "/repricer/leistung") }
+        : "noch kein BQool-Bericht „Listing Performance“",
       anzahl_skus: zeilen.length,
       auffaelligkeiten: zaehle,
       je_regel: regelUebersicht(zeilen).map((u) => ({ regel: u.regel, skus: u.gesamt, aktiv: u.aktiv, pausiert: u.pausiert, status_unbekannt: u.unbekannt || undefined, auffaellig: u.mitHinweis, je_land: u.laender })),

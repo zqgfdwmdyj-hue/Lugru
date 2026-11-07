@@ -1,6 +1,6 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
-import { bqoolExportAdressen } from "./bqool-logic";
+import { bqoolBerichtAdressen, bqoolExportAdressen } from "./bqool-logic";
 import { anmelden, AutomatikAbbruch, cookiesWeg, debugFesthalten, mitBrowser, type Schritt } from "./runner";
 
 // B31.2: BQool-Ist holen – anmelden und je Land den Export „Repricing Central File – Full Template“ (bzw. „Manage
@@ -18,7 +18,45 @@ const BESTAETIGEN = /download|herunterladen|export|bestätigen|confirm|\bok\b/i;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export type IstDatei = { land: string; name: string; bytes: Uint8Array };
-export type IstBrowserErgebnis = { ok: boolean; belegt?: boolean; zweiFaktor?: boolean; fehler: string | null; dateien: IstDatei[]; jeLand: { land: string; ok: boolean; text: string; bild?: string }[]; protokoll: Schritt[] };
+export type BerichtDatei = IstDatei & { art: "listing_performance" | "daily_sales" };
+export type IstBrowserErgebnis = { ok: boolean; belegt?: boolean; zweiFaktor?: boolean; fehler: string | null; dateien: IstDatei[]; jeLand: { land: string; ok: boolean; text: string; bild?: string }[]; berichte: BerichtDatei[]; berichtFehler: string[]; protokoll: Schritt[] };
+
+const SIEBEN = /last\s*7\s*days|letzte[n]?\s*7\s*tage|^\s*7\s*(days|tage)\s*$|past\s*7\s*days/i;
+const BERICHT_KNOPF = /download|herunterladen|export/i;
+
+/**
+ * B31.5: Bericht „Listing Performance“ bzw. „Daily Sales“ herunterladen – Zeitraum „letzte 7 Tage“ wählen (Auswahlliste
+ * oder Knopf, soweit vorhanden), dann „Download“. Nur lesen.
+ */
+async function berichtHerunterladen(page: Page, url: string, land: string, titel: string): Promise<{ name: string; bytes: Uint8Array }> {
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+  await cookiesWeg(page);
+  const listen = page.locator("select");
+  let zeitraum = false;
+  for (let i = 0; i < (await listen.count()) && !zeitraum; i++) {
+    const optionen = await listen.nth(i).locator("option").evaluateAll((os) => os.map((x) => ({ value: (x as HTMLOptionElement).value, text: (x.textContent ?? "").trim() })));
+    const t = optionen.find((x) => SIEBEN.test(x.text));
+    if (t) {
+      await listen.nth(i).selectOption(t.value);
+      zeitraum = true;
+    }
+  }
+  if (!zeitraum) {
+    const k = await erstesSichtbares([page.getByRole("button", { name: SIEBEN }), page.getByRole("link", { name: SIEBEN }), page.getByRole("radio", { name: SIEBEN }), page.getByRole("option", { name: SIEBEN })]);
+    if (k) await k.click({ timeout: 10_000 }).catch(() => undefined);
+  }
+  await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
+  const knopf = await erstesSichtbares([page.getByRole("button", { name: BERICHT_KNOPF }), page.getByRole("link", { name: BERICHT_KNOPF })]);
+  if (!knopf) throw new AutomatikAbbruch(`${titel} ${land}: kein Download-Knopf – Adresse unter Anbindungen prüfen`);
+  const warten = page.waitForEvent("download", { timeout: SCHRITT_MS });
+  await knopf.click({ timeout: 15_000 });
+  const d = await warten.catch(() => null);
+  if (!d) throw new AutomatikAbbruch(`${titel} ${land}: keine Datei nach ${Math.round(SCHRITT_MS / 1000)} s`);
+  const pfad = await d.path();
+  if (!pfad) throw new AutomatikAbbruch(`${titel} ${land}: Download fehlgeschlagen`);
+  return { name: d.suggestedFilename() || `${titel.replace(/\s+/g, "_")}_${land}.txt`, bytes: new Uint8Array(await readFile(pfad)) };
+}
 
 async function erstesSichtbares(kandidaten: Locator[]): Promise<Locator | null> {
   for (const k of kandidaten) {
@@ -97,10 +135,18 @@ async function herunterladen(page: Page, url: string, land: string, cfg: Cfg): P
  * Je Land die Export-Datei holen. Ein Fehler in einem Land stoppt die anderen nicht; Anmeldung fehlgeschlagen bzw.
  * Zwei-Faktor stoppt alles (Aufgabe mit Bildschirmfoto). Verarbeitet wird erst nach dem Browser (Aufrufer).
  */
-export async function bqoolIstHerunterladen(tenantId: string, laender: string[], cfg: Cfg, o: { titel: string; aufgabeKey: string; link: string }): Promise<IstBrowserErgebnis> {
+export async function bqoolIstHerunterladen(tenantId: string, laender: string[], cfg: Cfg, o: { titel: string; aufgabeKey: string; link: string; /** B31.5: auch „Listing Performance“ und „Daily Sales“ für diese Länder. */ berichte?: string[] }): Promise<IstBrowserErgebnis> {
   const adressen = new Map(bqoolExportAdressen(cfg).map((a) => [a.land as string, a.url]));
   const dateien: IstDatei[] = [];
   const jeLand: IstBrowserErgebnis["jeLand"] = [];
+  const berichte: BerichtDatei[] = [];
+  const berichtFehler: string[] = [];
+  const berichtSeiten = o.berichte?.length
+    ? [
+        ...bqoolBerichtAdressen(cfg, "leistungUrl", o.berichte).map((a) => ({ ...a, art: "listing_performance" as const, titel: "Listing Performance" })),
+        ...bqoolBerichtAdressen(cfg, "tagesUrl", o.berichte).map((a) => ({ ...a, art: "daily_sales" as const, titel: "Daily Sales" })),
+      ]
+    : [];
   const r = await mitBrowser(tenantId, o, async (page, log) => {
     await anmelden(page, { loginUrl: cfg.loginUrl || "https://www.bqool.com/login", email: cfg.email!, password: cfg.password!, dienst: "BQool", selektoren: { email: cfg.feldEmail, passwort: cfg.feldPasswort, knopf: cfg.feldKnopf } }, log);
     for (const land of laender) {
@@ -121,6 +167,19 @@ export async function bqoolIstHerunterladen(tenantId: string, laender: string[],
         await log(`${land}: ${grund}`).catch(() => undefined);
       }
     }
+    // B31.5: Berichte je Land – ein Fehler stoppt weder die anderen noch den Lauf.
+    for (const b of berichtSeiten) {
+      try {
+        const d = await berichtHerunterladen(page, b.url, b.land, b.titel);
+        berichte.push({ land: b.land, art: b.art, ...d });
+        await log(`${b.titel} ${b.land}: ${d.name} heruntergeladen`);
+      } catch (e) {
+        const grund = (e instanceof Error ? e.message.split("\n")[0] : String(e)).slice(0, 200);
+        await debugFesthalten(tenantId, page, `BQool – ${b.titel} ${b.land}`, grund).catch(() => null);
+        berichtFehler.push(`${b.titel} ${b.land}: ${grund}`);
+        await log(grund).catch(() => undefined);
+      }
+    }
   });
-  return { ok: r.ok, belegt: r.belegt, zweiFaktor: r.zweiFaktor, fehler: r.fehler, dateien, jeLand, protokoll: r.protokoll };
+  return { ok: r.ok, belegt: r.belegt, zweiFaktor: r.zweiFaktor, fehler: r.fehler, dateien, jeLand, berichte, berichtFehler, protokoll: r.protokoll };
 }

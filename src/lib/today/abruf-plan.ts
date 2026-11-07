@@ -30,6 +30,7 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "BQool: Ist holen": { ausloeser: "zeitplan", text: "Zeitplan: täglich 06:00 (Export je Land DE/FR/IT/ES, danach Soll und Freigabe-Push)", taeglichUm: "06:00" },
   "BQool: Upload": { ausloeser: "zeitplan", text: "Auslöser: Freigabe (Push bzw. Repricer → BQool-Dateien) – automatisch nur, wenn eingeschaltet", taeglichUm: "06:00" },
   "BQool: Nachkontrolle": { ausloeser: "zeitplan", text: "Auslöser: 30 Min. nach dem Upload (Ist erneut holen, Min/Regel je SKU prüfen)", taeglichUm: "06:00" },
+  "BQool: Berichte": { ausloeser: "zeitplan", text: "Auslöser: täglich 06:00 mit dem Ist (Listing Performance 7 Tage und Daily Sales je Land, wenn die Berichtsseiten eingetragen sind)", taeglichUm: "06:00" },
   "ArbitrageOne: fehlgeschlagene Importe nachverarbeiten": { ausloeser: "zeitplan", text: "Zeitplan: stündlich (je fehlgeschlagenem Import einmal)", minuten: 60 },
   // B29.1: sellerboard – feste Uhrzeiten mit Tagesbudget (vorher alle 30 Min./3 Std./4 Std. = über 125 Aufrufe am Tag).
   "sellerboard: Verkauf (Amazon + eBay)": { ausloeser: "zeitplan", text: "Zeitplan: alle 2 Std. 06–22 Uhr, nachts 02:00 (Vorrang im Tagesbudget)", uhrzeiten: SB_VERKAUF },
@@ -139,7 +140,7 @@ export const ABRUFE_JE_ANBINDUNG: Record<string, string[]> = {
   keepa: ["Keepa-Abgleich Lieferanten", "Eigene Produkte (Keepa)"],
   stotax: ["Rechnungen an Stotax", "Belege an Stotax"],
   arbitrageone_web: ["ArbitrageOne: Exporte abholen"],
-  bqool_web: ["BQool: Ist holen", "BQool: Upload", "BQool: Nachkontrolle"],
+  bqool_web: ["BQool: Ist holen", "BQool: Berichte", "BQool: Upload", "BQool: Nachkontrolle"],
   discord_calls: ["Call-Kanal (Discord live): empfangen", "Call-Archiv (Discord, Sicherheitsnetz)"],
   discord_va: ["VA (Discord)"],
   discord_profitpath: ["ProfitPath (Discord)"],

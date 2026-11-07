@@ -2,6 +2,7 @@
 // Die Verarbeitung macht derselbe Code wie im jeweiligen Bereich (Service).
 
 import type { AreaKey } from "@/lib/auth/areas";
+import { berichtArt } from "@/lib/bqool/berichte-logic";
 import { spaltenZuordnung } from "@/lib/bqool/logic";
 
 export type UploadArt =
@@ -10,6 +11,8 @@ export type UploadArt =
   | "ust_bericht"
   | "bqool"
   | "bqool_datei"
+  | "bqool_listing_performance"
+  | "bqool_daily_sales"
   | "ek_liste"
   | "ao_lagerbestand"
   | "ao_einkaeufe"
@@ -26,6 +29,8 @@ export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; lin
   ust_bericht: { text: "Amazon-Umsatzsteuerbericht", bereich: "geld", link: "/buchhaltung" },
   bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
   bqool_datei: { text: "BQool-Repricing-Datei (Ist-Stand je Land)", bereich: "buchhaltung", link: "/repricer/bqool" },
+  bqool_listing_performance: { text: "BQool-Bericht „Listing Performance“ (je SKU)", bereich: "buchhaltung", link: "/repricer/leistung" },
+  bqool_daily_sales: { text: "BQool-Bericht „Daily Sales“ (je Tag)", bereich: "buchhaltung", link: "/repricer/leistung" },
   ek_liste: { text: "EK-Liste (ArbitrageOne: sellerboard-Export bzw. Einkäufe)", bereich: "wawi", link: "/einkauf/ek-import" },
   ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag)", bereich: "wawi", link: "/einstellungen/hintergrund#importe-arbitrageone" },
   ao_einkaeufe: { text: "ArbitrageOne – Bestellungen", bereich: "wawi", link: "/einkauf?ansicht=arbitrageone" },
@@ -59,6 +64,9 @@ export function tabellenArt(headers: string[], dateiname: string): UploadArt | n
   if (roh.includes("TRANSACTION_TYPE") && (roh.includes("TOTAL_ACTIVITY_VALUE_AMT_VAT_EXCL") || roh.includes("PRICE_OF_ITEMS_AMT_VAT_EXCL"))) return "ust_bericht";
   if (hat("buchungstag", "buchungsdatum") && hat("betrag", "umsatz", "betrag eur") && hat("auftragskonto", "verwendungszweck", "beguenstigter zahlungspflichtiger", "name zahlungsbeteiligter", "buchungstext", "iban auftragskonto")) return "kontoauszug";
   if (hat("datum", "date") && hat("beschreibung", "description") && hat("betrag", "amount") && (hat("karteninhaber", "konto #", "card member", "erscheint auf ihrer abrechnung als") || /amex|american.?express/i.test(dateiname) || h.length <= 4)) return "amex";
+  // B31.5: BQool-Berichte vor „Manage Listings“ prüfen (beide haben Min-/Max-Spalten im Namen)
+  const bericht = berichtArt(headers);
+  if (bericht) return bericht === "listing_performance" ? "bqool_listing_performance" : "bqool_daily_sales";
   const bq = spaltenZuordnung(headers);
   if (bq.sku !== undefined && bq.min !== undefined && bq.max !== undefined && [bq.regel, bq.status, bq.bbPreis, bq.bbGewinner, bq.angebote, bq.markt].some((x) => x !== undefined)) return "bqool";
   if (h.some((x) => x.includes("b2b")) && hat("untergeordnete asin", "child asin", "asin untergeordnet", "asin")) return "amazon_business";

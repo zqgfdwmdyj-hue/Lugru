@@ -62,9 +62,10 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null }): string {
+export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null }): string {
   const teile = [
     o.bqool || null,
+    o.buybox || null,
     o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,
     o.fristen ? `${o.fristen} Frist${o.fristen === 1 ? "" : "en"} heute` : null,
     o.wichtig ? `${o.wichtig} wichtige Aufgabe${o.wichtig === 1 ? "" : "n"}` : null,

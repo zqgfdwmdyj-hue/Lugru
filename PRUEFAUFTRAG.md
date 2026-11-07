@@ -1184,6 +1184,36 @@ Regression: `bqool-dateien`, `bqool-upload-erkennung`, `b24-automatik`, `b27-aut
 `bqool_stand`), `anbindungen_status` (Block `bqool`, drei neue Abrufe), `bqool_export_vorschau` (Hinweis folgt der
 Einstellung „Min in der Datei“) → Claude erhält `notifications/tools/list_changed`.
 
+### B31.5 (Ergänzung 07.11.): BQool-Berichte „Listing Performance“ und „Daily Sales“
+
+Vorher wurde keiner der beiden Berichte erkannt (Upload landete als unbekanntes Format). Jetzt:
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Erkennung (Kopfzeile, BOM, deutsche Zahlen, „-“ = leer) | ❌ | ✅ `bqool_listing_performance` (Kopf beginnt mit „Products“, dazu „Buy Box Wins“, „Below Min %“ …) und `bqool_daily_sales` („Date“, „Sales (FBA)“, „Buy Box Wins“); auch über Claude (`import_link`, neue Art `bqool_bericht`, Land/Zeitraum im Hinweis) | `berichtArt`, `zahlDe` (`src/lib/bqool/berichte-logic.ts`), `tabellenArt` (`src/lib/uploads/erkennen.ts`) |
+| SKU aus „Products“ | ❌ | ✅ eigene SKU-Spalte, sonst aus der Zelle („SKU: …“, bekannte SKU, einzelnes Wort); Zeilen ohne SKU werden gezählt und gemeldet | `produktTeile` |
+| Land ableiten | ❌ | ✅ (1) Regelname („Abverkauf DE“ → DE, „Abverkauf“ schließt DE aus), (2) Abgleich mit dem letzten Ist je Land (SKU-Überlappung + gleiche Regel), (3) sonst Rückfrage „Welches Land?“ mit Vorschlag als Knöpfe beim Upload (7 Tage gemerkt). Daily Sales: Umsatz der Tage gegen die Listing-Performance-Summe je Land | `landAusRegeln`, `landVorschlag`, `tagesLand`; `src/app/(app)/uploads/land-rueckfrage.tsx` |
+| Zeitraum | ❌ | ✅ Listing Performance: Stichtag = Upload-Tag, Standard 7 Tage, beim Upload änderbar (7/30); Daily Sales: Datum je Zeile (TT.MM.JJJJ, JJJJ-MM-TT, a/b/JJJJ über aufeinanderfolgende Tage entschieden) | `leseDailySales`, Upload-Formular „Angaben für BQool-Berichte“ |
+| Speichern je SKU/Land/Zeitraum | ❌ | ✅ Sales, Orders, Units, Est. Profit, Buy Box Wins, Below/At Min, At Max, Avg Offers/Position, Reprice/Price Up/Down/Changes, Buy Box Lost Amazon/FBA/FBM; übrige Spalten bleiben als Zusatz. Doppelte SKU (zwei Regeln) zusammengefasst, Regel der Zeile mit Daten | Tabellen `bqool_leistung`, `bqool_tageswerte`, `bqool_berichte`, `bqool_berichte_offen` (Migration 0137) |
+| Reiter „Leistung“ | ❌ | ✅ Repricer hat jetzt Reiter Übersicht / Leistung / BQool-Dateien. Leistung: Stand je Land, Buy-Box-Anteil je Land und Woche, Listen „Steht unter Min, keine Buy Box“ (Below Min ≥ 50 %, Buy Box < 10 % → „Min senken auf effektiven Min“), „Verkauft mit Verlust“ (Min anheben oder Liquidation bestätigen), „Auffällige Preisbewegung“ (\|Price Changes\| > 500 € oder > 200 Erhöhungen bei Below Min 100 % → Aufgabe „BQool-Regel prüfen“ je Land) | `src/app/(app)/repricer/leistung/page.tsx`, `leistungAuswerten`, `SUBPAGES["/repricer"]` |
+| Daily Sales auf der Gewinn-Seite | ❌ | ✅ Abschnitt „Zum Vergleich je Tag: laut BQool“ (Umsatz, Bestellungen, Stück, Est. Profit, Buy Box je Tag; daneben sellerboard Amazon); Werkzeug `umsatz` mit Block `bqool` | `src/app/(app)/gewinn/page.tsx`, `umsatz` (`tools/wawi.ts`) |
+| Buy-Box-Anteil in `repricer` und Morgenbericht | ❌ | ✅ `repricer.buybox_anteil` (je Land und Woche); Morgenbericht-Zeile „Buy Box DE … %, FR … %, IT … %, ES … %“ (nur Inhaber, Berichte höchstens 8 Tage alt) | `buyboxUebersicht`, `buyboxMorgenZeile`, `morgenText` |
+| Verlust-Stopp zweite Quelle | ❌ nur sellerboard | ✅ Abschnitt „Zweite Quelle: BQool (Est. Profit)“ mit „auch oben“-Kennzeichen; je sellerboard-Fall `bqool_est_profit`; Werkzeug `verlust_stopp` mit `bqool_zweite_quelle` | `bqoolVerlustQuelle`, `verlustStopp` |
+| Automatik | ❌ | ✅ Täglicher Lauf (Schritt 1) lädt je Land „Listing Performance“ mit „Last 7 days“ und „Daily Sales“, sobald unter Anbindungen → BQool die Berichtsseiten DE eingetragen sind (FR/IT/ES abgeleitet); Land kennt der Lauf, keine Rückfrage; Abruf „BQool: Berichte“ | `berichtHerunterladen` (`src/lib/automatik/bqool-ist.ts`), `berichteEinlesen` (`kreislauf.ts`) |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 5. Fünf Dateien per Drag-and-Drop → Typ und Land erkannt, Reiter „Leistung“ mit drei Listen, Buy-Box-Anteil je Land stimmt | ✅ automatisch mit erfundenen Dateien gleichen Formats (`e2e/b31-5-bqool-berichte.spec.ts`): 4 × Listing Performance (DE über Regelname, FR/IT/ES über SKU-Abgleich), Daily Sales DE über die Umsatzsumme; Buy Box je Land wie in den Dateien; drei Listen mit Vorschlag, Aufgabe „BQool-Regel prüfen“; Gewinn-Spalte, Verlust-Stopp, Claude (`repricer`, `umsatz`, `verlust_stopp`); unbekannte SKUs → „Welches Land?“ → Knopf FR. Mit den echten Dateien vom 07.11. nur live (To-do 111) |
+| Automatik | ✅ automatisch gegen den BQool-Nachbau: „Last 7 days“ je Land gewählt, 4 × Listing Performance + 4 × Daily Sales ohne Rückfrage eingelesen, Abruf „BQool: Berichte“ |
+
+Annahme (die echten Dateien lagen für den Bau nicht vor): Die Spalte „Products“ enthält die SKU (eigene Spalte, „SKU: …“ oder als Wort neben Titel/ASIN). Findet der Upload keine SKU, nennt er die
+Zahl der Zeilen ohne SKU und die Spalten – dann bitte eine Datei-Zeile (ohne Preise) zeigen. Buy-Box-Anteil je Land
+= Summenzeile der Datei, sonst Mittel der SKUs.
+
+**Werkzeuge B31.5:** keine neuen. Geändert: `repricer` (Feld `buybox_anteil`, Beschreibung), `umsatz` (Block
+`bqool`, Beschreibung), `verlust_stopp` (`bqool_zweite_quelle`, Beschreibung), `import_link` (neue Art
+`bqool_bericht`), `anbindungen_status` (Abruf „BQool: Berichte“) → `notifications/tools/list_changed`.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2006,3 +2036,7 @@ nie in Chats oder Mails.
      Sicherheitsnetz, kann „Break-even ohne Marge“ gewählt werden – Standard bleibt der effektive Min.
 110. **Automatisch hochladen (optional)**: erst nach Punkt 109 einschalten (Repricer → BQool-Dateien → Einstellungen).
      Auch dann braucht ein Lauf mit Regelwechsel oder Min unter Break-even die Freigabe.
+111. **BQool-Berichte (B31.5)**: Die fünf Dateien vom 07.11. nach dem Update unter Uploads noch einmal hochladen
+     (Typ und Land werden erkannt; fragt das System nach dem Land, den Vorschlag prüfen und tippen). Für den täglichen
+     Lauf unter Anbindungen → BQool die Adressen der Berichtsseiten „Listing Performance“ und „Daily Sales“ (DE)
+     eintragen – FR/IT/ES werden abgeleitet.

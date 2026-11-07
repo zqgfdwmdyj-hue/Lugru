@@ -235,6 +235,19 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     return { art, text: r.text, hinweise: r.hinweise, link: erkannt === "bqool_datei" ? "/repricer/bqool" : "/repricer" };
   }
 
+  // B31.5: BQool-Berichte – Land/Zeitraum aus dem Hinweis, sonst erkannt; nicht eindeutig → Fehler mit Vorschlag.
+  if (art === "bqool_bericht") {
+    const erkannt = await dateiArt(name, bytes);
+    if (erkannt !== "bqool_listing_performance" && erkannt !== "bqool_daily_sales") throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
+    const { istBerichtLand, zeitraumAus } = await import("@/lib/bqool/berichte-logic");
+    const { land } = landUndZeitraumAus(hinweis);
+    await fortschritt(30);
+    const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null, art: erkannt, dateiImportId: id, bqoolLand: istBerichtLand(land) ? land : null, bqoolTage: zeitraumAus(`${hinweis ?? ""} ${name}`) });
+    if (r.rueckfrage) throw new ImportFehler(`${r.text} Bitte import_link mit dem Land im Hinweis wiederholen (z. B. „${r.rueckfrage.vorschlag ?? "DE"}“).`);
+    if (!r.ok) throw new ImportFehler(r.text);
+    return { art, text: r.text, hinweise: r.hinweise, link: r.link, ...(r.details ?? {}) };
+  }
+
   if (art === "ao_accountone_cog") {
     const { readSheet } = await import("@/lib/imports/arbitrageone");
     const { aoFormat, accountoneMonat } = await import("@/lib/arbitrageone/logic");
