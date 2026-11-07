@@ -149,7 +149,7 @@ test.describe("B28.6–B28.8 Umschlag, Cash-to-Cash, Lernschleife", () => {
       const f1 = ls.locator(`[data-testid="dl-ls-frage"][data-asin="${asin1}"]`);
       const f2 = ls.locator(`[data-testid="dl-ls-frage"][data-asin="${asin2}"]`);
       await expect(f1).toHaveAttribute("data-beantwortet", "0");
-      await expect(f1).toContainText("−30,00");
+      await expect(f1).toContainText("Gewinn -30,00 €");
       await expect(f2).toContainText("Marge 2 %");
       await expect(ls.locator(`[data-testid="dl-ls-frage"][data-asin="B0TL${m}3"]`)).toHaveCount(0);
       // Größter Verlust zuerst
