@@ -77,20 +77,25 @@ export async function vorlaufFuer(tenantId: string, quelle: string | null | unde
   return vorlaufAus(g?.phasen ?? d.gesamt);
 }
 
+/** Offene Bestellungen, die seit über 45 Tagen weder erhalten noch storniert sind. */
+async function alteOffene(tenantId: string, heute: string) {
+  const PO = schema.purchaseOrders;
+  const offen = await db.select({ id: PO.id, number: PO.number, status: PO.status, orderDate: PO.orderDate }).from(PO).where(and(eq(PO.tenantId, tenantId), inArray(PO.status, ["ordered", "shipped", "partial"]))).limit(2000);
+  return zuBereinigen(offen, heute);
+}
+
 /** Kapital-Ampel: Cash-to-Cash und Kapital ÷ Monatsumsatz (Lagerwert = gebundenes Kapital, Umsatz = letzte 30 Tage). */
 export async function cashToCashKennzahlen(tenantId: string, lagerwert: number | null, heute = todayIso()) {
-  const [d, s] = await Promise.all([durchlaufZeiten(tenantId, heute), getSettings(tenantId)]);
+  const [d, s, alt] = await Promise.all([durchlaufZeiten(tenantId, heute), getSettings(tenantId), alteOffene(tenantId, heute).catch(() => [])]);
   const { sellerboardRange } = await import("@/lib/sellerboard/sales");
   const r = await sellerboardRange(tenantId, addDaysIso(heute, -29), heute).catch(() => null);
   const monatsumsatz = r?.sales ?? null;
-  return { ...d, prepName: s.prep?.name ?? null, lagerwert, monatsumsatz, kapitalMonate: kapitalMonate(lagerwert, monatsumsatz), umsatzVollstaendig: r?.complete ?? false };
+  return { ...d, prepName: s.prep?.name ?? null, lagerwert, monatsumsatz, kapitalMonate: kapitalMonate(lagerwert, monatsumsatz), umsatzVollstaendig: r?.complete ?? false, zuBereinigen: alt.length, umsatzVon: addDaysIso(heute, -29), umsatzBis: heute };
 }
 
 /** Aufgabe „Einkäufe bereinigen“: Bestellungen, die seit über 45 Tagen weder erhalten noch storniert sind. */
 export async function einkaeufeBereinigenAufgabe(tenantId: string, heute = todayIso()) {
-  const PO = schema.purchaseOrders;
-  const offen = await db.select({ id: PO.id, number: PO.number, status: PO.status, orderDate: PO.orderDate }).from(PO).where(and(eq(PO.tenantId, tenantId), inArray(PO.status, ["ordered", "shipped", "partial"]))).limit(2000);
-  const alt = zuBereinigen(offen, heute);
+  const alt = await alteOffene(tenantId, heute);
   const key = "einkaeufe-bereinigen";
   if (!alt.length) {
     await resolveSystemTask(db, tenantId, key);

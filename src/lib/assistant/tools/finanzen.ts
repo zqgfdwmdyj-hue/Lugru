@@ -58,7 +58,7 @@ export const kapital_ampel = defineTool({
   name: "kapital_ampel",
   title: "Kapital-Ampel je Produkt",
   description:
-    "Wo liegt Geld, das zu wenig verdient? Je Produkt gebundenes Kapital (Bestand × EK), Gewinn der letzten 90 Tage, Jahresrendite auf das gebundene Kapital (Gewinn 90 T × 365/90 ÷ Kapital), Umschlag, Reichweite, ältestes Lageralter, Preis gegen Break-even und Preis-Trend – mit Ampel (grün/gelb/rot), Gründen und Vorschlägen (nicht nachbestellen, Repricer-Untergrenze, Abverkauf, Liquidation, anderer Kanal). Filter rot/gelb/grün/alle.",
+    "Wo liegt Geld, das zu wenig verdient? Je Produkt gebundenes Kapital (Bestand × EK), Gewinn der letzten 90 Tage, Jahresrendite auf das gebundene Kapital (Gewinn 90 T × 365/90 ÷ Kapital), Umschlag, Reichweite, ältestes Lageralter, Preis gegen Break-even und Preis-Trend – mit Ampel (grün/gelb/rot), Gründen und Vorschlägen (nicht nachbestellen, Repricer-Untergrenze, Abverkauf, Liquidation, anderer Kanal). Dazu cash_to_cash: eigene Durchlaufzeiten (Median je Phase: Bestellung → Wareneingang → Versand an Amazon/Prep Center → Amazon „Empfang abgeschlossen“ → 90 % verkauft, + 14 Tage Auszahlung), Cash-to-Cash-Zyklus in Tagen, je Lieferant/Quelle, Kapital ÷ Monatsumsatz und offene Einkäufe zum Bereinigen. Filter rot/gelb/grün/alle.",
   area: "geld",
   write: false,
   quelle: { text: "sellerboard (Bestand, Gewinn je Monat), eigenes Lager, EK im Seller-System, Amazon-Lageralter, Keepa (Buy Box)", jobs: ["sellerboard:*"] },
@@ -102,6 +102,24 @@ export const kapital_ampel = defineTool({
       })),
       hinweis: list.length > i.limit ? `Nur die ersten ${i.limit} von ${list.length} (rot zuerst, dann nach Kapital).` : undefined,
       legende: { kapital: "null = EK fehlt", rendite_jahr_prozent: "null = EK fehlt oder unter 30 Tage Verkaufsdaten", break_even: "Bruttopreis, bei dem EK + FBA nach Provision und USt gedeckt sind" },
+      // B28.7: Cash-to-Cash-Zyklus und Kapital ÷ Monatsumsatz
+      cash_to_cash: await (async () => {
+        const { cashToCashKennzahlen } = await import("@/lib/money/durchlauf");
+        const c = await cashToCashKennzahlen(ctx.session.tenantId, d.zeilen.length ? d.summe.gesamt : null, ctx.today).catch(() => null);
+        if (!c) return undefined;
+        const ph = (p: { median: number | null; n: number }) => ({ median_tage: p.median, einkaeufe: p.n });
+        return {
+          zeitraum: "erhaltene Einkäufe der letzten 365 Tage; Umsatz letzte 30 Tage",
+          tage: c.cashToCash.tage,
+          vollstaendig: c.cashToCash.vollstaendig,
+          einkaeufe: c.einkaeufe,
+          phasen: { bestellung_bis_wareneingang: ph(c.gesamt.wareneingang), wareneingang_bis_versand_amazon: { ...ph(c.gesamt.prep), prep_center: c.prepName ?? undefined }, versand_bis_empfang_abgeschlossen: ph(c.gesamt.amazonEingang), eingang_bis_90_prozent_verkauft: ph(c.gesamt.abverkauf), auszahlung_tage: c.gesamt.auszahlung },
+          je_lieferant: c.jeGruppe.slice(0, 20).map((g) => ({ lieferant_quelle: g.gruppe, einkaeufe: g.n, wareneingang: g.phasen.wareneingang.median, prep: g.phasen.prep.median, amazon_eingang: g.phasen.amazonEingang.median, abverkauf: g.phasen.abverkauf.median, cash_to_cash_tage: g.cashToCash.tage })),
+          kapital_monatsumsatz: { lagerwert: c.lagerwert, monatsumsatz_30_tage: c.monatsumsatz, monate: c.kapitalMonate, umsatz_vollstaendig: c.umsatzVollstaendig },
+          einkaeufe_bereinigen: c.zuBereinigen || undefined,
+          hinweis: "Median je Phase; fehlende Phase = Standardwert; Abverkauf aus sellerboard-Monatswerten (grob). Empfang abgeschlossen = sellerboard-Sendung geschlossen (letzte Änderung).",
+        };
+      })(),
       link: abs(ctx, i.filter === "alle" ? "/kapital" : `/kapital?filter=${i.filter}`),
     });
   },

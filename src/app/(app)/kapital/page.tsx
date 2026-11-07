@@ -8,6 +8,76 @@ import type { Ampel } from "@/lib/money/kapital";
 import { getSettings } from "@/lib/settings";
 import { kapitalZieleAction } from "./actions";
 import { KAPITALBEDARF_DEFINITION } from "@/lib/purchasing/reorder-logic";
+import { cashToCashKennzahlen } from "@/lib/money/durchlauf";
+import { AUSZAHLUNG_TAGE, BEREINIGEN_TAGE, MIN_BASIS, type Phase, type Phasen } from "@/lib/money/durchlauf-logic";
+import { STANDARD_VORLAUF } from "@/lib/deal-eingang/umschlag-logic";
+
+/** B28.7: Median einer Phase mit Basis, sonst Standardwert (gekennzeichnet). */
+function phaseText(p: Phase, standard: number | null) {
+  if (p.median !== null) return <>{String(p.median).replace(".", ",")} T <span className="muted">({p.n} Einkäufe{p.n < MIN_BASIS ? ", wenig Basis" : ""})</span></>;
+  return standard !== null ? <span className="muted">{standard} T (Standard, keine Daten)</span> : <span className="muted">keine Daten</span>;
+}
+const tageText = (n: number | null) => (n === null ? "–" : `${String(n).replace(".", ",")} T`);
+
+/** B28.7 Cash-to-Cash-Zyklus: Bestellung → Wareneingang → Versand an Amazon → Empfang abgeschlossen → Abverkauf → Auszahlung. */
+function CashToCash({ c }: { c: Awaited<ReturnType<typeof cashToCashKennzahlen>> }) {
+  const g: Phasen = c.gesamt;
+  const s = STANDARD_VORLAUF;
+  return (
+    <section className="card card-pad" style={{ marginTop: 12 }} data-testid="kapital-c2c">
+      <h3 style={{ marginTop: 0 }}>Cash-to-Cash-Zyklus</h3>
+      <div className="grid-kpi">
+        <div>
+          <div className="kpi-label" title="Summe der Mediane: Bestellung → Wareneingang → Versand an Amazon → Empfang abgeschlossen → 90 % verkauft → Auszahlung">Vom Bezahlen der Ware bis das Geld zurück ist</div>
+          <div className={`kpi-value${c.cashToCash.tage === null ? " muted" : ""}`} data-testid="kapital-c2c-tage">{c.cashToCash.tage === null ? "noch nicht berechenbar" : `${c.cashToCash.tage} Tage`}</div>
+          <div className="small muted">{c.cashToCash.tage === null ? "Abverkauf fehlt (noch kein Einkauf zu 90 % verkauft bzw. keine sellerboard-Monatswerte)." : c.cashToCash.vollstaendig ? `Median aus ${c.einkaeufe} erhaltenen Einkäufen` : "fehlende Phasen mit Standardwerten"}</div>
+        </div>
+        <div>
+          <div className="kpi-label" title="Gebundenes Kapital ÷ Umsatz der letzten 30 Tage (sellerboard)">Kapital ÷ Monatsumsatz</div>
+          <div className={`kpi-value${c.kapitalMonate === null ? " muted" : ""}`} data-testid="kapital-monate">{c.kapitalMonate === null ? "–" : `${String(c.kapitalMonate).replace(".", ",")} Monatsumsätze`}</div>
+          <div className="small muted">{c.lagerwert !== null ? eur0(c.lagerwert) : "–"} gebunden ÷ {c.monatsumsatz !== null ? eur0(c.monatsumsatz) : "–"} Umsatz ({c.umsatzVon.split("-").reverse().join(".")}–{c.umsatzBis.split("-").reverse().join(".")}{c.monatsumsatz !== null && !c.umsatzVollstaendig ? ", unvollständig" : ""})</div>
+        </div>
+      </div>
+      <div className="table-wrap" style={{ marginTop: 8 }}>
+        <table className="table small" data-testid="kapital-c2c-phasen">
+          <thead><tr><th>Phase</th><th>Median</th></tr></thead>
+          <tbody>
+            <tr><td>Bestellung → Wareneingang</td><td>{phaseText(g.wareneingang, s.wareneingang)}</td></tr>
+            <tr><td>Wareneingang → Versand an Amazon{c.prepName ? ` (Prep Center ${c.prepName})` : " (Prep Center)"}</td><td>{phaseText(g.prep, s.prep)}</td></tr>
+            <tr><td>Versand → Amazon „Empfang abgeschlossen“</td><td>{phaseText(g.amazonEingang, s.amazonEingang)}</td></tr>
+            <tr><td>Eingang bei Amazon → 90 % verkauft</td><td>{phaseText(g.abverkauf, null)}</td></tr>
+            <tr><td>Auszahlung</td><td>{AUSZAHLUNG_TAGE} T <span className="muted">(fest)</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      {c.jeGruppe.length > 0 && (
+        <details style={{ marginTop: 8 }}>
+          <summary className="small">Je Lieferant / Quelle ({c.jeGruppe.length})</summary>
+          <div className="table-wrap">
+            <table className="table small" data-testid="kapital-c2c-gruppen">
+              <thead><tr><th>Lieferant / Quelle</th><th>Einkäufe</th><th>Wareneingang</th><th>Prep</th><th>Amazon-Eingang</th><th>Abverkauf</th><th>Cash-to-Cash</th></tr></thead>
+              <tbody>
+                {c.jeGruppe.slice(0, 30).map((x) => (
+                  <tr key={x.gruppe}>
+                    <td>{x.gruppe}</td><td>{x.n}</td><td>{tageText(x.phasen.wareneingang.median)}</td><td>{tageText(x.phasen.prep.median)}</td><td>{tageText(x.phasen.amazonEingang.median)}</td><td>{tageText(x.phasen.abverkauf.median)}</td>
+                    <td>{x.cashToCash.tage === null ? "–" : `${x.cashToCash.tage} T${x.cashToCash.vollstaendig ? "" : " (teils Standard)"}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      {c.zuBereinigen > 0 && (
+        <div className="notice notice-warn small" style={{ marginTop: 8 }} data-testid="kapital-bereinigen">
+          {c.zuBereinigen} Einkauf{c.zuBereinigen === 1 ? "" : "e"} seit über {BEREINIGEN_TAGE} Tagen weder erhalten noch storniert – verfälscht Durchlaufzeiten und Kapitalbedarf. <Link href="/einkauf?ansicht=offen">Einkäufe bereinigen →</Link>
+        </div>
+      )}
+      <KpiMeta period="Einkäufe der letzten 365 Tage (erhalten) · Umsatz: letzte 30 Tage" source="Einkauf (bestellt/erhalten), sellerboard (FBA-Sendungen erstellt/geschlossen, Verkäufe je SKU und Monat)" stand="aktuell (10 Min. zwischengespeichert)" />
+      <p className="small muted" style={{ marginBottom: 0 }}>Grundlage für den Vorlauf der Umschlagszeit im Deal-Eingang (ab {MIN_BASIS} Einkäufen je Phase, sonst Standardwerte). Abverkauf aus Monatswerten – daher grob.</p>
+    </section>
+  );
+}
 
 /** B15.5: Begriff klar abgrenzen – gebundenes Kapital ist Ware, die schon da ist; Kapitalbedarf ist, was nachbestellt werden müsste. */
 const GEBUNDEN_DEFINITION = "Gebundenes Kapital = Ware, die schon da ist: Bestand bei Amazon (verkaufbar, reserviert, unterwegs) + eigenes Lager × gültiger EK (netto). Artikel ohne EK sind nicht enthalten.";
@@ -49,6 +119,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
   const k = settings.kapital;
   const stand = data.stand ? data.stand.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "noch kein Abgleich";
   const ohneEk = data.zeilen.filter((z) => z.ek === null).length;
+  const c2c = await cashToCashKennzahlen(session.tenantId, data.zeilen.length ? data.summe.gesamt : null).catch(() => null);
 
   return (
     <>
@@ -82,6 +153,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
       {data.zeilen.length === 0 ? (
         <div className="card card-pad" data-testid="kapital-leer">
           Noch kein Bestand. Die Werte kommen mit dem sellerboard-Abgleich – sofort über <Link href="/anbindungen#sellerboard">Anbindungen → sellerboard → „Jetzt abgleichen“</Link>.
+          {c2c && c2c.einkaeufe > 0 && <CashToCash c={c2c} />}
         </div>
       ) : (
         <>
@@ -110,6 +182,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
             </div>
             <KpiMeta period="Gewinn: letzte 90 Tage · Bestand: aktuell" source="sellerboard (Bestand, Gewinn je Monat), eigenes Lager, EK im Seller-System, Amazon-Lageralter und Lagergebühren-Bericht, Keepa (Buy Box)" stand={stand} />
           </div>
+          {c2c && <CashToCash c={c2c} />}
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0" }} data-testid="kapital-filter">
             {(["alle", "rot", "gelb", "gruen"] as const).map((a) => (

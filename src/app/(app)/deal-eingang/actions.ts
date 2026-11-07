@@ -434,3 +434,39 @@ export async function bestellEinstellungenAction(fd: FormData) {
   revalidatePath(ziel);
   redirect(mit(ziel, "Bestellmail-Einstellungen gespeichert."));
 }
+
+// ---- B28.8 Lernschleife Verlustprodukte (nur der Inhaber beantwortet, nicht die VA) ------------------------------
+
+const LERNEN = `${PFAD}/lernen`;
+
+async function nurInhaber() {
+  const s = await requireArea("dealeingang");
+  if (s.role !== "owner" || s.readOnly) redirect(mit(`${LERNEN}#lernschleife`, "Die Lernschleife beantwortet nur der Inhaber."));
+  return s;
+}
+
+/** Antwort je Verlustprodukt: Nie wieder / Pech / Weiß nicht warum, optional Gründe und Freitext. */
+export async function lernschleifeAntwortAction(fd: FormData) {
+  const s = await nurInhaber();
+  const { istLernAntwort, LERN_GRUENDE_EXTRA } = await import("@/lib/deal-eingang/lernschleife-logic");
+  const { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH } = await import("@/db/tables/deal-eingang");
+  const id = String(fd.get("id") ?? "");
+  const antwort = fd.get("antwort");
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !istLernAntwort(antwort)) redirect(mit(`${LERNEN}#lernschleife`, "Antwort fehlt."));
+  const erlaubt = new Set<string>([...DAUMEN_GRUENDE, ...DAUMEN_GRUENDE_HOCH, ...LERN_GRUENDE_EXTRA]);
+  const gruende = fd.getAll("grund").map(String).filter((g) => erlaubt.has(g));
+  const freitext = String(fd.get("freitext") ?? "").trim() || null;
+  const { lernschleifeBeantworten } = await import("@/lib/deal-eingang/lernschleife");
+  const r = await lernschleifeBeantworten(s.tenantId, s.userId, id, antwort, gruende, freitext);
+  revalidatePath(LERNEN);
+  redirect(mit(`${LERNEN}#lernschleife`, r ? `Gespeichert: ${(r.titel ?? r.asin ?? "Produkt").slice(0, 40)}.` : "Produkt nicht gefunden."));
+}
+
+/** Liste des Vormonats jetzt anlegen (sonst automatisch am 3. des Monats) – ohne Push. */
+export async function lernschleifeErstellenAction() {
+  const s = await nurInhaber();
+  const { lernschleifeErstellen } = await import("@/lib/deal-eingang/lernschleife");
+  const r = await lernschleifeErstellen(s.tenantId, undefined, { push: false });
+  revalidatePath(LERNEN);
+  redirect(mit(`${LERNEN}#lernschleife`, `Lernschleife ${r.monat}: ${r.produkte} Verlustprodukt${r.produkte === 1 ? "" : "e"}, ${r.neu} neu.`));
+}

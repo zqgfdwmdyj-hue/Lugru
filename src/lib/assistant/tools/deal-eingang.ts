@@ -233,7 +233,7 @@ export const dealLernenBerichtTool = defineTool({
   name: "deal_lernen_bericht",
   title: "Deal-Wert: Monatsbericht",
   description:
-    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle der jeweiligen Quelle – Lugru Deals 60 vorbelegt – und danach gekauft/gut bzw. 👍), eigener Block lugru_deals (gekauft, mit Ergebnis, Trefferquote), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), gruende (Anzahl je 👍-/👎-Grund, begründete vs. unbegründete 👍, letzte Freitexte – begründete 👍 zählen im Deal-Wert stärker, passende Gründe heben/senken den Wert ähnlicher Deals), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
+    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle der jeweiligen Quelle – Lugru Deals 60 vorbelegt – und danach gekauft/gut bzw. 👍), eigener Block lugru_deals (gekauft, mit Ergebnis, Trefferquote), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), gruende (Anzahl je 👍-/👎-Grund, begründete vs. unbegründete 👍, letzte Freitexte – begründete 👍 zählen im Deal-Wert stärker, passende Gründe heben/senken den Wert ähnlicher Deals), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History und lernschleife (monatliche Verlustprodukte: Verlust oder Marge unter 3 % im Vormonat, nur Einkäufe der letzten 6 Monate; Antworten „Nie wieder“/„Pech“/„Weiß nicht warum“ mit Gründen – nur Ludwig beantwortet in der Oberfläche; Trefferquote je Einkaufsmonat = Anteil Einkäufe mit Marge über Ziel, Ziel 80 %). monat = YYYY-MM, Standard Vormonat.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE_WERT,
@@ -264,6 +264,25 @@ export const dealLernenBerichtTool = defineTool({
       // B22.2: Lugru-Deals des Monats (Schwelle 60 vorbelegt, Käufe automatisch erkannt) mit eigener Trefferquote
       lugru_deals: b.lugruDeals ? { deals: b.lugruDeals.deals, mit_deal_wert: b.lugruDeals.mitWert, ueber_schwelle: b.lugruDeals.ueberSchwelle, gekauft: b.lugruDeals.gekauft, mit_ergebnis: b.lugruDeals.mitErgebnis, trefferquote_prozent: b.lugruDeals.trefferquote, treffer_basis: b.lugruDeals.trefferBasis } : null,
       lugru_history: { deals: b.lugru.deals, mit_kauf_reaktion: b.lugru.mitKauf, kauf_reaktionen: b.lugru.kaeufe, selbst_gekauft: b.lugru.selbstGekauft, stand: b.lugru.zuletzt?.toISOString() ?? null },
+      // B28.8: monatliche Lernschleife Verlustprodukte und Trefferquote je Einkaufsmonat
+      lernschleife: await (async () => {
+        const { lernschleifeBericht } = await import("@/lib/deal-eingang/lernschleife");
+        const { LERN_ANTWORTEN } = await import("@/lib/deal-eingang/lernschleife-logic");
+        const l = await lernschleifeBericht(ctx.session.tenantId, ctx.today).catch(() => null);
+        if (!l) return undefined;
+        return {
+          monat: l.monat,
+          offen: l.offen,
+          beantwortet: l.beantwortet,
+          antworten_gesamt: { nie_wieder: l.antworten.nie_wieder, pech: l.antworten.pech, weiss_nicht: l.antworten.unklar },
+          gruende: l.gruende.slice(0, 10),
+          produkte: l.fragen.filter((f) => f.monat === l.monat).slice(0, 30).map((f) => ({ titel: f.titel, asin: f.asin ?? undefined, skus: f.skus, gewinn: f.gewinn, marge_prozent: f.marge, verkauft: f.units, letzter_einkauf: f.letzterEinkauf ?? undefined, antwort: f.antwort ? LERN_ANTWORTEN[f.antwort] : "offen", gruende: f.gruende.length ? f.gruende : undefined, freitext: f.freitext ?? undefined })),
+          trefferquote_je_monat: l.trefferquote.map((t) => ({ monat: t.monat, einkaeufe: t.einkaeufe, ueber_ziel: t.ueberZiel, quote_prozent: t.quote })),
+          treffer_ziel_prozent: l.trefferZiel,
+          ziel_marge_prozent: l.zielMarge,
+          link: abs(ctx, "/deal-eingang/lernen#lernschleife"),
+        };
+      })(),
       link: abs(ctx, `/deal-eingang/lernen?monat=${monat}`),
     });
   },

@@ -3,7 +3,67 @@ import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { lernBerichtFuer } from "@/lib/deal-eingang/wert";
 import { KpiMeta } from "@/components/kpi";
-import { ergebnisseAction } from "../actions";
+import { ergebnisseAction, lernschleifeAntwortAction, lernschleifeErstellenAction } from "../actions";
+import { lernschleifeBericht, type LernFrage } from "@/lib/deal-eingang/lernschleife";
+import { LERN_ANTWORTEN, LERN_GRUENDE_EXTRA, MARGE_GRENZE, monatName, TREFFER_ZIEL } from "@/lib/deal-eingang/lernschleife-logic";
+import { DAUMEN_GRUENDE, DAUMEN_GRUENDE_HOCH } from "@/db/tables/deal-eingang";
+import { formatEuro } from "@/lib/numbers";
+
+const LERN_GRUENDE = [...new Set<string>([...DAUMEN_GRUENDE.filter((g) => g !== "sonstiges"), ...DAUMEN_GRUENDE_HOCH, ...LERN_GRUENDE_EXTRA])];
+
+/** B28.8: ein Verlustprodukt mit den drei Knöpfen (nur Inhaber) bzw. der gegebenen Antwort. */
+function LernFrageZeile({ f, inhaber }: { f: LernFrage; inhaber: boolean }) {
+  const kopf = (
+    <div>
+      <strong>{(f.titel ?? f.asin ?? f.skus[0] ?? "Produkt").slice(0, 80)}</strong>
+      <span className="small muted"> · {f.asin ?? f.skus.join(", ")}</span>
+      <div className="small">
+        Gewinn <strong>{formatEuro(f.gewinn ?? 0)}</strong> · Marge {f.marge === null ? "–" : `${String(f.marge).replace(".", ",")} %`} · {f.units ?? 0} verkauft · Umsatz {formatEuro(f.umsatz ?? 0)}
+        {f.letzterEinkauf ? ` · zuletzt eingekauft ${f.letzterEinkauf.split("-").reverse().join(".")}` : ""}
+        {f.quelle ? ` · Quelle ${f.quelle}` : ""}
+        {f.marke ? ` · Marke ${f.marke}` : ""}
+      </div>
+    </div>
+  );
+  if (f.antwort) {
+    return (
+      <li className="card card-pad" data-testid="dl-ls-frage" data-beantwortet="1" data-asin={f.asin ?? ""}>
+        {kopf}
+        <div className="small" data-testid="dl-ls-antwort">
+          Antwort: <strong>{LERN_ANTWORTEN[f.antwort]}</strong>
+          {f.gruende.length ? ` · ${f.gruende.join(", ")}` : ""}
+          {f.freitext ? ` · „${f.freitext}“` : ""}
+        </div>
+      </li>
+    );
+  }
+  return (
+    <li className="card card-pad" data-testid="dl-ls-frage" data-beantwortet="0" data-asin={f.asin ?? ""}>
+      {kopf}
+      {inhaber ? (
+        <form action={lernschleifeAntwortAction} className="stack small" style={{ gap: 6, marginTop: 6 }}>
+          <input type="hidden" name="id" value={f.id} />
+          <details>
+            <summary>Grund (optional)</summary>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              {LERN_GRUENDE.map((g) => (
+                <label key={g} className="row" style={{ gap: 4 }}><input type="checkbox" name="grund" value={g} /> {g}</label>
+              ))}
+            </div>
+            <input className="input" name="freitext" placeholder="Freitext (optional)" maxLength={500} style={{ marginTop: 4, width: "100%" }} />
+          </details>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <button className="btn btn-sm" name="antwort" value="nie_wieder" data-testid="dl-ls-nie">Nie wieder kaufen</button>
+            <button className="btn btn-sm" name="antwort" value="pech" data-testid="dl-ls-pech">Würde ich wieder kaufen (Pech)</button>
+            <button className="btn btn-sm" name="antwort" value="unklar" data-testid="dl-ls-unklar">Weiß nicht warum</button>
+          </div>
+        </form>
+      ) : (
+        <div className="small muted">Offen – beantwortet nur der Inhaber.</div>
+      )}
+    </li>
+  );
+}
 
 // Abschnitt 11: Monatsbericht „Wie gut lag der Deal-Wert?“ – Trefferquote, verpasste gute Deals, Fehlkäufe,
 // wichtigste Merkmale (ab Lernmodell) und Stand der Lugru-Deals-History (nur Anzahlen).
@@ -38,7 +98,10 @@ export default async function DealLernenPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const liste = monate(todayIso());
   const monat = sp.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.monat) ? sp.monat : liste[1];
-  const b = await lernBerichtFuer(session.tenantId, monat);
+  const [b, ls] = await Promise.all([lernBerichtFuer(session.tenantId, monat), lernschleifeBericht(session.tenantId).catch(() => null)]);
+  const inhaber = session.role === "owner" && !session.readOnly;
+  const lsAktuell = ls?.fragen.filter((f) => f.monat === ls.monat) ?? [];
+  const lsAelter = ls?.fragen.filter((f) => f.monat !== ls.monat) ?? [];
   return (
     <>
       <div className="page-head">
@@ -123,6 +186,57 @@ export default async function DealLernenPage({ searchParams }: { searchParams: P
           <ul className="small">{b.wichtigsteMerkmale.map((m) => <li key={m.merkmal}>{MERKMAL[m.merkmal] ?? m.merkmal}: {m.gewicht > 0 ? "spricht dafür" : "spricht dagegen"} ({m.gewicht.toLocaleString("de-DE")})</li>)}</ul>
         </section>
       )}
+
+      <section className="card card-pad" style={{ marginTop: 12 }} id="lernschleife" data-testid="dl-lernschleife">
+        <h3 style={{ marginTop: 0 }}>Lernschleife Verlustprodukte{ls?.monat ? ` · ${monatName(ls.monat)}` : ""}</h3>
+        <p className="small muted">
+          Am 3. jedes Monats: Produkte mit Verlust oder Marge unter {MARGE_GRENZE} % im Vormonat (sellerboard je SKU, größter Verlust zuerst), nur Einkäufe der letzten 6 Monate. „Nie wieder“ zieht bei ähnlichen neuen Deals
+          (gleiche Marke; gleiche Kategorie und Quelle; gleiche Quelle mit ähnlich vielen Angeboten) Punkte ab, „Pech“ und „Weiß nicht warum“ geben einen Hinweis – jeweils „ähnlicher Fehlkauf am …“ im Deal-Wert.
+        </p>
+        {inhaber && (
+          <form action={lernschleifeErstellenAction} style={{ marginBottom: 8 }}>
+            <button className="btn btn-sm" type="submit" data-testid="dl-ls-erstellen" title="Sonst automatisch am 3. des Monats (mit Push)">Liste für den Vormonat jetzt erstellen</button>
+          </form>
+        )}
+        {ls && ls.fragen.length > 0 ? (
+          <>
+            <p className="small" data-testid="dl-ls-stand">
+              {ls.offen} offen, {ls.beantwortet} beantwortet. Bisher insgesamt: {ls.antworten.nie_wieder}× „Nie wieder“, {ls.antworten.pech}× „Pech“, {ls.antworten.unklar}× „Weiß nicht warum“
+              {ls.gruende.length ? ` · Gründe: ${ls.gruende.slice(0, 6).map((g) => `${g.grund} ${g.anzahl}×`).join(", ")}` : ""}.
+            </p>
+            <ul className="stack" style={{ listStyle: "none", padding: 0, gap: 8 }} data-testid="dl-ls-liste">
+              {lsAktuell.map((f) => <LernFrageZeile key={f.id} f={f} inhaber={inhaber} />)}
+            </ul>
+            {lsAelter.length > 0 && (
+              <details style={{ marginTop: 8 }}>
+                <summary className="small">Frühere Monate ({lsAelter.length})</summary>
+                <ul className="stack" style={{ listStyle: "none", padding: 0, gap: 8, marginTop: 8 }}>
+                  {lsAelter.map((f) => <LernFrageZeile key={f.id} f={f} inhaber={inhaber} />)}
+                </ul>
+              </details>
+            )}
+          </>
+        ) : (
+          <p className="small muted" data-testid="dl-ls-leer">Noch keine Liste – kommt am 3. des Monats (Push an den Inhaber).</p>
+        )}
+        <h4 style={{ marginBottom: 4 }}>Trefferquote je Einkaufsmonat</h4>
+        <p className="small muted" style={{ marginTop: 0 }}>Anteil der Einkäufe (Chargen mit Verkäufen) mit Marge über der Ziel-Marge ({ls ? String(ls.zielMarge).replace(".", ",") : "–"} %) – Ziel {TREFFER_ZIEL} %. Marge aus sellerboard ab dem Einkaufsmonat.</p>
+        {ls && ls.trefferquote.length > 0 ? (
+          <div className="table-wrap">
+            <table className="table small" data-testid="dl-ls-treffer">
+              <thead><tr><th>Einkaufsmonat</th><th>Einkäufe</th><th>Marge über Ziel</th><th>Trefferquote</th></tr></thead>
+              <tbody>
+                {ls.trefferquote.map((t) => (
+                  <tr key={t.monat}><td>{monatName(t.monat)}</td><td>{t.einkaeufe}</td><td>{t.ueberZiel}</td><td>{t.quote < TREFFER_ZIEL ? <span className="tag tag-warn">{t.quote} %</span> : `${t.quote} %`}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="small muted">Noch keine Einkäufe mit Verkaufsdaten.</p>
+        )}
+        <KpiMeta period="Verlustprodukte: Vormonat · Trefferquote: Einkäufe der letzten 6 Monate" source="sellerboard (Gewinn und Umsatz je SKU und Monat), Chargen und Einkäufe im Seller-System" stand="aktuell" />
+      </section>
 
       <section className="card card-pad" style={{ marginTop: 12 }} data-testid="dl-lugru">
         <h3 style={{ marginTop: 0 }}>Lugru-Deals-History</h3>
