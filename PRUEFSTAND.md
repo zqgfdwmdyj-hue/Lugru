@@ -18,7 +18,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Heute | Schnellerfassung `/schnell` | ○ 0/2 Abläufe | – | 3 |
 | Heute | Feierabend `/kalender/feierabend` | ○ 0/2 Abläufe | – | – |
 | Heute | Fahrtenbuch `/kalender/fahrten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/5 Abläufe | – | 4 |
+| Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/6 Abläufe | – | 4 |
 | Einkauf & Deals | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
 | Einkauf & Deals | Deal-Ampel `/lieferanten/deal-ampel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Deals | Scanner `/scan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -69,7 +69,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Lager & Versand › Retouren | Remissionen `/remissionen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen | Gewinn `/gewinn` | ○ 0/3 Abläufe | – | 1 |
 | Finanzen | Liquidität `/cashflow` | ○ 0/2 Abläufe | – | – |
-| Finanzen | Kapital-Ampel `/kapital` | ○ 0/3 Abläufe | – | – |
+| Finanzen | Kapital-Ampel `/kapital` | ○ 0/4 Abläufe | – | – |
 | Finanzen | Hebel: Umsatz & Marge `/hebel` | ○ 0/1 Abläufe | – | – |
 | Finanzen | Verlust-Stopp `/verlust` | ○ 0/2 Abläufe | – | 1 |
 | Finanzen | Buchhaltung (Abgleich, DATEV) `/buchhaltung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -120,6 +120,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Übergreifend | /calls/offen `/calls/offen` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /kalender/zeiten `/kalender/zeiten` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /privat/familienaufgaben `/privat/familienaufgaben` | ○ 0/1 Abläufe | – | – |
+| Übergreifend | /deal-eingang/lernen `/deal-eingang/lernen` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /privat/therapie-bogen `/privat/therapie-bogen` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | /privat/geld `/privat/geld` | ○ 0/1 Abläufe | – | – |
 | Übergreifend | Fragefeld | ○ 0/2 Abläufe | 👁 behoben | – |
@@ -188,6 +189,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge | Ampel je Angebot mit Gründen; Push ≤ 60 s nur bei Grün/Gelb (ProfitPath); widerrufener Schlüssel abgelehnt; gleiche ASIN/EK zusammengefasst, neuer EK = Update; Einkaufsentwurf und B2B-Entwurf angelegt | ○ im letzten Lauf nicht gelaufen | `deal-eingang.spec.ts` |
 | Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge | History neu/aktualisiert/ungültig gezählt, ohne Schlüssel 401; Deal-Wert „Passt zu dir (X/100)“ mit ähnlichen Deals (Lugru-Gruppe); über Budget höchstens Gelb mit Budget-Grund; Push mit „Zum Angebot“ (Shop-Link) und „Gekauft …“; gekauft → Bestellung „bestellt“ + Aufgabe „Wareneingang buchen“; Mail → gekauft (Menge, Preis, Bestellnummer), Mail bleibt im Posteingang; 👍/👎 mit Weg gespeichert; Ergebnis nach 30 Tagen mit realem ROI; deal_wert/deal_lernen_bericht/deal_bewerten/deal_gekauft | ○ im letzten Lauf nicht gelaufen | `deal-wert.spec.ts` |
 | Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge | je Land Gewinn/Marge/ROI + max. EK Ziel-ROI/Ziel-Marge, Verk./Monat überall gefüllt (IT „geschätzt“), Seller-Central-Knopf; Szenario rechnet neu + „ca. n Verkäufe/Monat (Keepa „gekauft“)“; Deal-Wert des ähnlichen Deals steigt mit Grund-Text, Lernbericht zählt Gründe; Bot fragt im Thread, Grund + Freitext gespeichert; Entwurf an den Lieferanten, nichts gesendet vor „Senden“, danach Beleg am Deal und im Einkauf, Sendungsnummer + Rechnung zugeordnet; deal_gekauft legt nur Entwurf an | ○ im letzten Lauf nicht gelaufen | `deal-b28.spec.ts` |
+| B28.6 Abnahme 6: Testpfanne ab 84 Stück, Mindest-ROI p. a. in den Einstellungen | Spalten „Umschlag“ (Spanne, geschätzt) und „ROI p. a.“ je Land, Hinweis „Umschlag … · ROI p. a. … (Ziel ≥ 100 %)“, Reichweiten-Warnung mit Menge für 45 Tage; deal_wert/deal_eingang_detail mit roi_pa_prozent und umschlag | ○ im letzten Lauf nicht gelaufen | `b28-umschlag.spec.ts` |
 | Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei | Einstellungen gespeichert, Budget/Ziel-ROI unverändert; Link + 4 Skizzen; Rot mit Fallnummer; Rot „selektiver Vertrieb“ + Gelb Gefahrgut als 2. Grund; Chart mit Ø/Tief/Stand; Bild 200 image/png, Datei über anderen Eingang 404 | ○ im letzten Lauf nicht gelaufen | `deal-eingang-luecken.spec.ts` |
 
 - – Offen: B28: Bestellmail an echte Lieferanten (Zustellung, Message-ID-Erhalt je Postfach) und Discord-Rückfrage nach 👍 im echten ProfitPath-Kanal (Bot braucht dort „Nachrichten senden“, „Threads erstellen“, „Reaktionen hinzufügen“) – nur live
@@ -373,6 +375,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen | Ampel rot, „Nicht nachbestellen“ | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 | Kennzahlen | Zeitraum, Quelle, Stand | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
+| B28.7 Abnahme 7: drei erhaltene Einkäufe eines Testlieferanten mit FBA-Sendungen und Monatswerten, ein Einkauf > 45 Tage offen, Umsatz 30 Tage | Cash-to-Cash-Zyklus mit Medianen (4/3/8 T + 14 T Auszahlung), je Lieferant, Kapital ÷ Monatsumsatz, Hinweis „Einkäufe bereinigen“; kapital_ampel.cash_to_cash; Deal-Eingang nimmt den eigenen Vorlauf | ○ im letzten Lauf nicht gelaufen | `b28-umschlag.spec.ts` |
 | Hinweis gestrandeter Bestand + weitere Amazon-Gebühren | Stück, gebundenes Kapital, Langzeit-Lagergebühr | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
 
 ### Finanzen › Hebel: Umsatz & Marge (`/hebel`)
@@ -600,6 +603,12 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft | nur Familienliste + Familienkalender | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 
+### Übergreifend › /deal-eingang/lernen (`/deal-eingang/lernen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B28.8 Abnahme 8: zwei Verlustprodukte + ein Gewinner im Vormonat, „Liste jetzt erstellen“, „Nie wieder“ mit Grund und Freitext, Büro-Kraft mit Deal-Eingang-Zugriff | Liste des Vormonats (größter Verlust zuerst, Gewinner fehlt), Antwort gespeichert und im Lernbericht + deal_lernen_bericht.lernschleife, Büro-Kraft sieht keine Knöpfe | ○ im letzten Lauf nicht gelaufen | `b28-umschlag.spec.ts` |
+
 ### Übergreifend › /privat/therapie-bogen (`/privat/therapie-bogen`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -629,7 +638,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (145 Abläufe + Oberfläche auf 112 Seiten): 0 bestanden, 0 fehlgeschlagen, 145 nicht gelaufen.
+**Automatisch** (148 Abläufe + Oberfläche auf 113 Seiten): 0 bestanden, 0 fehlgeschlagen, 148 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -649,6 +658,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Deal-Eingang: Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
+- ○ Deal-Eingang: B28.6 Abnahme 6: Testpfanne ab 84 Stück, Mindest-ROI p. a. in den Einstellungen – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei – im letzten Lauf nicht gelaufen
 - ○ Lugru Deals: Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert – im letzten Lauf nicht gelaufen
 - ○ Kontakt-Board: Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie – im letzten Lauf nicht gelaufen
@@ -697,6 +707,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Liquidität: Kontoauszug einlesen, Amex erkannt, großer Einkauf in der Amex-Woche – im letzten Lauf nicht gelaufen
 - ○ Kapital-Ampel: Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen – im letzten Lauf nicht gelaufen
 - ○ Kapital-Ampel: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Kapital-Ampel: B28.7 Abnahme 7: drei erhaltene Einkäufe eines Testlieferanten mit FBA-Sendungen und Monatswerten, ein Einkauf > 45 Tage offen, Umsatz 30 Tage – im letzten Lauf nicht gelaufen
 - ○ Kapital-Ampel: Hinweis gestrandeter Bestand + weitere Amazon-Gebühren – im letzten Lauf nicht gelaufen
 - ○ Hebel: Umsatz & Marge: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Verlust-Stopp: 2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar – im letzten Lauf nicht gelaufen
@@ -772,6 +783,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ /calls/offen: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ /kalender/zeiten: Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick – im letzten Lauf nicht gelaufen
 - ○ /privat/familienaufgaben: Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft – im letzten Lauf nicht gelaufen
+- ○ /deal-eingang/lernen: B28.8 Abnahme 8: zwei Verlustprodukte + ein Gewinner im Vormonat, „Liste jetzt erstellen“, „Nie wieder“ mit Grund und Freitext, Büro-Kraft mit Deal-Eingang-Zugriff – im letzten Lauf nicht gelaufen
 - ○ /privat/therapie-bogen: Therapie-Bogen seit letzter Sitzung (B16): Beobachtung mit 3 Feldern und „[?]“, Zeitraum wählen, Beobachtung ändern/löschen per Formular und Claude, rückgängig – im letzten Lauf nicht gelaufen
 - ○ /privat/geld: Frage für den Steuerberater, nur für die eigene Person – im letzten Lauf nicht gelaufen
 - ○ Fragefeld: Altes Gespräch nach Update fortsetzen – im letzten Lauf nicht gelaufen
