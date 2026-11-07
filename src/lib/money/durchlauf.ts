@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
@@ -10,7 +10,7 @@ import { abverkaufTage, durchlaufAuswerten, kapitalMonate, MIN_BASIS, vorlaufAus
 // B28.7 Eigene Durchlaufzeiten aus vorhandenen Daten: Einkauf (bestellt/erhalten), FBA-Sendungen (sellerboard:
 // erstellt, geschlossen), sellerboard-Monatswerte je SKU (Abverkauf). Median je Lieferant/Quelle, Cash-to-Cash.
 
-const cache = new Map<string, { am: number; wert: Awaited<ReturnType<typeof berechnen>> }>();
+const cache = new Map<string, { am: number; stand: string; wert: Awaited<ReturnType<typeof berechnen>> }>();
 const CACHE_MS = 10 * 60_000;
 
 async function berechnen(tenantId: string, heute: string) {
@@ -59,12 +59,23 @@ async function berechnen(tenantId: string, heute: string) {
   return durchlaufAuswerten(einkaeufe);
 }
 
-/** Auswertung (10 Minuten zwischengespeichert – wird je Deal-Prüfung gebraucht). */
+/** Datenstand (Anzahl/letzte Änderung der Einkäufe, Sendungen, Monatswerte) – neue Daten verwerfen den Zwischenspeicher. */
+async function datenStand(tenantId: string, heute: string) {
+  const r = await db.execute(sql`select
+    (select count(*) || '/' || coalesce(max(received_at)::text, '') from purchase_orders where tenant_id = ${tenantId} and status = 'received') as po,
+    (select count(*) || '/' || coalesce(max(synced_at)::text, '') from sellerboard_shipments where tenant_id = ${tenantId}) as sh,
+    (select coalesce(max(synced_at)::text, '') from sellerboard_sku_months where tenant_id = ${tenantId}) as mo`);
+  const row = (r.rows[0] ?? {}) as Record<string, unknown>;
+  return `${heute}|${row.po}|${row.sh}|${row.mo}`;
+}
+
+/** Auswertung (bis 10 Minuten zwischengespeichert, solange sich die Daten nicht ändern – wird je Deal-Prüfung gebraucht). */
 export async function durchlaufZeiten(tenantId: string, heute = todayIso()) {
+  const stand = await datenStand(tenantId, heute).catch(() => "");
   const c = cache.get(tenantId);
-  if (c && Date.now() - c.am < CACHE_MS) return c.wert;
+  if (c && c.stand === stand && Date.now() - c.am < CACHE_MS) return c.wert;
   const wert = await berechnen(tenantId, heute);
-  cache.set(tenantId, { am: Date.now(), wert });
+  cache.set(tenantId, { am: Date.now(), stand, wert });
   return wert;
 }
 

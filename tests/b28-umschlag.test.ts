@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { STANDARD_VORLAUF, umschlagKurz, umschlagSchaetzen, vorlaufTage } from "@/lib/deal-eingang/umschlag-logic";
 import { abverkaufTage, cashToCash, durchlaufAuswerten, kapitalMonate, median, tageZwischen, vorlaufAus, zuBereinigen } from "@/lib/money/durchlauf-logic";
 import { fehlkaufBeitraege, istLernTag, trefferquoteMonate, trefferZeile, verlustProdukte, vormonat } from "@/lib/deal-eingang/lernschleife-logic";
-import { kennzahlenWert } from "@/lib/deal-eingang/wert-logic";
+import { dealWert, kennzahlenWert } from "@/lib/deal-eingang/wert-logic";
+import { pushText } from "@/lib/deal-eingang/logic";
+import { MELDE_ARTEN, morgenText } from "@/lib/push/logic";
 
 describe("B28.6 Umschlagszeit und ROI p. a.", () => {
   it("Spanne aus Verkäufen, Angeboten, Menge und Vorlauf; ROI p. a. = ROI × 365 / Umschlag", () => {
@@ -102,5 +104,22 @@ describe("B28.8 Lernschleife Verlustprodukte", () => {
     expect(t).toEqual([{ monat: "2026-10", einkaeufe: 4, ueberZiel: 3, quote: 75 }, { monat: "2026-09", einkaeufe: 1, ueberZiel: 0, quote: 0 }]);
     expect(trefferZeile(t[0])).toBe("Trefferquote Oktober 2026: 75 % (Ziel 80 %)");
     expect(trefferZeile(null)).toBeNull();
+  });
+  it("Morgenbericht mit Trefferquote, Push-Art Lernschleife, Fehlkauf im Deal-Wert", () => {
+    expect(morgenText({ ueberNacht: 0, fristen: 0, wichtig: 0, paletten: 0, treffer: "Trefferquote Oktober 2026: 75 % (Ziel 80 %)" })).toBe("Trefferquote Oktober 2026: 75 % (Ziel 80 %).");
+    expect(MELDE_ARTEN.some((a) => a.key === "lernschleife" && a.standard)).toBe(true);
+    const fk = [{ datum: "2026-10-01", titel: "Testartikel Pfanne", asin: "B0TESTL001", marke: "Testmarke", kategorie: null, quelle: null, angebote: null, antwort: "nie_wieder" as const }];
+    const ohne = dealWert({ roi: 30, marke: "Testmarke" }, { zielRoi: 20, ampel: "gruen", historie: [] });
+    const mit = dealWert({ roi: 30, marke: "Testmarke" }, { zielRoi: 20, ampel: "gruen", historie: [], fehlkaeufe: fk });
+    expect(mit.wert).toBeLessThan(ohne.wert);
+    expect(mit.dagegen.some((t) => t.startsWith("ähnlicher Fehlkauf am 01.10.2026"))).toBe(true);
+  });
+});
+
+describe("B28.6 Push-Text mit Umschlag", () => {
+  it("Deal-Meldung nennt Umschlag und ROI p. a.", () => {
+    const u = umschlagSchaetzen({ verkaeufeMonat: 60, angebote: 3, menge: 30, roi: 30 })!;
+    const t = pushText([{ ampel: "gruen", gruende: [], titel: "Testartikel", asin: "B0TEST0001", bestesLand: "DE", ekNetto: 10, roi: 30, gewinn: 3, angebote: 3, amazonProzent: 0, empfohlen: 30, kapitalbedarf: 300, maxEk: [], name: null, umschlag: u } as unknown as Parameters<typeof pushText>[0][number]]);
+    expect(t).toContain(`Umschlag ${u.text.replace(" Tage", " T")} · ROI p. a. ${u.roiPa} %`);
   });
 });

@@ -1504,6 +1504,53 @@ Mandanten, und der neue Test legt ebenfalls eine an.
 6. **Frage:** Die Ampel prüft weiter die Netto-Marge (Ziel 15 % vom VK netto). Die Anzeige ist jetzt überall brutto.
    Soll die Ampel auch auf brutto umgestellt werden? 15 % netto entsprechen bei 19 % USt etwa 12,6 % brutto.
 
+### B28.6–B28.8 (Ergänzung 05.11.): ROI pro Jahr, eigene Durchlaufzeiten, Lernschleife Verlustprodukte
+
+Geprüft mit erfundenen Daten: Testpfanne (84 Stück), ein Testlieferant mit drei erhaltenen Einkäufen samt
+FBA-Sendungen und Monatswerten, zwei erfundene Verlustprodukte. Echte Zahlen (Lagerwert, Monatsumsatz,
+Anlass-Deal) stehen nicht im Repo.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B28.6 Spalten „Umschlag“ (Spanne, „geschätzt“) und „ROI p. a.“ in der Ländertabelle | ❌ | ✅ | `umschlagSchaetzen` (`src/lib/deal-eingang/umschlag-logic.ts`), gespeichert je Land in `zeilePruefen` (`service.ts`); Tabelle in `src/app/(app)/deal-eingang/[id]/page.tsx` (ältere Prüfungen: auf der Seite nachgerechnet) |
+| B28.6 Rechnung: Verkäufe/Monat (Keepa bzw. Rang-Schätzung) ÷ (Angebote + 1), schnell/langsam = ein Angebot weniger/mehr, Amazon-Anteil bremst, Menge (sonst 30 Tage), Vorlauf + 14 Tage Auszahlung | ❌ | ✅ | `umschlagSchaetzen`, Erklärung als Tooltip (`umschlagErklaerung`) |
+| B28.6 Reichweiten-Warnung > 60 Tage mit Menge für 45 Tage | ❌ | ✅ | Hinweis unter der Tabelle (`de-umschlag-warnung`) und als gelber Grund der Ampel |
+| B28.6 Ampel/Deal-Wert mit ROI p. a., Mindestwert einstellbar (Standard 100 %) | ❌ | ✅ | Gelb unter dem Mindestwert (`zeilePruefen`); Deal-Wert `kennzahlenWert(…, minRoiPa)`: darüber bis +10, darunter bis −15 Punkte; Feld „Mindest-ROI p. a. %“ in den Deal-Eingang-Einstellungen (`minRoiPa`) |
+| B28.6 Gleiche Kennzahlen in Discord-/Push-Meldung, deal_pruefen, deal_wert, lugru_deals | ❌ | ✅ | `pushText` / `benachrichtigen` („Umschlag ca. 45–70 T · ROI p. a. 180 %“), Werkzeuge siehe unten |
+| B28.7 Durchlaufzeiten je Einkauf: Bestellung → Wareneingang → Versand an Amazon (FBA-Sendung erstellt) → „Empfang abgeschlossen“ → Abverkauf (90 %) + Auszahlung | ❌ | ✅ | `src/lib/money/durchlauf.ts` + `durchlauf-logic.ts`. Empfang abgeschlossen = sellerboard-Sendung geschlossen (letzte Änderung); Abverkauf aus den Monatswerten je SKU (grob) |
+| B28.7 Median je Lieferant/Quelle und je Prep Center | ❌ | ✅ (ein Prep Center) | `durchlaufAuswerten` → `jeGruppe`; im System ist ein Prep Center hinterlegt (Einstellungen → Prep Center), dessen Name steht an der Phase |
+| B28.7 Kapital-Ampel: „Cash-to-Cash-Zyklus“ und „Kapital ÷ Monatsumsatz“ | ❌ | ✅ | Karte auf `/kapital` (`CashToCash`), Umsatz = sellerboard letzte 30 Tage |
+| B28.7 Vorlauf der Umschlagszeit aus eigenen Daten (sonst Standard 7/4/10 Tage) | ❌ | ✅ | `vorlaufFuer` (ab 3 Einkäufen je Phase; passender Lieferant, sonst alle) |
+| B28.7 Hinweis/Aufgabe „Einkäufe bereinigen“ | ❌ | ✅ | Hinweis auf der Kapital-Ampel; Aufgabe `einkaeufe-bereinigen` täglich (Bestellungen > 45 Tage weder erhalten noch storniert) |
+| B28.8 Am 3. Liste der Verlustprodukte des Vormonats (Gewinn < 0 oder Marge < 3 %, nur Einkäufe der letzten 6 Monate, größter Verlust zuerst) | ❌ | ✅ | `lernschleifeTakt` / `lernschleifeErstellen` (`src/lib/deal-eingang/lernschleife.ts`), Tabelle `lernschleife_fragen` (Migration 0138). Quelle: sellerboard je SKU und Monat (Est. Profit aus BQool ist nur 7 Tage je Land, daher nicht für den Monat) |
+| B28.8 Drei Knöpfe + optionaler Grund (Gründe B28.3 + 5 neue) | ❌ | ✅ | Abschnitt „Lernschleife Verlustprodukte“ auf `/deal-eingang/lernen#lernschleife` |
+| B28.8 Nur Ludwig beantwortet | ❌ | ✅ | Server-Aktion nur für den Inhaber; andere sehen „beantwortet nur der Inhaber“; kein Claude-Werkzeug zum Beantworten |
+| B28.8 Antworten im Deal-Wert („ähnlicher Fehlkauf am …“) | ❌ | ✅ | `fehlkaufBeitraege`: gleiche Marke −10 („Nie wieder“) / −4 („Weiß nicht“) / −1 („Pech“); gleiche Kategorie + Quelle −6/−2/0; gleiche Quelle + ähnlich viele Angebote −3 (nur „Nie wieder“); höchstens −15 |
+| B28.8 Trefferquote je Monat (Ziel 80 %) im Lernbericht und einmal im Monat im Morgenbericht | ❌ | ✅ | `trefferquote` (Anteil Chargen mit Marge über der Ziel-Marge), Tabelle im Lernbericht; Morgenbericht am 3.: „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ |
+| B28.8 Push an Ludwig mit Link | ❌ | ✅ | neue Push-Art „Lernschleife Verlustprodukte“ (an/aus unter Einstellungen → Benachrichtigungen), nur an den Inhaber, nicht in Discord |
+
+| Werkzeug | Änderung (Beschreibung geändert → `notifications/tools/list_changed`) |
+|---|---|
+| `deal_pruefen` | je Land `umschlag`, `roi_pa_prozent`; `umschlag_bestes_land` (Spanne, ROI p. a., Mindestwert, Warnung, Menge für 45 Tage, Rechnung) |
+| `deal_wert` | je Angebot `roi_pa_prozent`, `umschlag`, `umschlag_warnung`; „ähnlicher Fehlkauf am …“ unter `dagegen` |
+| `deal_eingang`, `deal_eingang_detail` | je Angebot `umschlag`, `roi_pa_prozent`, `umschlag_warnung` |
+| `lugru_deals` | je Deal `umschlag`, `roi_pa` (aus Post-Zahlen + Keepa-Schnappschuss, geschätzt) |
+| `kapital_ampel` | neuer Block `cash_to_cash` (Phasen, Tage, je Lieferant, Kapital ÷ Monatsumsatz, Einkäufe bereinigen) |
+| `deal_lernen_bericht` | neuer Block `lernschleife` (Monat, offen/beantwortet, Antworten, Gründe, Produkte, Trefferquote je Monat) |
+
+Keine neuen Werkzeuge, keine neuen ändernden Werkzeuge.
+
+**Abnahmen** (`e2e/b28-umschlag.spec.ts`):
+6. Testpfanne mit 84 Stück: Spalten „Umschlag“ (Spanne, geschätzt) und „ROI p. a.“, Reichweiten-Warnung mit Menge für
+   45 Tage; deal_wert/deal_eingang_detail liefern dieselben Werte. ✅
+7. Kapital-Ampel: Cash-to-Cash-Zyklus mit Medianen 4/3/8 Tagen + 14 Tage Auszahlung, je Lieferant, Kapital ÷
+   Monatsumsatz, Hinweis „Einkäufe bereinigen“; kapital_ampel.cash_to_cash; Deal-Eingang nimmt danach den eigenen
+   Vorlauf. ✅
+8. Lernschleife: Liste des Vormonats (größter Verlust zuerst, Gewinner nicht dabei), Antwort „Nie wieder“ mit Grund
+   und Freitext, im Lernbericht und in deal_lernen_bericht; eine Büro-Kraft sieht keine Knöpfe. Der Termin „am 3.“ ist
+   per Unit-Test geprüft (`istLernTag`, `vormonat`), der Knopf „Liste für den Vormonat jetzt erstellen“ legt sie
+   sofort an. ✅
+
 ## Nachtrag B27 (03.11.): Nächtliche Automatik – Fehler beheben
 
 | Punkt | vorher | nachher | Fundstelle |
@@ -2040,3 +2087,12 @@ nie in Chats oder Mails.
      (Typ und Land werden erkannt; fragt das System nach dem Land, den Vorschlag prüfen und tippen). Für den täglichen
      Lauf unter Anbindungen → BQool die Adressen der Berichtsseiten „Listing Performance“ und „Daily Sales“ (DE)
      eintragen – FR/IT/ES werden abgeleitet.
+112. **Deal-Eingang ROI p. a. (B28.6)**: Nach dem Update unter Deal-Eingang → Einstellungen den „Mindest-ROI p. a.“
+     prüfen (Standard 100 %). Ältere Deals zeigen die Umschlagszeit sofort (auf der Seite gerechnet); gespeichert
+     und in der Ampel erst nach „Neu prüfen“.
+113. **Cash-to-Cash (B28.7)**: Die Phasen stimmen nur, wenn Einkäufe als „erhalten“ gebucht sind. Die neue Aufgabe
+     „Einkäufe bereinigen“ listet Bestellungen, die seit über 45 Tagen offen sind – als erhalten buchen oder stornieren.
+     Ohne erhaltene Einkäufe rechnet der Deal-Eingang mit den Standardwerten (7/4/10 Tage).
+114. **Lernschleife (B28.8)**: Am 03.12. kommt der Push mit den November-Verlustprodukten. Die Push-Art
+     „Lernschleife Verlustprodukte“ ist an (Einstellungen → Benachrichtigungen). Wer nicht warten will: Deal-Eingang →
+     „Wie gut lag er?“ → „Liste für den Vormonat jetzt erstellen“.
