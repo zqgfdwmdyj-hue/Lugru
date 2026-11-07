@@ -26,7 +26,7 @@ test.describe("B28.6–B28.8 Umschlag, Cash-to-Cash, Lernschleife", () => {
     await page.goto("/deal-eingang");
     await expect(page.getByTestId("de-minroipa-feld")).toHaveValue("100");
 
-    const r = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE01 Testpfanne 24 cm (erfunden) 25,00 netto 84 Stk ${m}`, quelle: `Umschlag-Test ${m}` }, maxRedirects: 0 });
+    const r = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE01 Testpfanne 24 cm (erfunden) 25,00 netto ab 84 Stk ${m}`, quelle: `Umschlag-Test ${m}` }, maxRedirects: 0 });
     expect(r.status()).toBe(303);
     const id = /\/deal-eingang\/([0-9a-f-]{36})/.exec(r.headers().location ?? "")![1];
     await fertig(id);
@@ -107,7 +107,7 @@ test.describe("B28.6–B28.8 Umschlag, Cash-to-Cash, Lernschleife", () => {
       expect(k.cash_to_cash?.einkaeufe_bereinigen).toBeGreaterThanOrEqual(1);
 
       // Der Deal-Eingang nimmt den eigenen Vorlauf (ab 3 Einkäufen) statt der Standardwerte
-      const r = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE01 Testpfanne 24 cm (erfunden) 25,00 netto 20 Stk ${m}`, quelle: `Umschlag-Test ${m}` }, maxRedirects: 0 });
+      const r = await page.request.post("/api/deal-eingang", { multipart: { text: `B0PFANNE01 Testpfanne 24 cm (erfunden) 25,00 netto ab 20 Stk ${m}`, quelle: `Umschlag-Test ${m}` }, maxRedirects: 0 });
       const id = /\/deal-eingang\/([0-9a-f-]{36})/.exec(r.headers().location ?? "")![1];
       await fertig(id);
       await page.goto(`/deal-eingang/${id}`);
