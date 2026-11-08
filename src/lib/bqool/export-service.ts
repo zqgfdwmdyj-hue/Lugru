@@ -345,7 +345,7 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
   }
   const istAlle = [...ist.entries()].flatMap(([land, rs]) => rs.map((r) => ({ land: land as ExportLand, sku: r.sku, regel: r.regel })));
   // B31.6: Liquidation wegen Min unter Marge steht gesondert in der Freigabe – im Abgleich „Ist ≠ Soll“ nicht melden.
-  const liqMarge = new Set([...ergebnis.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu").map((z) => `${z.land}|${z.sku}`)), ...liqRows.filter((l) => l.grund === "min_unter_marge" && l.status !== "beendet").map((l) => `${l.land}|${l.sku}`)]);
+  const liqMarge = new Set([...ergebnis.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu").map((z) => `${z.land}|${z.sku}`)), ...liqRows.filter((l) => (l.grund === "min_unter_marge" || l.grund === "leiter") && l.status !== "beendet").map((l) => `${l.land}|${l.sku}`)]);
   return {
     laender: ergebnis,
     ekFehlt,

@@ -165,7 +165,9 @@ export async function leiterPflegen(tenantId: string, heute = todayIso()): Promi
     const liste = await db.select({ land: V.land, sku: V.sku, art: V.art }).from(V).where(and(eq(V.tenantId, tenantId), eq(V.status, "offen"), sql`${V.art} not like 'check_%'`)).orderBy(V.sku).limit(15);
     const ART: Record<string, string> = { stufe_1_2: "Stufe 1 → 2 (Abverkauf)", stufe_1_3: "Stufe 1 → 3 (Liquidation)", stufe_2_3: "Stufe 2 → 3 (Liquidation)", stufe_2_1: "zurück auf Stufe 1", schnelldreher: "Schnelldreher?", schnelldreher_ende: "Schnelldreher ohne Buy Box", aktivieren: "aktivieren", ebay: "eBay statt Amazon" };
     const zeilen = liste.map((l) => `• ${l.sku} (${l.land}): ${ART[l.art] ?? l.art}`).join("\n");
-    await upsertSystemTask(db, tenantId, TASK_LEITER, { title: `BQool Regel-Leiter: ${offen} Vorschl${offen === 1 ? "ag" : "äge"} zur Freigabe`, notes: `Stufenwechsel (ia → Abverkauf → Liquidation), Schnelldreher-Schutz, gebrauchte Ware. Erst nach Freigabe kommt der Wechsel in die nächste BQool-Datei.\n${zeilen}${offen > liste.length ? `\n… und ${offen - liste.length} weitere` : ""}`, category: "amazon", link: "/repricer/bqool#leiter" });
+    // Bei wenigen Vorschlägen die SKU im Titel – ein neuer Fall öffnet die Aufgabe dann wieder (Titel ändert sich).
+    const wer = offen <= 2 ? ` – ${liste.map((l) => l.sku).join(", ")}` : "";
+    await upsertSystemTask(db, tenantId, TASK_LEITER, { title: `BQool Regel-Leiter: ${offen} Vorschl${offen === 1 ? "ag" : "äge"} zur Freigabe${wer}`.slice(0, 200), notes: `Stufenwechsel (ia → Abverkauf → Liquidation), Schnelldreher-Schutz, gebrauchte Ware. Erst nach Freigabe kommt der Wechsel in die nächste BQool-Datei.\n${zeilen}${offen > liste.length ? `\n… und ${offen - liste.length} weitere` : ""}`, category: "amazon", link: "/repricer/bqool#leiter" });
   }
   else await resolveSystemTask(db, tenantId, TASK_LEITER);
 

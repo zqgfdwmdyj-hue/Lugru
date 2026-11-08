@@ -46,7 +46,7 @@ export async function bqoolStand(tenantId: string) {
   const LQ = schema.bqoolLiquidationen;
   const [rows, sys, s, liq] = await Promise.all([db.select().from(L).where(eq(L.tenantId, tenantId)), repricerRows(tenantId), getSettings(tenantId), db.select({ land: LQ.land, sku: LQ.sku, regelVorher: LQ.regelVorher, status: LQ.status, grund: LQ.grund }).from(LQ).where(eq(LQ.tenantId, tenantId))]);
   // B31.6: Liquidation wegen Min unter Marge (nicht beendet) – bewusst unter dem System-Min, kein Hinweis „Min zu niedrig“
-  const liqJe = new Map(liq.filter((l) => l.grund === "min_unter_marge" && l.status !== "beendet").map((l) => [`${l.land}|${l.sku}`, l]));
+  const liqJe = new Map(liq.filter((l) => (l.grund === "min_unter_marge" || l.grund === "leiter") && l.status !== "beendet").map((l) => [`${l.land}|${l.sku}`, l]));
   const bySku = new Map(sys.map((r) => [r.sku, r]));
   const skus = [...new Set(rows.map((r) => r.sku))];
   const alter = skus.length ? await db.select({ sku: schema.amazonLageralter.sku, alter: schema.amazonLageralter.alter }).from(schema.amazonLageralter).where(and(eq(schema.amazonLageralter.tenantId, tenantId), inArray(schema.amazonLageralter.sku, skus))) : [];

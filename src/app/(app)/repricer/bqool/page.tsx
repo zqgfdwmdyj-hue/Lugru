@@ -118,7 +118,8 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
         const wechsel = alle.filter((z) => z.liquidation === "neu" && (z.regelWechsel || z.art === "neu"));
         const unterBe = alle.filter((z) => z.warnungen.some((w) => /^Min .* unter Break-even/.test(w)));
         const zeileZu = new Map(alle.map((z) => [`${z.land}|${z.sku}`, z]));
-        const aktiv = liq.zeilen.filter((r) => r.grund === "min_unter_marge" && r.status !== "vorgeschlagen");
+        // Vom System geführte Liquidationen: „Min unter Marge“ (B31.6) und Regel-Leiter Stufe 3 (B31.6b)
+        const aktiv = liq.zeilen.filter((r) => (r.grund === "min_unter_marge" || r.grund === "leiter") && r.status !== "vorgeschlagen");
         const t = b.liquidationTest;
         const kandidaten = wechsel.filter((z) => z.wartetAufTest);
         const f2 = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toFixed(2));
