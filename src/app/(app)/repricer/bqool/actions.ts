@@ -189,10 +189,78 @@ export async function kreislaufEinstellungenAction(fd: FormData) {
   const s = await requireOwner();
   const minGeprueft = fd.get("min_geprueft") === "1";
   const automatisch = fd.get("automatisch") === "1";
-  const minInDatei = fd.get("min_in_datei") === "sicherheitsnetz" ? "sicherheitsnetz" : "effektiv";
+  // B31.6: Min in der Datei immer ≥ effektiver Min (darunter nur über Liquidation) – keine Wahl mehr.
+  const minInDatei = "effektiv" as const;
   const { getSettings } = await import("@/lib/settings");
   const alt = (await getSettings(s.tenantId)).bqool.kreislauf;
   await bqoolEinstellungenSpeichern(s.tenantId, { kreislauf: { minGeprueft, minGeprueftAm: minGeprueft ? (alt.minGeprueft ? alt.minGeprueftAm : new Date().toISOString()) : null, automatisch: automatisch && minGeprueft, minInDatei } });
   revalidatePath(PFAD);
-  zurueck(automatisch && !minGeprueft ? "Automatisch hochladen geht erst, wenn das Min-Verhalten in BQool bestätigt ist – bleibt bei „Freigabe nötig“." : `Gespeichert: ${automatisch && minGeprueft ? "täglich automatisch hochladen (außer bei Regelwechsel oder Min unter Break-even)" : "Freigabe nötig"} · Min in der Datei: ${minInDatei === "effektiv" ? "effektiver Min" : "Break-even (Sicherheitsnetz)"}.`, "#kreislauf-einstellungen");
+  zurueck(automatisch && !minGeprueft ? "Automatisch hochladen geht erst, wenn das Min-Verhalten in BQool bestätigt ist – bleibt bei „Freigabe nötig“." : `Gespeichert: ${automatisch && minGeprueft ? "täglich automatisch hochladen (außer bei Regelwechsel oder Min unter Break-even)" : "Freigabe nötig"} · Min in der Datei: mindestens effektiver Min (darunter nur mit Liquidation).`, "#kreislauf-einstellungen");
+}
+
+// ---- B31.6 Liquidation wegen Min unter Marge ---------------------------------------------------------------------
+
+const LIQ = "#liquidation";
+const landSku = (fd: FormData) => {
+  const land = String(fd.get("land") ?? "");
+  const sku = String(fd.get("sku") ?? "").trim();
+  if (!(EXPORT_LAENDER as readonly string[]).includes(land) || !sku) zurueck("Land und SKU fehlen.", LIQ);
+  return { land: land as ExportLand, sku };
+};
+
+/** Test vor dem ersten Regelwechsel: Export nur mit dieser einen SKU (Liquidation + fester Min). */
+export async function liquidationTestExportAction(fd: FormData) {
+  const s = await requireOwner();
+  const wahl = String(fd.get("wahl") ?? "");
+  const [land, sku] = wahl.split("|");
+  if (!(EXPORT_LAENDER as readonly string[]).includes(land) || !sku) zurueck("Bitte eine SKU für den Test wählen.", LIQ);
+  const r = await bqoolExportErzeugen(s.tenantId, s.userId, { laender: [land as ExportLand], nurAenderungen: true, nurSkus: [wahl] });
+  revalidatePath(PFAD);
+  redirect(`${PFAD}?export=${r.id}&meldung=${encodeURIComponent(`Test-Export: nur ${sku} (${land}) mit Liquidation. Hochladen (unten „An BQool übertragen“ oder ZIP), nach dem nächsten BQool-Lauf prüft das System, ob Min und Regel stehen bleiben.`)}${LIQ}`);
+}
+
+export async function liquidationTestAction(fd: FormData) {
+  const s = await requireOwner();
+  const { liquidationTestBestaetigen } = await import("@/lib/bqool/liquidation");
+  const bestanden = fd.get("bestanden") === "1";
+  await liquidationTestBestaetigen(s.tenantId, bestanden, { land: String(fd.get("land") ?? "") || null, sku: String(fd.get("sku") ?? "") || null });
+  revalidatePath(PFAD);
+  zurueck(bestanden ? "Liquidation-Test als bestanden bestätigt – Regelwechsel kommen ab jetzt in die Datei (Freigabe bleibt nötig)." : "Liquidation-Test zurückgesetzt – Regelwechsel warten wieder auf den Test.", LIQ);
+}
+
+/** Rückkehr-Vorschlag: zurück auf die ursprüngliche Regel bzw. auf Liquidation bleiben. */
+export async function rueckkehrAction(fd: FormData) {
+  const s = await requireOwner();
+  const { land, sku } = landSku(fd);
+  const { rueckkehrAblehnen, rueckkehrFreigeben } = await import("@/lib/bqool/liquidation");
+  if (fd.get("entscheidung") === "bleiben") {
+    await rueckkehrAblehnen(s.tenantId, land, sku);
+    revalidatePath(PFAD);
+    zurueck(`${sku} (${land}) bleibt auf Liquidation.`, LIQ);
+  }
+  const regel = await rueckkehrFreigeben(s.tenantId, land, sku);
+  revalidatePath(PFAD);
+  zurueck(regel ? `${sku} (${land}): zurück auf „${regel}“ – kommt mit der nächsten Datei (Freigabe des Uploads bleibt nötig).` : "Keine ursprüngliche Regel gemerkt.", LIQ);
+}
+
+/** „Mindest-Verlust akzeptiert bis x €“ je Stück (leer = nur bis Break-even). */
+export async function verlustFreigabeAction(fd: FormData) {
+  const s = await requireOwner();
+  const { land, sku } = landSku(fd);
+  const roh = String(fd.get("verlust_bis") ?? "").trim();
+  const wert = roh ? parseAmount(roh) : null;
+  if (roh && (wert === null || wert < 0)) zurueck("Betrag je Stück angeben (z. B. 3,50).", LIQ);
+  const { verlustFreigabeSetzen } = await import("@/lib/bqool/liquidation");
+  await verlustFreigabeSetzen(s.tenantId, land, sku, wert);
+  revalidatePath(PFAD);
+  zurueck(wert ? `${sku} (${land}): Abverkauf mit Verlust bis ${roh} € je Stück freigegeben.` : `${sku} (${land}): Min nur bis Break-even.`, LIQ);
+}
+
+/** Liquidation-Stand jetzt prüfen (sonst täglich): aktiv im Ist, Test, Rückkehr-Vorschläge. */
+export async function liquidationPruefenAction() {
+  const s = await schreibend();
+  const { liquidationenPflegen } = await import("@/lib/bqool/liquidation");
+  const r = await liquidationenPflegen(s.tenantId);
+  revalidatePath(PFAD);
+  zurueck(`Liquidation geprüft: ${r.aktiviert} neu aktiv, ${r.vorgeschlagen} neue Rückkehr-Vorschläge, ${r.offen} offen${r.testBestanden ? " · Test bestanden" : ""}.`, LIQ);
 }

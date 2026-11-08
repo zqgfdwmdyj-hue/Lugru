@@ -287,7 +287,9 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
     const buybox = inhaber ? await import("@/lib/bqool/berichte").then((x) => x.buyboxMorgenZeile(tenantId)).catch(() => null) : null;
     // B28.8: einmal im Monat (am 3.) die Trefferquote des Vormonats – nur für den Inhaber.
     const treffer = inhaber ? await import("@/lib/deal-eingang/lernschleife").then((x) => x.trefferMorgenZeile(tenantId)).catch(() => null) : null;
-    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool, buybox, treffer };
+    // B31.6: SKUs auf Liquidation wegen Min unter Marge – nur für den Inhaber.
+    const liquidation = inhaber ? await import("@/lib/bqool/liquidation").then(async (x) => x.liquidationsZeile(await x.liquidationsStand(tenantId))).catch(() => null) : null;
+    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool, buybox, treffer, liquidation };
     // Zurückgehaltene gelten als nachgereicht (im Bericht gezählt); die neueste kommt einzeln (mit ihren Knöpfen).
     if (gehalten.length) {
       await db.update(M).set({ zustand: "ausgeliefert" }).where(inArray(M.id, gehalten.map((g) => g.id)));

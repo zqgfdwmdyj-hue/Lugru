@@ -57,7 +57,7 @@ const mehr = (n: number, eins: string, viele: string) => `${n.toLocaleString("de
 
 /** „DE 133 / FR 114 / IT 122 / ES 85 Änderungen, 7 Regelwechsel, 44 Warnungen“ */
 export function freigabeText(z: BqoolLaufZusammenfassung): string {
-  return `${jeLandText(z.jeLand)} Änderungen, ${mehr(z.regelWechsel, "Regelwechsel", "Regelwechsel")}, ${mehr(z.warnungen, "Warnung", "Warnungen")}${z.unterBreakEven ? `, ${z.unterBreakEven}× Min unter Break-even` : ""}`;
+  return `${jeLandText(z.jeLand)} Änderungen, ${mehr(z.regelWechsel, "Regelwechsel", "Regelwechsel")}, ${mehr(z.warnungen, "Warnung", "Warnungen")}${z.liquidation ? ` (davon ${z.liquidation} auf Liquidation wegen Min unter Marge)` : ""}${z.unterBreakEven ? `, ${z.unterBreakEven}× Min unter Break-even` : ""}`;
 }
 
 const ZAHL = String.raw`(\d{1,3}(?:[.,]\d{3})+|\d+)`;

@@ -63,9 +63,10 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null }): string {
+export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null; /** B31.6: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“ (nur Inhaber). */ liquidation?: string | null }): string {
   const teile = [
     o.bqool || null,
+    o.liquidation || null,
     o.buybox || null,
     o.treffer || null,
     o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,

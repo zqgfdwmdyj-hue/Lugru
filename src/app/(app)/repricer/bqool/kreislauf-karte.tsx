@@ -128,10 +128,8 @@ export function KreislaufKarte({ stand, lauf, laeufe, inhaber, freigebenHinweis,
           <label style={{ opacity: einstellungen.minGeprueft ? 1 : 0.6 }}>
             <input type="checkbox" name="automatisch" value="1" defaultChecked={einstellungen.automatisch} /> täglich automatisch hochladen, außer bei Regelwechsel oder Min unter Break-even{!einstellungen.minGeprueft ? " – erst nach der Prüfung oben möglich" : ""}
           </label>
-          <div>
-            Min in der Datei bei Margen-Regeln:{" "}
-            <label><input type="radio" name="min_in_datei" value="effektiv" defaultChecked={einstellungen.minInDatei === "effektiv"} /> effektiver Min (Break-even + Mindestmarge der Altersstufe, harte Untergrenze – Standard)</label>{" "}
-            <label><input type="radio" name="min_in_datei" value="sicherheitsnetz" defaultChecked={einstellungen.minInDatei === "sicherheitsnetz"} /> Break-even ohne Marge (nur, wenn BQool den Min bei Margen-Regeln selbst aus Cost + Marge rechnet)</label>
+          <div className="muted" data-testid="bq-min-regel">
+            Min in der Datei bei Margen-Regeln: immer mindestens der effektive Min (Break-even + Mindestmarge der Altersstufe). BQool setzt einen niedrigeren Min bei der nächsten Preisberechnung auf den Margen-Wert zurück – soll eine SKU darunter verkaufen, kommt sie auf „Liquidation“ (fester Min, nie unter Break-even ohne Freigabe; Liste unten unter „Liquidation wegen Min unter Marge“).
           </div>
           <div><button className="btn btn-small" type="submit" data-testid="bq-kreislauf-speichern">Speichern</button></div>
         </form>

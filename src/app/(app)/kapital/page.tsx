@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { kapitalZieleAction } from "./actions";
 import { KAPITALBEDARF_DEFINITION } from "@/lib/purchasing/reorder-logic";
 import { cashToCashKennzahlen } from "@/lib/money/durchlauf";
+import { liquidationsStand, liquidationsZeile } from "@/lib/bqool/liquidation";
 import { AUSZAHLUNG_TAGE, BEREINIGEN_TAGE, MIN_BASIS, type Phase, type Phasen } from "@/lib/money/durchlauf-logic";
 import { STANDARD_VORLAUF } from "@/lib/deal-eingang/umschlag-logic";
 
@@ -120,6 +121,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
   const stand = data.stand ? data.stand.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "noch kein Abgleich";
   const ohneEk = data.zeilen.filter((z) => z.ek === null).length;
   const c2c = await cashToCashKennzahlen(session.tenantId, data.zeilen.length ? data.summe.gesamt : null).catch(() => null);
+  const liqZeile = await liquidationsStand(session.tenantId).then(liquidationsZeile).catch(() => null);
 
   return (
     <>
@@ -135,6 +137,11 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
         Reichweite, ältestes Lageralter (Amazon-Bericht) und Preis gegen Break-even, dazu die FBA-Lagergebühr laut Bericht („Lagergebühr frisst Marge“, „Remission prüfen“). <strong>Rot</strong> wird bei den <Link href="/einkauf/vorschlaege">Bestellvorschlägen</Link> nicht mehr vorgeschlagen und in der <Link href="/cashflow">Liquidität</Link> nicht eingerechnet.
       </p>
 
+      {liqZeile && (
+        <div className="notice notice-info small" style={{ marginBottom: 12 }} data-testid="kapital-liquidation">
+          {liqZeile} – <Link href="/repricer/bqool#liquidation">Liste und Rückkehr-Vorschläge</Link>
+        </div>
+      )}
       {((gestrandet && gestrandet.gestrandet.anzahl > 0) || (weitere && weitere.gesamt > 0)) && (
         <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="kapital-amazon-berichte">
           {gestrandet && gestrandet.gestrandet.anzahl > 0 && (

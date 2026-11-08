@@ -7,7 +7,9 @@ import { getSettings } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/store";
 import { bqoolUploadAdressen } from "@/lib/automatik/bqool-logic";
 import { letzterBqoolVergleich } from "@/lib/arbitrageone/service";
-import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, liquidationPruefenAction, liquidationTestAction, liquidationTestExportAction, rueckkehrAction, verlustFreigabeAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { liquidationsStand } from "@/lib/bqool/liquidation";
+import { RUECKKEHR_AUFSCHLAG, RUECKKEHR_TAGE } from "@/lib/bqool/export-logic";
 import { kreislaufStand, letzteLaeufe } from "@/lib/bqool/kreislauf";
 import { KreislaufKarte } from "./kreislauf-karte";
 
@@ -19,7 +21,7 @@ const ART_TEXT = { neu: "neu", geaendert: "geändert", gleich: "gleich" } as con
 export default async function BqoolDateienPage({ searchParams }: { searchParams: Promise<{ meldung?: string; export?: string; land?: string; lauf?: string; freigeben?: string }> }) {
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
-  const [v, s, zuw, exporte, bqWeb, aoVergleich, kStand, laeufe] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId), kreislaufStand(session.tenantId), letzteLaeufe(session.tenantId, 6)]);
+  const [v, s, zuw, exporte, bqWeb, aoVergleich, kStand, laeufe, liq] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId), kreislaufStand(session.tenantId), letzteLaeufe(session.tenantId, 6), liquidationsStand(session.tenantId)]);
   // B31.2: angezeigter Lauf – aus dem Push (?lauf=…), sonst der heutige bzw. der letzte
   const lauf = (sp.lauf ? laeufe.find((l) => l.id === sp.lauf) : null) ?? kStand.heute ?? laeufe[0] ?? null;
   // B23: Upload-Seite je Land (eigene Adresse bzw. aus DE abgeleitet)
@@ -37,7 +39,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <p className="small muted" style={{ marginTop: 0 }}>
-        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Min Price bei Margen-Regeln: {b.kreislauf.minInDatei === "effektiv" ? "effektiver Min (Break-even mit landeseigener USt + Mindestmarge der Altersstufe) als harte Untergrenze – so verkauft BQool nie darunter, auch wenn es den Dateiwert als harten Min nimmt" : "Break-even ohne Marge als Sicherheitsnetz – BQool rechnet den eigentlichen Mindestpreis selbst aus Cost + Mindestmarge"} (Einstellung im Kasten „Täglicher BQool-Lauf“). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: täglich 06:00 automatisch bzw. BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
+        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Min Price bei Margen-Regeln: mindestens der effektive Min (Break-even mit landeseigener USt + Mindestmarge der Altersstufe) – BQool setzt einen niedrigeren Min ohnehin auf den Margen-Wert zurück. Soll eine SKU darunter verkaufen (gewünschter Min unter dem effektiven Min), kommt sie auf „Liquidation“ mit festem Min, nie unter Break-even ohne Freigabe (B31.6). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: täglich 06:00 automatisch bzw. BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
       </p>
 
       <KreislaufKarte stand={kStand} lauf={lauf} laeufe={laeufe} inhaber={session.role === "owner" && !session.readOnly} freigebenHinweis={sp.freigeben === "1"} einstellungen={b.kreislauf} />
@@ -102,6 +104,124 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
         )}
         {aktiv && aktiv.protokoll.length > 0 && <ul className="small muted" style={{ margin: 0 }}>{aktiv.protokoll.slice(-6).map((p, i) => <li key={i}>{p.text}</li>)}</ul>}
       </section>
+
+      {(() => {
+        // B31.6: Regelwechsel auf Liquidation (Min unter Marge), Min unter Break-even, aktive Liquidationen, Rückkehr, Test
+        const inhaber = session.role === "owner" && !session.readOnly;
+        const alle = v.laender.flatMap((l) => l.zeilen);
+        const wechsel = alle.filter((z) => z.liquidation === "neu" && (z.regelWechsel || z.art !== "gleich"));
+        const unterBe = alle.filter((z) => z.warnungen.some((w) => /^Min .* unter Break-even/.test(w)));
+        const zeileZu = new Map(alle.map((z) => [`${z.land}|${z.sku}`, z]));
+        const aktiv = liq.zeilen.filter((r) => r.grund === "min_unter_marge" && r.status !== "vorgeschlagen");
+        const t = b.liquidationTest;
+        const kandidaten = wechsel.filter((z) => z.wartetAufTest);
+        const f2 = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toFixed(2));
+        return (
+          <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="liquidation" data-testid="bq-liquidation">
+            <h2 style={{ margin: 0 }}>Liquidation wegen Min unter Marge</h2>
+            <p className="small muted" style={{ margin: 0 }}>
+              Liegt der gewünschte Min unter dem effektiven Min der Regel (Marge unter 10 % bei ia, 7 % bei „Abverkauf DE“, 4 % bei „Abverkauf“), setzt BQool ihn auf den Margen-Wert zurück – nur „Liquidation“ nimmt den Min als feste Untergrenze. Deshalb wechselt die Regel auf Liquidation, Min fest, nie unter Break-even ohne Freigabe. Steht die Buy Box {RUECKKEHR_TAGE} Tage über dem effektiven Min der ursprünglichen Regel + {Math.round(RUECKKEHR_AUFSCHLAG * 100)} %, schlägt das System die Rückkehr vor. „Liquidation“ ist AI Win Sales Booster: der Preis kann bis zum Min fallen.
+            </p>
+            <div className={`notice ${t.bestanden ? "notice-ok" : "notice-warn"} small`} data-testid="bq-liq-test" data-bestanden={t.bestanden ? "1" : "0"}>
+              {t.bestanden ? (
+                <>Test bestanden{t.am ? ` am ${formatDate(t.am.slice(0, 10))}` : ""}{t.sku ? ` (${t.land} ${t.sku})` : ""}{t.vonHand ? " – von Hand bestätigt" : " – BQool-Ist zeigte Liquidation und Min nach dem nächsten Lauf noch"}. Regelwechsel kommen in die Datei (Upload weiter nur mit Freigabe).</>
+              ) : (
+                <>Test vor dem ersten Regelwechsel offen: eine SKU von Hand mit „Liquidation“ und festem Min hochladen; nach dem nächsten BQool-Lauf prüft das System, ob Min und Regel stehen bleiben. Bis dahin kommen Regelwechsel nicht in die Datei ({kandidaten.length} warten).</>
+              )}
+              {inhaber && !t.bestanden && kandidaten.length > 0 && (
+                <form action={liquidationTestExportAction} className="row" style={{ gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                  <select name="wahl" data-testid="bq-liq-test-wahl">{kandidaten.map((z) => <option key={`${z.land}|${z.sku}`} value={`${z.land}|${z.sku}`}>{z.land} {z.sku} – Min {f2(z.min)}</option>)}</select>
+                  <button className="btn btn-sm" type="submit" data-testid="bq-liq-test-export">Test-Export nur für diese SKU</button>
+                </form>
+              )}
+              {inhaber && (
+                <form action={liquidationTestAction} className="row" style={{ gap: 8, marginTop: 6 }}>
+                  <input type="hidden" name="bestanden" value={t.bestanden ? "0" : "1"} />
+                  <button className="btn btn-sm" type="submit" data-testid="bq-liq-test-hand">{t.bestanden ? "Test zurücksetzen" : "In BQool nachgesehen – Test bestanden"}</button>
+                </form>
+              )}
+            </div>
+            <div>
+              <strong className="small">Regelwechsel auf Liquidation ({wechsel.length})</strong>
+              {wechsel.length ? (
+                <div className="table-wrap">
+                  <table className="table small" data-testid="bq-liq-wechsel">
+                    <thead><tr><th>Land</th><th>SKU</th><th>Artikel</th><th>Regel</th><th>Min alt → neu</th><th>Marge neu</th><th>Break-even</th><th>Buy Box</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {wechsel.map((z) => (
+                        <tr key={`${z.land}|${z.sku}`} data-testid="bq-liq-zeile" data-sku={z.sku} data-land={z.land}>
+                          <td>{z.land}</td><td>{z.sku}</td><td>{(z.titel ?? "").slice(0, 40)}</td>
+                          <td>{z.istRegel ?? z.regelVorher ?? "–"} → <b>{z.regel}</b></td>
+                          <td>{f2(z.istMin)} → <b>{f2(z.min)}</b>{z.minGewuenscht !== null && Math.abs(z.minGewuenscht - z.min) > 0.005 ? <div className="muted">gewünscht {f2(z.minGewuenscht)}</div> : null}</td>
+                          <td>{z.margeNeu !== null ? `${String(z.margeNeu).replace(".", ",")} %` : "–"}</td>
+                          <td>{f2(z.breakEven)}</td><td>{f2(z.buybox)}</td>
+                          <td>{z.wartetAufTest ? <span className="tag tag-warn">wartet auf Test</span> : "in der nächsten Datei"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="small muted">Keine – gewünschte Min-Preise liegen auf oder über dem effektiven Min. Einen niedrigeren Min unten unter „Soll-Regeln“ eintragen (Regel bleibt, z. B. ia; das System stellt dann auf Liquidation um).</div>
+              )}
+            </div>
+            {unterBe.length > 0 && (
+              <div data-testid="bq-liq-unter-be">
+                <strong className="small">Min unter Break-even ({unterBe.length})</strong>
+                <ul className="small" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                  {unterBe.map((z) => (
+                    <li key={`${z.land}|${z.sku}`}>
+                      <b>{z.land}</b> {z.sku}: Min {f2(z.min)} unter Break-even {f2(z.breakEven)}{z.verlustBis ? ` – freigegeben bis ${f2(z.verlustBis)} € je Stück` : " – nicht freigegeben"}
+                      {inhaber && (
+                        <form action={verlustFreigabeAction} className="row" style={{ display: "inline-flex", gap: 6, marginLeft: 8 }}>
+                          <input type="hidden" name="land" value={z.land} /><input type="hidden" name="sku" value={z.sku} />
+                          <input name="verlust_bis" defaultValue={z.verlustBis ? String(z.verlustBis).replace(".", ",") : ""} placeholder="Verlust bis € je Stück" style={{ width: 150 }} aria-label="Mindest-Verlust akzeptiert bis" />
+                          <button className="btn btn-sm" type="submit">speichern</button>
+                        </form>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div>
+              <strong className="small">Aktiv in BQool ({aktiv.length}){liq.rueckkehr ? ` · ${liq.rueckkehr} Rückkehr vorgeschlagen` : ""}</strong>
+              {aktiv.length ? (
+                <div className="table-wrap">
+                  <table className="table small" data-testid="bq-liq-aktiv">
+                    <thead><tr><th>Land</th><th>SKU</th><th>Regel vorher</th><th>Min</th><th>seit</th><th>Buy Box / Schwelle</th><th>über Schwelle seit</th><th /></tr></thead>
+                    <tbody>
+                      {aktiv.map((r) => {
+                        const z = zeileZu.get(`${r.land}|${r.sku}`);
+                        const schwelle = r.effMinVorher !== null ? r.effMinVorher * (1 + RUECKKEHR_AUFSCHLAG) : null;
+                        return (
+                          <tr key={`${r.land}|${r.sku}`} data-testid="bq-liq-aktiv-zeile" data-sku={r.sku} data-status={r.status}>
+                            <td>{r.land}</td><td>{r.sku}</td><td>{r.regelVorher ?? "–"}</td><td>{f2(r.minGesetzt)}</td>
+                            <td>{r.aktivSeit ? formatDate(r.aktivSeit.toISOString().slice(0, 10)) : "–"}</td>
+                            <td>{f2(z?.buybox)} / {f2(schwelle)}</td>
+                            <td>{r.ueberSeit ? formatDate(r.ueberSeit) : "–"}</td>
+                            <td>
+                              {r.status === "zurueck_vorgeschlagen" && inhaber ? (
+                                <span className="row" style={{ gap: 6 }}>
+                                  <form action={rueckkehrAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><button className="btn btn-sm btn-primary" type="submit" data-testid="bq-liq-zurueck">zurück auf {r.regelVorher}</button></form>
+                                  <form action={rueckkehrAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><input type="hidden" name="entscheidung" value="bleiben" /><button className="btn btn-sm" type="submit">bleibt</button></form>
+                                </span>
+                              ) : r.status === "zurueck_vorgeschlagen" ? <span className="tag tag-warn">Rückkehr vorgeschlagen</span> : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="small muted">Noch keine – aktiv, sobald das BQool-Ist Liquidation mit dem gesetzten Min zeigt{liq.vorgeschlagen ? ` (${liq.vorgeschlagen} hochgeladen bzw. in der Datei, noch nicht im Ist)` : ""}.</div>
+              )}
+            </div>
+            {kannSchreiben && <form action={liquidationPruefenAction}><button className="btn btn-sm" type="submit" data-testid="bq-liq-pruefen" title="Sonst täglich automatisch (BQool-Lauf bzw. Hintergrund)">Liquidation jetzt prüfen</button></form>}
+          </section>
+        );
+      })()}
 
       {v.laender.map((l) => {
         const wichtig = l.zeilen.filter((z) => z.art !== "gleich" || z.warnungen.length || z.erklaerung);
@@ -205,7 +325,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
           <form action={zuweisungAction} className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="bq-zuweisung-form">
             <input name="sku" placeholder="SKU" required style={{ width: 160 }} />
             <select name="regel" defaultValue={b.katalog[0]?.name}>{b.katalog.map((k) => <option key={k.name}>{k.name}</option>)}</select>
-            <input name="untergrenze" placeholder="Untergrenze (nur Liquidation)" style={{ width: 200 }} />
+            <input name="untergrenze" placeholder="Min (gewünscht)" title="Bei Liquidation die feste Untergrenze; bei Margen-Regeln (ia, Abverkauf) der gewünschte Min – liegt er unter dem effektiven Min, stellt das System auf Liquidation um (nie unter Break-even ohne Freigabe)" style={{ width: 200 }} />
             {EXPORT_LAENDER.map((l) => <label key={l} className="small"><input type="checkbox" name="land" value={l} defaultChecked /> {l}</label>)}
             <button className="btn" type="submit">Regel setzen</button>
           </form>

@@ -12,7 +12,7 @@ export const bqoolExportVorschauTool = defineTool({
   name: "bqool_export_vorschau",
   title: "BQool-Export: Vorschau",
   description:
-    "Was ein BQool-Export je Land ändern würde: Anzahl SKUs, neu/geändert/gleich, Regelwechsel (Ist in BQool → Soll im System, z. B. ia/Abverkauf/Liquidation), größte Min-Änderungen, Warnungen (Min über Buy Box × 1,2, Min unter Break-even), SKUs ohne EK (nicht in der Datei), Vorschläge der Kapital-Ampel und Abweichungen Ist ↔ Soll. Für „Was würde sich bei BQool ändern?“, „Welche SKUs fehlen im BQool-Export?“.",
+    "Was ein BQool-Export je Land ändern würde: Anzahl SKUs, neu/geändert/gleich, Regelwechsel (Ist in BQool → Soll im System, z. B. ia/Abverkauf/Liquidation), größte Min-Änderungen, Warnungen (Min über Buy Box × 1,2, Min unter Break-even), SKUs ohne EK (nicht in der Datei), Vorschläge der Kapital-Ampel und Abweichungen Ist ↔ Soll. Dazu liquidation (B31.6): Regelwechsel auf „Liquidation“, weil der gewünschte Min unter dem effektiven Min der Margen-Regel liegt (alte Regel → Liquidation, Min alt → neu, Marge neu, Break-even, Buy Box; nie unter Break-even ohne Freigabe „Verlust akzeptiert bis x €“), Stand des Tests mit einer SKU, aktive Liquidationen und Vorschläge „zurück auf die ursprüngliche Regel“ (Buy Box 14 Tage über effektivem Min + 3 %). Für „Was würde sich bei BQool ändern?“, „Welche SKUs fehlen im BQool-Export?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "Seller-System (EK, Gebühren, Regel-Katalog) + hochgeladene BQool-Dateien (Ist)" },
@@ -38,8 +38,21 @@ export const bqoolExportVorschauTool = defineTool({
       vorschlaege_kapital_ampel: v.vorschlaege.slice(0, 20),
       abgleich: { anzahl: v.abgleich.length, faelle: v.abgleich.slice(0, 30).map((f) => f.text) },
       letzter_export: v.letzterExport ? { am: berlinDateTime(v.letzterExport.am), anzahl: v.letzterExport.anzahl, download: abs(ctx, `/repricer/bqool/datei?export=${v.letzterExport.id}`) } : null,
-      // B31.3: Min in der Datei je nach Einstellung – effektiver Min (Standard) oder Break-even als Sicherheitsnetz
-      hinweis: (await getSettings(ctx.session.tenantId)).bqool.kreislauf.minInDatei === "sicherheitsnetz" ? "Min in der Datei bei Margen-Regeln: Break-even ohne Marge als Sicherheitsnetz (BQool rechnet den Mindestpreis selbst aus Cost + Mindestmarge). Bei Liquidation zählt die Untergrenze." : "Min in der Datei bei Margen-Regeln: effektiver Min (Break-even + Mindestmarge der Altersstufe) als harte Untergrenze. Bei Liquidation zählt die Untergrenze.",
+      // B31.6: Min in der Datei ≥ effektiver Min; darunter nur mit Regel „Liquidation“
+      hinweis: "Min in der Datei bei Margen-Regeln: mindestens der effektive Min (Break-even + Mindestmarge der Altersstufe) – BQool setzt einen niedrigeren Min auf den Margen-Wert zurück. Gewünschter Min darunter → Regel „Liquidation“ mit festem Min (Untergrenze Break-even, darunter nur mit Freigabe). Bei Liquidation zählt die Untergrenze.",
+      liquidation: await (async () => {
+        const s = await getSettings(ctx.session.tenantId);
+        const { liquidationsStand } = await import("@/lib/bqool/liquidation");
+        const st = await liquidationsStand(ctx.session.tenantId);
+        const wechsel = v.laender.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu"));
+        return {
+          test: s.bqool.liquidationTest.bestanden ? { bestanden: true, am: s.bqool.liquidationTest.am, sku: s.bqool.liquidationTest.sku, land: s.bqool.liquidationTest.land, von_hand: s.bqool.liquidationTest.vonHand || undefined } : { bestanden: false, hinweis: "Erst eine SKU von Hand mit Liquidation hochladen und nach dem nächsten BQool-Lauf prüfen – bis dahin kommen Regelwechsel nicht in die Datei." },
+          regelwechsel: wechsel.slice(0, i.limit).map((z) => ({ land: z.land, sku: z.sku, titel: z.titel ?? undefined, regel_alt: z.istRegel, regel_vorher: z.regelVorher, regel_neu: z.regel, min_alt: z.istMin, min_gewuenscht: z.minGewuenscht, min_neu: z.min, effektiver_min: z.effMin, marge_neu_prozent: z.margeNeu, break_even: z.breakEven, buybox: z.buybox, wartet_auf_test: z.wartetAufTest || undefined, regelwechsel: z.regelWechsel })),
+          aktiv: st.anzahl,
+          unter_break_even: st.unterBreakEven,
+          rueckkehr_vorgeschlagen: st.zeilen.filter((r) => r.status === "zurueck_vorgeschlagen").map((r) => ({ land: r.land, sku: r.sku, zurueck_auf: r.regelVorher, buybox_ueber_seit: r.ueberSeit })),
+        };
+      })(),
       link: abs(ctx, "/repricer/bqool"),
       datenstand: { quelle: "Seller-System + BQool-Dateien", stand: v.laender.map((l) => `${l.land}: ${l.istStand ? berlinDateTime(l.istStand) : "kein Ist"}`).join(", "), abgerufen: berlinDateTime(new Date()) ?? "" },
     });

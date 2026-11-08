@@ -43,7 +43,17 @@ export async function verlustStopp(
   const A = schema.verlustAusnahmen;
   const ausn = await db.select().from(A).where(eq(A.tenantId, t));
   const aktiv = new Set(ausn.filter((a) => ausnahmeAktiv(a, heute)).map((a) => a.sku));
-  const roh = pruefeVerlust(werte, heute, undefined, fenster, amz).filter((f) => !aktiv.has(f.sku));
+  // B31.6: automatische Ausnahme beim Regelwechsel auf Liquidation (Min unter Marge) gilt nur, solange der Verlust je
+  // Stück im freigegebenen Rahmen bleibt (ohne Freigabe: bis Break-even, 0,50 € Spielraum für Gebühren-Schwankungen).
+  const { AUSNAHME_PREFIX, liquidationsStand } = await import("@/lib/bqool/liquidation");
+  const liqAusnahme = new Set(ausn.filter((a) => ausnahmeAktiv(a, heute) && a.grund.startsWith(AUSNAHME_PREFIX)).map((a) => a.sku));
+  const rahmen = liqAusnahme.size ? (await liquidationsStand(t)).rahmenJeSku : new Map<string, number>();
+  const imRahmen = (f: { sku: string; summeVerkauf: number; stueckMitVerlust: number }) => {
+    if (!liqAusnahme.has(f.sku)) return false;
+    const jeStueck = f.summeVerkauf < 0 && f.stueckMitVerlust > 0 ? -f.summeVerkauf / f.stueckMitVerlust : 0;
+    return jeStueck <= (rahmen.get(f.sku) ?? 0) + 0.5;
+  };
+  const roh = pruefeVerlust(werte, heute, undefined, fenster, amz).filter((f) => (liqAusnahme.has(f.sku) ? !imRahmen(f) : !aktiv.has(f.sku)));
 
   const skus = roh.map((f) => f.sku);
   const asins = [...new Set(roh.map((f) => f.asin).filter((a): a is string => !!a))];

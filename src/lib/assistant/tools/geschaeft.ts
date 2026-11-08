@@ -506,7 +506,7 @@ export const repricer = defineTool({
   name: "repricer",
   title: "Repricer (BQool)",
   description:
-    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie, Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
+    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie mit „regel_seit“ (B31.6; Liquidation wegen Min unter Marge gekennzeichnet, dort kein Hinweis „Min unter System-Min“), Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "BQool-Export (hochgeladen unter Repricer), EK und Gebühren im Seller-System" },
@@ -547,6 +547,9 @@ export const repricer = defineTool({
         titel: z.titel ?? undefined,
         versand: z.versand ?? undefined,
         regel: z.regel,
+        // B31.6: seit wann die Regel in BQool steht; Liquidation wegen Min unter Marge (bewusst unter dem System-Min)
+        regel_seit: z.regelSeit ? z.regelSeit.toISOString().slice(0, 10) : undefined,
+        liquidation_wegen_min_unter_marge: z.liqMarge ? { regel_vorher: z.liqMarge.regelVorher, rueckkehr_vorgeschlagen: z.liqMarge.status === "zurueck_vorgeschlagen" || undefined } : undefined,
         status: z.status,
         preis: z.preis,
         min_bqool: z.min,
