@@ -496,3 +496,9 @@ export function liquidationStehtNoch(o: { aktivSeit: Date | null; istAm: Date; i
   if (!o.aktivSeit || !o.istRegelFest || o.istMin === null || o.minGesetzt === null) return false;
   return Math.abs(o.istMin - o.minGesetzt) < 0.01 && o.istAm.getTime() - o.aktivSeit.getTime() >= TEST_STUNDEN * 3_600_000;
 }
+
+/** Zeile für Kapital-Ampel und Morgenbericht: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“. */
+export function liquidationsZeile(st: { anzahl: number; unterBreakEven: number }): string | null {
+  if (!st.anzahl) return null;
+  return `${st.anzahl} SKU${st.anzahl === 1 ? "" : "s"} auf Liquidation (Min unter Marge), davon ${st.unterBreakEven} unter Break-even`;
+}

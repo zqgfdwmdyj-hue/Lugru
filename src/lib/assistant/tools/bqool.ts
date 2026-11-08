@@ -44,7 +44,7 @@ export const bqoolExportVorschauTool = defineTool({
         const s = await getSettings(ctx.session.tenantId);
         const { liquidationsStand } = await import("@/lib/bqool/liquidation");
         const st = await liquidationsStand(ctx.session.tenantId);
-        const wechsel = v.laender.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu"));
+        const wechsel = v.laender.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu" && (z.regelWechsel || z.art === "neu")));
         return {
           test: s.bqool.liquidationTest.bestanden ? { bestanden: true, am: s.bqool.liquidationTest.am, sku: s.bqool.liquidationTest.sku, land: s.bqool.liquidationTest.land, von_hand: s.bqool.liquidationTest.vonHand || undefined } : { bestanden: false, hinweis: "Erst eine SKU von Hand mit Liquidation hochladen und nach dem nächsten BQool-Lauf prüfen – bis dahin kommen Regelwechsel nicht in die Datei." },
           regelwechsel: wechsel.slice(0, i.limit).map((z) => ({ land: z.land, sku: z.sku, titel: z.titel ?? undefined, regel_alt: z.istRegel, regel_vorher: z.regelVorher, regel_neu: z.regel, min_alt: z.istMin, min_gewuenscht: z.minGewuenscht, min_neu: z.min, effektiver_min: z.effMin, marge_neu_prozent: z.margeNeu, break_even: z.breakEven, buybox: z.buybox, wartet_auf_test: z.wartetAufTest || undefined, regelwechsel: z.regelWechsel })),

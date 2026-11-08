@@ -156,8 +156,4 @@ export async function liquidationsStand(tenantId: string) {
   };
 }
 
-/** Zeile für Kapital-Ampel und Morgenbericht: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“. */
-export function liquidationsZeile(st: { anzahl: number; unterBreakEven: number }): string | null {
-  if (!st.anzahl) return null;
-  return `${st.anzahl} SKU${st.anzahl === 1 ? "" : "s"} auf Liquidation (Min unter Marge), davon ${st.unterBreakEven} unter Break-even`;
-}
+export { liquidationsZeile } from "./export-logic";

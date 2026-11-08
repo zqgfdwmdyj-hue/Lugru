@@ -109,7 +109,8 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
         // B31.6: Regelwechsel auf Liquidation (Min unter Marge), Min unter Break-even, aktive Liquidationen, Rückkehr, Test
         const inhaber = session.role === "owner" && !session.readOnly;
         const alle = v.laender.flatMap((l) => l.zeilen);
-        const wechsel = alle.filter((z) => z.liquidation === "neu" && (z.regelWechsel || z.art !== "gleich"));
+        // nur echte Regelwechsel (Ist ≠ Liquidation) bzw. SKUs ohne Ist – eine reine Max-Änderung zählt nicht
+        const wechsel = alle.filter((z) => z.liquidation === "neu" && (z.regelWechsel || z.art === "neu"));
         const unterBe = alle.filter((z) => z.warnungen.some((w) => /^Min .* unter Break-even/.test(w)));
         const zeileZu = new Map(alle.map((z) => [`${z.land}|${z.sku}`, z]));
         const aktiv = liq.zeilen.filter((r) => r.grund === "min_unter_marge" && r.status !== "vorgeschlagen");

@@ -1214,6 +1214,40 @@ Zahl der Zeilen ohne SKU und die Spalten – dann bitte eine Datei-Zeile (ohne P
 `bqool`, Beschreibung), `verlust_stopp` (`bqool_zweite_quelle`, Beschreibung), `import_link` (neue Art
 `bqool_bericht`), `anbindungen_status` (Abruf „BQool: Berichte“) → `notifications/tools/list_changed`.
 
+
+### B31.6 (Ergänzung 08.11.): Min unter Mindestmarge nur mit Regel „Liquidation“
+
+Befund 08.11.: Ein Min unter dem effektiven Min der Regel (Marge unter 10 % bei ia, 7 % bei „Abverkauf DE“, 4 % bei
+„Abverkauf“) setzt BQool bei der nächsten Preisberechnung auf den Margen-Wert zurück; nur „Liquidation“ nimmt den
+hochgeladenen Min als feste Untergrenze. Vorher konnte die Datei einen solchen Min ohne Regelwechsel enthalten
+(Einstellung „Break-even als Sicherheitsnetz“ aus B31.3, Untergrenze von Hand unter dem effektiven Min).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Regel 1: gewünschter Min ≥ effektiver Min | ✅ Min = effektiver Min (Standard) | ✅ Regel bleibt, gewünschter Min als Sicherheitsnetz (ohne Wunsch: effektiver Min) | `minEntscheidung` (`src/lib/bqool/export-logic.ts`) |
+| Regel 2: gewünschter Min < effektiver Min → „Liquidation“ + fester Min | ❌ Min wanderte ohne Regelwechsel in die Datei (bzw. Einstellung „Sicherheitsnetz“) | ✅ Rule Name „Liquidation“ (Name aus dem Katalog), Min fest; die Datei enthält nie einen Min unter dem effektiven Min ohne Regelwechsel. Einstellung „Break-even (Sicherheitsnetz)“ entfernt (Erklärung im Kasten „Täglicher BQool-Lauf“) | `minEntscheidung`, `bqoolVorschau`/`bqoolExportErzeugen` (`export-service.ts`), `kreislauf-karte.tsx` (`bq-min-regel`) |
+| Regel 3: Rückkehr, „Regel vor Liquidation“ merken | ❌ | ✅ Tabelle `bqool_liquidationen` (Regel vorher, Min gewünscht/gesetzt, effektiver Min vorher, Break-even, Status vorgeschlagen → aktiv → zurück vorgeschlagen → beendet). Täglich (BQool-Lauf und einmal täglich im Hintergrund): Buy Box (BQool-Ist, sonst Keepa) über effektivem Min der ursprünglichen Regel + 3 % zählt Tage am Stück; nach 14 Tagen Vorschlag + Aufgabe „zurück von Liquidation …?“, Freigabe per Knopf „zurück auf ia“ (oder „bleibt“) | `rueckkehrStand`, `liquidationenPflegen`, `rueckkehrFreigeben`/`rueckkehrAblehnen` (`src/lib/bqool/liquidation.ts`), Migration 0139 |
+| Untergrenze Break-even, „Mindest-Verlust akzeptiert bis x €“ | ❌ | ✅ Liquidation-Min nie unter Break-even (EK + FBA + Provision, ohne Mindestgewinn); gewünschter Min darunter wird angehoben (Warnung). Mit „Verlust akzeptiert bis x € je Stück“ (Freigabe-Seite) bis Break-even − x. Freigabe-Liste „Min unter Break-even“ mit Eingabe; zählt als „Min unter Break-even“ → kein automatischer Upload | `minEntscheidung`, `verlustFreigabeSetzen`, `verlustFreigabeAction` |
+| Verlust-Stopp | 🟡 Liquidation-Ausnahme nur von Hand | ✅ Sobald das BQool-Ist Liquidation mit dem gesetzten Min zeigt: Ausnahme automatisch übernommen („BQool-Liquidation DE (Min unter Marge, vorher „ia“) seit … – nur bis Break-even“ bzw. „Verlust bis x € je Stück freigegeben“). Neuer Fall nur, wenn der Verlust je Stück den Rahmen (+ 0,50 €) übersteigt; bei Rückkehr wird die Ausnahme entfernt | `liquidationIstAbgleich`, `verlustStopp` (`src/lib/money/verlust-service.ts`) |
+| Repricer „Regel seit“ + Filter | ❌ | ✅ Spalte „Regel seit“ (Datum des ersten Ist mit dieser Regel), Filter „Liquidation: wegen Min unter Marge“, Kennzeichen „wegen Min unter Marge (vorher ia)“; für diese SKUs kein Hinweis „Min unter System-Min“ und kein Ist≠Soll-Fall im Abgleich | `src/app/(app)/repricer/page.tsx`, `bqoolAnsicht` (`service.ts`), `abgleich` |
+| Kapital-Ampel / Morgenbericht | ❌ | ✅ Zeile „n SKUs auf Liquidation (Min unter Marge), davon m unter Break-even“ (Kapital-Ampel mit Link, Morgenbericht nur Inhaber) | `liquidationsZeile`, `src/app/(app)/kapital/page.tsx`, `morgenText` |
+| Freigabe-Seite: Regelwechsel getrennt | ❌ | ✅ Abschnitt „Liquidation wegen Min unter Marge“ auf Repricer → BQool-Dateien: SKU, alte Regel → Liquidation, Min alt → neu (gewünscht), Marge neu, Break-even, Buy Box, Status; Push-/Freigabe-Text „(davon n auf Liquidation wegen Min unter Marge)“; Hinweis „Liquidation ist AI Win Sales Booster: der Preis kann bis zum Min fallen“ | `src/app/(app)/repricer/bqool/page.tsx` (`bq-liquidation`), `freigabeText` |
+| Test vor dem ersten automatischen Upload | ❌ | ✅ Bis der Test bestanden ist, kommen Regelwechsel auf Liquidation nicht in die Datei (auch nicht im täglichen Lauf). „Test-Export nur für diese SKU“ erzeugt eine Datei mit genau einer SKU (Liquidation + fester Min). Zeigt ein BQool-Ist mindestens 12 Std. nach dem ersten Treffer Liquidation und Min noch, gilt der Test als bestanden; sonst von Hand „In BQool nachgesehen – Test bestanden“ | `liquidationStehtNoch`, `liquidationTestExportAction`, Einstellung `bqool.liquidationTest` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 6. Export mit Min unter effektivem Min enthält Rule Name „Liquidation“ und den festen Min; nach dem BQool-Lauf bleibt der Min stehen | ✅ automatisch (`e2e/b31-6-liquidation.spec.ts`, erfundene SKU): Wunsch weit unter Break-even → Min auf Break-even angehoben; Wunsch zwischen Break-even und effektivem Min → Freigabe-Liste „ia → Liquidation“, „wartet auf Test“; voller Export ohne die SKU; Test-Export mit genau einer Zeile `Liquidation` + fester Min; BQool-Ist mit Liquidation → aktiv + Verlust-Stopp-Ausnahme; zweites Ist 13 Std. später → Test bestanden, `repricer` zeigt Liquidation mit dem Min und „regel_seit“; danach voller Export mit Liquidation. Mit dem echten BQool nur live (To-do 115) |
+| 7. Buy Box 14 Tage über effektivem Min + 3 % → Vorschlag „zurück auf ia“ | ✅ automatisch: nach 13 Tagen kein Vorschlag, nach 14 Tagen Status „zurück vorgeschlagen“, Aufgabe, Knopf „zurück auf ia“, `bqool_export_vorschau.liquidation.rueckkehr_vorgeschlagen`; nach Freigabe Soll wieder ia mit effektivem Min, Liquidation beendet, Ausnahme entfernt |
+
+Unit-Tests: `tests/b31-6-liquidation.test.ts` (Min-Entscheidung, Break-even-Untergrenze und Verlust-Rahmen, Marge beim
+neuen Min, Rückkehr-Zähler, Test-Erkennung, Texte). Regression: `bqool-dateien`, `b31-bqool-kreislauf`,
+`b31-5-bqool-berichte`, `bqool-upload-erkennung`, `teil2` (Kapital-Ampel, Verlust-Stopp), `werkzeuge`, `push-handy`.
+
+**Werkzeuge B31.6:** keine neuen, keine neuen ändernden. Geändert: `bqool_export_vorschau` (Beschreibung, Block
+`liquidation`: Test, Regelwechsel mit Min alt/neu, Marge neu, Break-even, aktive, unter Break-even, Rückkehr-Vorschläge;
+Hinweis) und `repricer` (Beschreibung, Felder `regel_seit`, `liquidation_wegen_min_unter_marge`) →
+`notifications/tools/list_changed`.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2079,8 +2113,7 @@ nie in Chats oder Mails.
      30 Minuten später (oder „Nachkontrolle jetzt“).
 109. **Min-Verhalten in BQool prüfen (B31.3)**: Nach dem ersten Upload an einer SKU mit Margen-Regel in BQool nachsehen,
      welchen Min BQool zeigt und ob es darunter verkauft. Dann im Kasten „Täglicher BQool-Lauf“ das Häkchen „Min-Verhalten
-     in BQool geprüft“ setzen. Rechnet BQool den Min selbst aus Cost + Marge und nimmt den Dateiwert nur als
-     Sicherheitsnetz, kann „Break-even ohne Marge“ gewählt werden – Standard bleibt der effektive Min.
+     in BQool geprüft“ setzen. (Seit B31.6 gilt fest: Min in der Datei ≥ effektiver Min; darunter nur mit „Liquidation“.)
 110. **Automatisch hochladen (optional)**: erst nach Punkt 109 einschalten (Repricer → BQool-Dateien → Einstellungen).
      Auch dann braucht ein Lauf mit Regelwechsel oder Min unter Break-even die Freigabe.
 111. **BQool-Berichte (B31.5)**: Die fünf Dateien vom 07.11. nach dem Update unter Uploads noch einmal hochladen
@@ -2096,3 +2129,14 @@ nie in Chats oder Mails.
 114. **Lernschleife (B28.8)**: Am 03.12. kommt der Push mit den November-Verlustprodukten. Die Push-Art
      „Lernschleife Verlustprodukte“ ist an (Einstellungen → Benachrichtigungen). Wer nicht warten will: Deal-Eingang →
      „Wie gut lag er?“ → „Liste für den Vormonat jetzt erstellen“.
+115. **Liquidation-Test mit einer SKU (B31.6)**: Nach dem Update unter Repricer → BQool-Dateien → „Liquidation wegen Min
+     unter Marge“ eine SKU wählen, „Test-Export nur für diese SKU“, die Datei hochladen („An BQool übertragen“ oder ZIP).
+     Nach dem nächsten BQool-Lauf erkennt das System selbst, ob Regel und Min stehen geblieben sind (sonst in BQool
+     nachsehen und „Test bestanden“ tippen). Erst dann kommen die Regelwechsel für alle in die Datei – Upload weiter nur
+     mit Freigabe.
+116. **„Verlust akzeptiert bis“ setzen (B31.6)**: SKUs, die schon auf Liquidation unter Break-even stehen, erscheinen
+     unter „Min unter Break-even – nicht freigegeben“ und halten den automatischen Upload an. Je SKU den Betrag je Stück
+     eintragen (oder den Min in BQool anheben).
+117. **Gewünschte Min-Preise eintragen (B31.6)**: Für SKUs, die unter dem effektiven Min laufen sollen, unter
+     „Soll-Regeln“ die bisherige Regel (z. B. ia) mit dem gewünschten Min eintragen – das System stellt dann selbst auf
+     Liquidation um und schlägt die Rückkehr vor, wenn die Buy Box wieder steigt.
