@@ -20,6 +20,9 @@ CREATE TABLE "bqool_sku_pflege" (
 	"schnell_seit" timestamp with time zone,
 	"schnell_bis" date,
 	"aktivieren" boolean DEFAULT false NOT NULL,
+	"bb_ueber_max_seit" date,
+	"max_soll" numeric(12, 2),
+	"check_zuletzt" date,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "bqool_sku_pflege_tenant_id_land_sku_pk" PRIMARY KEY("tenant_id","land","sku")
 );

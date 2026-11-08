@@ -276,7 +276,9 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const regelVorher = ent.regelVorher ?? (liq && liq.grund !== "hand" ? liq.regelVorher : null);
       const effMinVorher = ent.art === "liquidation_neu" ? eff.min : regelVorher ? effektiverMin({ regel: katalogRegel(b.katalog, regelVorher), untergrenze: null, ...kosten, alterTage }).min : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
-      const max = gebraucht && ziel.preis ? Math.max(Math.round(ziel.preis * leiter.zustand.maxFaktor * 100) / 100, Math.round(min * 1.05 * 100) / 100) : maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
+      const max0 = gebraucht && ziel.preis ? Math.max(Math.round(ziel.preis * leiter.zustand.maxFaktor * 100) / 100, Math.round(min * 1.05 * 100) / 100) : maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
+      // B32 Befund 5: Max nach Freigabe („Max anheben“), nie unter Min + 5 %
+      const max = pf?.maxSoll ? Math.max(pf.maxSoll, Math.round(min * 1.05 * 100) / 100) : max0;
       // B31.7c: pausiertes Angebot nach Freigabe aktivieren
       const enable = pf?.aktivieren ? "1" : (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
       const w = warnungen({ min: ent.art === "marge" ? (eff.min ?? min) : min, max }, { buybox, breakEven: null });

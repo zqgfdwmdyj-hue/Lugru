@@ -291,6 +291,10 @@ export const bqoolSkuPflege = pgTable(
     schnellBis: date("schnell_bis", { mode: "string" }),
     /** B31.7c: pausiertes Angebot nach Freigabe aktivieren (Enable Repricing = 1 in der nächsten Datei). */
     aktivieren: boolean("aktivieren").notNull().default(false),
+    /** B32: Buy Box liegt seit diesem Tag über dem Max; Max nach Freigabe (Befund 5); zuletzt im Listing-Check geprüft. */
+    bbUeberMaxSeit: date("bb_ueber_max_seit", { mode: "string" }),
+    maxSoll: numeric("max_soll", { precision: 12, scale: 2, mode: "number" }),
+    checkZuletzt: date("check_zuletzt", { mode: "string" }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],

@@ -1,5 +1,5 @@
 {
-  "id": "39c50b4b-a179-4258-a938-7ec5dab23521",
+  "id": "4bc4b475-676f-446a-8c4a-8f8072eabdfb",
   "prevId": "76ec786b-a0f5-468c-96c4-025de12a2eef",
   "version": "7",
   "dialect": "postgresql",
@@ -21907,6 +21907,24 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "bb_ueber_max_seit": {
+          "name": "bb_ueber_max_seit",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_soll": {
+          "name": "max_soll",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "check_zuletzt": {
+          "name": "check_zuletzt",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

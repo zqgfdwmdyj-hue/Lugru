@@ -328,6 +328,7 @@ export const SUBPAGES: Record<string, NavItem[]> = {
   "/repricer": [
     { href: "/repricer", label: "Übersicht" },
     { href: "/repricer/leistung", label: "Leistung" },
+    { href: "/repricer/listing-check", label: "Listing-Check" },
     { href: "/repricer/bqool", label: "BQool-Dateien" },
   ],
   "/marken/uhren": [

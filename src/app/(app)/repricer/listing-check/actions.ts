@@ -1,0 +1,37 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { requireArea, requireOwner } from "@/lib/auth/session";
+import { lesbarerFehler } from "@/lib/fehler-text";
+
+const PFAD = "/repricer/listing-check";
+const zurueck = (m: string): never => redirect(`${PFAD}?meldung=${encodeURIComponent(m)}`);
+
+/** B32: Befund freigeben / ablehnen / später – Freigaben wirken erst im nächsten BQool-Upload (B31.2). */
+export async function befundAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("id") ?? "");
+  const e = String(fd.get("entscheidung") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !["freigeben", "ablehnen", "spaeter"].includes(e)) zurueck("Angaben fehlen.");
+  const { befundEntscheiden } = await import("@/lib/bqool/listing-check");
+  const text = await befundEntscheiden(s.tenantId, id, e as "freigeben" | "ablehnen" | "spaeter", s.userId);
+  revalidatePath(PFAD);
+  zurueck(text);
+}
+
+/** Listing-Check jetzt laufen lassen (sonst täglich nach dem BQool-Ist um 06:00). */
+export async function checkJetztAction() {
+  const s = await requireArea("buchhaltung");
+  if (s.readOnly) zurueck("Nur ansehen – gesperrt.");
+  let text = "";
+  try {
+    const { listingCheck } = await import("@/lib/bqool/listing-check");
+    const r = await listingCheck(s.tenantId);
+    text = `Listing-Check: ${r.geprueft} SKUs geprüft (A ${r.stufeA} / B ${r.stufeB} / C ${r.stufeC}), ${r.neu} neue Befunde, ${r.offen} offen${r.unvollstaendig ? ` · Check unvollständig (${r.unvollstaendig} ohne frische Keepa-Daten)` : ""}${r.bqoolAlt ? " · BQool-Stand alt" : ""}.`;
+  } catch (e) {
+    text = `Listing-Check fehlgeschlagen – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(PFAD);
+  zurueck(text);
+}

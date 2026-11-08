@@ -95,4 +95,42 @@ export const bqoolExportErzeugenTool = defineTool({
   summary: (i) => `BQool-Dateien erzeugen (${(i.laender ?? []).join(", ")}${i.nur_aenderungen === false ? ", alles" : ", nur Änderungen"})`,
 });
 
-export const BQOOL = [bqoolExportVorschauTool, bqoolExportErzeugenTool];
+// B32 Listing-Check: Befunde nur lesen. Freigaben laufen über die Seite (BQool-Upload B31.2), nie über Claude.
+export const listingCheckTool = defineTool({
+  name: "listing_check",
+  title: "Listing-Check: Befunde",
+  description:
+    "Ergebnis des täglichen Listing-Checks (B32): offene Befunde nach Euro-Potenzial (fehlende Verkäufe × Marge je Monat, Schätzung) – z. B. Min über Buy Box, Max unter Buy Box, Listing pausiert, Schnelldreher ohne Schutz, Preisband/Regel passt nicht – mit Land, SKU/ASIN, Zahlen und Vorschlag; Stand des letzten Laufs (Stufe A/B/C, Keepa-Abrufe, „Check unvollständig“, BQool-Stand alt) und Trefferquote der Freigaben. Keepa-Zahlen sind Marktdaten, keine eigenen Verkäufe. Nur lesen – Freigeben/Ablehnen auf der Seite. Für „Welche Listings verlieren Geld?“, „Was hat der Listing-Check gefunden?“.",
+  area: ["buchhaltung", "amazon"],
+  write: false,
+  quelle: { text: "Seller-System (BQool-Ist, Kapital-Ampel, Keepa für Stufe A, sellerboard-Tageswerte mit einem Tag Verzug)" },
+  input: z.object({ befund: z.number().int().min(1).max(10).optional().describe("Nur diese Befund-Nummer (1–10)"), limit: z.number().int().min(1).max(100).default(20) }),
+  run: async (ctx, i) => {
+    const { befundeOffen, checkTrefferquote, BEFUND_TITEL } = await import("@/lib/bqool/listing-check");
+    const [st, alle, tq] = await Promise.all([getSettings(ctx.session.tenantId).then((s) => s.bqool.listingCheckStand), befundeOffen(ctx.session.tenantId), checkTrefferquote(ctx.session.tenantId).catch(() => null)]);
+    const liste = i.befund ? alle.filter((b) => (b.daten as { nr?: number }).nr === i.befund) : alle;
+    const jeNr: Record<string, number> = {};
+    for (const b of alle) {
+      const nr = (b.daten as { nr?: number }).nr ?? 0;
+      const k = `${nr} ${BEFUND_TITEL[nr] ?? ""}`.trim();
+      jeNr[k] = (jeNr[k] ?? 0) + 1;
+    }
+    return json({
+      stand: st
+        ? { am: berlinDateTime(new Date(st.am)), geprueft: st.geprueft, stufe_a: st.stufeA, stufe_b: st.stufeB, stufe_c: st.stufeC, keepa_abrufe: st.keepaAbrufe, neu: st.neu, offen: st.offen, unvollstaendig: st.unvollstaendig || undefined, bqool_stand_alt: st.bqoolAlt || undefined }
+        : "noch kein Lauf",
+      offen: alle.length,
+      je_befund: jeNr,
+      befunde: liste.slice(0, i.limit).map((b) => {
+        const d = b.daten as { nr?: number; befund?: string; titel?: string; asin?: string | null; zahlen?: Record<string, unknown>; stufe?: string };
+        return { land: b.land, sku: b.sku, asin: d.asin ?? undefined, titel: d.titel ? String(d.titel).slice(0, 60) : undefined, befund: `${d.nr} ${d.befund ?? ""}`.trim(), stufe: d.stufe, zahlen: d.zahlen, vorschlag: (b.gruende ?? []).join(" "), potenzial_euro_monat: b.potenzial ?? 0 };
+      }),
+      trefferquote: tq && tq.freigaben ? { freigaben_aelter_14_tage: tq.freigaben, mit_mehr_verkaeufen: tq.mitVerkauf, quote_prozent: tq.quote } : undefined,
+      hinweis: "Freigaben nur auf der Seite; sie gehen über den nächsten BQool-Upload, nie direkt in BQool.",
+      link: abs(ctx, "/repricer/listing-check"),
+      datenstand: { quelle: "Listing-Check (Seller-System)", stand: st ? berlinDateTime(new Date(st.am)) ?? "" : "kein Lauf", abgerufen: berlinDateTime(new Date()) ?? "" },
+    });
+  },
+});
+
+export const BQOOL = [bqoolExportVorschauTool, bqoolExportErzeugenTool, listingCheckTool];

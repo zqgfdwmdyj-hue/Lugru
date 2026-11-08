@@ -174,6 +174,8 @@ export async function kreislaufStarten(tenantId: string, ausloeser: "zeitplan" |
   }
   // B31.6: Liquidation wegen Min unter Marge – aktiv/Test/Rückkehr-Vorschlag auf Basis des frischen Ist
   await import("./liquidation").then((x) => x.liquidationenPflegen(tenantId, tagBerlin(jetzt))).catch((e) => console.error("[BQool] Liquidation:", e instanceof Error ? e.message : e));
+  // B32: Listing-Check nach dem frischen Ist (Stufe A täglich, B wöchentlich, C monatlich)
+  await import("./listing-check").then((x) => x.listingCheck(tenantId, tagBerlin(jetzt))).catch((e) => console.error("[BQool] Listing-Check:", e instanceof Error ? e.message : e));
   // 2. Soll erzeugen (nur Änderungen) auf Basis des frischen Ist
   await aendern(tenantId, id, { phase: "soll" });
   const { bqoolExportErzeugen } = await import("./export-service");
