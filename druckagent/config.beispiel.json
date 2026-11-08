@@ -1,0 +1,11 @@
+{
+  "server": "https://seller.example.com",
+  "token": "da_HIER_DEN_GERAETETOKEN_EINTRAGEN",
+  "drucker": [
+    { "name": "QL-800", "modell": "QL-800", "anschluss": "windows:Brother QL-800" },
+    { "name": "QL-1100", "modell": "QL-1100", "anschluss": "windows:Brother QL-1100" }
+  ],
+  "leerlaufAusMin": 10,
+  "ordner": null,
+  "medien": []
+}

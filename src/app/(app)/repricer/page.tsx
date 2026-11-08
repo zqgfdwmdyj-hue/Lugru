@@ -14,7 +14,7 @@ import { bqoolStand } from "@/lib/bqool/service";
 import { BqoolUpload } from "./bqool-upload";
 import { bqoolVorschau } from "@/lib/bqool/export-service";
 import { ablaufStand, istGebraucht, stufeVonRegel, ZUSTAENDE, ZUSTAND_TEXT, type Zustand } from "@/lib/bqool/leiter-logic";
-import { schnelldreherAction, zustandAction } from "./bqool/actions";
+import { schnelldreherAnAction, schnelldreherAusAction, zustandAction } from "./bqool/actions";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { todayIso } from "@/lib/dates";
@@ -207,8 +207,8 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
                     <select name="zustand" form="bq-wahl" defaultValue="" data-testid="bqool-zustand-wahl" aria-label="Zustand"><option value="">Zustand …</option>{ZUSTAENDE.filter((x) => x !== "unbekannt").map((x) => <option key={x} value={x}>{ZUSTAND_TEXT[x as Zustand]}</option>)}<option value="auto">automatisch erkennen</option></select>
                     <input type="hidden" name="zurueck_q" value={sp.q ?? ""} form="bq-wahl" />
                     <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={zustandAction} data-testid="bqool-zustand-setzen">Zustand setzen</button>
-                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAction} name="an" value="1" data-testid="bqool-schnell-an">⚡ Schnelldreher an</button>
-                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAction} name="an" value="0" data-testid="bqool-schnell-aus">Schnelldreher aus</button>
+                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAnAction} data-testid="bqool-schnell-an">⚡ Schnelldreher an</button>
+                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAusAction} data-testid="bqool-schnell-aus">Schnelldreher aus</button>
                   </div>
                 )}
                 {bqSeiten > 1 && (

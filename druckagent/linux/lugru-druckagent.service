@@ -1,0 +1,18 @@
+# systemd-Dienst für den Druckagenten (Mini-PC/Linux). Installation: sudo bash installieren.sh
+[Unit]
+Description=lugru-druckagent (Druckagent für das Seller-System)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /opt/lugru-druckagent/lugru-druckagent.mjs
+WorkingDirectory=/opt/lugru-druckagent
+Restart=always
+RestartSec=10
+# Zugriff auf /dev/usb/lp* (Gruppe lp) – kein root nötig
+User=lugru-druckagent
+Group=lp
+SupplementaryGroups=lp
+
+[Install]
+WantedBy=multi-user.target

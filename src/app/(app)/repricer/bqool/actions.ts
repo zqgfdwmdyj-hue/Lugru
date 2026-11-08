@@ -310,9 +310,18 @@ export async function zustandAction(fd: FormData) {
 }
 
 /** B31.8: Schnelldreher von Hand setzen/entfernen (Mehrfachauswahl). */
+/** Zwei getrennte Aktionen statt name/value am Knopf (Formular steht außerhalb der Tabelle, Knöpfe mit form=…). */
+export async function schnelldreherAnAction(fd: FormData) {
+  return schnelldreherSetzenAus(fd, true);
+}
+export async function schnelldreherAusAction(fd: FormData) {
+  return schnelldreherSetzenAus(fd, false);
+}
 export async function schnelldreherAction(fd: FormData) {
+  return schnelldreherSetzenAus(fd, fd.get("an") === "1");
+}
+async function schnelldreherSetzenAus(fd: FormData, an: boolean) {
   const s = await requireOwner();
-  const an = fd.get("an") === "1";
   const eintraege = [...new Set(fd.getAll("wahl").map(String))].map((w) => ({ land: w.split("|")[0], sku: w.split("|").slice(1).join("|") })).filter((x) => (EXPORT_LAENDER as readonly string[]).includes(x.land) && x.sku);
   const ziel = `/repricer?bq=alle${fd.get("zurueck_q") ? `&q=${encodeURIComponent(String(fd.get("zurueck_q")))}` : ""}`;
   if (!eintraege.length) redirect(`${ziel}&meldung=${encodeURIComponent("Bitte SKUs wählen.")}#bqool-liste`);

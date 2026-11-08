@@ -167,7 +167,7 @@ test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
       await expect(aktivZeile).toContainText(`${f2(schwelle + 5)} / ${f2(schwelle)}`);
       await expect(aktivZeile.getByTestId("bq-liq-zurueck")).toHaveText("zurück auf ia");
       const [aufgabe] = await sql<{ title: string; notes: string }>("select title, notes from tasks where tenant_id = $1 and system_key = 'bqool-rueckkehr' and status = 'open'", [T]);
-      expect(aufgabe.title).toMatch(/^BQool: \d+ SKUs? zurück von Liquidation auf die ursprüngliche Regel\?$/);
+      expect(aufgabe.title).toMatch(/^BQool: \d+ SKUs? zurück von Liquidation\?$/);
       expect(aufgabe.notes).toContain(`• DE ${A} → ia`);
       const v = JSON.parse(await c.call("bqool_export_vorschau", { land: "DE" }));
       expect(v.liquidation.rueckkehr_vorgeschlagen).toContainEqual(expect.objectContaining({ land: "DE", sku: A, zurueck_auf: "ia" }));

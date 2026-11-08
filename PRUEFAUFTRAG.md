@@ -1248,6 +1248,76 @@ neuen Min, Rückkehr-Zähler, Test-Erkennung, Texte). Regression: `bqool-dateien
 Hinweis) und `repricer` (Beschreibung, Felder `regel_seit`, `liquidation_wegen_min_unter_marge`) →
 `notifications/tools/list_changed`.
 
+### B31.6a/b, B31.7, B31.8 (Ergänzung 08.11.): „Liquidation bis“, Regel-Leiter, Zustand, Schnelldreher
+
+Prüfung vorher (Stand vor diesem Nachtrag): Liquidation hatte kein Enddatum, die Rückkehr ging auf die „ursprüngliche
+Regel“, einen Zustand der Ware und ein Schnelldreher-Kennzeichen gab es nicht (alles ❌). Hinweis zu B31.6 umgesetzt:
+Regelwechsel auf Liquidation nur, wenn die Buy Box unter dem effektiven Min der aktuellen Regel liegt – sonst genügt die
+Min-Korrektur (Warnung „kein Regelwechsel, die Buy Box … liegt darüber“), ohne bekannte Buy Box kein Wechsel.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B31.6 Hinweis: Wechsel nur bei Buy Box unter effektivem Min | ❌ | ✅ sonst Min = effektiver Min, `keinWechsel` mit Grund; laufende Liquidation bleibt bis „Liquidation bis“ stehen (auch wenn die Buy Box steigt) | `minEntscheidung` (`buybox`, `laeuft`) in `src/lib/bqool/export-logic.ts` |
+| B31.6a „Liquidation bis“ (45 Tage, global/fester Termin) | ❌ | ✅ Datum beim Aktivieren (BQool-Ist zeigt Liquidation + Min), Standard 45 Tage oder fester Termin (Einstellungen → Repricer → Leiter); Migration setzt laufenden Liquidationen Start + 45 Tage | `liquidationBis`, `liquidationIstAbgleich`, Migration 0140 |
+| B31.6a frühere Rückkehr (a) Bestand 0, (b) Lageralter-Stufe gewandert, (c) 14 Tage | 🟡 nur (c) | ✅ alle drei; (b) bei Min-unter-Marge nur, wenn der effektive Min der alten Regel unter dem Wert beim Wechsel liegt; bei Liquidationen der Leiter gilt B31.6b „Stufe 2 ≤ Buy Box“ | `fruehereRueckkehr` (`leiter-logic.ts`), `liquidationenPflegen` (`liquidation.ts`) |
+| B31.6a Ablauf: 7 Tage vorher Push/Aufgabe mit drei Knöpfen, ohne Antwort weiter | ❌ | ✅ Push + Aufgabe „Liquidation läuft ab“, Knöpfe „+30 T“ / „zurück“ / „dauerhaft“ (Repricer → BQool-Dateien → Liquidation); abgelaufen ohne Rückkehr-Bedingung → +30 Tage, Morgenbericht „Liquidation um 30 Tage verlängert“; offene Rückkehr nach Ablauf → „Liquidation überfällig“ | `ablaufEntscheiden`, `ablaufAction`, `leiterMorgenZeilen` |
+| B31.6a Anzeige: Spalte „Liquidation bis“ + Restdauer, Filter „läuft in 7 Tagen ab“ | ❌ | ✅ Repricer-Liste (`bqool-liq-bis`) und Liquidations-Tabelle (`bq-liq-bis`), Filter „Liquidation läuft in 7 Tagen ab“ | `src/app/(app)/repricer/page.tsx`, `repricer/bqool/page.tsx` |
+| B31.6b Stufen 1–3, Wechsel 1→2, 2→3, 2→1 (Vorschlag mit Freigabe) | ❌ | ✅ täglicher Lauf nach dem BQool-Ist: 1→2 (Reichweite > 90, Lagerdauer > 60 mit Kapital > 300 €, Hebel Ladenhüter, effektiver Min 7 Tage über Buy Box + Quote < 10 %), 2→3 (Stufe 2 seit 7 Tagen über Buy Box und Kapital > 300 € oder Lagerdauer > 90; Min = max(Break-even, Buy Box − 1 %) ≤ effektiver Min Stufe 2), zurück nur auf Stufe 2, auf Stufe 1 nur bei Lageralter 0–30 | `leiterPruefen`, `rueckkehrZiel`, `liquidationsMin` (`leiter-logic.ts`), `leiterPflegen`/`vorschlagEntscheiden` (`leiter.ts`), Tabelle `bqool_vorschlaege` |
+| B31.6b Reihenfolge wählbar, Schwellen änderbar | ❌ | ✅ Einstellungen → Repricer → Leiter (Reihenfolge ia → Abverkauf → Liquidation oder Liquidation als Brücke; alle Schwellen) | `leiterEinstellungenAction`, `LEITER_STANDARD` |
+| B31.6b Anzeige: Spalte Stufe (+ seit), Freigabe je Stufenwechsel, Morgenbericht „Stufe 2: n, Stufe 3: m, davon k unter Break-even“ | ❌ | ✅ Spalte „Stufe“ (Regel seit steht daneben), Abschnitt „Regel-Leiter“ mit einer Zeile je Wechsel, Morgenbericht und Kapital-Ampel | `bq-leiter`, `bqool-stufe`, `stufenZeile`, `kapital-stufen` |
+| B31.7a Zustand erkennen (SKU-Muster, ArbitrageOne, Amazon, Retouren-Station, sonst unbekannt) | ❌ | 🟡 Reihenfolge Hand → RET_/LPN → Amazon-Bestand (Zustandsfeld) → Retouren-Station-Befund → Einkauf (neu) → unbekannt; ArbitrageOne-Zustand wird noch nicht gelesen (die bisherigen Parser kennen kein Zustandsfeld; Eingang in `zustandBestimmen` vorbereitet – Beispieldatei mit Zustandsspalte nötig, To-do 125); unbekannt = nicht in der Datei + Aufgabe „Zustand prüfen“ | `zustandBestimmen` (`leiter-logic.ts`), `bqoolVorschau`, Tabelle `artikel_zustand` |
+| B31.7a Zustand von Hand (Mehrfachauswahl) | ❌ | ✅ Repricer-Liste: Häkchen + „Zustand setzen“ (auch „automatisch erkennen“) | `zustandAction`, `bqool-zustand-setzen` |
+| B31.7b Zielpreis, Min gebraucht, Max, Verlust-Entscheidung | ❌ | ✅ Keepa-Gebrauchtpreis je Grad, sonst Neupreis × Faktor (ArbitrageOne-Abschläge 1,00/0,90/0,88/0,86/0,84/0,80, änderbar); Min gebraucht = Break-even + 3 % (0–5 % einstellbar); Max = Zielpreis × 1,10; Zielpreis unter Break-even → Warnung „Verlust – Entscheidung“ | `zielpreisGebraucht`, `bqoolVorschau` |
+| B31.7c BQool: eigener Min/Max, Regel Abverkauf, Liquidation nach 14 Tagen Stillstand, pausiert → aktivieren | ❌ | ✅ gebrauchte SKUs nie mit ia, Vorschlag Liquidation nach 14 Tagen Stillstand, Vorschlag „pausiertes Angebot aktivieren“ (nach Freigabe Enable = 1 in der Datei); Used-Buy-Box-Test in BQool: To-do 120 | `leiterPruefen`, `leiterPflegen` |
+| B31.7d Anzeige, Filter, Morgenbericht, Hebel, eBay | ❌ | ✅ Spalte „Zustand“ mit Zielpreis/Min gebraucht, Filter „Gebraucht ohne eigenen Preis“, Morgenbericht „n gebrauchte SKUs werden mit Neupreis-Min geführt“, Hebel „Gebrauchte mit Lagerdauer > 30 Tage“, Vorschlag „auf eBay verkaufen?“ mit Netto-Vergleich | `bqool-zustand`, `gebrauchtAltHebel` (`hebel/rules.ts`), `ebayVergleich` |
+| B31.8a Kennzeichen Schnelldreher (Kriterien, von Hand) | ❌ | ✅ Vorschlag bei ≥ 15 Verkäufen/30 T oder Reichweite ≤ 45, Lageralter ≤ 60, Buy-Box-Quote > 30 %; von Hand per Mehrfachauswahl an/aus | `schnelldreherKandidat`, `schnelldreherAction`, Tabelle `bqool_sku_pflege` |
+| B31.8b Boden 7 %, Sperre 1→2/2→3, Morgenbericht, BQool-Regel | ❌ | ✅ Min mindestens Break-even + 7 % (nie unter dem effektiven Min der Regel), keine Leiter- und keine Liquidations-Vorschläge, Morgenbericht „Schnelldreher unter Min: n SKUs, Buy Box seit x Tagen darunter“; eigene BQool-Regel „Schnelldreher“ nur, wenn ihr Name unter Leiter eingetragen ist (To-do 119) | `minEntscheidung` (`boden`), `leiterPruefen`, `leiterMorgenZeilen` |
+| B31.8c Ende der Sperre (21 Tage ohne Buy Box, < 5 Verkäufe, alt + langsam) | ❌ | ✅ Vorschlag mit drei Knöpfen „Schutz +14 T“ / „Abverkauf zulassen“ / „Min manuell“ + Aufgabe | `schnelldreherEnde`, `vorschlagEntscheiden` |
+| B31.8d Spalte/Marke mit „bis“, Filter | ❌ | ✅ „⚡ Schnelldreher bis …“ in der Spalte Stufe, Filter „Schnelldreher“ | `bqool-schnell` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| B31.6 (geändert): Liquidation nur bei Buy Box unter effektivem Min | ✅ automatisch (`e2e/b31-6-liquidation.spec.ts`): Buy Box darüber → kein Regelwechsel, Warnung; Buy Box darunter → Liquidation wie bisher; laufende Liquidation bleibt, wenn die Buy Box steigt; Rückkehr mit Lageralter 0–30 auf ia |
+| B31.6a/b | ✅ automatisch (`e2e/b31-6ab-7-8-b32.spec.ts`, erfundene SKUs): Vorschlag 1 → 2 „keine Verkäufe“, Freigabe → Soll „Abverkauf DE“ (Quelle Regel-Leiter); 2 → 3 mit Min = max(Break-even, Buy Box − 1 %) unter dem effektiven Min der Stufe 2, wartet auf den Liquidation-Test; Liquidation 5 Tage vor Ablauf → Aufgabe mit drei Knöpfen, „+30 T“, abgelaufen → +30 Tage automatisch (Morgenbericht-Zähler), „dauerhaft“; Repricer Spalten Stufe/Liquidation bis und Filter „läuft in 7 Tagen ab“ |
+| B31.7 Abnahme 1–4 | ✅ automatisch: RET_-SKU (erfunden) → gebraucht, Zielpreis = Neupreis × 0,84, Min gebraucht in der Export-Vorschau statt Neupreis-Min, Regel Abverkauf; SKU ohne Zustandsinfo → unbekannt, nicht in der Datei, Aufgabe „Zustand prüfen“; Zustand von Hand „akzeptabel“ → Zielpreis × 0,80; Vorschlag „aktivieren“ für die pausierte Retoure. Mit echten SKUs nur live |
+| B31.8 Abnahme 1–4 | ✅ automatisch: Kennzeichen von Hand, Min = Break-even + 7 % (ia-Stufe 5 %), trotz Ladenhüter-Kriterien und Buy Box unter Min kein Stufenwechsel, Morgenbericht-Zähler; 21 Tage ohne Buy Box → Vorschlag mit drei Knöpfen, „Schutz +14 T“ setzt „bis“ |
+
+Unit-Tests: `tests/b31-6ab-7-8-leiter.test.ts` (Stufen, Wechsel, Liquidation-Min, Rückkehr-Ziel, „Liquidation bis“,
+Ablauf, frühere Rückkehr, Zustand aus Texten/Befunden/Reihenfolge, Zielpreis, eBay-Vergleich, Schnelldreher-Kriterien
+und Ende, Morgenbericht-Zeilen), `tests/b31-6-liquidation.test.ts` (Buy-Box-Bedingung, laufende Liquidation).
+
+## B32 Listing-Check: regelmäßige Analyse aller Listings (08.11.)
+
+Prüfung vorher: ❌ – es gab keinen regelmäßigen Check; Befunde wie „Min über Buy Box“ oder „pausiert trotz Nachfrage“
+fielen nur zufällig auf.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B32.1 neun Befunde je SKU/Marktplatz mit Bestand | ❌ | ✅ 1 Min über Buy Box (und über 30-Tage-Schnitt − 3 %), 2 pausiert trotz Bestand/Nachfrage, 3 Schnelldreher, 4 keine Verkäufe trotz Markt, 5 Max zu niedrig (Buy Box 3 Tage darüber), 6 unter Break-even ohne Liquidation-Freigabe, 7 gebraucht mit Neupreis-Min, 8 Preis über Markt, 9 Ladenhüter – je mit Vorschlag und Euro-Potenzial (fehlende Verkäufe × Marge); Schnelldreher (auch Kandidaten): Ziel-Min Break-even + 7 % | `befundePruefen` (`src/lib/bqool/listing-check-logic.ts`) |
+| B32.1 Schwellen änderbar | ❌ | ✅ Einstellungen → Listing-Check (auf der Seite, nur Inhaber; leer = Standard) | `schwellenMitStandard`, `schwellenAction` |
+| B32.2 Stufen A/B/C, Budget, „Check unvollständig“ | ❌ | ✅ A täglich: 150 wertvollste (Kapital × Nachfrage) + Schnelldreher + offene Befunde; B wöchentlich; C monatlich ohne Bestand (nur Befund 1/6); Keepa nur für A, 24 Std. Zwischenspeicher, höchstens 60 Abrufe je Lauf, Reserve 20 Tokens; sonst „Check unvollständig“ (Seite + Morgenbericht); Dauer und Abdeckung gespeichert | `listingCheck` (`src/lib/bqool/listing-check.ts`), `stufeA`, `stufeFuer` |
+| B32.2 Zeitplan nach dem BQool-Ist 06:00 | ❌ | ✅ im täglichen BQool-Lauf nach der Liquidations-/Leiter-Pflege, sonst einmal täglich im Hintergrund („BQool: Listing-Check“) und auf Knopfdruck | `kreislauf.ts`, `scheduler.ts` |
+| B32.3 Seite „Listing-Check“ mit Freigeben/Ablehnen/Später | ❌ | ✅ Repricer → Listing-Check: Tabelle nach Potenzial, Filter je Befund, Knöpfe; Freigabe wirkt nur über die nächste BQool-Datei (Min als Soll, Aktivieren, Max, Schnelldreher, Stufe 2) | `src/app/(app)/repricer/listing-check/`, `befundEntscheiden` |
+| B32.3 Morgenbericht, Push nur bei 1/2 an Schnelldrehern oder Kapital > 1.000 € | ❌ | ✅ Zeile „Listing-Check: n neue Befunde (m offen) – größte 5 mit ASIN, Befund, Potenzial“; Push nur in diesen Fällen | `checkMorgenZeile`, `pushNoetig` |
+| B32.4 Preisband, Befund „Verkaufspreis dauerhaft unter Min“, Trefferquote | ❌ | 🟡 Preisband aus BQool Listing Performance (Umsatz/Stück je Bericht, 14 Tage), Befund 10 ab 3 Verkäufen; Trefferquote der Freigaben nach 14 Tagen auf der Seite und im Werkzeug. Einzelverkäufe je Tag (Daily Sales/sellerboard) fließen noch nicht ins Preisband; Anzeige in der Lernschleife B28.8 fehlt noch | `median`, `checkTrefferquote` |
+| B32.5 Grenzen | – | ✅ nichts ohne Freigabe, Keepa-Zahlen als Marktdaten gekennzeichnet, sellerboard-Verzug auf der Seite genannt | Seite, Werkzeug `listing_check` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. Lauf mit BQool-Stand von heute: Befund 1 und 2 (und Schnelldreher-Kandidat) | ✅ automatisch mit erfundener SKU (Min 80 über Buy Box 40, pausiert, Keepa-Nachfrage); Kandidat per Unit-Test (Kriterien brauchen eigene Verkäufe). Mit der echten SKU nur live |
+| 2. Vorschlag Min (bei Schnelldreher Break-even + 7 %), nach Freigabe im nächsten Upload | ✅ automatisch: Freigabe → Export-Vorschau zeigt den neuen Min, „aktivieren“ für die pausierte SKU; Schnelldreher-Ziel per Unit-Test |
+| 3. Stufe A im Budget, bei Token-Mangel „Check unvollständig“ | ✅ automatisch (Abrufe ≤ 60, Hinweis auf der Seite) |
+| 4. Verkauf erscheint am Folgetag im Preisband | 🟡 nur live – Preisband kommt aus dem BQool-Bericht Listing Performance |
+| 5. Morgenbericht enthält die Zeile „Listing-Check“ | ✅ automatisch (Morgenbericht über „jetzt ausliefern“) |
+
+Unit-Tests: `tests/b32-listing-check.test.ts` (Befunde 1–10, Schwellen, Stufen, Median, Push, Morgenbericht-Zeile).
+
+**Werkzeuge B31.6a/b, B31.7, B31.8, B32:** ein neues Lesewerkzeug `listing_check` (offene Befunde nach Potenzial,
+Stand/Abdeckung, Trefferquote; Freigaben nur auf der Seite). Geändert: `bqool_export_vorschau` (Block `leiter`, je Zeile
+`stufe`, `zustand`, `zielpreis_gebraucht`, `min_gebraucht`, `schnelldreher`, `schnelldreher_boden`, `break_even`) und
+`repricer` (`stufe`, `liquidation_bis`, `schnelldreher`) → `notifications/tools/list_changed`. Keine neuen ändernden
+Werkzeuge.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -1680,7 +1750,11 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | B15.3 Bestand −144 (8U-P4IG-LL5O) | 🟡 Reparatur gebaut, wartet auf Klick | Seit B15 bucht das Prep Center nicht mehr vom eigenen Lager; alte Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (Bestand → Kachel „Eigenes Lager“ → „Zurückbuchen“, `prepAbbuchungenZurueck`). Zeigt der Vorschlag 0 Aufträge, liegt die Ursache woanders (z. B. Auftrag nicht als „Prep Center“ markiert) – dann bitte melden |
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
-## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+## Neue Claude-Werkzeuge (56) und `notifications/tools/list_changed`
+
+Geändert am 08.11. (B31.6a/b, B31.7, B31.8, B32): **ein neues Lesewerkzeug** `listing_check` (Befunde des täglichen
+Listing-Checks, Stand, Trefferquote). Erweitert: `bqool_export_vorschau` (Leiter, Zustand, Schnelldreher) und `repricer`
+(Stufe, Liquidation bis, Schnelldreher). `notifications/tools/list_changed` nötig – geht beim Verbinden raus.
 
 Geändert am 06.11. (Bauauftrag Abholung DHL/UPS): **drei neue Werkzeuge** – `abholung_anlegen` (ändernd, Stufe gelb:
 erst Rückfrage mit Zusammenfassung, nach „Ja“ mit `bestaetigt=true` buchen; Rückgängig = Storno), `abholung_stornieren`
@@ -2140,3 +2214,23 @@ nie in Chats oder Mails.
 117. **Gewünschte Min-Preise eintragen (B31.6)**: Für SKUs, die unter dem effektiven Min laufen sollen, unter
      „Soll-Regeln“ die bisherige Regel (z. B. ia) mit dem gewünschten Min eintragen – das System stellt dann selbst auf
      Liquidation um und schlägt die Rückkehr vor, wenn die Buy Box wieder steigt.
+118. **Liquidation-Test mit der richtigen SKU (B31.6, Hinweis 08.11.)**: Für den Test eine SKU nehmen, deren Buy Box unter
+     dem effektiven Min liegt (sie steht nach dem Update in der Liste „Liquidation wegen Min unter Marge“). SKUs mit Buy
+     Box über dem effektiven Min bekommen keinen Regelwechsel mehr – dort reicht die Min-Korrektur.
+119. **Schnelldreher in BQool (B31.8b)**: Prüfen, welche Regel 7 % hält. Wenn eine eigene Regel „Schnelldreher“ angelegt
+     wird, den Namen unter Repricer → BQool-Dateien → Regel-Leiter → Einstellungen eintragen. Bis dahin bleibt die Regel,
+     der Boden steht nur als Min in der Datei (wirkt erst, wenn BQool den Datei-Min hält, siehe Test To-do 115).
+120. **Gebraucht-Listings in BQool (B31.7c)**: Testen, ob BQool für Used-Angebote einen Konkurrenzpreis liefert; das
+     Ergebnis unter Wissen eintragen. Wenn nein: Regel „Fix/Min“ verwenden (dann im Katalog ergänzen).
+121. **Zustand prüfen (B31.7a)**: Die Aufgabe „Zustand prüfen“ abarbeiten – SKUs ohne Zustand kommen nicht in die Datei.
+     Im Repricer Häkchen setzen und Zustand wählen.
+122. **Schwellen der Leiter und des Listing-Checks ansehen**: Repricer → BQool-Dateien → Regel-Leiter → Einstellungen und
+     Repricer → Listing-Check → Einstellungen. Standard laut Nachtrag; jeder Wechsel bleibt ein Vorschlag.
+123. **Rückkehr aus der Liquidation – bitte bestätigen**: Liquidationen der Leiter gehen zurück auf Stufe 2, sobald
+     Stufe 2 nicht mehr über der Buy Box liegt (B31.6b). Liquidationen aus „Min unter Marge“ (von Hand gewünschter Min)
+     warten wie bisher 14 Tage (B31.6a c) bzw. auf eine weitergewanderte Lageralter-Stufe. Wenn auch diese sofort
+     zurück sollen, kurz Bescheid geben.
+124. **Migration 0140** läuft mit dem Update-Befehl: laufende Liquidationen bekommen „Liquidation bis“ = Start + 45 Tage.
+125. **ArbitrageOne-Zustand (B31.7a Quelle 2)**: Wenn der ArbitrageOne-Export der Retouren-Listings eine Zustandsspalte hat,
+     eine Datei unter Uploads hochladen und Bescheid geben – dann wird die Spalte mitgelesen (bisher: SKU-Muster, Amazon,
+     Retouren-Station, von Hand).

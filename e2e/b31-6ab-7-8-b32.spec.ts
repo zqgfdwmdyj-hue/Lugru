@@ -25,12 +25,14 @@ async function grundlage(sku: string, o: { ek?: string; menge?: number; kind?: "
   const menge = o.menge ?? 20;
   await sql("insert into lots (tenant_id, product_id, sku, kind, sku_schema, purchase_date, quantity, unit_cost_net) values ($1, $2, $3, $4, 'test', current_date - $5::int, $6, $7)", [T, P, sku, o.kind ?? "purchase", o.tageAlt ?? 10, menge, o.ek ?? "20.00"]);
   await sql("insert into amazon_inventory (tenant_id, sku, asin, title, fulfillable, snapshot_date) values ($1, $2, $3, $4, $5, current_date)", [T, sku, o.asin ?? null, `Testartikel ${sku} (erfunden)`, menge]);
+  // Kapital-Ampel (Reichweite, Kapital) liest den sellerboard-Bestand
+  await sql("insert into sellerboard_inventory (tenant_id, sb_id, sku, asin, name, fba_stock, synced_at) values ($1, $2, $2, $3, $4, $5, now())", [T, sku, o.asin ?? null, `Testartikel ${sku} (erfunden)`, menge]);
   if (o.alter) await sql(`insert into amazon_lageralter (tenant_id, land, sku, verfuegbar, "alter", abgerufen_am) values ($1, 'DE', $2, $3, $4::jsonb, now())`, [T, sku, menge, JSON.stringify({ [o.alter]: menge })]);
   return T;
 }
 
 async function aufraeumen(T: string, muster: string) {
-  for (const t of ["bqool_vorschlaege", "bqool_sku_pflege", "artikel_zustand", "bqool_liquidationen", "bqool_zuweisungen", "bqool_listings:marktplatz", "amazon_lageralter", "amazon_inventory", "lots", "verlust_ausnahmen", "keepa_cache:asin"]) {
+  for (const t of ["bqool_vorschlaege", "bqool_sku_pflege", "artikel_zustand", "bqool_liquidationen", "bqool_zuweisungen", "bqool_listings:marktplatz", "amazon_lageralter", "amazon_inventory", "sellerboard_inventory", "lots", "verlust_ausnahmen", "keepa_cache:asin"]) {
     const [tab, spalte] = t.split(":");
     if (spalte === "asin") await sql(`delete from ${tab} where tenant_id = $1 and asin like $2`, [T, muster.replace("TEST-", "B0T")]);
     else await sql(`delete from ${tab} where tenant_id = $1 and sku like $2`, [T, muster]);
