@@ -4,11 +4,12 @@ import { requireArea } from "@/lib/auth/session";
 import { formatDate } from "@/lib/numbers";
 import { code128Svg } from "@/lib/labels/barcode";
 import { PrintButton } from "@/components/print-button";
+import { DruckKnopf } from "@/components/druck-knopf";
 
 // Paletten-Etiketten (A6 quer, z. B. für den Etikettendrucker oder 4 je A4-Blatt).
 // Aufruf: /etikett/palette?codes=P-0001,P-0002
 
-export default async function PalettenEtikettPage({ searchParams }: { searchParams: Promise<{ codes?: string }> }) {
+export default async function PalettenEtikettPage({ searchParams }: { searchParams: Promise<{ codes?: string; druck?: string }> }) {
   const session = await requireArea("paletten");
   const sp = await searchParams;
   const codes = [...new Set((sp.codes ?? "").split(",").map((c) => c.trim()).filter(Boolean))].slice(0, 300);
@@ -38,6 +39,14 @@ export default async function PalettenEtikettPage({ searchParams }: { searchPara
       <div className="bar">
         <PrintButton label={`${labels.length} Paletten-Etikett${labels.length === 1 ? "" : "en"} drucken`} />
         <span style={{ marginLeft: 12, fontSize: 13 }}>Format A6 quer (148 × 105 mm) · Skalierung 100 %</span>
+        {/* Druckagent: je Palette ein 102-mm-Etikett (QL-1100) */}
+        {labels.map((p) => (
+          <div key={p.id} style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 13, minWidth: 90 }}>{p.code}</span>
+            <DruckKnopf session={session} vorlage="palette" eingabe={{ kunde: p.customer ?? "–", nummer: p.code, inhalt: p.contents ?? "" }} zurueck={`/etikett/palette?codes=${encodeURIComponent(codes.join(","))}`} testid="palette-druck" />
+          </div>
+        ))}
+        {sp.druck && <div role="status" style={{ marginTop: 8 }}>{sp.druck}</div>}
       </div>
       {labels.map((p) => (
         <div className="pl" key={p.id}>

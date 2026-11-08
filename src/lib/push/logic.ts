@@ -13,6 +13,7 @@ export const MELDE_ARTEN = [
   { key: "bqool", titel: "BQool-Freigabe", text: "Täglicher BQool-Upload wartet auf Freigabe (Änderungen je Land, Regelwechsel, Warnungen) und Abweichungen der Nachkontrolle.", standard: true },
   { key: "lernschleife", titel: "Lernschleife Verlustprodukte", text: "Am 3. des Monats: Produkte mit Verlust oder Marge unter 3 % im Vormonat – Nie wieder / Pech / Weiß nicht warum (nur Inhaber).", standard: true },
   { key: "mail_entwurf", titel: "Antwort vorbereitet", text: "Käuferfrage oder Lieferanten-Antwort mit fertigem Antwortentwurf im Posteingang.", standard: true },
+  { key: "druck", titel: "Druckauftrag wartet", text: "Ein Druckauftrag wartet länger als 15 Minuten (Arbeits-PC aus, Drucker nicht bereit) – Ruhezeiten gelten.", standard: true },
   { key: "sonstiges", titel: "Sonstiges", text: "Übrige Hinweise (Tesla, Calls, Frühwarnungen, Termine …).", standard: true },
 ] as const;
 

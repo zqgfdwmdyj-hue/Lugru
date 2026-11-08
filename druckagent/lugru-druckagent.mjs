@@ -206,12 +206,26 @@ export class Agent {
     this.leerlauf = new Map();
     this.laeuft = false;
     this.updateProtokoll = [];
+    this.aus = false;
+    this.abbruch = new AbortController();
+  }
+  /** Sauber beenden (Dienst-Stopp): laufende Abfrage abbrechen, Schleife verlassen, Leerlauf-Zeitgeber löschen. */
+  stoppen() {
+    this.aus = true;
+    this.abbruch.abort();
+    for (const t of this.leerlauf.values()) clearTimeout(t);
+  }
+  pause(ms) {
+    return new Promise((ok) => {
+      const t = setTimeout(ok, ms);
+      this.abbruch.signal.addEventListener("abort", () => (clearTimeout(t), ok()), { once: true });
+    });
   }
   url(p) {
     return `${String(this.cfg.server).replace(/\/$/, "")}${p}`;
   }
   async anfrage(p, init = {}) {
-    const r = await this.fetch(this.url(p), { ...init, headers: { authorization: `Bearer ${this.cfg.token}`, "x-agent-version": VERSION, ...(init.headers ?? {}) } });
+    const r = await this.fetch(this.url(p), { signal: this.abbruch.signal, ...init, headers: { authorization: `Bearer ${this.cfg.token}`, "x-agent-version": VERSION, ...(init.headers ?? {}) } });
     if (r.status === 401 || r.status === 403) {
       this.abgemeldet = true;
       throw new Error("abgemeldet (Token widerrufen oder Agent deaktiviert)");
@@ -334,13 +348,13 @@ export class Agent {
     };
     await hb();
     for (const d of this.drucker) this.leerlaufStarten(d);
-    for (;;) {
+    while (!this.aus) {
       if (Date.now() >= naechsterHb) {
         await hb();
         naechsterHb = Date.now() + (this.abgemeldet ? 10 * 60_000 : HEARTBEAT_MS);
       }
       if (this.abgemeldet) {
-        await new Promise((ok) => setTimeout(ok, 60_000));
+        await this.pause(60_000);
         continue;
       }
       if (Date.now() >= naechsterOrdner) {
@@ -353,10 +367,11 @@ export class Agent {
       }
       try {
         const a = await this.abholen();
-        if (a) await this.auftragAusfuehren(a);
+        if (a && !this.aus) await this.auftragAusfuehren(a);
       } catch (e) {
+        if (this.aus) break;
         this.log(`Abfrage: ${e.message} – nächster Versuch in 10 s`);
-        await new Promise((ok) => setTimeout(ok, FALLBACK_MS));
+        await this.pause(FALLBACK_MS);
       }
     }
   }
@@ -389,7 +404,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (process.argv.includes("--drucker")) {
     druckerFinden(cfg).then((l) => (console.log(JSON.stringify(l, null, 2)), process.exit(0)));
   } else {
-    new Agent(cfg, { ordner }).start().catch((e) => {
+    const agent = new Agent(cfg, { ordner });
+    for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (agent.stoppen(), setTimeout(() => process.exit(0), 2000).unref()));
+    agent.start().then(() => process.exit(0)).catch((e) => {
       console.error(e);
       process.exit(1);
     });

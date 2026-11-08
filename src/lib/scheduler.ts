@@ -396,6 +396,20 @@ async function scanOrdnerTakt() {
   }
 }
 
+// Druckagent: wartende Aufträge > 15 Min. → Push (Ruhezeiten gelten), nach 7 Tagen abgelaufen, Protokoll 90 Tage.
+let druckLaeuft = false;
+async function druckTakt() {
+  if (druckLaeuft) return;
+  druckLaeuft = true;
+  try {
+    const { druckPruefen } = await import("@/lib/druck/service");
+    const mit = await db.selectDistinct({ id: schema.druckAuftraege.tenantId }).from(schema.druckAuftraege);
+    for (const t of mit) await druckPruefen(t.id).catch((e) => console.error("[Druck]", e instanceof Error ? e.message : e));
+  } finally {
+    druckLaeuft = false;
+  }
+}
+
 export function startScheduler() {
   if (started || process.env.ENABLE_SCHEDULER === "0") return;
   started = true;
@@ -407,5 +421,6 @@ export function startScheduler() {
   setInterval(() => void vaTakt().catch((e) => console.error("[VA]", e instanceof Error ? e.message : e)), 30_000);
   setInterval(() => void scanOrdnerTakt(), 60_000);
   setInterval(() => void mailSchnellTakt(), 60_000);
+  setInterval(() => void druckTakt(), 2 * 60_000);
   console.log("[Hintergrund] Abrufe aktiv (alle 5 Minuten).");
 }

@@ -4,13 +4,16 @@ import { requireSession } from "@/lib/auth/session";
 import { code128Svg } from "@/lib/labels/barcode";
 import { AutoPrint } from "@/components/auto-print";
 import { PrintButton } from "@/components/print-button";
+import { DruckerSymbol } from "@/components/drucker-symbol";
+import { fnskuSendenAction } from "@/app/(app)/drucken/actions";
+import { darfDrucken } from "@/lib/druck/logic";
 
 // FNSKU-Etiketten für den Brother QL-800 (62 × 29 mm, Endlos- oder Einzeletiketten).
 // Aufruf: /etikett?skus=SKU1:3,SKU2:1  oder  /etikett?sendung=<id>  (&drucken=1)
 
 type Label = { fnsku: string; title: string };
 
-export default async function EtikettPage({ searchParams }: { searchParams: Promise<{ skus?: string; sendung?: string; drucken?: string; zustand?: string }> }) {
+export default async function EtikettPage({ searchParams }: { searchParams: Promise<{ skus?: string; sendung?: string; drucken?: string; zustand?: string; druck?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const wanted = new Map<string, number>();
@@ -62,6 +65,17 @@ export default async function EtikettPage({ searchParams }: { searchParams: Prom
         <PrintButton label={`${labels.length} Etiketten drucken`} />
         <span style={{ marginLeft: 12, fontSize: 13 }}>Drucker: Brother QL-800 · Papier 62 × 29 mm · Ränder: keine · Skalierung 100 %</span>
         {missing.length > 0 && <div style={{ color: "#b42318", marginTop: 8 }}>Ohne FNSKU (nicht gedruckt): {missing.join(", ")}</div>}
+        {/* Druckagent im Lager: dieselben Etiketten als Druckauftrag an den QL-800 (auch vom Handy, auch unterwegs) */}
+        {labels.length > 0 && darfDrucken(session, "fnsku") && (
+          <form action={fnskuSendenAction} style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} data-testid="etikett-senden">
+            <input type="hidden" name="skus" value={[...wanted.entries()].map(([k, n]) => `${encodeURIComponent(k)}:${n}`).join(",")} />
+            <input type="hidden" name="zustand" value={condition} />
+            <input type="hidden" name="zurueck" value={`/etikett?skus=${[...wanted.entries()].map(([k, n]) => `${encodeURIComponent(k)}:${n}`).join(",")}`} />
+            <button type="submit" data-testid="etikett-senden-los">🖨 An QL-800 im Lager senden</button>
+            <DruckerSymbol tenantId={session.tenantId} modell="QL-800" />
+          </form>
+        )}
+        {sp.druck && <div role="status" style={{ marginTop: 8 }} data-testid="etikett-druck-meldung">{sp.druck}</div>}
       </div>
       {labels.map((l, i) => (
         <div className="label" key={i}>

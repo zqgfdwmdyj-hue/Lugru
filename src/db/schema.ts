@@ -27,6 +27,7 @@ export * from "./tables/assistant";
 export * from "./tables/testenv";
 export * from "./tables/keepa";
 export * from "./tables/bqool";
+export * from "./tables/druck";
 export * from "./tables/amazon-markt";
 export * from "./tables/retouren-station";
 export * from "./tables/b2b";

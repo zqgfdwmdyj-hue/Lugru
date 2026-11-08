@@ -116,6 +116,8 @@ export const NAV: NavSection[] = [
       { href: "/artikel", label: "Artikelstamm", unter: "lager" },
       { href: "/chargen", label: "Chargen", unter: "lager" },
       { href: "/paletten", label: "Paletten-Lager", unter: "lager" },
+      { href: "/drucken", label: "Drucken (Etiketten)", unter: "lager" },
+      { href: "/lager/scannen", label: "Scannen", unter: "lager" },
       { href: "/auftraege", label: "Aufträge & Versand", unter: "versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL", unter: "versand" },
       { href: "/versand/label", label: "Label aus Chat (DHL)", unter: "versand" },
@@ -236,6 +238,8 @@ export const NEBENSEITEN: Nebenseite[] = [
   { href: "/einstellungen/benachrichtigungen", label: "Benachrichtigungen", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/shop-profile", label: "Shop-Profile & Payback", wo: "Einstellungen (Reiter)", owner: true },
   { href: "/einstellungen/abholung", label: "Abholorte (DHL/UPS)", wo: "Einstellungen (Reiter)", owner: true },
+  { href: "/einstellungen/drucker", label: "Drucker & Druckagent", wo: "Einstellungen (Reiter)", owner: true },
+  { href: "/drucken/datei", label: "PDF drucken (Kartonlabels, FNSKU-Bogen)", wo: "Lager & Versand › Drucken" },
   { href: "/einstellungen/testumgebung", label: "Testumgebung", wo: "Einstellungen (Reiter)", owner: true },
 ];
 
@@ -322,6 +326,7 @@ export const SUBPAGES: Record<string, NavItem[]> = {
     { href: "/einstellungen/benachrichtigungen", label: "Benachrichtigungen" },
     { href: "/einstellungen/shop-profile", label: "Shop-Profile" },
     { href: "/einstellungen/abholung", label: "Abholung" },
+    { href: "/einstellungen/drucker", label: "Drucker" },
     { href: "/einstellungen/testumgebung", label: "Testumgebung" },
   ],
   // B31.5: Repricer mit Reitern Übersicht, Leistung (BQool-Berichte) und BQool-Dateien (Freigabe/Upload)

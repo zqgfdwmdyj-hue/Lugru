@@ -10,6 +10,8 @@ RUN npm ci
 ARG MIT_BROWSER=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN if [ "$MIT_BROWSER" = "1" ]; then npx playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*; fi
+# PDF-Umwandlung für den Etikettendruck (Seller-Central-Kartonlabels, FNSKU-Bögen): pdftoppm/pdftotext.
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
 COPY . .
 # Ohne Typprüfung bauen: die braucht ~1,4 GB und passt nicht auf den 2-GB-Server (geprüft wird vor dem Hochladen).
 RUN NEXT_SKIP_TYPECHECK=1 npm run build
