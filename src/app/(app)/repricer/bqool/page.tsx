@@ -315,7 +315,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
             <tbody>
               {zuw.map((z) => (
                 <tr key={`${z.land}${z.sku}`} data-testid="bq-zuweisung" data-sku={z.sku} data-land={z.land}>
-                  <td>{z.land}</td><td>{z.sku}</td><td>{z.regel}</td><td>{z.untergrenze?.toFixed(2) ?? "–"}</td><td>{{ vorlage: "aus BQool", hand: "von Hand", kapital: "Kapital-Ampel" }[z.quelle]}{z.freigegeben ? "" : " (nicht freigegeben)"}</td>
+                  <td>{z.land}</td><td>{z.sku}</td><td>{z.regel}</td><td>{z.untergrenze?.toFixed(2) ?? "–"}</td><td>{{ vorlage: "aus BQool", hand: "von Hand", kapital: "Kapital-Ampel", leiter: "Regel-Leiter" }[z.quelle]}{z.freigegeben ? "" : " (nicht freigegeben)"}</td>
                   <td>{kannSchreiben && <form action={zuweisungLoeschenAction}><input type="hidden" name="land" value={z.land} /><input type="hidden" name="sku" value={z.sku} /><button className="btn btn-sm" type="submit">entfernen</button></form>}</td>
                 </tr>
               ))}

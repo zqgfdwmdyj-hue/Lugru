@@ -227,6 +227,8 @@ export type KeepaStand = {
     monatlich_verkauft_aus?: "amazon" | "verlauf" | null;
     /** B28.4: Rang-Verbesserungen in 30 Tagen laut Keepa (≈ Verkäufe, Untergrenze) – Grundlage der Schätzung. */
     rang_drops_30?: number | null;
+    /** B31.7: aktuelle Gebrauchtpreise je Grad inkl. Versand (Keepa „used … shipping“), null = kein Angebot. */
+    gebraucht?: { wie_neu: number | null; sehr_gut: number | null; gut: number | null; akzeptabel: number | null; buybox: number | null };
   };
   kennzahlen: Record<"30" | "90" | "180", Kennzahlen>;
   /** Ein Wert je Tag (Stand am Tagesende, Europe/Berlin), älteste zuerst, bis zu 365 Tage. */
@@ -328,6 +330,7 @@ export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp:
       monatlich_verkauft: ms,
       monatlich_verkauft_aus: msAmazon !== null ? "amazon" : msVerlauf !== null ? "verlauf" : null,
       rang_drops_30: drops,
+      gebraucht: { wie_neu: preis(statWert(stats.current, 19)), sehr_gut: preis(statWert(stats.current, 20)), gut: preis(statWert(stats.current, 21)), akzeptabel: preis(statWert(stats.current, 22)), buybox: preis(statWert(stats.current, 32)) },
     },
     kennzahlen,
     verlauf,

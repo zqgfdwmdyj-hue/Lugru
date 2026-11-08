@@ -102,7 +102,7 @@ export function maxPreis(o: { min: number; bb90: number | null; faktor: number; 
   return r2(Math.max(roh, o.min));
 }
 
-export type Zuweisung = { regel: string; untergrenze: number | null; quelle: "vorlage" | "hand" | "kapital" };
+export type Zuweisung = { regel: string; untergrenze: number | null; quelle: "vorlage" | "hand" | "kapital" | "leiter" };
 export type MarkenRegel = { marke: string; land: ExportLand | null; regel: string };
 
 /** Marke als ganzes Wort im Titel (Produkte haben kein eigenes Markenfeld). */
@@ -443,6 +443,8 @@ export type MinEntscheidung = {
   unterBreakEven: boolean;
   /** Min unter Break-even ist als „Abverkauf mit Verlust“ freigegeben (Verlust je Stück bis verlustBis). */
   verlustFreigegeben: boolean;
+  /** Gewünschter Min unter dem effektiven Min, aber kein Regelwechsel: Buy Box liegt darüber bzw. unbekannt, oder Schnelldreher. */
+  keinWechsel: null | "buybox_ueber" | "buybox_unbekannt" | "schnelldreher";
 };
 
 /**
@@ -452,27 +454,36 @@ export type MinEntscheidung = {
  *    Mindestgewinn), darunter nur mit Freigabe „Verlust akzeptiert bis x €“ je Stück.
  * Regel ist schon Liquidation → Min = gewünschter Min (Untergrenze), sonst Break-even; unter Break-even nur warnen.
  */
-export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | null; gewuenscht: number | null; effMin: number | null; breakEven: number | null; verlustBis?: number | null; liquidation: string }): MinEntscheidung {
+export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | null; gewuenscht: number | null; effMin: number | null; breakEven: number | null; verlustBis?: number | null; liquidation: string; /** B31.6b: Regelwechsel nur, wenn die Buy Box unter dem effektiven Min liegt. */ buybox?: number | null; /** B31.8: Schnelldreher – Margen-Boden (Break-even + 7 %), kein Wechsel auf Liquidation. */ boden?: number | null; schnelldreher?: boolean }): MinEntscheidung {
   const be = o.breakEven;
   const vb = o.verlustBis !== null && o.verlustBis !== undefined && o.verlustBis > 0 ? o.verlustBis : null;
   const unter = (m: number | null) => m !== null && be !== null && m < be - 0.005;
   const freigegeben = (m: number | null) => unter(m) && vb !== null && be !== null && m! >= r2(be - vb) - 0.005;
+  const boden = o.boden ?? null;
+  const mitBoden = (m: number | null) => (m !== null && boden !== null ? Math.max(m, boden) : m);
+  const leer = { regelVorher: null, angehoben: false, keinWechsel: null } as const;
   if (o.regel?.festeUntergrenze) {
     const min = o.gewuenscht ?? be;
-    return { regel: o.regelName, min, art: "liquidation", regelVorher: null, angehoben: false, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
+    return { ...leer, regel: o.regelName, min, art: "liquidation", unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
   }
   if (o.regel?.staffel) {
-    if (o.gewuenscht !== null && o.effMin !== null && o.gewuenscht < o.effMin - 0.005) {
-      const boden = be === null ? null : vb !== null ? r2(be - vb) : be;
-      const min = boden !== null ? Math.max(o.gewuenscht, boden) : o.gewuenscht;
-      return { regel: o.liquidation, min: r2(min), art: "liquidation_neu", regelVorher: o.regelName, angehoben: boden !== null && o.gewuenscht < boden - 0.005, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
-    }
     const basis = o.effMin !== null ? (be !== null ? Math.max(o.effMin, be) : o.effMin) : be;
+    if (o.gewuenscht !== null && o.effMin !== null && o.gewuenscht < o.effMin - 0.005) {
+      const bb = o.buybox ?? null;
+      const keinWechsel = o.schnelldreher ? "schnelldreher" : bb === null ? "buybox_unbekannt" : bb >= o.effMin - 0.005 ? "buybox_ueber" : null;
+      if (!keinWechsel) {
+        const unten = be === null ? null : vb !== null ? r2(be - vb) : be;
+        const min = unten !== null ? Math.max(o.gewuenscht, unten) : o.gewuenscht;
+        return { regel: o.liquidation, min: r2(min), art: "liquidation_neu", regelVorher: o.regelName, angehoben: unten !== null && o.gewuenscht < unten - 0.005, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min), keinWechsel: null };
+      }
+      // Kein Regelwechsel: Min-Korrektur auf den effektiven Min genügt (BQool hält ihn), Schnelldreher mit Boden.
+      return { ...leer, regel: o.regelName, min: mitBoden(basis), art: "marge", unterBreakEven: false, verlustFreigegeben: false, keinWechsel };
+    }
     const min = o.gewuenscht !== null ? (basis !== null ? Math.max(o.gewuenscht, basis) : o.gewuenscht) : basis;
-    return { regel: o.regelName, min, art: "marge", regelVorher: null, angehoben: false, unterBreakEven: false, verlustFreigegeben: false };
+    return { ...leer, regel: o.regelName, min: mitBoden(min), art: "marge", unterBreakEven: false, verlustFreigegeben: false };
   }
-  const min = o.gewuenscht ?? be;
-  return { regel: o.regelName, min, art: "sonst", regelVorher: null, angehoben: false, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
+  const min = mitBoden(o.gewuenscht ?? be);
+  return { ...leer, regel: o.regelName, min, art: "sonst", unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
 }
 
 const tageSeit = (von: string, bis: string) => Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);

@@ -981,6 +981,13 @@
       "when": 1794146068960,
       "tag": "0139_b31_6_liquidation",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1794150147574,
+      "tag": "0140_b31_6ab_leiter_zustand",
+      "breakpoints": true
     }
   ]
 }

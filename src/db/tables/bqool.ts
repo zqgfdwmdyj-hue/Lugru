@@ -47,7 +47,7 @@ export const bqoolZuweisungen = pgTable(
     regel: text("regel").notNull(),
     /** Feste Untergrenze (Liquidation) = Min Price; null = Break-even rechnen. */
     untergrenze: numeric("untergrenze", { precision: 12, scale: 2, mode: "number" }),
-    quelle: text("quelle", { enum: ["vorlage", "hand", "kapital"] }).notNull(),
+    quelle: text("quelle", { enum: ["vorlage", "hand", "kapital", "leiter"] }).notNull(),
     freigegeben: boolean("freigegeben").notNull().default(true),
     grund: text("grund"),
     datei: text("datei"),
@@ -242,7 +242,7 @@ export const bqoolLiquidationen = pgTable(
     land: text("land").notNull(),
     sku: text("sku").notNull(),
     /** min_unter_marge = vom System wegen Min unter effektivem Min · hand = nur Verlust-Freigabe für eine bestehende Liquidation. */
-    grund: text("grund", { enum: ["min_unter_marge", "hand"] }).notNull(),
+    grund: text("grund", { enum: ["min_unter_marge", "hand", "leiter"] }).notNull(),
     regelVorher: text("regel_vorher"),
     minGewuenscht: numeric("min_gewuenscht", { precision: 12, scale: 2, mode: "number" }),
     minGesetzt: numeric("min_gesetzt", { precision: 12, scale: 2, mode: "number" }),
@@ -256,9 +256,86 @@ export const bqoolLiquidationen = pgTable(
     /** Buy Box seit diesem Tag über effektivem Min (ursprüngliche Regel) + 3 %. */
     ueberSeit: date("ueber_seit", { mode: "string" }),
     zurueckVorgeschlagenAm: timestamp("zurueck_vorgeschlagen_am", { withTimezone: true }),
+    /** Grund des Rückkehr-Vorschlags (Bestand 0, Margen-Min nicht mehr über der Buy Box, Buy Box 14 Tage darüber, Ablauf). */
+    rueckkehrGrund: text("rueckkehr_grund"),
+    /** B31.6b: Ziel der Rückkehr (Stufe 2 „Abverkauf“, Stufe 1 nur mit frischem Nachschub). */
+    rueckkehrRegel: text("rueckkehr_regel"),
     beendetAm: timestamp("beendet_am", { withTimezone: true }),
+    /** B31.6a: „Liquidation bis“ (Standard 45 Tage ab Regelwechsel), dauerhaft = ohne Enddatum. */
+    bis: date("bis", { mode: "string" }),
+    dauerhaft: boolean("dauerhaft").notNull().default(false),
+    verlaengert: integer("verlaengert").notNull().default(0),
+    /** Vorwarnung 7 Tage vor „bis“ verschickt (Push/Aufgabe mit drei Knöpfen). */
+    ablaufGemeldetAm: timestamp("ablauf_gemeldet_am", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],
+);
+
+/** B31.6b/B31.8: täglicher Pflege-Stand je SKU und Land (Leiter-Zähler, Schnelldreher-Schutz). */
+export const bqoolSkuPflege = pgTable(
+  "bqool_sku_pflege",
+  {
+    tenantId: tenantId(),
+    land: text("land").notNull(),
+    sku: text("sku").notNull(),
+    /** Effektiver Min der aktuellen Regel liegt seit diesem Tag über der Buy Box. */
+    ueberSeit: date("ueber_seit", { mode: "string" }),
+    /** Eigenes Angebot ohne Buy Box seit (Schnelldreher-Ende nach 21 Tagen). */
+    ohneBuyboxSeit: date("ohne_buybox_seit", { mode: "string" }),
+    schnelldreher: boolean("schnelldreher").notNull().default(false),
+    schnellQuelle: text("schnell_quelle", { enum: ["auto", "hand"] }),
+    schnellSeit: timestamp("schnell_seit", { withTimezone: true }),
+    /** Sperre der Leiter bis (Schutz verlängern 14 Tage). */
+    schnellBis: date("schnell_bis", { mode: "string" }),
+    /** B31.7c: pausiertes Angebot nach Freigabe aktivieren (Enable Repricing = 1 in der nächsten Datei). */
+    aktivieren: boolean("aktivieren").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],
+);
+
+/** B31.7: Zustand der Ware je SKU (land „*“ = alle Marktplätze), von Hand oder erkannt. */
+export const artikelZustand = pgTable(
+  "artikel_zustand",
+  {
+    tenantId: tenantId(),
+    land: text("land").notNull().default("*"),
+    sku: text("sku").notNull(),
+    zustand: text("zustand", { enum: ["neu", "neu_sonstige", "wie_neu", "sehr_gut", "gut", "akzeptabel", "gebraucht", "unbekannt"] }).notNull(),
+    quelle: text("quelle", { enum: ["hand", "sku_muster", "arbitrageone", "amazon", "retouren_station", "einkauf", "keine"] }).notNull(),
+    gesetztVon: uuid("gesetzt_von"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],
+);
+
+/**
+ * B31.6b/B31.7/B31.8/B32: Vorschläge je SKU und Land (Stufenwechsel, Schnelldreher, Listing-Check). Wirksam erst nach
+ * Freigabe – dann als Soll-Regel bzw. Min im nächsten BQool-Upload (B31.2), nie direkt in BQool.
+ */
+export const bqoolVorschlaege = pgTable(
+  "bqool_vorschlaege",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: tenantId(),
+    land: text("land").notNull(),
+    sku: text("sku").notNull(),
+    art: text("art").notNull(),
+    vonRegel: text("von_regel"),
+    nachRegel: text("nach_regel"),
+    min: numeric("min", { precision: 12, scale: 2, mode: "number" }),
+    gruende: jsonb("gruende").$type<string[]>().notNull().default([]),
+    daten: jsonb("daten").$type<Record<string, unknown>>().notNull().default({}),
+    /** B32: geschätztes Euro-Potenzial (fehlende Verkäufe × Marge) zum Sortieren. */
+    potenzial: numeric("potenzial", { precision: 12, scale: 2, mode: "number" }),
+    status: text("status", { enum: ["offen", "spaeter", "freigegeben", "abgelehnt", "erledigt", "veraltet"] }).notNull().default("offen"),
+    spaeterBis: date("spaeter_bis", { mode: "string" }),
+    entschiedenAm: timestamp("entschieden_am", { withTimezone: true }),
+    entschiedenVon: uuid("entschieden_von"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("bqool_vorschlaege_offen_idx").on(t.tenantId, t.status, t.art), index("bqool_vorschlaege_sku_idx").on(t.tenantId, t.land, t.sku, t.art)],
 );

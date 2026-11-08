@@ -7,6 +7,7 @@ import { aeltesteTage } from "@/lib/money/kapital";
 import { repricerRows } from "@/lib/repricer";
 import type { BqoolLaufZusammenfassung, TenantSettings } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
+import { abverkaufFuer, istGebraucht, stufeVonRegel, zielpreisGebraucht, zustandAusBefund, zustandAusText, zustandBestimmen, type Stufe, type Zustand, type ZustandQuelle } from "./leiter-logic";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import {
   abgleich,
@@ -78,6 +79,29 @@ export type VorschauZeile = ExportZeile & {
   minGewuenscht: number | null;
   /** Seit wann die Regel in BQool steht (BQool-Ist). */
   regelSeit: Date | null;
+  /** B31.6b: Stufe der Soll-Regel (1 ia · 2 Abverkauf · 3 Liquidation), Stufe der Ist-Regel. */
+  stufe: Stufe | null;
+  istStufe: Stufe | null;
+  alterTage: number | null;
+  /** Effektiver Min der Stufe-1-Regel (ia) und der Stufe-2-Regel (Abverkauf des Landes). */
+  effMinStufe1: number | null;
+  effMinStufe2: number | null;
+  /** Gewünschter Min unter effektivem Min ohne Regelwechsel (Buy Box darüber/unbekannt, Schnelldreher). */
+  keinWechsel: "buybox_ueber" | "buybox_unbekannt" | "schnelldreher" | null;
+  /** B31.7: Zustand der Ware, Zielpreis und Min gebraucht. */
+  zustand: Zustand;
+  zustandQuelle: ZustandQuelle;
+  zielpreis: number | null;
+  zielpreisQuelle: string | null;
+  minGebraucht: number | null;
+  /** B31.8: Schnelldreher – Boden Break-even + 7 %, Leiter gesperrt. */
+  schnelldreher: boolean;
+  boden: number | null;
+  /** Bestand FBA (verkaufbar + reserviert + unterwegs) + eigenes Lager (FBM). */
+  bestand: number;
+  /** FBA-Gebühr und Provision (für Vergleiche, z. B. eBay). */
+  fba: number;
+  provision: number;
 };
 
 export type LandVorschau = { land: ExportLand; zeilen: VorschauZeile[]; neu: number; geaendert: number; gleich: number; regelWechsel: number; mitWarnung: number; istStand: Date | null; vergleichMit: "bqool" | "export" | "nichts" };
@@ -85,6 +109,8 @@ export type LandVorschau = { land: ExportLand; zeilen: VorschauZeile[]; neu: num
 export type BqoolVorschau = {
   laender: LandVorschau[];
   ekFehlt: { land: ExportLand; sku: string; titel: string | null }[];
+  /** B31.7: Zustand unbekannt – kein automatischer Preis, nicht in der Datei (Aufgabe „Zustand prüfen“). */
+  zustandUnbekannt: { land: ExportLand; sku: string; titel: string | null }[];
   vorschlaege: { sku: string; titel: string | null; reichweite: number | null; kapital: number | null }[];
   abgleich: AbgleichFall[];
   format: { ausVorlage: boolean };
@@ -145,6 +171,22 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
     db.select({ createdAt: E.createdAt, zeilen: E.zeilen, protokoll: E.protokoll }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.uebertragung, ["fertig", "teilweise", "pruefen"]))).orderBy(desc(E.createdAt)).limit(20),
     db.select().from(LQ).where(eq(LQ.tenantId, tenantId)),
   ]);
+  // B31.7/B31.8: Zustand (von Hand, Berichte, Retouren-Station, Einkauf) und Schnelldreher je SKU
+  const [zustandRows, pflegeRows, chargen, invZustand, station] = await Promise.all([
+    db.select().from(schema.artikelZustand).where(eq(schema.artikelZustand.tenantId, tenantId)),
+    db.select().from(schema.bqoolSkuPflege).where(eq(schema.bqoolSkuPflege.tenantId, tenantId)),
+    db.select({ sku: schema.lots.sku, kind: schema.lots.kind }).from(schema.lots).where(eq(schema.lots.tenantId, tenantId)),
+    db.select({ sku: schema.amazonInventory.sku, condition: schema.amazonInventory.condition, mfn: schema.amazonInventory.mfnFulfillable }).from(schema.amazonInventory).where(eq(schema.amazonInventory.tenantId, tenantId)),
+    db.select({ sku: schema.retourenPositionen.sku, retSku: schema.retourenPositionen.retSku, befund: schema.retourenPositionen.befund }).from(schema.retourenPositionen).where(and(eq(schema.retourenPositionen.tenantId, tenantId), sql`${schema.retourenPositionen.befund} is not null`)),
+  ]);
+  const handZustand = new Map(zustandRows.filter((z) => z.quelle === "hand").map((z) => [`${z.land}|${z.sku}`, z.zustand as Zustand]));
+  const kindJe = new Map<string, Set<string>>();
+  for (const c of chargen) kindJe.set(c.sku, (kindJe.get(c.sku) ?? new Set()).add(c.kind));
+  const invJe = new Map(invZustand.map((i) => [i.sku, i]));
+  const befundJe = new Map<string, string>();
+  for (const st of station) for (const k of [st.retSku, st.sku]) if (k && st.befund) befundJe.set(k, st.befund);
+  const pflegeJe = new Map(pflegeRows.map((p) => [`${p.land}|${p.sku}`, p]));
+  const leiter = b.leiter;
   // B31.6: Liquidation wegen Min unter Marge – Regel vorher, Verlust-Freigabe; Test vor dem ersten Regelwechsel
   const liqJe = new Map(liqRows.filter((l) => l.status !== "beendet" || l.verlustBis !== null).map((l) => [`${l.land}|${l.sku}`, l]));
   const liqName = liquidationsName(b.katalog);
@@ -168,6 +210,7 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
   const letzteZeilen = letzter[0]?.zeilen ?? [];
   const f = format(s);
   const ekFehlt: BqoolVorschau["ekFehlt"] = [];
+  const zustandUnbekannt: BqoolVorschau["zustandUnbekannt"] = [];
   const soll = new Map<string, string>();
 
   const ergebnis: LandVorschau[] = laender.map((land) => {
@@ -183,41 +226,78 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
         continue;
       }
       const i = istJe.get(r.sku);
-      const rf = regelFuer({ land, titel: r.title, asin: r.asin, zuweisung: zuwJe.get(`${land}|${r.sku}`) ?? null, markenRegeln: b.markenRegeln, aufAbverkaufsListe: b.elektronikLaender.includes(land) && b.elektronikMarken.some((m) => titelHatMarke(r.title, m)), abverkaufRegel: b.abverkaufRegel, standard: b.standardRegel, ist: i ? { regel: i.regel, min: i.min } : null, katalog: b.katalog });
       const key = `${land}|${r.sku}`;
+      // B31.7: Zustand – gebrauchte Ware bekommt eigenen Zielpreis/Min, unbekannt kommt nicht in die Datei
+      const kinds = kindJe.get(r.sku);
+      const zb = zustandBestimmen({
+        hand: handZustand.get(`${land}|${r.sku}`) ?? handZustand.get(`*|${r.sku}`) ?? null,
+        sku: r.sku,
+        arbitrageone: null,
+        amazon: zustandAusText(invJe.get(r.sku)?.condition ?? null),
+        station: zustandAusBefund(befundJe.get(r.sku) ?? null),
+        einkaufNeu: !!kinds?.has("purchase"),
+        retoureCharge: !!kinds?.has("return") && !kinds?.has("purchase"),
+      });
+      if (zb.zustand === "unbekannt") {
+        zustandUnbekannt.push({ land, sku: r.sku, titel: r.title });
+        continue;
+      }
+      const gebraucht = istGebraucht(zb.zustand);
+      const pf = pflegeJe.get(key);
+      const schnelldreher = !!pf?.schnelldreher && !gebraucht;
+      const abvRegel = abverkaufFuer(land, b.abverkaufRegel);
+      let rf = regelFuer({ land, titel: r.title, asin: r.asin, zuweisung: zuwJe.get(key) ?? null, markenRegeln: b.markenRegeln, aufAbverkaufsListe: b.elektronikLaender.includes(land) && b.elektronikMarken.some((m) => titelHatMarke(r.title, m)), abverkaufRegel: b.abverkaufRegel, standard: b.standardRegel, ist: i ? { regel: i.regel, min: i.min } : null, katalog: b.katalog });
+      // B31.7c: Gebrauchte laufen nicht mit ia (Neupreis-Marge), sondern mit Abverkauf (Stufe 2), außer schon Liquidation.
+      if (gebraucht && stufeVonRegel(rf.regel, b.katalog, b.abverkaufRegel) === 1 && rf.quelle !== "zuweisung") rf = { ...rf, regel: abvRegel };
+      // B31.8: eigene BQool-Regel für Schnelldreher (Einstellung), sonst bleibt die Regel und der Boden steht als Min in der Datei.
+      if (schnelldreher && leiter.schnell.regel && katalogRegel(b.katalog, leiter.schnell.regel) && rf.quelle !== "zuweisung") rf = { ...rf, regel: leiter.schnell.regel };
       const kat = katalogRegel(b.katalog, rf.regel);
       const kosten = { ek: r.unitCost, fba: r.fbaFee, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: r.referralRate };
       const alterTage = alterJe.get(r.sku) ?? null;
       const be0 = breakEvenMin({ ...kosten, margeProzent: 0 });
       const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage });
+      const effMinStufe1 = effektiverMin({ regel: katalogRegel(b.katalog, b.standardRegel), untergrenze: null, ...kosten, alterTage }).min;
+      const effMinStufe2 = effektiverMin({ regel: katalogRegel(b.katalog, abvRegel), untergrenze: null, ...kosten, alterTage }).min;
       const liq = liqJe.get(key) ?? null;
+      const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
+      const neuBuybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
+      // Gebraucht: Zielpreis aus Keepa-Gebrauchtpreis bzw. Neupreis × Faktor; Min gebraucht = Break-even + Mindestmarge
+      const ziel = gebraucht ? zielpreisGebraucht({ zustand: zb.zustand, keepa: k?.aktuell?.gebraucht ?? null, neuBuybox, faktoren: leiter.zustand.faktoren }) : { preis: null, quelle: null as string | null };
+      const minGebraucht = gebraucht ? breakEvenMin({ ...kosten, margeProzent: leiter.zustand.mindestmarge }) : null;
+      const buybox = gebraucht ? (ziel.preis ?? neuBuybox) : neuBuybox;
+      const boden = schnelldreher ? breakEvenMin({ ...kosten, margeProzent: leiter.schnell.margeBoden }) : null;
       // B31.6: Min unter dem effektiven Min der Margen-Regel wirkt nur mit „Liquidation“ (fester Min, nie unter Break-even
-      // ohne Freigabe); sonst Min ≥ effektiver Min (Sicherheitsnetz). Die frühere Wahl „Break-even als Sicherheitsnetz“
-      // entfällt – BQool setzt einen Min unter dem Margen-Wert ohnehin zurück.
-      const ent = minEntscheidung({ regelName: rf.regel, regel: kat, gewuenscht: rf.untergrenze, effMin: eff.min, breakEven: be0, verlustBis: liq?.verlustBis ?? null, liquidation: liqName });
+      // ohne Freigabe) – und nur, wenn die Buy Box darunter liegt (B31.6b); sonst Min = effektiver Min (Sicherheitsnetz).
+      const gewuenscht = gebraucht && rf.quelle !== "zuweisung" && !kat?.festeUntergrenze ? minGebraucht : rf.untergrenze;
+      const ent = minEntscheidung({ regelName: rf.regel, regel: kat, gewuenscht, effMin: eff.min, breakEven: be0, verlustBis: liq?.verlustBis ?? null, liquidation: liqName, buybox, boden, schnelldreher });
       if (ent.min === null) continue;
       const min = ent.min;
       soll.set(key, ent.regel);
-      const regelVorher = ent.regelVorher ?? (liq?.grund === "min_unter_marge" ? liq.regelVorher : null);
+      const regelVorher = ent.regelVorher ?? (liq && liq.grund !== "hand" ? liq.regelVorher : null);
       const effMinVorher = ent.art === "liquidation_neu" ? eff.min : regelVorher ? effektiverMin({ regel: katalogRegel(b.katalog, regelVorher), untergrenze: null, ...kosten, alterTage }).min : null;
-      const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
-      const max = maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
-      const enable = (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
-      const buybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
+      const max = gebraucht && ziel.preis ? Math.max(Math.round(ziel.preis * leiter.zustand.maxFaktor * 100) / 100, Math.round(min * 1.05 * 100) / 100) : maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
+      // B31.7c: pausiertes Angebot nach Freigabe aktivieren
+      const enable = pf?.aktivieren ? "1" : (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
       const w = warnungen({ min: ent.art === "marge" ? (eff.min ?? min) : min, max }, { buybox, breakEven: null });
       if (!kat) w.push(`Regel „${rf.regel}“ steht nicht im Katalog`);
       const f2 = (n: number | null) => (n === null ? "–" : n.toFixed(2));
-      if (ent.angehoben) w.push(`Gewünschter Min ${f2(rf.untergrenze)} unter Break-even ${f2(be0)} – auf Break-even angehoben (Abverkauf mit Verlust nicht freigegeben)`);
+      if (ent.angehoben) w.push(`Gewünschter Min ${f2(gewuenscht)} unter Break-even ${f2(be0)} – auf Break-even angehoben (Abverkauf mit Verlust nicht freigegeben)`);
       if (ent.unterBreakEven) w.push(ent.verlustFreigegeben ? `Min ${f2(min)} unter Break-even ${f2(be0)} – Abverkauf mit Verlust freigegeben bis ${f2(liq?.verlustBis ?? null)} € je Stück` : `Min ${f2(min)} unter Break-even ${f2(be0)} – nicht freigegeben („Verlust akzeptiert bis“ setzen oder Min anheben)`);
+      if (ent.keinWechsel === "buybox_ueber") w.push(`Gewünschter Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} – kein Regelwechsel, die Buy Box ${f2(buybox)} liegt darüber (Min = effektiver Min genügt)`);
+      if (ent.keinWechsel === "buybox_unbekannt") w.push(`Gewünschter Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} – kein Regelwechsel ohne bekannte Buy Box (Min = effektiver Min)`);
+      if (ent.keinWechsel === "schnelldreher") w.push(`Schnelldreher: kein Regelwechsel, Min mindestens Break-even + ${leiter.schnell.margeBoden} % (${f2(boden)})`);
+      if (gebraucht && ziel.preis !== null && be0 !== null && ziel.preis < be0 - 0.005) w.push(`Verlust – Entscheidung: Zielpreis gebraucht ${f2(ziel.preis)} unter Break-even ${f2(be0)}`);
       const istFest = !!katalogRegel(b.katalog, i?.regel)?.festeUntergrenze;
-      const wartetAufTest = ent.art === "liquidation_neu" && !testBestanden && !istFest;
+      // Regelwechsel auf Liquidation durch das System (Min unter Marge, Leiter) wartet auf den Test mit einer SKU.
+      const wartetAufTest = !testBestanden && !istFest && (ent.art === "liquidation_neu" || (ent.art === "liquidation" && rf.quelle === "zuweisung" && (zuwJe.get(key)?.quelle as string) === "leiter"));
       if (wartetAufTest) w.push("Regelwechsel auf Liquidation wartet auf den Test mit einer SKU – noch nicht in der Datei");
       const blockiert = minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
       if (blockiert) w.push(blockiert);
       // B25.5: In BQool steht für die SKU kein Mindestpreis – ohne Upload bepreist BQool ohne Untergrenze.
       if (i && (i.min === null || i.min === undefined || i.min <= 0)) w.push("kein Min in BQool – erst mit diesem Upload abgesichert");
-      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(rf.untergrenze)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: rf.untergrenze, regelSeit: i?.regelSeit ?? null });
+      const inv = invJe.get(r.sku);
+      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) und Buy Box ${f2(buybox)} darunter – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: gewuenscht, regelSeit: i?.regelSeit ?? null, stufe: stufeVonRegel(ent.regel, b.katalog, b.abverkaufRegel), istStufe: stufeVonRegel(i?.regel ?? null, b.katalog, b.abverkaufRegel), alterTage, effMinStufe1, effMinStufe2, keinWechsel: ent.keinWechsel, zustand: zb.zustand, zustandQuelle: zb.quelle, zielpreis: ziel.preis, zielpreisQuelle: ziel.quelle, minGebraucht, schnelldreher, boden, bestand: r.stock + (inv?.mfn ?? 0), fba: r.fbaFee, provision: r.referralRate });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.
     const vergleichMit: LandVorschau["vergleichMit"] = istRows.length ? "bqool" : letzteZeilen.some((z) => z.land === land) ? "export" : "nichts";
@@ -264,6 +344,7 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
   return {
     laender: ergebnis,
     ekFehlt,
+    zustandUnbekannt,
     vorschlaege,
     abgleich: abgleich(istAlle, soll, b.katalog).filter((f) => !((f.art === "liquidation_soll" || f.art === "liquidation_ist") && liqMarge.has(`${f.land}|${f.sku}`))),
     format: { ausVorlage: f.ausVorlage },
