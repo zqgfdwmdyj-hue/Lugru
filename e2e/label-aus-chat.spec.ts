@@ -48,6 +48,9 @@ test.describe("Label aus Chat", () => {
     expect(Date.now() - t0).toBeLessThan(30_000);
     const pdf = await page.request.get((await page.getByTestId("label-pdf").getAttribute("href"))!);
     expect(pdf.headers()["content-type"]).toBe("application/pdf");
+    // Druckagent: dasselbe Label als Druckauftrag an den QL-1100 im Lager (102 mm)
+    await page.getByTestId("lager-drucken").click();
+    await expect(page.getByTestId("lager-drucken-meldung")).toContainText(/Seiten?, \d+ Etikett(en)? – an QL-1100 gesendet/, { timeout: 30_000 });
     await expect(page.getByTestId("label-textbaustein")).toHaveValue(new RegExp(`Hallo Max,\\ndein Paket ist unterwegs: https://.+piececode=\\d+`));
     await page.getByTestId("label-link-kopieren").click();
     const [o1] = await sql<{ channel: string; tracking_number: string; status: string; total: string; notes: string; id: string }>("select o.id, o.channel, o.tracking_number, o.status, o.total, o.notes from orders o join versand_labels v on v.order_id = o.id where v.artikel = $1", [`Testkopfhörer ${m}`]);

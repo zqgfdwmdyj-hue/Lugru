@@ -7,6 +7,7 @@ import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip"
 import { WS_OPTIONS } from "@/lib/shipping/warensendung";
 import { splitVariant } from "@/lib/shipping/variant";
 import { slipAction, type SlipState } from "./actions";
+import { ImLagerDrucken } from "@/components/im-lager-drucken";
 import type { SkuWeightInfo } from "@/lib/shipping/weights-service";
 
 const eur = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
@@ -82,6 +83,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
             {labels.fileId && <a className="btn btn-primary" href={`/datei/${labels.fileId}`} target="_blank" rel="noreferrer" data-testid="slip-pdf-all">Alle Labels öffnen & drucken</a>}
             {labels.postFileId && labels.dhlFileId && <a className="btn" href={`/datei/${labels.postFileId}`} target="_blank" rel="noreferrer" data-testid="slip-pdf-post">Nur Warensendungen</a>}
             {labels.postFileId && labels.dhlFileId && <a className="btn" href={`/datei/${labels.dhlFileId}`} target="_blank" rel="noreferrer" data-testid="slip-pdf-dhl">Nur DHL</a>}
+            {labels.fileId && <ImLagerDrucken fileId={labels.fileId} seite="/auftraege/lieferschein" text="🖨 Alle an QL-1100 im Lager" />}
           </div>
           {labels.csvFileId && (
             <div className="notice notice-info stack" style={{ gap: 6 }} data-testid="slip-csv">

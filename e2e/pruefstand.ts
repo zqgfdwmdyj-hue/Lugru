@@ -364,6 +364,20 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     live: [{ datum: FRUEHER, wer: "Nutzung im Betrieb", ablauf: "Altes Gespräch fortsetzen", ergebnis: "400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft", status: "behoben" }],
   },
+  "/drucken": {
+    abläufe: [
+      { ablauf: "Druckagent Abnahme 0/2/5c/6: Agent anlegen, online/offline, Papier leer, Push, erneut drucken, Umzug, Widerruf", erwartet: "Token nur einmal sichtbar (Prüfsumme gespeichert), Heartbeat → grün, „Papier leer (Etikettenrolle leer)“ rot, ohne Heartbeat rot „nicht erreichbar seit …“ und Auftrag wartet, Push nach 15 Min. genau einmal, nach Rückkehr gedruckt (Brother-Raster), erneut drucken, Umzug deaktiviert den alten Agenten, Widerruf → 401 „abgemeldet“", tests: ["druckagent.spec.ts › Abnahme 0/2/5c/6"] },
+      { ablauf: "Druckagent Abnahme 1: iPhone „FNSKU-Etikett 3×“", erwartet: "Auftrag nach < 30 s gedruckt (Agent im Dauerbetrieb), drei Etiketten; Etiketten-Seite sendet ebenfalls an den QL-800", tests: ["druckagent.spec.ts › Abnahme 1"] },
+      { ablauf: "Druckagent Abnahme 3: Seller-Central-PDF", erwartet: "Kartonlabels per Drag & Drop → QL-1100 alle Seiten, Sendung zugeordnet und verlinkt; FNSKU-Bogen über das iPhone → einzelne 62-mm-Etiketten am QL-800", tests: ["druckagent.spec.ts › Abnahme 3"] },
+      { ablauf: "DHL-Label direkt an den QL-1100", erwartet: "Knopf „An QL-1100 im Lager“ am erstellten Label legt einen Druckauftrag an", tests: ["label-aus-chat.spec.ts › Abnahme 1+2"] },
+    ],
+    offen: ["Abnahme 0 live: Windows-Dienst startet vor der Anmeldung (Neustart des Arbeits-PCs)", "Abnahme 5 live: Auto-Aus aus, Druck um 06:00", "Abnahme 5b live: „Drucker startet nicht“ nach 30 s mit echter Shelly", "Medien 103 × 164 am echten QL-1100"],
+  },
+  "/lager/scannen": {
+    abläufe: [
+      { ablauf: "Druckagent Abnahme 4: Scanner-Arbeitsplatz", erwartet: "Artikel scannen + „Drucken 5×“ → Auftrag mit 5 Etiketten ohne Tastatur; Wareneingang (Menge durch Mehrfachscan, Stellplatz) bucht eigenes Lager; Abbrechen; VA ohne Preisetiketten und ohne Agent-Einstellungen; Nur-ansehen ohne Druckknopf", tests: ["druckagent.spec.ts › Abnahme 4"] },
+    ],
+  },
   "Server (Port, Adresse, Testumgebung)": {
     offen: ["`deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)", "`deploy/testumgebung.sh an` + `pruefen` auf dem Server"],
     live: [{ datum: FRUEHER, wer: "Prüfung mit ChatGPT", ablauf: "Erreichbarkeit", ergebnis: "Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen", status: "befund" }],

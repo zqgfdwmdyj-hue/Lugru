@@ -1318,6 +1318,50 @@ Stand/Abdeckung, Trefferquote; Freigaben nur auf der Seite). Geändert: `bqool_e
 `repricer` (`stufe`, `liquidation_bis`, `schnelldreher`) → `notifications/tools/list_changed`. Keine neuen ändernden
 Werkzeuge.
 
+## Bauauftrag Druckagent im Lager (08.11.): Etikettendruck aus dem Seller-System · Scanner-Arbeitsplatz
+
+Prüfung vorher: ❌ – Etiketten nur über den Browser-Druck (Etiketten-Seite, Lieferschein → Labels, Label aus Chat);
+kein Agent am Arbeits-PC, keine Warteschlange, kein Druckerstatus, kein Scanner-Arbeitsplatz.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Agent „lugru-druckagent“: Windows-Dienst (Start vor der Anmeldung, Neustart bei Absturz), Ausweich-Mini-PC mit Linux | ❌ | ✅ ein Programm ohne Abhängigkeiten (Node ≥ 18); WinSW-Dienst „Automatisch“ + Neustart nach 10/20/60 s; Installationsskript (Node per winget, Token-Abfrage, Energiesparen aus, Update-Nutzungszeit 06–23 Uhr); Linux: systemd-Dienst oder Docker; Paket als ZIP unter Einstellungen → Drucker; sauberes Beenden beim Dienst-Stopp | `druckagent/`, `agentPaket` (`src/lib/druck/dateien.ts`) |
+| Gerätetoken: „Agent anlegen“, einmal angezeigt, jederzeit widerrufbar, Agent bekommt „abgemeldet“ | ❌ | ✅ nur die Prüfsumme wird gespeichert; widerrufen/Umzug → 401 `abgemeldet`, der Agent fragt dann nur noch alle 10 Min. | `agentAnlegen`, `agentPerToken` (`src/lib/druck/service.ts`), `einstellungen/drucker/` |
+| Verbindung nur ausgehend (WebSocket, Ausweich Abfrage alle 10 s) | ❌ | ✅ anders gelöst: langes Abfragen (bis 25 s offen, Auftrag nach ≤ 1,5 s beim Agenten), bei Fehlern alle 10 s neu – nur ausgehendes HTTPS, keine Portfreigabe; Pfad `/api/druckagent/*` in der öffentlichen Freigabe | `auftragAbholen`, `deploy/claude-oeffentlich.sh` |
+| Brother-Raster: QL-800 62 × 29 (DK-11209), QL-1100 102 × 152 (DK-11241) und 103 × 164 (DK-11247), weitere Medien | ❌ | ✅ Rasterstrom auf dem Server (Medium, Schnitt je Etikett, gespiegelte Zeilen, Versatz QL-1100), Prüfsumme je Auftrag; 62 mm endlos zusätzlich; weitere Medien in der config.json des Agenten („medien“). 🟡 103 × 164: Werte aus dem Datenblatt, Versatz live prüfen | `src/lib/druck/brother.ts` |
+| Status online/offline, Papier leer, Deckel offen, letzte Druckzeit – Symbol neben jedem Druckknopf | ❌ | ✅ Heartbeat alle 30 s mit Gerätename, Betriebssystem, Version, Druckerliste (Zustand, Fehler, Medienbreite, Seriennummer), letztem Windows-Start und letztem Druck; Symbol grün/gelb/rot/grau auf Drucken, PDF drucken, Etiketten, Palettenlabel, Scanner. 🟡 Auf „Label erstellen“ und „Lieferschein → Labels“ gibt es den neuen Knopf „An QL-1100 im Lager“, dort noch ohne Symbol | `druckerSymbol` (`src/lib/druck/logic.ts`), `src/components/drucker-symbol.tsx` |
+| Warteschlange 7 Tage (wer, von welcher Seite, Anzahl, Status, „erneut drucken“) | ❌ | ✅ Lager → Drucken: Warteschlange mit Abbrechen und „erneut drucken“, Protokoll 90 Tage; „Wartende prüfen“ (Inhaber) | `src/app/(app)/drucken/` |
+| Strom Weg 1: Auto-Aus aus (Anleitung Printer Setting Tool) | ❌ | ✅ Anleitung „PC einrichten“ auf Einstellungen → Drucker | `einstellungen/drucker/page.tsx` |
+| Strom Weg 2: Shelly Gen1/Gen2, Auto Power On, bereit in ≤ 20 s, aus nach 10 Min. Leerlauf, Fehlermeldungen nach 30 s | ❌ | ✅ im Agenten: Steckdose vor dem Druck an, warten bis „bereit“, nach 30 s „Drucker startet nicht (Auto Power On aktiv? Deckel zu?)“ bzw. „Shelly nicht erreichbar“ – Auftrag bleibt in der Warteschlange; Leerlaufzeit einstellbar; IPs nur in Einstellungen → Drucker | `bereitMachen`, `leerlaufStarten`, `shellyUrl` |
+| Update-Prüfung täglich mit Protokoll | ❌ | ✅ Version + Prüfsumme vom Server, neue Datei nur bei passender Prüfsumme, Dienst startet neu; Protokoll in den Einstellungen | `updatePruefen`, `/api/druckagent/version`, `/download` |
+| PC offline → rot „Arbeits-PC nicht erreichbar seit …“, Push wenn ein Auftrag > 15 Min. wartet (Ruhezeiten) | ❌ | ✅ offline nach 90 s ohne Heartbeat; Push-Art „Druckauftrag wartet“ (abschaltbar, Ruhezeiten gelten), je Auftrag einmal; Prüfung alle 2 Min. im Hintergrund | `druckPruefen`, `scheduler.ts` |
+| Etiketten als Bild 696 px: FNSKU, EAN, Preis, Stellplatz, Retoure, Lieferschein B2B; 102 mm: DHL/Internetmarke, Palettenlabel; Vorschau; Drucker je Vorlage fest | ❌ | ✅ Druckbilder in 300 dpi mit Barcodes, Vorschau vor dem Drucken; DHL/Internetmarke-PDFs über „PDF drucken“ oder den Knopf „An QL-1100 im Lager“ direkt am Label | `src/lib/druck/etiketten.tsx`, `VORLAGEN`, `src/components/im-lager-drucken.tsx` |
+| Seller-Central-PDFs (Drucken → Datei, Drag & Drop, iPhone-Teilen): Kartonlabels 102 × 152 → QL-1100, FNSKU-Bogen 27/40 → einzelne 62-mm-Etiketten → QL-800, Zuordnung zur FBA-Sendung | ❌ | ✅ Erkennung über Seitengröße und Text, Raster wählbar, leere Felder übersprungen, Sendungsnummer FBA… → Sendung verlinkt; vom iPhone über `/api/mobil/drucken` | `src/lib/druck/pdf.ts`, `dateien.ts` |
+| Scanner-Arbeitsplatz (Vollbild, Steuer-Barcodes Drucken 1×/5×, Wareneingang, Stellplatz, Retoure, Abbrechen; Ton/Blitz) | ❌ | ✅ Lager → Scannen; Steuerkarte druckbar; Wareneingang bucht eigenes Lager mit Fach und Lagerbewegung; Retoure: LPN → RET-SKU-Etikett | `src/lib/druck/scanner.ts`, `lager/scannen/` |
+| Rechte: VA druckt FNSKU, Retouren, DHL – keine Preisetiketten, keine Agent-Einstellungen | ❌ | ✅ VA-Konto = Rollen-Vorlage „VA“; Agent-Einstellungen nur Inhaber; Nur-ansehen ohne Druckknopf | `darfDrucken`, `istVa` |
+| Druckprotokoll 90 Tage | ❌ | ✅ Aufträge und PDFs werden nach 90 Tagen gelöscht | `druckPruefen` |
+| Überwachter Ordner → Upload, danach „verarbeitet“ | ❌ | ✅ PDFs nach 5 s Ruhe hochladen, zentrale Erkennung (Rechnungen, Belege) im Namen der Person, die den Agenten angelegt hat; danach `verarbeitet\JJJJ-MM-TT_Name.pdf` | `ordnerPruefen`, `/api/druckagent/upload` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 0. Windows-Dienst ≤ 2 Min. nach Neustart ohne Anmeldung online; offline → rot, Aufträge warten | 🟡 automatisch: echtes Agent-Programm gegen das Seller-System und einen nachgebauten Drucker – Heartbeat → online/grün, ohne Heartbeat rot „nicht erreichbar seit …“, Auftrag wartet und wird nach der Rückkehr gedruckt. Start vor der Anmeldung nur live am Arbeits-PC |
+| 1. iPhone „FNSKU-Etikett 3×“ → nach ≤ 30 s aus dem QL-800 | ✅ automatisch (Agent im Dauerbetrieb, gemessen < 30 s, drei Etiketten im Rasterstrom); echter Drucker live |
+| 2. Agent offline → wartet, rot, druckt danach | ✅ automatisch, inklusive Push nach 15 Min. (genau einmal) |
+| 3. Seller-Central-PDF Kartonlabels per Drag & Drop → QL-1100 alle Seiten, Sendung zugeordnet | ✅ automatisch (3 Seiten, Sendung verlinkt); FNSKU-Bogen über das iPhone → 4 Etiketten am QL-800 ✅ |
+| 4. Scanner: Artikel + „Drucken 5×“ → 5 Etiketten ohne Tastatur | ✅ automatisch (Eingaben wie der Handscanner mit Enter), dazu Wareneingang mit Stellplatz |
+| 5. Auto-Aus aus, Druck um 06:00 | 🟡 nur live (Einstellung am Drucker), Anleitung auf der Seite |
+| 5b. Shelly: Auftrag → Steckdose an → Druck → nach Leerlauf aus; Fehler | ✅ Unit-Test gegen nachgebaute Shelly (Gen2 an/aus, „Shelly nicht erreichbar“ → Auftrag wartet); „Drucker startet nicht“ nach 30 s nur live |
+| 5c. Umzug auf den Mini-PC: neuer Token, alter Agent „deaktiviert“ | ✅ automatisch (alter Agent bekommt „abgemeldet“) |
+| 6. „Papier leer“ erscheint im Seller-System | ✅ automatisch (Symbol rot „Papier leer (Etikettenrolle leer)“, Einstellungen); Statusbytes des Druckers per Unit-Test |
+
+Unit-Tests: `tests/druck-logik.test.ts` (Raster, Medien, Rechte, Symbol, Warteschlange, Scanner, PDF-Erkennung),
+`tests/druck-agent.test.ts` (Agent gegen nachgebautes Seller-System, Drucker über TCP 9100 und Shelly; Ordner; Stoppen),
+`tests/druck-pdf.test.ts` (Kartonlabels, FNSKU-Bogen, Druckbilder). Ablauftest: `e2e/druckagent.spec.ts`, dazu
+`e2e/label-aus-chat.spec.ts` (Knopf „An QL-1100 im Lager“).
+
+**Werkzeuge Druckagent:** keine neuen Claude-Werkzeuge – Drucken bleibt im System (kein ändernder Zugriff für Claude),
+deshalb kein `notifications/tools/list_changed`.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -1751,6 +1795,8 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (56) und `notifications/tools/list_changed`
+
+Bauauftrag Druckagent (08.11.): **keine neuen Werkzeuge**, keine Änderung an bestehenden – kein `list_changed`.
 
 Geändert am 08.11. (B31.6a/b, B31.7, B31.8, B32): **ein neues Lesewerkzeug** `listing_check` (Befunde des täglichen
 Listing-Checks, Stand, Trefferquote). Erweitert: `bqool_export_vorschau` (Leiter, Zustand, Schnelldreher) und `repricer`
@@ -2234,3 +2280,19 @@ nie in Chats oder Mails.
 125. **ArbitrageOne-Zustand (B31.7a Quelle 2)**: Wenn der ArbitrageOne-Export der Retouren-Listings eine Zustandsspalte hat,
      eine Datei unter Uploads hochladen und Bescheid geben – dann wird die Spalte mitgelesen (bisher: SKU-Muster, Amazon,
      Retouren-Station, von Hand).
+126. **Server aktualisieren** (Update-Befehl): das neue Abbild enthält `poppler-utils` (PDF-Umwandlung für Kartonlabels und
+     FNSKU-Bögen). Erreicht der Arbeits-PC das Seller-System über die öffentliche Adresse, danach einmal
+     `bash /opt/seller-system/deploy/claude-oeffentlich.sh aktualisieren` (neuer Pfad `/api/druckagent/*`, geschützt
+     durch den Gerätetoken).
+127. **Arbeits-PC einrichten**: Brother-Treiber für QL-800 und QL-1100 installieren, Einstellungen → Drucker → „Agent
+     anlegen“ (Token erscheint nur einmal – direkt ins Installationsskript tippen, nicht in Chats/Mails), Paket
+     herunterladen, `installieren.ps1` als Administrator. Danach Rechner neu starten und prüfen, dass der Agent ohne
+     Anmeldung „online“ steht (Abnahme 0).
+128. **Printer Setting Tool** an beiden Druckern: „Automatisches Ausschalten“ auf Aus (Weg 1). Nur bei Shelly zusätzlich
+     „Auto Power On“; Shelly-IP in der Fritzbox fest vergeben und unter Einstellungen → Drucker eintragen (Weg 2).
+129. **Medien testen**: je ein Etikett 62 × 29, 102 × 152 und 103 × 164 drucken. Sitzt das Bild versetzt, Bescheid geben
+     (oder in der config.json unter „medien“ `punkteBreite`/`randRechts` anpassen).
+130. **iPhone-Kurzbefehl „Etikett drucken“**: POST an `/api/mobil/drucken` mit `{"sku": "…", "anzahl": 3}` und dem
+     Geräte-Schlüssel (Einstellungen → Handy); fürs Teilen-Menü (PDF aus Seller Central) die Datei als Inhalt senden.
+131. **Steuerkarte** (Lager → Scannen) einmal drucken und laminieren; Handscanner auf „Enter nach jedem Scan“ stellen.
+132. **Überwachter Ordner** (optional): Pfad unter Einstellungen → Drucker eintragen, z. B. den Scan-Ordner für Rechnungen.

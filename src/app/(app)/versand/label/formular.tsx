@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { gefahrgutPruefen, KANAELE, paketFuerGewicht, VERSAND_PRODUKTE, VERSICHERUNG_MAX, ZAHLUNGSARTEN, type Empfaenger, type ProduktKey } from "@/lib/versand-label/logic";
 import type { LabelErgebnis } from "@/lib/versand-label/service";
+import { ImLagerDrucken } from "@/components/im-lager-drucken";
 import { erkennenAction, erstellenAction, pruefenAction } from "./actions";
 
 // Versand → Label erstellen: Adresse einfügen (Text) oder Bild (Drag-and-Drop, Kamera, Einfügen) → KI füllt das
@@ -463,6 +464,7 @@ export function LabelFormular({ stamm, vorbelegung, b2bErlaubt, absender2, absen
             <a className="btn btn-primary" href={`/datei/${ergebnis.fileId}`} target="_blank" rel="noreferrer" data-testid="label-pdf">
               🖨️ Label drucken (PDF)
             </a>
+            <ImLagerDrucken fileId={ergebnis.fileId} seite="/versand/label" />
             {ergebnis.kennzeichen.map((k) => (
               <a key={k} className="btn" href={`/etikett/gefahrgut?art=${k}${ergebnis.un && k === "lithium" ? `&un=${encodeURIComponent(ergebnis.un)}` : ""}`} target="_blank" rel="noreferrer" data-testid={`label-kennzeichen-${k}`}>
                 {k === "lq" ? "◆ LQ-Kennzeichen drucken" : "🔋 Batterie-Kennzeichen drucken"}

@@ -83,6 +83,27 @@ export async function pruefenAction() {
   zurueckZu("/drucken", `Geprüft: ${r.push} Push gesendet, ${r.abgelaufen} abgelaufen.`);
 }
 
+/** Gespeichertes Label-PDF (DHL, Internetmarke) an den QL-1100 im Lager – Knopf neben „Label drucken (PDF)“. */
+export async function dateiImLagerDruckenAction(fileId: string, seite: string): Promise<{ ok: boolean; text: string }> {
+  const s = await requireSession();
+  const { darfDrucken: darf } = await import("@/lib/druck/logic");
+  if (!darf(s, "dhl")) return { ok: false, text: "Keine Berechtigung zum Drucken." };
+  if (!/^[0-9a-f-]{36}$/i.test(fileId)) return { ok: false, text: "Datei unbekannt." };
+  const { and, eq } = await import("drizzle-orm");
+  const { db, schema } = await import("@/db");
+  const [f] = await db.select({ name: schema.files.name, mimeType: schema.files.mimeType, data: schema.files.data }).from(schema.files).where(and(eq(schema.files.id, fileId), eq(schema.files.tenantId, s.tenantId)));
+  if (!f) return { ok: false, text: "Datei nicht gefunden." };
+  if (!f.mimeType.includes("pdf")) return { ok: false, text: "Nur PDF-Labels können an den Drucker gehen." };
+  try {
+    const { pdfHochladen } = await import("@/lib/druck/dateien");
+    const r = await pdfHochladen(s, f.name, new Uint8Array(f.data), { drucken: true, seite: seite.startsWith("/") ? seite.slice(0, 200) : "/drucken" });
+    revalidatePath("/drucken");
+    return { ok: Boolean(r.auftragId), text: r.text };
+  } catch (e) {
+    return { ok: false, text: `Nicht gedruckt – ${lesbarerFehler(e)}` };
+  }
+}
+
 /** Seller-Central-PDF hochladen (Kartonlabels, FNSKU-Bogen, 102-mm-Label) – erkennen, zuordnen, optional drucken. */
 export async function pdfAction(fd: FormData) {
   const s = await requireSession();
