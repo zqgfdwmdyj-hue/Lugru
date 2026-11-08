@@ -30,24 +30,35 @@ describe("Min-Entscheidung für die Datei", () => {
     expect(minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: null, effMin: 50, breakEven: 45, liquidation: "Liquidation" }).min).toBe(50);
   });
   it("Regel 2: gewünschter Min < effektiver Min → Rule Name „Liquidation“ und fester Min", () => {
-    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation" });
+    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: 48 });
     expect(e).toMatchObject({ regel: "Liquidation", min: 47, art: "liquidation_neu", regelVorher: "ia", angehoben: false, unterBreakEven: false });
   });
   it("nie Min unter effektivem Min ohne Regelwechsel – egal welche Werte", () => {
     for (const g of [10, 30, 44.99, 49.99]) {
-      const e = minEntscheidung({ regelName: "Abverkauf DE", regel: katalogRegel(K, "Abverkauf DE"), gewuenscht: g, effMin: 50, breakEven: 45, liquidation: "Liquidation" });
+      const e = minEntscheidung({ regelName: "Abverkauf DE", regel: katalogRegel(K, "Abverkauf DE"), gewuenscht: g, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: g < 45 ? 44 : 49 });
       if (e.min !== null && e.min < 50) expect(e.regel).toBe("Liquidation");
     }
   });
   it("Untergrenze Break-even: Wunsch darunter ohne Freigabe → auf Break-even angehoben", () => {
-    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 40, effMin: 50, breakEven: 45, liquidation: "Liquidation" });
+    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 40, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: 46 });
     expect(e).toMatchObject({ regel: "Liquidation", min: 45, angehoben: true, unterBreakEven: false, verlustFreigegeben: false });
   });
   it("„Mindest-Verlust akzeptiert bis 3 €“ → Min bis Break-even − 3 €, als freigegeben markiert", () => {
-    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 40, effMin: 50, breakEven: 45, verlustBis: 3, liquidation: "Liquidation" });
+    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 40, effMin: 50, breakEven: 45, verlustBis: 3, liquidation: "Liquidation", buybox: 44 });
     expect(e).toMatchObject({ regel: "Liquidation", min: 42, angehoben: true, unterBreakEven: true, verlustFreigegeben: true });
-    const innen = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 43, effMin: 50, breakEven: 45, verlustBis: 3, liquidation: "Liquidation" });
+    const innen = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 43, effMin: 50, breakEven: 45, verlustBis: 3, liquidation: "Liquidation", buybox: 44 });
     expect(innen).toMatchObject({ min: 43, angehoben: false, unterBreakEven: true, verlustFreigegeben: true });
+  });
+  it("Hinweis B31.6: Buy Box über dem effektiven Min (oder unbekannt) → kein Regelwechsel, Min-Korrektur reicht", () => {
+    const ueber = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: 55 });
+    expect(ueber).toMatchObject({ regel: "ia", art: "marge", keinWechsel: "buybox_ueber" });
+    expect(ueber.min).toBeGreaterThanOrEqual(45);
+    expect(minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation" })).toMatchObject({ regel: "ia", keinWechsel: "buybox_unbekannt" });
+  });
+  it("B31.8: Schnelldreher bekommt nie Liquidation, sondern Boden Break-even + 7 %", () => {
+    const e = minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 40, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: 44, schnelldreher: true, boden: 48.15 });
+    expect(e).toMatchObject({ regel: "ia", keinWechsel: "schnelldreher" });
+    expect(e.min).toBeGreaterThanOrEqual(48.15);
   });
   it("Regel ist schon Liquidation: Min = Untergrenze, unter Break-even ohne Freigabe nur warnen", () => {
     expect(minEntscheidung({ regelName: "Liquidation", regel: liq, gewuenscht: 48, effMin: null, breakEven: 45, liquidation: "Liquidation" })).toMatchObject({ regel: "Liquidation", min: 48, art: "liquidation", unterBreakEven: false });
