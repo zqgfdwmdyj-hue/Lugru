@@ -35,3 +35,21 @@ export async function checkJetztAction() {
   revalidatePath(PFAD);
   zurueck(text);
 }
+
+/** B32.1: Schwellen (Tage, Prozent, Euro) in Einstellungen → Listing-Check ändern; leer = Standard. */
+export async function schwellenAction(fd: FormData) {
+  const s = await requireOwner();
+  const { SCHWELLEN_FELDER } = await import("@/lib/bqool/listing-check-logic");
+  const werte: Record<string, number> = {};
+  for (const f of SCHWELLEN_FELDER) {
+    const roh = String(fd.get(f.key) ?? "").trim().replace(",", ".");
+    if (!roh) continue;
+    const n = Number(roh);
+    if (!Number.isFinite(n) || n < 0) zurueck(`„${f.text}“: bitte eine Zahl ≥ 0 eingeben.`);
+    werte[f.key] = n;
+  }
+  const { bqoolEinstellungenSpeichern } = await import("@/lib/bqool/export-service");
+  await bqoolEinstellungenSpeichern(s.tenantId, { listingCheckSchwellen: werte });
+  revalidatePath(PFAD);
+  zurueck("Schwellen gespeichert – gelten ab dem nächsten Lauf.");
+}

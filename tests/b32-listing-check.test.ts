@@ -1,6 +1,6 @@
 // B32 Listing-Check – reine Logik. Erfundene Werte.
 import { describe, expect, it } from "vitest";
-import { befundePruefen, CHECK_STANDARD, checkMorgenZeile, median, pushNoetig, stufeA, stufeFuer, type CheckEingabe } from "@/lib/bqool/listing-check-logic";
+import { befundePruefen, CHECK_STANDARD, checkMorgenZeile, median, pushNoetig, schwellenMitStandard, stufeA, stufeFuer, type CheckEingabe } from "@/lib/bqool/listing-check-logic";
 
 const basis: CheckEingabe = {
   land: "DE",
@@ -84,6 +84,13 @@ describe("B32.1 neun Befunde", () => {
   it("10 (B32.4) eigener Verkaufspreis dauerhaft unter Min (≥ 3 Verkäufe)", () => {
     expect(nrn({ verkaufspreisMedian: 28, verkaufspreisAnzahl: 4 })).toContain(10);
     expect(nrn({ verkaufspreisMedian: 28, verkaufspreisAnzahl: 2 })).not.toContain(10);
+  });
+  it("gespeicherte Schwellen mischen sich mit dem Standard (ungültige Werte ignoriert)", () => {
+    const sw = schwellenMitStandard({ reichweite: 120, kapital: -5, stufeA: Number.NaN });
+    expect(sw.reichweite).toBe(120);
+    expect(sw.kapital).toBe(CHECK_STANDARD.kapital);
+    expect(sw.stufeA).toBe(CHECK_STANDARD.stufeA);
+    expect(schwellenMitStandard(null)).toEqual(CHECK_STANDARD);
   });
   it("Schwellen sind einstellbar", () => {
     expect(befundePruefen({ ...basis, reichweite: 80 }, { ...CHECK_STANDARD, reichweite: 60 }).map((b) => b.nr)).toContain(9);

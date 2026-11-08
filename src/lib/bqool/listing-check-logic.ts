@@ -28,6 +28,30 @@ export type CheckSchwellen = {
   keepaTokenReserve: number;
 };
 
+/** Gespeicherte Schwellen mit Standard mischen (nur gültige Zahlen ≥ 0). */
+export function schwellenMitStandard(s: Partial<CheckSchwellen> | null | undefined): CheckSchwellen {
+  const r = { ...CHECK_STANDARD };
+  for (const [k, v] of Object.entries(s ?? {})) if (k in r && typeof v === "number" && Number.isFinite(v) && v >= 0) (r as Record<string, number>)[k] = v;
+  return r;
+}
+
+/** Felder für Einstellungen → Listing-Check (Bezeichnung, Einheit). */
+export const SCHWELLEN_FELDER: { key: keyof CheckSchwellen; text: string; einheit: string }[] = [
+  { key: "minUeberBbAbschlag", text: "1 Min über 30-Tage-Buy-Box minus", einheit: "%" },
+  { key: "ohneVerkaufTage", text: "4 keine eigenen Verkäufe seit", einheit: "Tagen" },
+  { key: "nachfrageMin", text: "4 Marktnachfrage ab (Keepa monatlich verkauft)", einheit: "Stück" },
+  { key: "maxTage", text: "5 Buy Box über Max seit", einheit: "Tagen" },
+  { key: "preisUeberMarkt", text: "8 eigener Preis über Buy Box um", einheit: "%" },
+  { key: "ohneBuyboxTage", text: "8 keine Buy Box seit", einheit: "Tagen" },
+  { key: "reichweite", text: "9 Reichweite über", einheit: "Tage" },
+  { key: "lagerdauer", text: "9 Lagerdauer über", einheit: "Tage" },
+  { key: "kapital", text: "9 mit Kapital über", einheit: "€" },
+  { key: "pushKapital", text: "Push bei Befund 1/2 ab Kapital", einheit: "€" },
+  { key: "stufeA", text: "Stufe A täglich: SKUs mit höchstem Wert", einheit: "SKUs" },
+  { key: "keepaJeLauf", text: "Keepa-Abrufe je Lauf höchstens", einheit: "Abrufe" },
+  { key: "keepaTokenReserve", text: "Keepa-Token-Reserve", einheit: "Tokens" },
+];
+
 export const CHECK_STANDARD: CheckSchwellen = { minUeberBbAbschlag: 3, ohneVerkaufTage: 7, nachfrageMin: 30, maxTage: 3, preisUeberMarkt: 5, ohneBuyboxTage: 7, reichweite: 90, lagerdauer: 60, kapital: 300, pushKapital: 1000, stufeA: 150, keepaJeLauf: 60, keepaTokenReserve: 20 };
 
 export type CheckEingabe = {

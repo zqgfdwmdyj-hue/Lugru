@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { befundeOffen, checkTrefferquote } from "@/lib/bqool/listing-check";
-import { BEFUND_TITEL, CHECK_STANDARD } from "@/lib/bqool/listing-check-logic";
+import { BEFUND_TITEL, CHECK_STANDARD, SCHWELLEN_FELDER, schwellenMitStandard } from "@/lib/bqool/listing-check-logic";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
-import { befundAction, checkJetztAction } from "./actions";
+import { befundAction, checkJetztAction, schwellenAction } from "./actions";
 
 // B32 Listing-Check: täglich nach dem BQool-Ist (06:00) bzw. auf Knopfdruck – Befunde nach Dringlichkeit (Euro-Potenzial
 // = fehlende Verkäufe × Marge). Freigaben laufen über den BQool-Upload (B31.2), nie direkt in BQool.
@@ -16,6 +16,7 @@ export default async function ListingCheckPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const [s, befunde, treffer] = await Promise.all([getSettings(session.tenantId), befundeOffen(session.tenantId), checkTrefferquote(session.tenantId).catch(() => null)]);
   const st = s.bqool.listingCheckStand;
+  const sw = schwellenMitStandard(s.bqool.listingCheckSchwellen);
   const inhaber = session.role === "owner" && !session.readOnly;
   const filter = sp.befund ? Number(sp.befund) : null;
   const liste = filter ? befunde.filter((b) => (b.daten as { nr?: number }).nr === filter) : befunde;
@@ -32,7 +33,7 @@ export default async function ListingCheckPage({ searchParams }: { searchParams:
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <p className="small muted" style={{ marginTop: 0 }}>
-        Täglich nach dem BQool-Ist (06:00): Stufe A = die {CHECK_STANDARD.stufeA} SKUs mit dem höchsten Wert (gebundenes Kapital × Nachfrage) plus alle Schnelldreher und SKUs mit offenem Befund, Stufe B wöchentlich alle übrigen mit Bestand, Stufe C monatlich ohne Bestand (nur Min aus der Datei). Keepa nur für Stufe A (höchstens {CHECK_STANDARD.keepaJeLauf} Abrufe je Lauf, Reserve {CHECK_STANDARD.keepaTokenReserve} Tokens). Keepa-Zahlen („monatlich verkauft“, Buy Box) sind Marktdaten, keine eigenen Verkäufe; sellerboard-Tageswerte kommen mit einem Tag Verzug.
+        Täglich nach dem BQool-Ist (06:00): Stufe A = die {sw.stufeA} SKUs mit dem höchsten Wert (gebundenes Kapital × Nachfrage) plus alle Schnelldreher und SKUs mit offenem Befund, Stufe B wöchentlich alle übrigen mit Bestand, Stufe C monatlich ohne Bestand (nur Min aus der Datei). Keepa nur für Stufe A (höchstens {sw.keepaJeLauf} Abrufe je Lauf, Reserve {sw.keepaTokenReserve} Tokens). Keepa-Zahlen („monatlich verkauft“, Buy Box) sind Marktdaten, keine eigenen Verkäufe; sellerboard-Tageswerte kommen mit einem Tag Verzug.
       </p>
       <section className="card card-pad stack" data-testid="lc-stand">
         {st ? (
@@ -43,6 +44,19 @@ export default async function ListingCheckPage({ searchParams }: { searchParams:
           </div>
         ) : (
           <div className="small muted">Noch kein Lauf – „Jetzt prüfen“ oder morgen nach 06:00.</div>
+        )}
+        {inhaber && (
+          <details data-testid="lc-einstellungen">
+            <summary className="small">Einstellungen → Listing-Check (Schwellen änderbar, leer = Standard)</summary>
+            <form action={schwellenAction} className="stack" style={{ marginTop: 8 }}>
+              <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                {SCHWELLEN_FELDER.map((f) => (
+                  <label key={f.key}>{f.text} <input name={f.key} defaultValue={s.bqool.listingCheckSchwellen?.[f.key] ?? ""} placeholder={String(CHECK_STANDARD[f.key])} inputMode="decimal" style={{ width: 70 }} data-testid={`lc-schwelle-${f.key}`} /> {f.einheit}</label>
+                ))}
+              </div>
+              <div><button className="btn btn-sm" type="submit" data-testid="lc-schwellen-speichern">Speichern</button></div>
+            </form>
+          </details>
         )}
         {treffer && treffer.freigaben > 0 && <div className="small" data-testid="lc-treffer">Trefferquote: {treffer.mitVerkauf} von {treffer.freigaben} Freigaben (älter als 14 Tage) führten zu mehr Verkäufen ({treffer.quote} %).</div>}
         <div className="row small" style={{ gap: 6, flexWrap: "wrap" }}>

@@ -335,6 +335,15 @@ test.describe("B32 – Listing-Check", () => {
       expect(z.min_datei).toBe(ziel);
       expect(z.min_ist).toBe(80);
 
+      // B32.1: Schwellen in Einstellungen → Listing-Check änderbar (leer = Standard)
+      await page.goto("/repricer/listing-check");
+      await page.getByTestId("lc-einstellungen").locator("summary").click();
+      await page.getByTestId("lc-schwelle-reichweite").fill("120");
+      await Promise.all([aktion(page), page.getByTestId("lc-schwellen-speichern").click()]);
+      await expect(page.getByRole("status")).toContainText("Schwellen gespeichert");
+      expect((await sql<{ w: number }>("select (settings->'bqool'->'listingCheckSchwellen'->>'reichweite')::int as w from tenants where id = $1", [T]))[0].w).toBe(120);
+      await sql("update tenants set settings = settings #- '{bqool,listingCheckSchwellen}' where id = $1", [T]);
+
       // Abnahme 3: Budget – Keepa-Daten älter als 24 Std. und kein Abruf möglich → „Check unvollständig“
       await sql("update keepa_cache set abgerufen_am = now() - interval '2 days' where tenant_id = $1 and asin = $2", [T, ASIN]);
       await sql("update tenants set settings = jsonb_set(settings, '{bqool,listingCheckStand}', 'null'::jsonb) where id = $1", [T]);

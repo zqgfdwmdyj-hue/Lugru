@@ -146,6 +146,7 @@ export const DEFAULT_SETTINGS = {
     leiter: LEITER_STANDARD,
     leiterStand: null as LeiterStand | null,
     listingCheckStand: null as import("@/lib/bqool/listing-check-logic").CheckStand | null,
+    listingCheckSchwellen: {} as Partial<import("@/lib/bqool/listing-check-logic").CheckSchwellen>,
   },
   /** Verlust-Stopp: Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) erst ab 5 € je SKU und Woche als Hinweis. */
   verlust: { kostenOhneVerkaufSchwelle: 5 },
@@ -282,7 +283,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}), automatik: { ...d.va.automatik, ...(s.va?.automatik ?? {}), regeln: { ...d.va.automatik.regeln, ...(s.va?.automatik?.regeln ?? {}) } } },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
-    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) }, kreislauf: { ...d.bqool.kreislauf, ...(s.bqool?.kreislauf ?? {}) }, liquidationTest: { ...d.bqool.liquidationTest, ...(s.bqool?.liquidationTest ?? {}) }, leiter: leiterMitStandard(s.bqool?.leiter), leiterStand: s.bqool?.leiterStand ?? null, listingCheckStand: s.bqool?.listingCheckStand ?? null } as typeof d.bqool),
+    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) }, kreislauf: { ...d.bqool.kreislauf, ...(s.bqool?.kreislauf ?? {}) }, liquidationTest: { ...d.bqool.liquidationTest, ...(s.bqool?.liquidationTest ?? {}) }, leiter: leiterMitStandard(s.bqool?.leiter), leiterStand: s.bqool?.leiterStand ?? null, listingCheckStand: s.bqool?.listingCheckStand ?? null, listingCheckSchwellen: s.bqool?.listingCheckSchwellen ?? {} } as typeof d.bqool),
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },

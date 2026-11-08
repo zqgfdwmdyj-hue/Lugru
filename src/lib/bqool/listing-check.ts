@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import type { KeepaStand, Marktplatz } from "@/lib/keepa/auswertung";
-import { BEFUND_TITEL, befundePruefen, CHECK_STANDARD, checkMorgenZeile, median, pushNoetig, stufeA, stufeFuer, type CheckEingabe, type CheckStand } from "./listing-check-logic";
+import { BEFUND_TITEL, befundePruefen, checkMorgenZeile, median, pushNoetig, schwellenMitStandard, stufeA, stufeFuer, type CheckEingabe, type CheckStand } from "./listing-check-logic";
 import { istGebraucht, plusTage, schnelldreherKandidat, tageZwischen, type Zustand } from "./leiter-logic";
 import type { ExportLand } from "./export-logic";
 
@@ -19,7 +19,7 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
   const start = Date.now();
   const s = await getSettings(tenantId);
   const b = s.bqool;
-  const schwellen = CHECK_STANDARD;
+  const schwellen = schwellenMitStandard(b.listingCheckSchwellen);
   const { bqoolVorschau } = await import("./export-service");
   const v = await bqoolVorschau(tenantId, { heute });
   const zeilen = v.laender.flatMap((l) => l.zeilen);
