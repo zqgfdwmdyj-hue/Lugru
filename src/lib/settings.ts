@@ -141,6 +141,7 @@ export const DEFAULT_SETTINGS = {
      * BQool den Min bei Margen-Regeln selbst aus Cost + Marge rechnet).
      */
     kreislauf: { automatisch: false, minGeprueft: false, minGeprueftAm: null as string | null, minInDatei: "effektiv" as "effektiv" | "sicherheitsnetz" },
+    liquidationTest: { bestanden: false, am: null as string | null, land: null as string | null, sku: null as string | null, vonHand: false },
   },
   /** Verlust-Stopp: Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) erst ab 5 € je SKU und Woche als Hinweis. */
   verlust: { kostenOhneVerkaufSchwelle: 5 },
@@ -277,7 +278,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}), automatik: { ...d.va.automatik, ...(s.va?.automatik ?? {}), regeln: { ...d.va.automatik.regeln, ...(s.va?.automatik?.regeln ?? {}) } } },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
-    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) }, kreislauf: { ...d.bqool.kreislauf, ...(s.bqool?.kreislauf ?? {}) } } as typeof d.bqool),
+    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) }, kreislauf: { ...d.bqool.kreislauf, ...(s.bqool?.kreislauf ?? {}) }, liquidationTest: { ...d.bqool.liquidationTest, ...(s.bqool?.liquidationTest ?? {}) } } as typeof d.bqool),
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },

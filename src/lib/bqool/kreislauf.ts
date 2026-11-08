@@ -172,6 +172,8 @@ export async function kreislaufStarten(tenantId: string, ausloeser: "zeitplan" |
     await pushen(tenantId, { titel: "BQool-Lauf abgebrochen", text: `${ist.abgebrochen.slice(0, 200)} – Aufgabe mit Bildschirmfoto liegt bereit.`, link: LINK });
     return { ok: false, text: `BQool-Lauf abgebrochen: ${ist.abgebrochen}`, laufId: id };
   }
+  // B31.6: Liquidation wegen Min unter Marge – aktiv/Test/Rückkehr-Vorschlag auf Basis des frischen Ist
+  await import("./liquidation").then((x) => x.liquidationenPflegen(tenantId, tagBerlin(jetzt))).catch((e) => console.error("[BQool] Liquidation:", e instanceof Error ? e.message : e));
   // 2. Soll erzeugen (nur Änderungen) auf Basis des frischen Ist
   await aendern(tenantId, id, { phase: "soll" });
   const { bqoolExportErzeugen } = await import("./export-service");

@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantId } from "./core";
 
 /**
@@ -28,6 +28,8 @@ export const bqoolListings = pgTable(
     zusatz: jsonb("zusatz").$type<Record<string, string>>().notNull().default({}),
     datei: text("datei"),
     eingelesenAm: timestamp("eingelesen_am", { withTimezone: true }).notNull(),
+    /** B31.6: seit wann die SKU diese Regel in BQool hat (beim Import gesetzt, wenn sich die Regel ändert). */
+    regelSeit: timestamp("regel_seit", { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.marktplatz, t.sku] }), index("bqool_asin_idx").on(t.tenantId, t.asin)],
 );
@@ -81,7 +83,7 @@ export type BqoolIstLand = { land: string; ok: boolean; datei?: string; skus?: n
 /** B31.2: Rückmeldung von BQool je Land nach dem Upload. */
 export type BqoolUploadLand = { land: string; ok: boolean; zeilen: number; uebernommen: number | null; fehler: number | null; fehlerZeilen: { sku: string; text: string }[]; text: string; unklar?: boolean };
 /** B31.2: Zusammenfassung des Soll-Exports für Freigabe-Push und Anzeige. */
-export type BqoolLaufZusammenfassung = { jeLand: Record<string, number>; gesamt: number; regelWechsel: number; warnungen: number; unterBreakEven: number };
+export type BqoolLaufZusammenfassung = { jeLand: Record<string, number>; gesamt: number; regelWechsel: number; warnungen: number; unterBreakEven: number; /** B31.6: davon Regelwechsel auf Liquidation (Min unter Marge). */ liquidation?: number };
 /** B31.2: Nachkontrolle – Abweichungen zwischen hochgeladener Datei und BQool-Ist 30 Minuten später. */
 export type BqoolKontrolle = { geprueft: number; ok: number; abweichungen: { land: string; sku: string; text: string }[]; text: string };
 
@@ -226,4 +228,37 @@ export const bqoolBerichteOffen = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("bqool_berichte_offen_tenant_idx").on(t.tenantId, t.createdAt)],
+);
+
+/**
+ * B31.6: SKUs, die wegen „Min unter Mindestmarge“ auf Liquidation gehen (Regel vor Liquidation gemerkt) sowie die
+ * Freigabe „Abverkauf mit Verlust bis x € je Stück“ für Liquidation-SKUs. Rückkehr-Vorschlag, wenn die Buy Box 14 Tage
+ * über dem effektiven Min der ursprünglichen Regel + 3 % liegt.
+ */
+export const bqoolLiquidationen = pgTable(
+  "bqool_liquidationen",
+  {
+    tenantId: tenantId(),
+    land: text("land").notNull(),
+    sku: text("sku").notNull(),
+    /** min_unter_marge = vom System wegen Min unter effektivem Min · hand = nur Verlust-Freigabe für eine bestehende Liquidation. */
+    grund: text("grund", { enum: ["min_unter_marge", "hand"] }).notNull(),
+    regelVorher: text("regel_vorher"),
+    minGewuenscht: numeric("min_gewuenscht", { precision: 12, scale: 2, mode: "number" }),
+    minGesetzt: numeric("min_gesetzt", { precision: 12, scale: 2, mode: "number" }),
+    effMinVorher: numeric("eff_min_vorher", { precision: 12, scale: 2, mode: "number" }),
+    breakEven: numeric("break_even", { precision: 12, scale: 2, mode: "number" }),
+    /** „Mindest-Verlust akzeptiert bis x €“ je Stück – nur damit darf der Min unter Break-even liegen. */
+    verlustBis: numeric("verlust_bis", { precision: 12, scale: 2, mode: "number" }),
+    status: text("status", { enum: ["vorgeschlagen", "aktiv", "zurueck_vorgeschlagen", "beendet"] }).notNull().default("vorgeschlagen"),
+    /** Erstmals im BQool-Ist mit Liquidation und dem gesetzten Min gesehen. */
+    aktivSeit: timestamp("aktiv_seit", { withTimezone: true }),
+    /** Buy Box seit diesem Tag über effektivem Min (ursprüngliche Regel) + 3 %. */
+    ueberSeit: date("ueber_seit", { mode: "string" }),
+    zurueckVorgeschlagenAm: timestamp("zurueck_vorgeschlagen_am", { withTimezone: true }),
+    beendetAm: timestamp("beendet_am", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],
 );

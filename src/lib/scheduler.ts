@@ -242,6 +242,8 @@ export async function runScheduledJobs(force = false) {
         // B28.8: am 3. des Monats die Verlustprodukte des Vormonats (Lernschleife); B28.7: Einkäufe bereinigen.
         await step(t, "Lernschleife Verlustprodukte", async () => (await import("@/lib/deal-eingang/lernschleife")).lernschleifeTakt(t));
         await step(t, "Einkäufe bereinigen", async () => (await import("@/lib/money/durchlauf")).einkaeufeBereinigenAufgabe(t));
+        // B31.6: Liquidation wegen Min unter Marge – Rückkehr-Vorschlag (Buy Box 14 Tage über effektivem Min + 3 %)
+        await step(t, "BQool: Liquidation prüfen", async () => (await import("@/lib/bqool/liquidation")).liquidationenPflegen(t));
       }
       // B22.2: Deal-Wert für alle Deals im Eingang nachrechnen (ohne Keepa-Abfragen), alle 5 Min. bis nichts mehr offen ist.
       if (force || due(`${t}:deal-wert`, 4)) {

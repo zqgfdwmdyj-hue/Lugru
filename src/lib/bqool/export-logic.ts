@@ -407,3 +407,92 @@ export function abgleich(ist: { land: ExportLand; sku: string; regel: string | n
   }
   return out;
 }
+
+// ---- B31.6 Min unter Mindestmarge nur mit Regel „Liquidation“ --------------------------------------------------------
+// BQool setzt bei Margen-Regeln (ia, Abverkauf …) einen Min unter dem effektiven Min bei der nächsten Preisberechnung auf
+// den Margen-Wert zurück. Nur „Liquidation“ nimmt den hochgeladenen Min als feste Untergrenze. Deshalb: gewünschter Min
+// unter dem effektiven Min → Regel „Liquidation“ mit festem Min, aber nie unter Break-even ohne ausdrückliche Freigabe.
+
+/** Buy Box so viel über dem effektiven Min der ursprünglichen Regel … */
+export const RUECKKEHR_AUFSCHLAG = 0.03;
+/** … und so viele Tage am Stück → Vorschlag „zurück auf die ursprüngliche Regel“. */
+export const RUECKKEHR_TAGE = 14;
+/** Liquidation gilt als „stehen geblieben“, wenn ein BQool-Ist mindestens so viele Stunden nach dem ersten Treffer sie noch zeigt. */
+export const TEST_STUNDEN = 12;
+
+/** Name der Liquidations-Regel im Katalog (feste Untergrenze), sonst „Liquidation“. */
+export function liquidationsName(katalog: KatalogRegel[]): string {
+  return katalog.find((k) => k.festeUntergrenze)?.name ?? "Liquidation";
+}
+
+/** Marge in % vom Brutto-Preis bei diesem Preis – Umkehrung von breakEvenMin (eine Nachkommastelle). */
+export function margeBeiPreis(o: { preis: number; ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: number }): number | null {
+  if (!(o.preis > 0)) return null;
+  const netto = o.preis * (1 / (1 + o.ust) - o.provision);
+  return Math.round(((netto - (o.fba + o.fix + o.ek + o.zusatz)) / o.preis) * 1000) / 10;
+}
+
+export type MinEntscheidung = {
+  regel: string;
+  min: number | null;
+  /** marge = Margen-Regel, Min ≥ effektiver Min · liquidation_neu = wegen Min unter Marge auf Liquidation · liquidation = Regel ist schon Liquidation · sonst = Regel ohne Staffel/unbekannt. */
+  art: "marge" | "liquidation_neu" | "liquidation" | "sonst";
+  regelVorher: string | null;
+  /** Gewünschter Min lag unter Break-even und wurde ohne Freigabe auf Break-even angehoben. */
+  angehoben: boolean;
+  unterBreakEven: boolean;
+  /** Min unter Break-even ist als „Abverkauf mit Verlust“ freigegeben (Verlust je Stück bis verlustBis). */
+  verlustFreigegeben: boolean;
+};
+
+/**
+ * Min und Regel für die Datei (B31.6):
+ * 1. Gewünschter Min ≥ effektiver Min der Margen-Regel → Regel bleibt, Min als Sicherheitsnetz (ohne Wunsch: effektiver Min).
+ * 2. Gewünschter Min < effektiver Min → Regel „Liquidation“, Min fest; Untergrenze Break-even (EK + FBA + Provision, ohne
+ *    Mindestgewinn), darunter nur mit Freigabe „Verlust akzeptiert bis x €“ je Stück.
+ * Regel ist schon Liquidation → Min = gewünschter Min (Untergrenze), sonst Break-even; unter Break-even nur warnen.
+ */
+export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | null; gewuenscht: number | null; effMin: number | null; breakEven: number | null; verlustBis?: number | null; liquidation: string }): MinEntscheidung {
+  const be = o.breakEven;
+  const vb = o.verlustBis !== null && o.verlustBis !== undefined && o.verlustBis > 0 ? o.verlustBis : null;
+  const unter = (m: number | null) => m !== null && be !== null && m < be - 0.005;
+  const freigegeben = (m: number | null) => unter(m) && vb !== null && be !== null && m! >= r2(be - vb) - 0.005;
+  if (o.regel?.festeUntergrenze) {
+    const min = o.gewuenscht ?? be;
+    return { regel: o.regelName, min, art: "liquidation", regelVorher: null, angehoben: false, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
+  }
+  if (o.regel?.staffel) {
+    if (o.gewuenscht !== null && o.effMin !== null && o.gewuenscht < o.effMin - 0.005) {
+      const boden = be === null ? null : vb !== null ? r2(be - vb) : be;
+      const min = boden !== null ? Math.max(o.gewuenscht, boden) : o.gewuenscht;
+      return { regel: o.liquidation, min: r2(min), art: "liquidation_neu", regelVorher: o.regelName, angehoben: boden !== null && o.gewuenscht < boden - 0.005, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
+    }
+    const basis = o.effMin !== null ? (be !== null ? Math.max(o.effMin, be) : o.effMin) : be;
+    const min = o.gewuenscht !== null ? (basis !== null ? Math.max(o.gewuenscht, basis) : o.gewuenscht) : basis;
+    return { regel: o.regelName, min, art: "marge", regelVorher: null, angehoben: false, unterBreakEven: false, verlustFreigegeben: false };
+  }
+  const min = o.gewuenscht ?? be;
+  return { regel: o.regelName, min, art: "sonst", regelVorher: null, angehoben: false, unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
+}
+
+const tageSeit = (von: string, bis: string) => Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Rückkehr nach Liquidation (B31.6 Punkt 3): Buy Box über effektivem Min der ursprünglichen Regel + 3 %, 14 Tage am
+ * Stück → Vorschlag. Ohne Buy Box heute bleibt der Zähler stehen (kein Datenpunkt), darunter fängt er neu an.
+ */
+export function rueckkehrStand(o: { buybox: number | null; effMinVorher: number | null; ueberSeit: string | null; heute: string; aufschlag?: number; tage?: number }): { ueberSeit: string | null; tage: number; vorschlagen: boolean; schwelle: number | null } {
+  if (o.effMinVorher === null) return { ueberSeit: o.ueberSeit, tage: 0, vorschlagen: false, schwelle: null };
+  const schwelle = r2(o.effMinVorher * (1 + (o.aufschlag ?? RUECKKEHR_AUFSCHLAG)));
+  if (o.buybox === null) return { ueberSeit: o.ueberSeit, tage: o.ueberSeit ? tageSeit(o.ueberSeit, o.heute) : 0, vorschlagen: false, schwelle };
+  if (o.buybox <= schwelle) return { ueberSeit: null, tage: 0, vorschlagen: false, schwelle };
+  const seit = o.ueberSeit ?? o.heute;
+  const tage = tageSeit(seit, o.heute);
+  return { ueberSeit: seit, tage, vorschlagen: tage >= (o.tage ?? RUECKKEHR_TAGE), schwelle };
+}
+
+/** Test vor dem ersten Regelwechsel: Liquidation + Min stehen nach dem nächsten BQool-Lauf (≥ 12 Std. später) noch. */
+export function liquidationStehtNoch(o: { aktivSeit: Date | null; istAm: Date; istRegelFest: boolean; istMin: number | null; minGesetzt: number | null }): boolean {
+  if (!o.aktivSeit || !o.istRegelFest || o.istMin === null || o.minGesetzt === null) return false;
+  return Math.abs(o.istMin - o.minGesetzt) < 0.01 && o.istAm.getTime() - o.aktivSeit.getTime() >= TEST_STUNDEN * 3_600_000;
+}

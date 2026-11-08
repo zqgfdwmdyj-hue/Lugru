@@ -13,7 +13,7 @@ import { filterBqool, HINWEIS_RANG, HINWEIS_TEXT, regelUebersicht } from "@/lib/
 import { bqoolStand } from "@/lib/bqool/service";
 import { BqoolUpload } from "./bqool-upload";
 
-type SP = { nur?: string; seite?: string; land?: string; regel?: string; hinweis?: string; status?: string; q?: string; bq?: string; bqseite?: string };
+type SP = { nur?: string; seite?: string; land?: string; regel?: string; hinweis?: string; status?: string; q?: string; bq?: string; bqseite?: string; liq?: string };
 const BQ_SEITE = 50;
 const SYS_SEITE = 100;
 /** Link mit geänderten Suchparametern (leere Werte fallen weg). */
@@ -38,7 +38,9 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
   // B15.11: alle Länder, Übersicht je Regel, Filter und Seiten (Standard: nur Auffälligkeiten).
   const uebersicht = regelUebersicht(bq.zeilen);
   const laender = bq.stand.map((x) => x.marktplatz).sort();
-  const bqGefiltert = filterBqool(bq.zeilen, { land: sp.land, regel: sp.regel, hinweis: sp.hinweis, status: sp.status, q: sp.q, nurAuffaellig: sp.bq !== "alle" });
+  // B31.6: Filter „Liquidation wegen Min unter Marge“ zeigt diese SKUs auch ohne Auffälligkeit
+  const bqGefiltert = filterBqool(sp.liq === "1" ? bq.zeilen.filter((z) => z.liqMarge) : bq.zeilen, { land: sp.land, regel: sp.regel, hinweis: sp.hinweis, status: sp.status, q: sp.q, nurAuffaellig: sp.bq !== "alle" && sp.liq !== "1" });
+  const liqAnzahl = bq.zeilen.filter((z) => z.liqMarge).length;
   const bqSeiten = Math.max(1, Math.ceil(bqGefiltert.length / BQ_SEITE));
   const bqSeite = Math.min(bqSeiten, Math.max(1, Number(sp.bqseite) || 1));
   const bqZeigen = bqGefiltert.slice((bqSeite - 1) * BQ_SEITE, bqSeite * BQ_SEITE);
@@ -132,23 +134,27 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
               <div className="field"><label className="label" htmlFor="hinweis">Auffälligkeit</label>
                 <select className="input" id="hinweis" name="hinweis" defaultValue={sp.hinweis ?? ""}><option value="">alle</option>{HINWEIS_RANG.map((h) => <option key={h} value={h}>{HINWEIS_TEXT[h]}</option>)}</select>
               </div>
+              <div className="field"><label className="label" htmlFor="liq">Liquidation</label>
+                <select className="input" id="liq" name="liq" defaultValue={sp.liq === "1" ? "1" : ""} data-testid="bqool-filter-liq"><option value="">alle</option><option value="1">wegen Min unter Marge ({liqAnzahl})</option></select>
+              </div>
               <div className="field" style={{ flex: "1 1 160px" }}><label className="label" htmlFor="bq-q">Suche</label><input className="input" id="bq-q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="SKU, ASIN, Titel" /></div>
               <button className="btn" type="submit" data-testid="bqool-filter-anwenden">Anwenden</button>
-              {(sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.bq) && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#bqool-liste")}>zurücksetzen</Link>}
+              {(sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.bq || sp.liq) && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#bqool-liste")}>zurücksetzen</Link>}
             </form>
             {bqGefiltert.length === 0 ? (
-              <div className="notice notice-ok small" data-testid="bqool-keine">{sp.bq === "alle" || sp.land || sp.regel || sp.status || sp.hinweis || sp.q ? "Keine SKUs für diese Auswahl." : "Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist)."}</div>
+              <div className="notice notice-ok small" data-testid="bqool-keine">{sp.bq === "alle" || sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.liq ? "Keine SKUs für diese Auswahl." : "Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist)."}</div>
             ) : (
               <div style={{ overflow: "auto" }}>
                 <div className="small muted" data-testid="bqool-anzahl">{bqGefiltert.length} Zeilen{bqProbleme.length !== bqGefiltert.length ? ` · ${bqProbleme.length} mit Auffälligkeiten insgesamt` : ""}{bqSeiten > 1 ? ` · Seite ${bqSeite} von ${bqSeiten}` : ""}</div>
                 <table className="table" data-testid="bqool-problems">
-                  <thead><tr><th>Land</th><th>SKU</th><th>Regel</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
+                  <thead><tr><th>Land</th><th>SKU</th><th>Regel</th><th title="Seit wann die Regel in BQool steht (BQool-Ist)">Regel seit</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
                   <tbody>
                     {bqZeigen.map((z) => (
                       <tr key={`${z.marktplatz}|${z.sku}`}>
                         <td>{z.marktplatz}</td>
                         <td className="num small">{z.sku}</td>
-                        <td className="small">{z.regel ?? "–"}{z.status === "pausiert" ? " (pausiert)" : z.status === null ? <span className="muted" title="Kein Repricing-Status in der Datei"> (Status ?)</span> : ""}</td>
+                        <td className="small" data-testid="bqool-regel">{z.regel ?? "–"}{z.status === "pausiert" ? " (pausiert)" : z.status === null ? <span className="muted" title="Kein Repricing-Status in der Datei"> (Status ?)</span> : ""}{z.liqMarge && <div className="muted" data-testid="bqool-liq-marge">wegen Min unter Marge{z.liqMarge.regelVorher ? ` (vorher ${z.liqMarge.regelVorher})` : ""}{z.liqMarge.status === "zurueck_vorgeschlagen" ? " · Rückkehr vorgeschlagen" : ""}</div>}</td>
+                        <td className="small" data-testid="bqool-regel-seit">{z.regelSeit ? formatDate(z.regelSeit.toISOString().slice(0, 10)) : "–"}</td>
                         <td className="num right">{formatEuro(z.preis)}</td>
                         <td className="num right" style={{ color: z.hinweise.includes("min_unter_untergrenze") ? "var(--danger)" : undefined, fontWeight: 600 }}>{formatEuro(z.min)}</td>
                         <td className="num right">{formatEuro(z.untergrenze)}</td>

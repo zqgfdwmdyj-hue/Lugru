@@ -15,8 +15,10 @@ import {
   bqoolCost,
   bqoolDatei,
   breakEvenMin,
-  dateiMin,
   effektiverMin,
+  liquidationsName,
+  margeBeiPreis,
+  minEntscheidung,
   EXPORT_LAENDER,
   FORMAT_STANDARD,
   katalogRegel,
@@ -44,6 +46,7 @@ import {
 const L = schema.bqoolListings;
 const Z = schema.bqoolZuweisungen;
 const E = schema.bqoolExporte;
+const LQ = schema.bqoolLiquidationen;
 
 export type VorschauZeile = ExportZeile & {
   titel: string | null;
@@ -60,6 +63,21 @@ export type VorschauZeile = ExportZeile & {
   art: Aenderung["art"];
   regelWechsel: boolean;
   minDiff: number | null;
+  /** B31.6: „neu“ = wegen Min unter Marge auf Liquidation, „ja“ = Regel ist schon Liquidation. */
+  liquidation: "neu" | "ja" | null;
+  regelVorher: string | null;
+  breakEven: number | null;
+  /** Marge beim Min der Datei (vom Brutto-Preis). */
+  margeNeu: number | null;
+  /** Effektiver Min der ursprünglichen Regel (für die Rückkehr). */
+  effMinVorher: number | null;
+  /** Regelwechsel auf Liquidation, aber der Test mit einer SKU ist noch nicht bestanden → nicht in der Datei. */
+  wartetAufTest: boolean;
+  verlustBis: number | null;
+  /** Gewünschter Min (Zuweisung bzw. Untergrenze aus BQool). */
+  minGewuenscht: number | null;
+  /** Seit wann die Regel in BQool steht (BQool-Ist). */
+  regelSeit: Date | null;
 };
 
 export type LandVorschau = { land: ExportLand; zeilen: VorschauZeile[]; neu: number; geaendert: number; gleich: number; regelWechsel: number; mitWarnung: number; istStand: Date | null; vergleichMit: "bqool" | "export" | "nichts" };
@@ -90,17 +108,19 @@ export async function bqoolDateiEinlesen(tenantId: string, name: string, bytes: 
     // Die Datei enthält alle Angebote des Landes – was fehlt, ist bei BQool nicht (mehr) gelistet.
     await tx.delete(L).where(and(eq(L.tenantId, tenantId), eq(L.marktplatz, land), skus.length ? notInArray(L.sku, skus) : sql`true`));
     for (let i = 0; i < zeilen.length; i += 500) {
-      const teil = zeilen.slice(i, i + 500).map((z) => ({ tenantId, marktplatz: land, sku: z.sku, regel: z.regel || null, min: z.min, max: z.max, status: z.enable === "1" ? "aktiv" : "pausiert", zusatz: { cost: z.cost !== null ? String(z.cost) : "", enable: z.enable }, datei: name.slice(0, 200), eingelesenAm: now }));
+      const teil = zeilen.slice(i, i + 500).map((z) => ({ tenantId, marktplatz: land, sku: z.sku, regel: z.regel || null, min: z.min, max: z.max, status: z.enable === "1" ? "aktiv" : "pausiert", zusatz: { cost: z.cost !== null ? String(z.cost) : "", enable: z.enable }, datei: name.slice(0, 200), eingelesenAm: now, regelSeit: now }));
       await tx
         .insert(L)
         .values(teil)
-        .onConflictDoUpdate({ target: [L.tenantId, L.marktplatz, L.sku], set: { regel: sql`excluded.regel`, min: sql`excluded.min`, max: sql`excluded.max`, status: sql`excluded.status`, zusatz: sql`${L.zusatz} || excluded.zusatz`, datei: sql`excluded.datei`, eingelesenAm: sql`excluded.eingelesen_am` } });
+        .onConflictDoUpdate({ target: [L.tenantId, L.marktplatz, L.sku], set: { regelSeit: sql`case when ${L.regel} is distinct from excluded.regel then excluded.eingelesen_am else coalesce(${L.regelSeit}, excluded.eingelesen_am) end`, regel: sql`excluded.regel`, min: sql`excluded.min`, max: sql`excluded.max`, status: sql`excluded.status`, zusatz: sql`${L.zusatz} || excluded.zusatz`, datei: sql`excluded.datei`, eingelesenAm: sql`excluded.eingelesen_am` } });
     }
   });
   await db.insert(schema.reportImports).values({ tenantId, reportType: "BQool Repricing-Datei", fileName: name.slice(0, 200), via: o.via === "automatik" ? "api" : "upload", rows: r.zeilen.length, inserted: zeilen.length, message: land });
   const regeln = new Map<string, number>();
   for (const z of zeilen) regeln.set(z.regel || "–", (regeln.get(z.regel || "–") ?? 0) + 1);
   if (!o.ohneAbgleich) await bqoolAbgleichAufgabe(tenantId).catch(() => undefined);
+  // B31.6: Liquidation im Ist erkannt → aktiv (Verlust-Stopp-Ausnahme), Test „bleibt stehen“
+  await import("./liquidation").then((x) => x.liquidationIstAbgleich(tenantId)).catch(() => undefined);
   return { ok: true, land, skus: zeilen.length, message: `BQool ${land}: ${zeilen.length} SKUs als Ist-Stand übernommen (${[...regeln.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}).` };
 }
 
@@ -116,14 +136,19 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
   const b = s.bqool;
   const laender = (o.laender?.length ? o.laender : b.laender).filter((l): l is ExportLand => (EXPORT_LAENDER as readonly string[]).includes(l));
   const heute = o.heute ?? todayIso();
-  const [rows, zuw, ist, letzter, hochgeladen] = await Promise.all([
+  const [rows, zuw, ist, letzter, hochgeladen, liqRows] = await Promise.all([
     repricerRows(tenantId),
     db.select().from(Z).where(eq(Z.tenantId, tenantId)),
     istStand(tenantId, laender),
     db.select().from(E).where(eq(E.tenantId, tenantId)).orderBy(desc(E.createdAt)).limit(1),
     // B31: zuletzt bei BQool hochgeladene Exporte (für den Vergleich, wenn der Ist danach nicht neu geholt wurde)
     db.select({ createdAt: E.createdAt, zeilen: E.zeilen, protokoll: E.protokoll }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.uebertragung, ["fertig", "teilweise", "pruefen"]))).orderBy(desc(E.createdAt)).limit(20),
+    db.select().from(LQ).where(eq(LQ.tenantId, tenantId)),
   ]);
+  // B31.6: Liquidation wegen Min unter Marge – Regel vorher, Verlust-Freigabe; Test vor dem ersten Regelwechsel
+  const liqJe = new Map(liqRows.filter((l) => l.status !== "beendet" || l.verlustBis !== null).map((l) => [`${l.land}|${l.sku}`, l]));
+  const liqName = liquidationsName(b.katalog);
+  const testBestanden = !!b.liquidationTest?.bestanden;
   const skus = rows.map((r) => r.sku);
   const asins = [...new Set(rows.map((r) => r.asin).filter((a): a is string => !!a))];
   const [alter, keepa, listungen] = await Promise.all([
@@ -159,26 +184,40 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       }
       const i = istJe.get(r.sku);
       const rf = regelFuer({ land, titel: r.title, asin: r.asin, zuweisung: zuwJe.get(`${land}|${r.sku}`) ?? null, markenRegeln: b.markenRegeln, aufAbverkaufsListe: b.elektronikLaender.includes(land) && b.elektronikMarken.some((m) => titelHatMarke(r.title, m)), abverkaufRegel: b.abverkaufRegel, standard: b.standardRegel, ist: i ? { regel: i.regel, min: i.min } : null, katalog: b.katalog });
-      soll.set(`${land}|${r.sku}`, rf.regel);
+      const key = `${land}|${r.sku}`;
       const kat = katalogRegel(b.katalog, rf.regel);
       const kosten = { ek: r.unitCost, fba: r.fbaFee, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: r.referralRate };
+      const alterTage = alterJe.get(r.sku) ?? null;
       const be0 = breakEvenMin({ ...kosten, margeProzent: 0 });
-      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage: alterJe.get(r.sku) ?? null });
-      // B31.3: Min in der Datei – Standard effektiver Min (harte Untergrenze), auf Wunsch Break-even als Sicherheitsnetz.
-      const min = dateiMin({ regel: kat, untergrenze: rf.untergrenze, breakEven: be0, effMin: eff.min, modus: b.kreislauf.minInDatei });
-      if (min === null) continue;
+      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage });
+      const liq = liqJe.get(key) ?? null;
+      // B31.6: Min unter dem effektiven Min der Margen-Regel wirkt nur mit „Liquidation“ (fester Min, nie unter Break-even
+      // ohne Freigabe); sonst Min ≥ effektiver Min (Sicherheitsnetz). Die frühere Wahl „Break-even als Sicherheitsnetz“
+      // entfällt – BQool setzt einen Min unter dem Margen-Wert ohnehin zurück.
+      const ent = minEntscheidung({ regelName: rf.regel, regel: kat, gewuenscht: rf.untergrenze, effMin: eff.min, breakEven: be0, verlustBis: liq?.verlustBis ?? null, liquidation: liqName });
+      if (ent.min === null) continue;
+      const min = ent.min;
+      soll.set(key, ent.regel);
+      const regelVorher = ent.regelVorher ?? (liq?.grund === "min_unter_marge" ? liq.regelVorher : null);
+      const effMinVorher = ent.art === "liquidation_neu" ? eff.min : regelVorher ? effektiverMin({ regel: katalogRegel(b.katalog, regelVorher), untergrenze: null, ...kosten, alterTage }).min : null;
       const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
       const max = maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
       const enable = (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
       const buybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
-      const w = warnungen({ min: eff.min ?? min, max }, { buybox, breakEven: kat?.festeUntergrenze ? be0 : null });
+      const w = warnungen({ min: ent.art === "marge" ? (eff.min ?? min) : min, max }, { buybox, breakEven: null });
       if (!kat) w.push(`Regel „${rf.regel}“ steht nicht im Katalog`);
+      const f2 = (n: number | null) => (n === null ? "–" : n.toFixed(2));
+      if (ent.angehoben) w.push(`Gewünschter Min ${f2(rf.untergrenze)} unter Break-even ${f2(be0)} – auf Break-even angehoben (Abverkauf mit Verlust nicht freigegeben)`);
+      if (ent.unterBreakEven) w.push(ent.verlustFreigegeben ? `Min ${f2(min)} unter Break-even ${f2(be0)} – Abverkauf mit Verlust freigegeben bis ${f2(liq?.verlustBis ?? null)} € je Stück` : `Min ${f2(min)} unter Break-even ${f2(be0)} – nicht freigegeben („Verlust akzeptiert bis“ setzen oder Min anheben)`);
+      const istFest = !!katalogRegel(b.katalog, i?.regel)?.festeUntergrenze;
+      const wartetAufTest = ent.art === "liquidation_neu" && !testBestanden && !istFest;
+      if (wartetAufTest) w.push("Regelwechsel auf Liquidation wartet auf den Test mit einer SKU – noch nicht in der Datei");
       const blockiert = minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
       if (blockiert) w.push(blockiert);
       // B25.5: In BQool steht für die SKU kein Mindestpreis – ohne Upload bepreist BQool ohne Untergrenze.
       if (i && (i.min === null || i.min === undefined || i.min <= 0)) w.push("kein Min in BQool – erst mit diesem Upload abgesichert");
-      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: rf.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null });
+      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(rf.untergrenze)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: rf.untergrenze, regelSeit: i?.regelSeit ?? null });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.
     const vergleichMit: LandVorschau["vergleichMit"] = istRows.length ? "bqool" : letzteZeilen.some((z) => z.land === land) ? "export" : "nichts";
@@ -220,20 +259,24 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
     vorschlaege = [];
   }
   const istAlle = [...ist.entries()].flatMap(([land, rs]) => rs.map((r) => ({ land: land as ExportLand, sku: r.sku, regel: r.regel })));
+  // B31.6: Liquidation wegen Min unter Marge steht gesondert in der Freigabe – im Abgleich „Ist ≠ Soll“ nicht melden.
+  const liqMarge = new Set([...ergebnis.flatMap((l) => l.zeilen.filter((z) => z.liquidation === "neu").map((z) => `${z.land}|${z.sku}`)), ...liqRows.filter((l) => l.grund === "min_unter_marge" && l.status !== "beendet").map((l) => `${l.land}|${l.sku}`)]);
   return {
     laender: ergebnis,
     ekFehlt,
     vorschlaege,
-    abgleich: abgleich(istAlle, soll, b.katalog),
+    abgleich: abgleich(istAlle, soll, b.katalog).filter((f) => !((f.art === "liquidation_soll" || f.art === "liquidation_ist") && liqMarge.has(`${f.land}|${f.sku}`))),
     format: { ausVorlage: f.ausVorlage },
     letzterExport: letzter[0] ? { id: letzter[0].id, am: letzter[0].createdAt, anzahl: letzter[0].anzahl } : null,
   };
 }
 
 /** Export erzeugen und speichern (Download je Land / ZIP). Nur Änderungen = neue und geänderte Zeilen. */
-export async function bqoolExportErzeugen(tenantId: string, userId: string | null, o: { laender?: ExportLand[]; nurAenderungen: boolean }): Promise<{ id: string; anzahl: Record<string, number>; zusammenfassung: BqoolLaufZusammenfassung }> {
+export async function bqoolExportErzeugen(tenantId: string, userId: string | null, o: { laender?: ExportLand[]; nurAenderungen: boolean; /** B31.6: nur diese „Land|SKU“ (Test einer SKU mit Liquidation). */ nurSkus?: string[] }): Promise<{ id: string; anzahl: Record<string, number>; zusammenfassung: BqoolLaufZusammenfassung }> {
   const v = await bqoolVorschau(tenantId, { laender: o.laender });
-  const gewaehlt = v.laender.flatMap((l) => l.zeilen.filter((z) => !o.nurAenderungen || z.art !== "gleich"));
+  const nur = o.nurSkus?.length ? new Set(o.nurSkus) : null;
+  // B31.6: Regelwechsel auf Liquidation erst nach bestandenem Test mit einer SKU – außer im Test-Export selbst.
+  const gewaehlt = v.laender.flatMap((l) => l.zeilen.filter((z) => (nur ? nur.has(`${z.land}|${z.sku}`) : (!o.nurAenderungen || z.art !== "gleich") && !z.wartetAufTest)));
   const zeilen = gewaehlt.map((z) => ({ land: z.land, sku: z.sku, cost: z.cost, zusatz: z.zusatz, regel: z.regel, min: z.min, max: z.max, enable: z.enable }));
   const anzahl = Object.fromEntries(v.laender.map((l) => [l.land, zeilen.filter((z) => z.land === l.land).length]));
   // B31.2: Zusammenfassung für Freigabe-Push und „automatisch hochladen“ (nur über die Zeilen der Datei).
@@ -243,8 +286,17 @@ export async function bqoolExportErzeugen(tenantId: string, userId: string | nul
     regelWechsel: gewaehlt.filter((z) => z.regelWechsel).length,
     warnungen: gewaehlt.filter((z) => z.warnungen.length).length,
     unterBreakEven: gewaehlt.filter((z) => z.warnungen.some((w) => /unter Break-even/i.test(w))).length,
+    liquidation: gewaehlt.filter((z) => z.liquidation === "neu" && z.regelWechsel).length,
   };
   const [e] = await db.insert(E).values({ tenantId, userId, laender: v.laender.map((l) => l.land), nurAenderungen: o.nurAenderungen, zeilen, anzahl }).returning({ id: E.id });
+  // B31.6: Regel vor Liquidation merken (Vorschlag, aktiv erst, wenn BQool-Ist Liquidation + Min zeigt).
+  for (const z of gewaehlt.filter((x) => x.liquidation === "neu")) {
+    const werte = { grund: "min_unter_marge" as const, regelVorher: z.regelVorher, minGewuenscht: z.minGewuenscht, minGesetzt: z.min, effMinVorher: z.effMinVorher, breakEven: z.breakEven, updatedAt: new Date() };
+    await db
+      .insert(LQ)
+      .values({ tenantId, land: z.land, sku: z.sku, ...werte, status: "vorgeschlagen" })
+      .onConflictDoUpdate({ target: [LQ.tenantId, LQ.land, LQ.sku], set: { ...werte, status: sql`case when ${LQ.status} = 'beendet' then 'vorgeschlagen' else ${LQ.status} end`, beendetAm: sql`case when ${LQ.status} = 'beendet' then null else ${LQ.beendetAm} end` } });
+  }
   return { id: e.id, anzahl, zusammenfassung };
 }
 
