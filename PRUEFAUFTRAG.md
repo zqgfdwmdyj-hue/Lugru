@@ -1362,6 +1362,43 @@ Unit-Tests: `tests/druck-logik.test.ts` (Raster, Medien, Rechte, Symbol, Wartesc
 **Werkzeuge Druckagent:** keine neuen Claude-Werkzeuge – Drucken bleibt im System (kein ändernder Zugriff für Claude),
 deshalb kein `notifications/tools/list_changed`.
 
+## B33 BQool-Formel, Regel-Katalog und Min-Verhalten (08.11.)
+
+Prüfung vorher: effektiver Min = Break-even-Formel mit EK netto, Fix- und Zusatzkosten und den **DE-Gebühren für alle
+Länder**; Katalog mit einer Staffel je Regel (ia 10/8/7/5/3/1/0, Abverkauf DE 7/5/3/1/0, FR/IT/ES 4/3/2/1/0), ohne
+Stufentyp und Bedingung; Min-Korrekturen bei ia/Abverkauf zählten als Änderung und gingen in den Upload; Ist holen über
+„Full Template“; Nachkontrolle nur „Min x statt y“ (jede Abweichung = Fehler); Processing Report nicht gelesen.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B33.1 Formel: P(m) = (F + C/(1+v)) / (1/(1+v) − r − m), Marge = Est. Profit / P, C brutto, r vom Brutto-Preis, kaufmännisch gerundet | ❌ | ✅ `bqoolPreisFuerMarge`, `bqoolMarge`; effektiver Min, Schnelldreher-Boden und „Marge neu“ rechnen damit (Break-even bleibt die eigene Kostenrechnung) | `src/lib/bqool/export-logic.ts` |
+| B33.1 F je Land, r je Kategorie (nicht pauschal, nicht aus DE) | ❌ | ✅ Quellen: BQool-Liste („Referral Fee“/„FBA Fee“ aus „Download listings“) → Amazon-Gebührenvorschau des Landes (Spalte „amazon-store“) → Produktwert DE als „geschätzt (Gebühren DE)“. Neue Tabelle `bqool_gebuehren`; Preisstufen der Provision je Kategorie (Beauty/Drogerie bis 10 € 8 %, Bekleidung 5/10/15 %) nur, wenn der beobachtete Satz passt. Vorschau zeigt je Zeile „F · r · Quelle“ | `gebuehrenFuerLand`, `provisionFuer`, `gebuehrenAusListing` (`src/lib/bqool/logic.ts`), `parseFees` (`src/lib/reports/amazon.ts`), `src/lib/bqool/gebuehren.ts`, `drizzle/0142_b33_gebuehren.sql` |
+| B33.1 Abnahme: 20 Eichzeilen < 0,05 € / 0,1 Pp | ❌ | ✅ 20 Eichzeilen (Anlage im Auftrag, nicht im Repo) – 31 Werte, max. Abweichung 0,02 € bzw. 0,06 Prozentpunkte, auch die Referenz-SKU in IT bei 10 %. Eine IT-Zeile stimmt nur mit der Preisstufe „bis 10 € 8 %“ (Kategorie muss aus der Gebührenvorschau kommen) | Rechnung im Arbeitsverzeichnis, Formel in `tests/b33-bqool-formel.test.ts` |
+| B33.2 Min-Reset: ia/Abverkauf überschreiben den Min täglich, Liquidation/mbb nicht; Max bleibt | ❌ | ✅ Katalogfeld „Min-Reset täglich“ (ia/Abverkauf an, Liquidation/mbb aus, je Regel schaltbar); reine Min-Abweichungen bei Reset-Regeln zählen nicht mehr als Änderung (kein wirkungsloser Upload); Hinweis „Min aus Upload blockiert Buy Box“ nur noch ohne Reset; Steuerhebel im Text: Regel, Max, Cost, Aktiv/Pause, bei Liquidation der Min | `setztMinZurueck`, `vergleiche(…, { minZaehlt })`, `export-service.ts` |
+| B33.3 Katalog je Land mit Typ (Marge / Lowest Price + x / Sales Maximizer), Marge, Bedingung, Regel-IDs | ❌ | ✅ Stufen je Land laut Tabelle (ia DE/FR/IT/ES, Abverkauf DE/FR/IT/ES), IDs ia 37/39/40/38, Abverkauf 47/48/50/49, Liquidation 43/45/46/44, mbb 33, AI Win Sales Booster 2; Stufen ohne feste Marge → „keine feste Marge (Wettbewerbspreis)“, kein Min, keine Prozentzahl; Tabelle „je Land und Stufe“ auf Repricer → BQool-Dateien, Eingabe je Land („30:10 SB [Available ≥ 1], 90:LP+6 SM, 270:SM …“). Gespeicherter Katalog: Knopf „Stufen je Land übernehmen“ (erst nach Abgleich mit dem Screenshot) | `KATALOG_STANDARD`, `IA_JE_LAND`, `ABVERKAUF_JE_LAND`, `staffelAusText`, `KatalogJeLand` (`repricer/bqool/page.tsx`), `katalogB33Action` |
+| B33.4 Frischbestand-Falle im Listing-Check | ❌ | ✅ Befund 11: Stufe 0–30 T, Min (BQool) über Buy Box, 7 Tage kein Verkauf → Hinweis „Regel wechseln (Liquidation mit Min = P(7 %) bzw. Regel „Schnelldreher“); Min-Upload allein wirkt nicht“; Befund 1 nennt bei Reset-Regeln den Regelwechsel. Wer die Regel umgestellt hat, ist aus BQool nicht ablesbar | `befundePruefen` (`listing-check-logic.ts`) |
+| B33.5 Schnelldreher Variante 1/2/3 | 🟡 | ✅ V1: Liquidation ohne festen Min → Min = P(7 %), „Liquidation bis“ + Kennzeichen bleiben; V2: Knopf „Regel „Schnelldreher“ in Katalog übernehmen“ (Kopie ia, alle Stufen 7 %, Reset) – Zuordnung über Rule Name; V3: dieselbe Regel „ohne Min-Reset“ (ungeprüft, erst Test-SKU) | `schnelldreherRegel`, `schnellRegelAction`, `minEntscheidung` |
+| B33.6 Export = Listen-Seite + „Download“ → „Download listings“ (kein Export-Link, kein Zeitplan) | 🟡 | ✅ Automatik klickt „Download“ → „Download listings“ (Vorrang vor „Full Template“), nur lesen; Anbindung „Listen-Seite DE“ mit Vorgabe `…/repricing/amazonde`, FR/IT/ES abgeleitet; Berichtsseiten mit `locale=DE` → FR/IT/ES abgeleitet | `src/lib/automatik/bqool-ist.ts`, `bqoolAbleiten`, `registry.ts` |
+| B33.6 Processing Report der Uploads (07.11. je 1 Fehler) lesen, Fehlerzeile je Land in Hinweisen | ❌ | ✅ täglicher Lauf liest den Upload-Verlauf je Land, öffnet „View Processing Report“ und speichert die Fehlerzeilen; nach jedem Upload mit „n Error“ ohne Zeilen wird der Bericht sofort gelesen; Karte „Upload-Fehler laut BQool“ (+ Knopf „Processing Reports lesen“) und Aufgabe; Zeiten deutsch + BQool-Zeit (UTC+02:00, Feld „Zeitzone“) | `verlaufLesen`, `processingReportZeilen`, `bqoolZeit`, `uploadFehlerSpeichern`, `uploadVerlaufLesen` |
+| B33.6 Nachkontrolle: Ist per „Download listings“, je SKU Min vorher / Datei / nachher; ia/Abverkauf → Hinweis, Liquidation → Fehler | 🟡 | ✅ Datei merkt sich „Min vorher“ und „Min-Reset“; Ergebnis mit Tabelle je SKU; bei Reset-Regel „Min wird täglich zurückgesetzt – kein Fehler“ (keine Aufgabe), bei Liquidation „Min hätte stehen bleiben müssen“ (Aufgabe + Push) | `nachkontrolle` (`kreislauf-logic.ts`), `kreislauf-karte.tsx` |
+| B33.7 Einstellungen nur zur Kenntnis | – | ✅ nichts geändert; Hinweis im Katalog: Liquidation zählt gegen das AI+CR-Kontingent | `KATALOG_STANDARD` (Liquidation) |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. Effektiver Min der 20 Eich-SKUs ≤ 0,05 € von BQool (inkl. Referenz-SKU IT bei 10 %) | ✅ Formel nachgerechnet (max. 0,02 €); automatisch: FR-Min mit FR-Gebühren aus „Download listings“ (nicht DE), Vorschau und Werkzeug |
+| 2. Katalog je Land und Stufe mit Typ, Marge, Bedingung; ohne feste Marge keine Prozentzahl | ✅ automatisch (ia DE/FR, Abverkauf DE/IT) – Zuordnung der Stufen vor Übernahme einmal gegen den Screenshot prüfen |
+| 3. Export-Vorschau markiert ia/Abverkauf „Min wird von BQool täglich überschrieben“ | ✅ automatisch (nicht bei Liquidation) |
+| 4. Nachkontrolle nach Eintragen der Listen-URL mit „Download listings“, Min vorher/nachher | ✅ automatisch gegen den Nachbau (ia mit Reset → Hinweis, Liquidation → Fehler); echte BQool-Seite live |
+| 5. Fehler der Uploads vom 07.11. ausgelesen und sichtbar | ✅ automatisch (Upload-Verlauf mit zwei Berichten, deutsche und BQool-Zeit); echte Berichte vom 07.11. beim nächsten Lauf live |
+
+Unit-Tests: `tests/b33-bqool-formel.test.ts` (Formel, Preisstufen, Gebühren je Land, Katalog, Reset, Frischbestand-Falle,
+Schnelldreher, Nachkontrolle, Processing Report, BQool-Zeit), angepasst `tests/bqool-export.test.ts`,
+`tests/bqool-kreislauf.test.ts`. Ablauftest: `e2e/b33-bqool-formel.spec.ts`.
+
+**Werkzeuge B33:** keine neuen Werkzeuge; `bqool_export_vorschau` liefert je Zeile `effektiver_min_text`, `stufe_text`,
+`min_reset` und `gebuehren` (FBA, Provision, Quelle, geschätzt, Preisstufen); Beschreibung erweitert →
+`notifications/tools/list_changed` geht beim Verbinden raus.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -1795,6 +1832,9 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (56) und `notifications/tools/list_changed`
+
+B33 (08.11.): **keine neuen Werkzeuge**. Geändert: `bqool_export_vorschau` (Beschreibung + Felder `min_reset`,
+`stufe_text`, `effektiver_min_text`, `gebuehren`). `notifications/tools/list_changed` nötig – geht beim Verbinden raus.
 
 Bauauftrag Druckagent (08.11.): **keine neuen Werkzeuge**, keine Änderung an bestehenden – kein `list_changed`.
 
@@ -2296,3 +2336,17 @@ nie in Chats oder Mails.
      Geräte-Schlüssel (Einstellungen → Handy); fürs Teilen-Menü (PDF aus Seller Central) die Datei als Inhalt senden.
 131. **Steuerkarte** (Lager → Scannen) einmal drucken und laminieren; Handscanner auf „Enter nach jedem Scan“ stellen.
 132. **Überwachter Ordner** (optional): Pfad unter Einstellungen → Drucker eintragen, z. B. den Scan-Ordner für Rechnungen.
+133. **B33 Katalog prüfen**: Repricer → BQool-Dateien → „Regel-Katalog“ – Tabelle „je Land und Stufe“ einmal gegen die
+     Screenshots der Regeln (ia/Abverkauf je Land) halten; stimmt sie, „Stufen je Land übernehmen“ drücken (nur wenn der
+     Hinweis erscheint). Nichts davon ändert etwas in BQool.
+134. **Listen-Seite eintragen**: Anbindungen → BQool → „Listen-Seite DE“ = `https://mc.bqool.com/repricing/amazonde`
+     (FR/IT/ES werden abgeleitet). Ab dann holt der Lauf das Ist per „Download listings“ und liest die Processing Reports.
+     Die Fehler vom 07.11. stehen danach unter Repricer → BQool-Dateien → „Upload-Fehler laut BQool“.
+135. **Gebühren je Land**: Amazon-Gebührenvorschau (Fee Preview) für alle vier Marktplätze einspielen bzw. abrufen lassen;
+     fehlen Gebühren eines Landes, zeigt die Vorschau „geschätzt (Gebühren DE)“.
+136. **Regel „Schnelldreher“** (Variante 2, empfohlen): in BQool je Land als Kopie von ia anlegen, alle Stufen 7 %,
+     Name exakt „Schnelldreher“; danach Repricer → BQool-Dateien → „In Katalog übernehmen“.
+137. **Variante 3 nur testen**: eine Test-SKU mit einer ia-Kopie im Modus „Rule“ (statt „Rule + Min Price“) – nach dem
+     nächsten BQool-Lauf prüfen, ob der Datei-Min stehen bleibt; Ergebnis kurz melden.
+138. **AI+CR-Kontingent** vor großen Wechseln auf Liquidation prüfen (Liquidation ist AI und zählt dort mit).
+139. **Margen je Altersstufe** ändert nur Ludwig in BQool (Edit Rule) – danach den Katalog im Seller-System gleichziehen.

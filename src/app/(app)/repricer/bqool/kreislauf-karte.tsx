@@ -94,7 +94,7 @@ export function KreislaufKarte({ stand, lauf, laeufe, inhaber, freigebenHinweis,
                     <thead><tr><th>Land</th><th>SKU</th><th>Regel</th><th>Min vorher</th><th>Datei</th><th>Min nachher</th><th /></tr></thead>
                     <tbody>
                       {lauf.kontrolle.minVergleich!.slice(0, 50).map((m) => (
-                        <tr key={`${m.land}-${m.sku}`} data-testid="bq-kontrolle-min-zeile" data-sku={m.sku} data-status={m.status}>
+                        <tr key={`${m.land}-${m.sku}`} data-testid="bq-kontrolle-min-zeile" data-sku={m.sku} data-land={m.land} data-status={m.status}>
                           <td>{m.land}</td><td>{m.sku}</td><td>{m.regel}</td><td>{m.vorher?.toFixed(2) ?? "–"}</td><td>{m.datei.toFixed(2)}</td><td>{m.nachher?.toFixed(2) ?? "–"}</td>
                           <td style={{ color: m.status === "fehler" || m.status === "fehlt" ? "var(--warn)" : undefined }}>{m.status === "gleich" ? "steht" : m.status === "reset" ? "Min wird täglich zurückgesetzt – kein Fehler" : m.status === "fehlt" ? "nicht im BQool-Export" : "Fehler"}</td>
                         </tr>

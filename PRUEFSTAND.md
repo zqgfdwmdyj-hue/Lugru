@@ -37,7 +37,8 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Amazon › Fälle & Erstattungen | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Fälle & Erstattungen | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
 | Amazon › Angebote & Lager | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
-| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/4 Abläufe | – | 2 |
+| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/9 Abläufe | – | 3 |
+| Amazon › Angebote & Lager | Repricer (BQool) › Listing-Check `/repricer/listing-check` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Angebote & Lager | Repricer (BQool) › BQool-Dateien `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
 | Amazon › Angebote & Lager | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Angebote & Lager | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
@@ -59,6 +60,8 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Lager & Versand › Lager | Paletten-Lager › Abrechnung `/paletten/abrechnung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Lager & Versand › Lager | Paletten-Lager › Kunden & Preise `/paletten/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Lager & Versand › Lager | Paletten-Lager › Auswertung `/paletten/uebersicht` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Lager & Versand › Lager | Drucken (Etiketten) `/drucken` | ○ 0/4 Abläufe | – | 4 |
+| Lager & Versand › Lager | Scannen `/lager/scannen` | ○ 0/1 Abläufe | – | – |
 | Lager & Versand › Versand | Aufträge & Versand `/auftraege` | ○ 0/2 Abläufe | – | – |
 | Lager & Versand › Versand | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/4 Abläufe | – | – |
 | Lager & Versand › Versand | Label aus Chat (DHL) `/versand/label` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -114,6 +117,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einstellungen | Einstellungen › Benachrichtigungen `/einstellungen/benachrichtigungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Shop-Profile `/einstellungen/shop-profile` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Abholung `/einstellungen/abholung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Einstellungen › Drucker `/einstellungen/drucker` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Testumgebung `/einstellungen/testumgebung` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | /posteingang/verbinden `/posteingang/verbinden` | ○ 0/2 Abläufe | – | 1 |
 | Übergreifend | /assistent-verlauf `/assistent-verlauf` | ○ 0/2 Abläufe | – | – |
@@ -252,7 +256,13 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B31.5 täglicher Lauf holt die Berichte selbst | „Listing Performance“ mit „Last 7 days“ und „Daily Sales“ je Land heruntergeladen und ohne Rückfrage eingelesen, Abruf „BQool: Berichte“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
 | B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf | Regelwechsel „ia → Liquidation“ mit festem Min (nie unter Break-even ohne Freigabe), bis zum Test nicht in der Datei; Test-Export mit Rule Name „Liquidation“ und festem Min; nach dem BQool-Lauf aktiv mit Verlust-Stopp-Ausnahme, Min bleibt stehen → Test bestanden, Regelwechsel im vollen Export; Repricer „Regel seit“ + Filter, Kapital-Ampel-Zeile | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
 | B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % | Tag 13 kein Vorschlag, Tag 14 „zurück auf ia“ mit Aufgabe und Werkzeug-Feld; nach Freigabe Soll wieder ia (effektiver Min), Liquidation beendet, Ausnahme entfernt | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
+| B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab | Vorschläge je Stufenwechsel mit Freigabe (Soll Abverkauf bzw. Liquidation mit Min = max(Break-even, Buy Box − 1 %)), 7 Tage vor „Liquidation bis“ Aufgabe mit drei Knöpfen, +30 Tage, automatisch verlängert, dauerhaft; Spalten Stufe/Liquidation bis, Filter „läuft in 7 Tagen ab“ | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B31.7 Abnahme 1–4: Zustand der Ware | RET_-SKU gebraucht mit Zielpreis und Min gebraucht (Export-Vorschau), unbekannt ohne Upload + Aufgabe, Zustand von Hand rechnet Zielpreis neu, Vorschlag „aktivieren“ | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B31.8 Abnahme 1–4: Schnelldreher-Schutz | Kennzeichen von Hand, Min = Break-even + 7 %, kein Stufenwechsel, Morgenbericht-Zähler, nach 21 Tagen ohne Buy Box Vorschlag mit drei Knöpfen | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B32 Listing-Check Abnahme 1–3, 5 | Befund 1 (Min über Buy Box) und 2 (pausiert), Freigabe → nächster Upload, Schwellen änderbar, Budget/„Check unvollständig“, Morgenbericht-Zeile „Listing-Check“, Werkzeug listing_check | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B33 Abnahme 1–5: BQool-Formel, Katalog je Land, Min-Reset, „Download listings“, Processing Report | effektiver Min = P(m) mit FBA/Provision des Landes aus der BQool-Liste (FR ≠ DE), Katalog je Land und Stufe mit Typ/Marge/Bedingung (ohne feste Marge keine Prozentzahl), Vorschau „Min wird von BQool täglich überschrieben“ bei ia, Nachkontrolle per „Download listings“ mit Min vorher/Datei/nachher (Reset = Hinweis, Liquidation = Fehler), Upload-Fehler aus „View Processing Report“ mit deutscher und BQool-Zeit | ○ im letzten Lauf nicht gelaufen | `b33-bqool-formel.spec.ts` |
 
+- – Offen: B33: Stufen je Land einmal gegen die BQool-Screenshots prüfen, Listen-Seite …/repricing/amazonde eintragen, Processing Reports vom 07.11. beim ersten Lauf live lesen
 - – Offen: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
 - – Offen: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
 
@@ -307,6 +317,26 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen | Meldung im System + Mail (abgefangen), Kunden sieht nur Freigegebenes, Links verfallen | ○ im letzten Lauf nicht gelaufen | `sendungen.spec.ts` |
 | Notiz über Claude bzw. Fragefeld | nur mit Recht; Mitarbeiter als Vorschlag mit Ausführen/Ablehnen | ○ im letzten Lauf nicht gelaufen | `rechte.spec.ts` |
+
+### Lager & Versand › Lager › Drucken (Etiketten) (`/drucken`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Druckagent Abnahme 0/2/5c/6: Agent anlegen, online/offline, Papier leer, Push, erneut drucken, Umzug, Widerruf | Token nur einmal sichtbar (Prüfsumme gespeichert), Heartbeat → grün, „Papier leer (Etikettenrolle leer)“ rot, ohne Heartbeat rot „nicht erreichbar seit …“ und Auftrag wartet, Push nach 15 Min. genau einmal, nach Rückkehr gedruckt (Brother-Raster), erneut drucken, Umzug deaktiviert den alten Agenten, Widerruf → 401 „abgemeldet“ | ○ im letzten Lauf nicht gelaufen | `druckagent.spec.ts` |
+| Druckagent Abnahme 1: iPhone „FNSKU-Etikett 3×“ | Auftrag nach < 30 s gedruckt (Agent im Dauerbetrieb), drei Etiketten; Etiketten-Seite sendet ebenfalls an den QL-800 | ○ im letzten Lauf nicht gelaufen | `druckagent.spec.ts` |
+| Druckagent Abnahme 3: Seller-Central-PDF | Kartonlabels per Drag & Drop → QL-1100 alle Seiten, Sendung zugeordnet und verlinkt; FNSKU-Bogen über das iPhone → einzelne 62-mm-Etiketten am QL-800 | ○ im letzten Lauf nicht gelaufen | `druckagent.spec.ts` |
+| DHL-Label direkt an den QL-1100 | Knopf „An QL-1100 im Lager“ am erstellten Label legt einen Druckauftrag an | ○ im letzten Lauf nicht gelaufen | `label-aus-chat.spec.ts` |
+
+- – Offen: Abnahme 0 live: Windows-Dienst startet vor der Anmeldung (Neustart des Arbeits-PCs)
+- – Offen: Abnahme 5 live: Auto-Aus aus, Druck um 06:00
+- – Offen: Abnahme 5b live: „Drucker startet nicht“ nach 30 s mit echter Shelly
+- – Offen: Medien 103 × 164 am echten QL-1100
+
+### Lager & Versand › Lager › Scannen (`/lager/scannen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Druckagent Abnahme 4: Scanner-Arbeitsplatz | Artikel scannen + „Drucken 5×“ → Auftrag mit 5 Etiketten ohne Tastatur; Wareneingang (Menge durch Mehrfachscan, Stellplatz) bucht eigenes Lager; Abbrechen; VA ohne Preisetiketten und ohne Agent-Einstellungen; Nur-ansehen ohne Druckknopf | ○ im letzten Lauf nicht gelaufen | `druckagent.spec.ts` |
 
 ### Lager & Versand › Versand › Aufträge & Versand (`/auftraege`)
 
@@ -640,7 +670,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (150 Abläufe + Oberfläche auf 113 Seiten): 0 bestanden, 0 fehlgeschlagen, 150 nicht gelaufen.
+**Automatisch** (160 Abläufe + Oberfläche auf 117 Seiten): 0 bestanden, 0 fehlgeschlagen, 160 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -678,6 +708,11 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Repricer (BQool) › Leistung: B31.5 täglicher Lauf holt die Berichte selbst – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › Leistung: B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › Leistung: B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.7 Abnahme 1–4: Zustand der Ware – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.8 Abnahme 1–4: Schnelldreher-Schutz – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B32 Listing-Check Abnahme 1–3, 5 – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B33 Abnahme 1–5: BQool-Formel, Katalog je Land, Min-Reset, „Download listings“, Processing Report – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › BQool-Dateien: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › BQool-Dateien: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ FBA-Inbound: FBA-Sendung scannen – im letzten Lauf nicht gelaufen
@@ -690,6 +725,11 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Paletten-Lager: B15.13 Palette ohne Kunde – im letzten Lauf nicht gelaufen
 - ○ Paletten-Lager › Sendungen: Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen – im letzten Lauf nicht gelaufen
 - ○ Paletten-Lager › Sendungen: Notiz über Claude bzw. Fragefeld – im letzten Lauf nicht gelaufen
+- ○ Drucken (Etiketten): Druckagent Abnahme 0/2/5c/6: Agent anlegen, online/offline, Papier leer, Push, erneut drucken, Umzug, Widerruf – im letzten Lauf nicht gelaufen
+- ○ Drucken (Etiketten): Druckagent Abnahme 1: iPhone „FNSKU-Etikett 3×“ – im letzten Lauf nicht gelaufen
+- ○ Drucken (Etiketten): Druckagent Abnahme 3: Seller-Central-PDF – im letzten Lauf nicht gelaufen
+- ○ Drucken (Etiketten): DHL-Label direkt an den QL-1100 – im letzten Lauf nicht gelaufen
+- ○ Scannen: Druckagent Abnahme 4: Scanner-Arbeitsplatz – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Labels kaufen und alle als versendet melden (Amazon, simuliert) – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Ansicht „Meldung offen“ – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Falsche Datei hochladen – im letzten Lauf nicht gelaufen
@@ -800,9 +840,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 59 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 61 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
+Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Repricer (BQool) › Listing-Check (`/repricer/listing-check`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Drucker (`/einstellungen/drucker`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
 
 **Bekannte offene Punkte:**
 
@@ -822,11 +862,16 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Fall-Zentrale: Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)
 - Fall-Zentrale: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
+- Repricer (BQool) › Leistung: B33: Stufen je Land einmal gegen die BQool-Screenshots prüfen, Listen-Seite …/repricing/amazonde eintragen, Processing Reports vom 07.11. beim ersten Lauf live lesen
 - Repricer (BQool) › Leistung: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
 - Repricer (BQool) › Leistung: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
 - Repricer (BQool) › BQool-Dateien: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
 - Repricer (BQool) › BQool-Dateien: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
+- Drucken (Etiketten): Abnahme 0 live: Windows-Dienst startet vor der Anmeldung (Neustart des Arbeits-PCs)
+- Drucken (Etiketten): Abnahme 5 live: Auto-Aus aus, Druck um 06:00
+- Drucken (Etiketten): Abnahme 5b live: „Drucker startet nicht“ nach 30 s mit echter Shelly
+- Drucken (Etiketten): Medien 103 × 164 am echten QL-1100
 - Abholung DHL/UPS: Echte DHL-Abholung: API „Parcel DE Pickup“ in der DHL-App freischalten, GKP-Benutzer mit Abholrecht, Abholorte eintragen – erste Buchung (Sandbox aus) nur live (To-do)
 - Abholung DHL/UPS: Echte UPS-Abholung: App im UPS Developer Portal (OAuth + Pickup), Zugang unter Anbindungen → UPS – erste Buchung nur live (To-do)
 - Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell

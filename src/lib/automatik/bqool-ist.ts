@@ -155,7 +155,7 @@ export async function verlaufLesen(page: Page, url: string, land: string, o: { v
     const zeile = l.locator("xpath=ancestor::tr[1]");
     const zt = ((await zeile.count()) ? await zeile.innerText().catch(() => "") : "").replace(/\s+/g, " ");
     const zeitRoh = /\d{1,2}\/\d{1,2}\/\d{4}[ ,]+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?|\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}|\d{1,2}\.\d{1,2}\.\d{4}[ ,]+\d{1,2}:\d{2}/i.exec(zt)?.[0] ?? "";
-    const datei = /[\w.\- ]+\.(?:txt|csv|xlsx?)/i.exec(zt)?.[0]?.trim() ?? null;
+    const datei = /[\w.\-]+\.(?:txt|csv|xlsx?)/i.exec(zt)?.[0] ?? null;
     const anzahl = /(\d+)\s*(?:errors?|fehler)/i.exec(zt);
     let inhalt = "";
     const href = await l.getAttribute("href").catch(() => null);
