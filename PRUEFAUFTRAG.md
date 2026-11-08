@@ -1241,7 +1241,7 @@ hochgeladenen Min als feste Untergrenze. Vorher konnte die Datei einen solchen M
 
 Unit-Tests: `tests/b31-6-liquidation.test.ts` (Min-Entscheidung, Break-even-Untergrenze und Verlust-Rahmen, Marge beim
 neuen Min, Rückkehr-Zähler, Test-Erkennung, Texte). Regression: `bqool-dateien`, `b31-bqool-kreislauf`,
-`b31-5-bqool-berichte`, `bqool-upload-erkennung`, `teil2` (Kapital-Ampel, Verlust-Stopp), `werkzeuge`, `push-handy`.
+`b31-5-bqool-berichte`, `bqool-upload-erkennung`, `teil2` (Kapital-Ampel, Verlust-Stopp), `werkzeuge`, `push-handy`, `geschaeft`, `kennzahlen` – 39 Tests grün; Unit-Tests gesamt 2314 grün.
 
 **Werkzeuge B31.6:** keine neuen, keine neuen ändernden. Geändert: `bqool_export_vorschau` (Beschreibung, Block
 `liquidation`: Test, Regelwechsel mit Min alt/neu, Marge neu, Break-even, aktive, unter Break-even, Rückkehr-Vorschläge;

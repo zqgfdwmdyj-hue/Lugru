@@ -37,7 +37,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Amazon › Fälle & Erstattungen | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Fälle & Erstattungen | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
 | Amazon › Angebote & Lager | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
-| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/2 Abläufe | – | 2 |
+| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/4 Abläufe | – | 2 |
 | Amazon › Angebote & Lager | Repricer (BQool) › BQool-Dateien `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
 | Amazon › Angebote & Lager | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Angebote & Lager | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
@@ -250,6 +250,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage | Typ und Land erkannt (DE über Regelname, FR/IT/ES über SKU-Abgleich, Daily Sales DE über Umsatzsumme), Buy Box je Land wie in den Dateien, Listen „unter Min ohne Buy Box“ (Min senken), „Verlust“ (Liquidation), „Preisbewegung“ (Aufgabe „BQool-Regel prüfen“), Gewinn-Seite Spalte BQool je Tag, Verlust-Stopp zweite Quelle, Claude repricer/umsatz/verlust_stopp; unbekannte SKUs → „Welches Land?“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
 | B31.5 täglicher Lauf holt die Berichte selbst | „Listing Performance“ mit „Last 7 days“ und „Daily Sales“ je Land heruntergeladen und ohne Rückfrage eingelesen, Abruf „BQool: Berichte“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
+| B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf | Regelwechsel „ia → Liquidation“ mit festem Min (nie unter Break-even ohne Freigabe), bis zum Test nicht in der Datei; Test-Export mit Rule Name „Liquidation“ und festem Min; nach dem BQool-Lauf aktiv mit Verlust-Stopp-Ausnahme, Min bleibt stehen → Test bestanden, Regelwechsel im vollen Export; Repricer „Regel seit“ + Filter, Kapital-Ampel-Zeile | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
+| B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % | Tag 13 kein Vorschlag, Tag 14 „zurück auf ia“ mit Aufgabe und Werkzeug-Feld; nach Freigabe Soll wieder ia (effektiver Min), Liquidation beendet, Ausnahme entfernt | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
 
 - – Offen: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
 - – Offen: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
@@ -638,7 +640,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (148 Abläufe + Oberfläche auf 113 Seiten): 0 bestanden, 0 fehlgeschlagen, 148 nicht gelaufen.
+**Automatisch** (150 Abläufe + Oberfläche auf 113 Seiten): 0 bestanden, 0 fehlgeschlagen, 150 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -674,6 +676,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Repricer (BQool): B25.5 /repricer/export ohne Format – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › Leistung: B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › Leistung: B31.5 täglicher Lauf holt die Berichte selbst – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf – im letzten Lauf nicht gelaufen
+- ○ Repricer (BQool) › Leistung: B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › BQool-Dateien: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
 - ○ Repricer (BQool) › BQool-Dateien: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ FBA-Inbound: FBA-Sendung scannen – im letzten Lauf nicht gelaufen
