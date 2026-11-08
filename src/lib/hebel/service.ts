@@ -99,6 +99,29 @@ export async function loadHebel(tenantId: string): Promise<HebelData> {
     const st = stats.find((x) => x.sku === sku);
     list.push({ key, type: "ek_fehlt", channel: "ebay", sku, name: st?.name ?? null, asin: st?.asin ?? null, image: st?.image ?? null, link: null, impact: 0, contribution: 0, saving: 0, capital: 0, basis: [`${n} Stück auf eBay verkauft (seit ${since.split("-").reverse().join(".")}), weder im Seller-System noch in sellerboard ein EK.`], headline: `Kein EK hinterlegt – ${n} auf eBay verkauft, Gewinn auf der Startseite zu hoch`, action: "EK im Seller-System eintragen (Produkt → Chargen & Einkauf).", facts: [] });
   }
+  // B31.7d: Gebrauchte (RET_/LPN bzw. Zustand ≠ neu) mit Lagerdauer über 30 Tagen
+  try {
+    const { aeltesteTage } = await import("@/lib/money/kapital");
+    const { gebrauchtAltHebel } = await import("./rules");
+    const Zs = await db.select().from(schema.artikelZustand).where(eq(schema.artikelZustand.tenantId, tenantId));
+    const zustandHand = new Map(Zs.map((z) => [z.sku, z.zustand]));
+    const alter = await db.select({ sku: schema.amazonLageralter.sku, alter: schema.amazonLageralter.alter }).from(schema.amazonLageralter).where(eq(schema.amazonLageralter.tenantId, tenantId));
+    const alterJe = new Map<string, number>();
+    for (const a of alter) {
+      const t = aeltesteTage(a.alter as Record<string, number>);
+      if (t !== null) alterJe.set(a.sku, Math.max(alterJe.get(a.sku) ?? 0, t));
+    }
+    for (const st of bySku.values()) {
+      const hand = zustandHand.get(st.sku);
+      const gebraucht = hand ? hand !== "neu" && hand !== "unbekannt" : /^RET_/i.test(st.sku) || /_LPN/i.test(st.sku);
+      const t = alterJe.get(st.sku);
+      const stueck = st.fbaStock + (st.reserved ?? 0) + (st.inbound ?? 0);
+      if (!gebraucht || t === undefined || t <= 30 || stueck <= 0 || dismissed.has(`gebraucht_alt:amazon:${st.sku}`)) continue;
+      list.push(gebrauchtAltHebel({ sku: st.sku, name: st.name, asin: st.asin, stueck, ek: st.cost, alterTage: t, zustand: hand ?? "gebraucht" }));
+    }
+  } catch {
+    // Zusatzliste – fehlt sie, bleibt die Hebel-Liste wie bisher
+  }
   const summary = summarize(list);
   const jobError = job && job.lastErrorAt && (!job.lastOkAt || job.lastErrorAt > job.lastOkAt) ? job.lastError : null;
   const stockAt = stock.reduce<Date | null>((m, r) => (!m || r.syncedAt > m ? r.syncedAt : m), null);

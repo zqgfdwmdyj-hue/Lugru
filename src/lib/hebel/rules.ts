@@ -7,7 +7,7 @@
 //   capital      = einmalig freisetzbares Kapital (kein Monatswert, nie in der Monatssumme)
 // impact = contribution + saving (Grundlage für Sortierung und Summen).
 
-export type HebelType = "verlust" | "marge" | "erstattungen" | "kaufquote" | "spielraum" | "ladenhueter" | "nachbestellen" | "ek_fehlt";
+export type HebelType = "verlust" | "marge" | "erstattungen" | "kaufquote" | "spielraum" | "ladenhueter" | "nachbestellen" | "ek_fehlt" | "gebraucht_alt";
 export type Channel = "amazon" | "ebay";
 
 export const HEBEL_INFO: Record<HebelType, { label: string; plural: string; hint: string }> = {
@@ -19,7 +19,32 @@ export const HEBEL_INFO: Record<HebelType, { label: string; plural: string; hint
   ladenhueter: { label: "Ladenhüter", plural: "Ladenhüter", hint: "Viel Geld im Bestand, verkauft sich kaum." },
   nachbestellen: { label: "Nachbestellen", plural: "Produkte nachbestellen", hint: "Gewinnbringer, die bald ausverkauft sind." },
   ek_fehlt: { label: "EK fehlt", plural: "Produkte ohne EK", hint: "Ohne Einkaufspreis ist der Gewinn falsch." },
+  gebraucht_alt: { label: "Gebraucht > 30 Tage", plural: "Gebrauchte mit Lagerdauer über 30 Tagen", hint: "Rückläufer binden Kapital – eigener Gebraucht-Preis, Abverkauf oder eBay." },
 };
+
+/** B31.7d: gebrauchte Ware (Retoure/LPN bzw. Zustand ≠ neu), die länger als 30 Tage liegt. */
+export function gebrauchtAltHebel(o: { sku: string; name: string | null; asin: string | null; stueck: number; ek: number | null; alterTage: number; zustand: string }): Hebel {
+  const value = o.ek !== null ? Math.round(o.stueck * o.ek * 100) / 100 : 0;
+  const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+  return {
+    key: `gebraucht_alt:amazon:${o.sku}`,
+    type: "gebraucht_alt",
+    channel: "amazon",
+    sku: o.sku,
+    name: o.name,
+    asin: o.asin,
+    image: null,
+    link: o.asin ? `https://www.amazon.de/dp/${o.asin}` : null,
+    impact: 0,
+    contribution: 0,
+    saving: 0,
+    capital: value,
+    basis: [`Zustand ${o.zustand}, Lageralter ${o.alterTage} Tage`, o.ek !== null ? `Gebunden: ${o.stueck} Stück × EK ${eur(o.ek)} = ${eur(value)}` : "EK unbekannt"],
+    headline: `Gebraucht seit ${o.alterTage} Tagen im Lager – ${o.stueck} Stück${o.ek !== null ? `, ${eur(value)} gebunden` : ""}`,
+    action: "Eigenen Gebraucht-Preis setzen (Repricer → Zustand), auf Abverkauf stellen oder auf eBay anbieten (5 % Gebühr).",
+    facts: [`${o.stueck} Stück`],
+  };
+}
 
 export type Thresholds = { marginMin: number; reachMax: number; refundMax: number };
 /** Standard: Marge unter 10 % prüfen, Reichweite über 120 Tage = Ladenhüter, Erstattungen über 5 % auffällig. */
@@ -321,6 +346,7 @@ export function hebelTask(sum: HebelSummary, top: Hebel[]): { title: string; not
     ladenhueter: `${n} ${one ? "Ladenhüter" : "Ladenhüter"} abverkaufen`,
     nachbestellen: null, // eigene Sammelaufgabe „jetzt nachbestellen“ gibt es schon
     ek_fehlt: `EK für ${n} ${one ? "verkauftes Produkt" : "verkaufte Produkte"} nachtragen`,
+    gebraucht_alt: `${n} ${one ? "gebrauchter Artikel" : "gebrauchte Artikel"} länger als 30 Tage im Lager – Preis setzen oder abverkaufen`,
   };
   const title = titles[sum.type];
   if (!title) return null;

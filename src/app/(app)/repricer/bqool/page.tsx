@@ -7,11 +7,14 @@ import { getSettings } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/store";
 import { bqoolUploadAdressen } from "@/lib/automatik/bqool-logic";
 import { letzterBqoolVergleich } from "@/lib/arbitrageone/service";
-import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, liquidationPruefenAction, liquidationTestAction, liquidationTestExportAction, rueckkehrAction, verlustFreigabeAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { ablaufAction, anBqoolAction, exportErzeugenAction, leiterEinstellungenAction, leiterVorschlagAction, istUebernehmenAction, katalogAction, liquidationPruefenAction, liquidationTestAction, liquidationTestExportAction, rueckkehrAction, verlustFreigabeAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
 import { liquidationsStand } from "@/lib/bqool/liquidation";
 import { RUECKKEHR_AUFSCHLAG, RUECKKEHR_TAGE } from "@/lib/bqool/export-logic";
 import { kreislaufStand, letzteLaeufe } from "@/lib/bqool/kreislauf";
 import { KreislaufKarte } from "./kreislauf-karte";
+import { VORSCHLAG_TEXT, vorschlaegeOffen, type VorschlagArt } from "@/lib/bqool/leiter";
+import { ablaufStand, ZUSTAND_TEXT, type Zustand } from "@/lib/bqool/leiter-logic";
+import { todayIso } from "@/lib/dates";
 
 // BQool-Dateien direkt aus dem System: Ist (BQool) → Soll (Regeln hier), Freigabe vor jedem Export, Download je Land/ZIP.
 
@@ -22,6 +25,8 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
   const [v, s, zuw, exporte, bqWeb, aoVergleich, kStand, laeufe, liq] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId), kreislaufStand(session.tenantId), letzteLaeufe(session.tenantId, 6), liquidationsStand(session.tenantId)]);
+  const leiterVorschlaege = await vorschlaegeOffen(session.tenantId);
+  const heute = todayIso();
   // B31.2: angezeigter Lauf – aus dem Push (?lauf=…), sonst der heutige bzw. der letzte
   const lauf = (sp.lauf ? laeufe.find((l) => l.id === sp.lauf) : null) ?? kStand.heute ?? laeufe[0] ?? null;
   // B23: Upload-Seite je Land (eigene Adresse bzw. aus DE abgeleitet)
@@ -190,7 +195,7 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
               {aktiv.length ? (
                 <div className="table-wrap">
                   <table className="table small" data-testid="bq-liq-aktiv">
-                    <thead><tr><th>Land</th><th>SKU</th><th>Regel vorher</th><th>Min</th><th>seit</th><th>Buy Box / Schwelle</th><th>über Schwelle seit</th><th /></tr></thead>
+                    <thead><tr><th>Land</th><th>SKU</th><th>Regel vorher</th><th>Min</th><th>seit</th><th title="B31.6a: Standard 45 Tage ab Regelwechsel">Liquidation bis</th><th>Buy Box / Schwelle</th><th>über Schwelle seit</th><th /></tr></thead>
                     <tbody>
                       {aktiv.map((r) => {
                         const z = zeileZu.get(`${r.land}|${r.sku}`);
@@ -199,15 +204,26 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
                           <tr key={`${r.land}|${r.sku}`} data-testid="bq-liq-aktiv-zeile" data-sku={r.sku} data-status={r.status}>
                             <td>{r.land}</td><td>{r.sku}</td><td>{r.regelVorher ?? "–"}</td><td>{f2(r.minGesetzt)}</td>
                             <td>{r.aktivSeit ? formatDate(r.aktivSeit.toISOString().slice(0, 10)) : "–"}</td>
+                            <td data-testid="bq-liq-bis">{(() => {
+                              const a = ablaufStand({ bis: r.bis, dauerhaft: r.dauerhaft, heute, vorwarnTage: b.leiter.ablaufVorwarnTage });
+                              return a.stand === "dauerhaft" ? "dauerhaft" : r.bis ? <>{formatDate(r.bis)}<div className={a.stand === "laeuft" ? "muted" : ""} style={{ color: a.stand === "abgelaufen" ? "var(--danger)" : a.stand === "bald" ? "var(--warn)" : undefined }}>{a.stand === "abgelaufen" ? "überfällig" : `noch ${a.restTage} T`}{r.verlaengert ? ` · ${r.verlaengert}× verlängert` : ""}</div></> : "–";
+                            })()}</td>
                             <td>{f2(z?.buybox)} / {f2(schwelle)}</td>
                             <td>{r.ueberSeit ? formatDate(r.ueberSeit) : "–"}</td>
                             <td>
                               {r.status === "zurueck_vorgeschlagen" && inhaber ? (
-                                <span className="row" style={{ gap: 6 }}>
-                                  <form action={rueckkehrAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><button className="btn btn-sm btn-primary" type="submit" data-testid="bq-liq-zurueck">zurück auf {r.regelVorher}</button></form>
+                                <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                                  <form action={rueckkehrAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><button className="btn btn-sm btn-primary" type="submit" data-testid="bq-liq-zurueck">zurück auf {r.rueckkehrRegel ?? r.regelVorher}</button></form>
                                   <form action={rueckkehrAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><input type="hidden" name="entscheidung" value="bleiben" /><button className="btn btn-sm" type="submit">bleibt</button></form>
+                                  {r.rueckkehrGrund && <span className="small muted" data-testid="bq-liq-grund">{r.rueckkehrGrund}</span>}
                                 </span>
-                              ) : r.status === "zurueck_vorgeschlagen" ? <span className="tag tag-warn">Rückkehr vorgeschlagen</span> : null}
+                              ) : r.status === "zurueck_vorgeschlagen" ? <span className="tag tag-warn">Rückkehr vorgeschlagen</span> : inhaber && r.status === "aktiv" ? (
+                                <span className="row" style={{ gap: 4, flexWrap: "wrap" }} data-testid="bq-liq-ablauf" data-gemeldet={r.ablaufGemeldetAm ? "1" : "0"}>
+                                  {[["verlaengern", `+${b.leiter.verlaengernTage} T`], ["zurueck", "zurück"], ["dauerhaft", "dauerhaft"]].map(([w, t]) => (
+                                    <form key={w} action={ablaufAction}><input type="hidden" name="land" value={r.land} /><input type="hidden" name="sku" value={r.sku} /><input type="hidden" name="wahl" value={w} /><button className={`btn btn-sm${r.ablaufGemeldetAm && w === "verlaengern" ? " btn-primary" : ""}`} type="submit" data-testid={`bq-liq-ablauf-${w}`} title={w === "verlaengern" ? "Verlängern" : w === "zurueck" ? "Zurück auf alte Regel (Stufe 2)" : "Dauerhaft Liquidation"}>{t}</button></form>
+                                  ))}
+                                </span>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -220,6 +236,94 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
               )}
             </div>
             {kannSchreiben && <form action={liquidationPruefenAction}><button className="btn btn-sm" type="submit" data-testid="bq-liq-pruefen" title="Sonst täglich automatisch (BQool-Lauf bzw. Hintergrund)">Liquidation jetzt prüfen</button></form>}
+          </section>
+        );
+      })()}
+
+      {(() => {
+        // B31.6b/B31.7/B31.8: Regel-Leiter (ia → Abverkauf → Liquidation → zurück auf Abverkauf), Schnelldreher, Gebraucht
+        const inhaber = session.role === "owner" && !session.readOnly;
+        const e = b.leiter;
+        const st = b.leiterStand;
+        const knopf = (id: string, entscheidung: string, text: string, primaer = false) => (
+          <form action={leiterVorschlagAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="entscheidung" value={entscheidung} /><button className={`btn btn-sm${primaer ? " btn-primary" : ""}`} type="submit" data-testid={`bq-leiter-${entscheidung}`}>{text}</button></form>
+        );
+        return (
+          <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="leiter" data-testid="bq-leiter">
+            <h2 style={{ margin: 0 }}>Regel-Leiter, Schnelldreher, Zustand</h2>
+            <p className="small muted" style={{ margin: 0 }}>
+              Stufe 1 „{b.standardRegel}“ → Stufe 2 „{b.abverkaufRegel.DE}“ (DE) bzw. „{b.abverkaufRegel.sonst}“ → Stufe 3 Liquidation → zurück auf Stufe 2 (nie automatisch auf Stufe 1, außer frischer Nachschub). Reihenfolge: {e.reihenfolge === "liquidation_zuerst" ? "Liquidation als kurze Brücke vor Abverkauf" : "Abverkauf vor Liquidation (Liquidation = tiefster Boden)"}. Jeder Wechsel ist ein Vorschlag – erst nach Freigabe steht er in der nächsten BQool-Datei. Schnelldreher: Min mindestens Break-even + {e.schnell.margeBoden} %, kein Abverkauf. Gebrauchte Ware: eigener Zielpreis (Keepa-Gebrauchtpreis, sonst Neupreis × Faktor) und Min = Break-even + {e.zustand.mindestmarge} %.
+            </p>
+            {st && <div className="small" data-testid="bq-leiter-stand">Stand {formatDate(st.am)}: Stufe 2 {st.stufe2} · Stufe 3 {st.stufe3} (davon {st.unterBe} unter Break-even){st.schnellUnterMin ? ` · Schnelldreher unter Min ${st.schnellUnterMin}` : ""}{st.gebrauchtNeupreis ? ` · ${st.gebrauchtNeupreis} gebrauchte mit Neupreis-Min` : ""}{st.zustandUnbekannt ? ` · ${st.zustandUnbekannt} ohne Zustand` : ""}</div>}
+            {leiterVorschlaege.length ? (
+              <div className="table-wrap">
+                <table className="table small" data-testid="bq-leiter-vorschlaege">
+                  <thead><tr><th>Land</th><th>SKU</th><th>Vorschlag</th><th>Regel</th><th>Min</th><th>Gründe</th><th /></tr></thead>
+                  <tbody>
+                    {leiterVorschlaege.map((x) => (
+                      <tr key={x.id} data-testid="bq-leiter-zeile" data-sku={x.sku} data-land={x.land} data-art={x.art}>
+                        <td>{x.land}</td><td>{x.sku}<div className="muted">{String((x.daten as { titel?: string }).titel ?? "").slice(0, 40)}</div></td>
+                        <td>{VORSCHLAG_TEXT[x.art as VorschlagArt] ?? x.art}</td>
+                        <td>{x.vonRegel || x.nachRegel ? <>{x.vonRegel ?? "–"} → <b>{x.nachRegel ?? "–"}</b></> : "–"}</td>
+                        <td>{x.min !== null ? x.min.toFixed(2) : "–"}</td>
+                        <td>{(x.gruende ?? []).join(" · ")}</td>
+                        <td>{inhaber && (
+                          <span className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                            {x.art === "schnelldreher_ende" ? (
+                              <>{knopf(x.id, "verlaengern", `Schutz +${e.schnell.verlaengernTage} T`, true)}{knopf(x.id, "abverkauf", "Abverkauf zulassen")}{knopf(x.id, "min_manuell", "Min manuell")}</>
+                            ) : x.art === "ebay" ? (
+                              <>{knopf(x.id, "freigeben", "gemerkt", true)}{knopf(x.id, "ablehnen", "bleibt bei Amazon")}</>
+                            ) : (
+                              <>{knopf(x.id, "freigeben", "Freigeben", true)}{knopf(x.id, "ablehnen", "Ablehnen")}{knopf(x.id, "spaeter", "Später")}</>
+                            )}
+                          </span>
+                        )}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="small muted">Keine offenen Vorschläge.</div>
+            )}
+            {v.zustandUnbekannt.length > 0 && (
+              <div className="notice notice-warn small" data-testid="bq-zustand-unbekannt">
+                <strong>Zustand unbekannt ({new Set(v.zustandUnbekannt.map((z) => z.sku)).size})</strong> – kein automatischer Preis, nicht in der Datei: {[...new Set(v.zustandUnbekannt.map((z) => z.sku))].slice(0, 12).join(", ")}. <Link href="/repricer?bq=alle&zustand=unbekannt#bqool-liste">Zustand setzen</Link>
+              </div>
+            )}
+            {inhaber && (
+              <details id="leiter-einstellungen" style={{ scrollMarginTop: 70 }} data-testid="bq-leiter-einstellungen">
+                <summary className="small">Einstellungen → Repricer → Leiter (Schwellen änderbar)</summary>
+                <form action={leiterEinstellungenAction} className="stack" style={{ marginTop: 8 }}>
+                  <label className="small">Reihenfolge <select name="reihenfolge" defaultValue={e.reihenfolge}><option value="abverkauf_zuerst">ia → Abverkauf → Liquidation (Standard)</option><option value="liquidation_zuerst">ia → Liquidation → Abverkauf (Brücke)</option></select></label>
+                  <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <label>1→2 Reichweite über <input name="reichweite_tage" defaultValue={e.reichweiteTage} style={{ width: 60 }} /> T</label>
+                    <label>Lagerdauer über <input name="alter_12" defaultValue={e.alterTage12} style={{ width: 60 }} /> T mit Kapital über <input name="kapital_12" defaultValue={e.kapital12} style={{ width: 70 }} /> €</label>
+                    <label>eff. Min über Buy Box seit <input name="ueber_tage" defaultValue={e.ueberTage} style={{ width: 50 }} /> T bei Buy-Box-Quote unter <input name="bb_quote_12" defaultValue={e.bbQuote12} style={{ width: 50 }} /> %</label>
+                    <label>2→3 Lagerdauer über <input name="alter_23" defaultValue={e.alterTage23} style={{ width: 60 }} /> T oder Kapital über <input name="kapital_23" defaultValue={e.kapital23} style={{ width: 70 }} /> €</label>
+                  </div>
+                  <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <label>Liquidation <input name="liquidation_tage" defaultValue={e.liquidationTage} style={{ width: 50 }} /> Tage</label>
+                    <label>oder fest bis <input name="liquidation_bis_fest" type="date" defaultValue={e.liquidationBisFest ?? ""} /></label>
+                    <label>verlängern um <input name="verlaengern_tage" defaultValue={e.verlaengernTage} style={{ width: 50 }} /> T</label>
+                  </div>
+                  <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <label>Schnelldreher ab <input name="schnell_verkaeufe" defaultValue={e.schnell.verkaeufe30} style={{ width: 50 }} /> Verkäufen/30 T</label>
+                    <label>Boden <input name="schnell_boden" defaultValue={e.schnell.margeBoden} style={{ width: 50 }} /> %</label>
+                    <label>Ende nach <input name="schnell_ohne_bb" defaultValue={e.schnell.ohneBuyboxTage} style={{ width: 50 }} /> T ohne Buy Box</label>
+                    <label>BQool-Regel „Schnelldreher“ <input name="schnell_regel" defaultValue={e.schnell.regel ?? ""} placeholder="leer = Min in der Datei" style={{ width: 160 }} /></label>
+                  </div>
+                  <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <span>Gebraucht – Faktor auf Neupreis:</span>
+                    {(Object.keys(e.zustand.faktoren) as (keyof typeof e.zustand.faktoren)[]).filter((k) => k !== "neu").map((k) => (
+                      <label key={k}>{ZUSTAND_TEXT[k as Zustand].replace("gebraucht – ", "")} <input name={`faktor_${k}`} defaultValue={String(e.zustand.faktoren[k]).replace(".", ",")} style={{ width: 50 }} /></label>
+                    ))}
+                    <label>Mindestmarge gebraucht <input name="zustand_marge" defaultValue={e.zustand.mindestmarge} style={{ width: 50 }} /> %</label>
+                  </div>
+                  <button className="btn btn-sm" type="submit" data-testid="bq-leiter-speichern">Speichern</button>
+                </form>
+              </details>
+            )}
           </section>
         );
       })()}

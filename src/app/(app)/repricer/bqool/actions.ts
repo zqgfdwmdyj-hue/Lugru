@@ -264,3 +264,94 @@ export async function liquidationPruefenAction() {
   revalidatePath(PFAD);
   zurueck(`Liquidation geprüft: ${r.aktiviert} neu aktiv, ${r.vorgeschlagen} neue Rückkehr-Vorschläge, ${r.offen} offen${r.testBestanden ? " · Test bestanden" : ""}.`, LIQ);
 }
+
+// ---- B31.6a/b, B31.7, B31.8: Regel-Leiter, Ablauf, Zustand, Schnelldreher ------------------------------------------------
+const LEITER = "#leiter";
+
+/** Vorschlag der Regel-Leiter entscheiden (Freigeben / Ablehnen / Später; Schnelldreher-Ende: Verlängern / Abverkauf / Min). */
+export async function leiterVorschlagAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("id") ?? "");
+  const e = String(fd.get("entscheidung") ?? "freigeben") as import("@/lib/bqool/leiter").Entscheidung;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) zurueck("Vorschlag fehlt.", LEITER);
+  const { vorschlagEntscheiden } = await import("@/lib/bqool/leiter");
+  const text = await vorschlagEntscheiden(s.tenantId, id, e, s.userId);
+  revalidatePath(PFAD);
+  revalidatePath("/repricer");
+  zurueck(text, LEITER);
+}
+
+/** B31.6a: Liquidation läuft ab – verlängern, zurück auf Stufe 2, dauerhaft; „bis“ von Hand. */
+export async function ablaufAction(fd: FormData) {
+  const s = await requireOwner();
+  const land = String(fd.get("land") ?? "");
+  const sku = String(fd.get("sku") ?? "").trim();
+  const wahl = String(fd.get("wahl") ?? "") as "verlaengern" | "zurueck" | "dauerhaft" | "bis";
+  if (!(EXPORT_LAENDER as readonly string[]).includes(land) || !sku || !["verlaengern", "zurueck", "dauerhaft", "bis"].includes(wahl)) zurueck("Angaben fehlen.", LIQ);
+  const { ablaufEntscheiden } = await import("@/lib/bqool/liquidation");
+  const r = await ablaufEntscheiden(s.tenantId, land, sku, wahl, String(fd.get("bis") ?? "") || null);
+  revalidatePath(PFAD);
+  zurueck(r ? `${sku} (${land}): ${r}.` : "Keine Liquidation gefunden.", LIQ);
+}
+
+/** B31.7: Zustand von Hand für mehrere SKUs (Repricer-Seite, Mehrfachauswahl). */
+export async function zustandAction(fd: FormData) {
+  const s = await requireOwner();
+  const { ZUSTAENDE } = await import("@/lib/bqool/leiter-logic");
+  const z = String(fd.get("zustand") ?? "");
+  const skus = [...new Set(fd.getAll("wahl").map((w) => String(w).split("|").slice(1).join("|")).filter(Boolean))];
+  const ziel = `/repricer?bq=alle${fd.get("zurueck_q") ? `&q=${encodeURIComponent(String(fd.get("zurueck_q")))}` : ""}#bqool-liste`;
+  if (!skus.length || (z !== "auto" && !(ZUSTAENDE as string[]).includes(z))) redirect(`${ziel.replace("#", `&meldung=${encodeURIComponent("Bitte SKUs und Zustand wählen.")}#`)}`);
+  const { zustandSetzen } = await import("@/lib/bqool/leiter");
+  await zustandSetzen(s.tenantId, skus, z as never, s.userId);
+  revalidatePath("/repricer");
+  revalidatePath(PFAD);
+  redirect(ziel.replace("#", `&meldung=${encodeURIComponent(`Zustand ${z === "auto" ? "wieder automatisch" : `„${z}“`} für ${skus.length} SKU${skus.length === 1 ? "" : "s"} – Zielpreis und Min rechnen sich neu.`)}#`));
+}
+
+/** B31.8: Schnelldreher von Hand setzen/entfernen (Mehrfachauswahl). */
+export async function schnelldreherAction(fd: FormData) {
+  const s = await requireOwner();
+  const an = fd.get("an") === "1";
+  const eintraege = [...new Set(fd.getAll("wahl").map(String))].map((w) => ({ land: w.split("|")[0], sku: w.split("|").slice(1).join("|") })).filter((x) => (EXPORT_LAENDER as readonly string[]).includes(x.land) && x.sku);
+  const ziel = `/repricer?bq=alle${fd.get("zurueck_q") ? `&q=${encodeURIComponent(String(fd.get("zurueck_q")))}` : ""}`;
+  if (!eintraege.length) redirect(`${ziel}&meldung=${encodeURIComponent("Bitte SKUs wählen.")}#bqool-liste`);
+  const { schnelldreherSetzen } = await import("@/lib/bqool/leiter");
+  await schnelldreherSetzen(s.tenantId, eintraege, an);
+  revalidatePath("/repricer");
+  revalidatePath(PFAD);
+  redirect(`${ziel}&meldung=${encodeURIComponent(`${eintraege.length} SKU${eintraege.length === 1 ? "" : "s"}: Schnelldreher ${an ? "gesetzt (Boden Break-even + 7 %, kein Abverkauf)" : "entfernt"}.`)}#bqool-liste`);
+}
+
+/** Einstellungen → Repricer → Leiter: Schwellen, Reihenfolge, Liquidation-Dauer, Schnelldreher, Zustand. */
+export async function leiterEinstellungenAction(fd: FormData) {
+  const s = await requireOwner();
+  const { getSettings } = await import("@/lib/settings");
+  const alt = (await getSettings(s.tenantId)).bqool.leiter;
+  const zahl = (k: string, d: number) => {
+    const v = parseAmount(String(fd.get(k) ?? ""));
+    return v !== null && v >= 0 ? v : d;
+  };
+  const fest = String(fd.get("liquidation_bis_fest") ?? "").trim();
+  const faktoren = { ...alt.zustand.faktoren };
+  for (const k of Object.keys(faktoren) as (keyof typeof faktoren)[]) faktoren[k] = Math.min(1, zahl(`faktor_${k}`, faktoren[k]));
+  const leiter = {
+    ...alt,
+    reihenfolge: fd.get("reihenfolge") === "liquidation_zuerst" ? ("liquidation_zuerst" as const) : ("abverkauf_zuerst" as const),
+    reichweiteTage: zahl("reichweite_tage", alt.reichweiteTage),
+    alterTage12: zahl("alter_12", alt.alterTage12),
+    kapital12: zahl("kapital_12", alt.kapital12),
+    ueberTage: zahl("ueber_tage", alt.ueberTage),
+    bbQuote12: zahl("bb_quote_12", alt.bbQuote12),
+    alterTage23: zahl("alter_23", alt.alterTage23),
+    kapital23: zahl("kapital_23", alt.kapital23),
+    liquidationTage: zahl("liquidation_tage", alt.liquidationTage),
+    liquidationBisFest: /^\d{4}-\d{2}-\d{2}$/.test(fest) ? fest : null,
+    verlaengernTage: zahl("verlaengern_tage", alt.verlaengernTage),
+    schnell: { ...alt.schnell, verkaeufe30: zahl("schnell_verkaeufe", alt.schnell.verkaeufe30), margeBoden: zahl("schnell_boden", alt.schnell.margeBoden), ohneBuyboxTage: zahl("schnell_ohne_bb", alt.schnell.ohneBuyboxTage), regel: String(fd.get("schnell_regel") ?? "").trim() || null },
+    zustand: { ...alt.zustand, faktoren, mindestmarge: zahl("zustand_marge", alt.zustand.mindestmarge) },
+  };
+  await bqoolEinstellungenSpeichern(s.tenantId, { leiter });
+  revalidatePath(PFAD);
+  zurueck("Leiter-Einstellungen gespeichert – gelten ab dem nächsten Lauf (oder „Liquidation jetzt prüfen“).", "#leiter-einstellungen");
+}

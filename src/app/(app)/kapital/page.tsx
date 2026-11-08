@@ -122,6 +122,10 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
   const ohneEk = data.zeilen.filter((z) => z.ek === null).length;
   const c2c = await cashToCashKennzahlen(session.tenantId, data.zeilen.length ? data.summe.gesamt : null).catch(() => null);
   const liqZeile = await liquidationsStand(session.tenantId).then(liquidationsZeile).catch(() => null);
+  // B31.6b: Stufen der Regel-Leiter (Stand des täglichen Laufs)
+  const { stufenZeile } = await import("@/lib/bqool/leiter-logic");
+  const leiterStand = (await getSettings(session.tenantId)).bqool.leiterStand;
+  const stufen = leiterStand ? stufenZeile(leiterStand) : null;
 
   return (
     <>
@@ -140,6 +144,11 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
       {liqZeile && (
         <div className="notice notice-info small" style={{ marginBottom: 12 }} data-testid="kapital-liquidation">
           {liqZeile} – <Link href="/repricer/bqool#liquidation">Liste und Rückkehr-Vorschläge</Link>
+        </div>
+      )}
+      {stufen && (
+        <div className="notice notice-info small" style={{ marginBottom: 12 }} data-testid="kapital-stufen">
+          Regel-Leiter: {stufen} – <Link href="/repricer/bqool#leiter">Vorschläge</Link>
         </div>
       )}
       {((gestrandet && gestrandet.gestrandet.anzahl > 0) || (weitere && weitere.gesamt > 0)) && (

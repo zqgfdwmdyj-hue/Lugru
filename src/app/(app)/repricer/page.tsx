@@ -12,8 +12,14 @@ import { isEstimated, repricerCoverage } from "@/lib/repricer-logic";
 import { filterBqool, HINWEIS_RANG, HINWEIS_TEXT, regelUebersicht } from "@/lib/bqool/logic";
 import { bqoolStand } from "@/lib/bqool/service";
 import { BqoolUpload } from "./bqool-upload";
+import { bqoolVorschau } from "@/lib/bqool/export-service";
+import { ablaufStand, istGebraucht, stufeVonRegel, ZUSTAENDE, ZUSTAND_TEXT, type Zustand } from "@/lib/bqool/leiter-logic";
+import { schnelldreherAction, zustandAction } from "./bqool/actions";
+import { db, schema } from "@/db";
+import { eq } from "drizzle-orm";
+import { todayIso } from "@/lib/dates";
 
-type SP = { nur?: string; seite?: string; land?: string; regel?: string; hinweis?: string; status?: string; q?: string; bq?: string; bqseite?: string; liq?: string };
+type SP = { nur?: string; seite?: string; land?: string; regel?: string; hinweis?: string; status?: string; q?: string; bq?: string; bqseite?: string; liq?: string; leiter?: string; zustand?: string; meldung?: string };
 const BQ_SEITE = 50;
 const SYS_SEITE = 100;
 /** Link mit geänderten Suchparametern (leere Werte fallen weg). */
@@ -39,7 +45,27 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
   const uebersicht = regelUebersicht(bq.zeilen);
   const laender = bq.stand.map((x) => x.marktplatz).sort();
   // B31.6: Filter „Liquidation wegen Min unter Marge“ zeigt diese SKUs auch ohne Auffälligkeit
-  const bqGefiltert = filterBqool(sp.liq === "1" ? bq.zeilen.filter((z) => z.liqMarge) : bq.zeilen, { land: sp.land, regel: sp.regel, hinweis: sp.hinweis, status: sp.status, q: sp.q, nurAuffaellig: sp.bq !== "alle" && sp.liq !== "1" });
+  // B31.6a/b, B31.7, B31.8: Stufe, Liquidation bis, Zustand/Zielpreis/Min gebraucht, Schnelldreher je SKU und Land
+  const heute = todayIso();
+  const [pv, lqRows, pflegeRows] = await Promise.all([
+    bqoolVorschau(session.tenantId).catch(() => null),
+    db.select().from(schema.bqoolLiquidationen).where(eq(schema.bqoolLiquidationen.tenantId, session.tenantId)),
+    db.select().from(schema.bqoolSkuPflege).where(eq(schema.bqoolSkuPflege.tenantId, session.tenantId)),
+  ]);
+  const pvJe = new Map((pv?.laender ?? []).flatMap((l) => l.zeilen.map((z) => [`${z.land}|${z.sku}`, z])));
+  const unbekanntSkus = new Set((pv?.zustandUnbekannt ?? []).map((u) => u.sku));
+  const lqJe = new Map(lqRows.filter((l) => l.status === "aktiv" || l.status === "zurueck_vorgeschlagen").map((l) => [`${l.land}|${l.sku}`, l]));
+  const pfJe = new Map(pflegeRows.map((p) => [`${p.land}|${p.sku}`, p]));
+  const extraFilter = (zz: typeof bq.zeilen) => {
+    const k = (z: (typeof bq.zeilen)[number]) => `${z.marktplatz}|${z.sku}`;
+    if (sp.leiter === "ablauf7") return zz.filter((z) => { const l = lqJe.get(k(z)); return !!l && ["bald", "abgelaufen"].includes(ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.bqool.leiter.ablaufVorwarnTage }).stand); });
+    if (sp.leiter === "schnell") return zz.filter((z) => pfJe.get(k(z))?.schnelldreher);
+    if (sp.leiter === "gebraucht_ohne") return zz.filter((z) => { const v = pvJe.get(k(z)); return !!v && istGebraucht(v.zustand) && (z.min === null || (v.effMinStufe1 !== null && z.min >= v.effMinStufe1 - 0.005)); });
+    if (sp.zustand === "unbekannt") return zz.filter((z) => unbekanntSkus.has(z.sku));
+    return zz;
+  };
+  const extraAktiv = !!(sp.leiter || sp.zustand);
+  const bqGefiltert = extraFilter(filterBqool(sp.liq === "1" ? bq.zeilen.filter((z) => z.liqMarge) : bq.zeilen, { land: sp.land, regel: sp.regel, hinweis: sp.hinweis, status: sp.status, q: sp.q, nurAuffaellig: sp.bq !== "alle" && sp.liq !== "1" && !extraAktiv }));
   const liqAnzahl = bq.zeilen.filter((z) => z.liqMarge).length;
   const bqSeiten = Math.max(1, Math.ceil(bqGefiltert.length / BQ_SEITE));
   const bqSeite = Math.min(bqSeiten, Math.max(1, Number(sp.bqseite) || 1));
@@ -59,6 +85,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           <a className="btn" href="/repricer/export?format=de">Als Tabelle (deutsch)</a>
         </div>
       </div>
+      {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <div className="card card-pad" data-testid="kpi-repricer-skus">
@@ -137,24 +164,33 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
               <div className="field"><label className="label" htmlFor="liq">Liquidation</label>
                 <select className="input" id="liq" name="liq" defaultValue={sp.liq === "1" ? "1" : ""} data-testid="bqool-filter-liq"><option value="">alle</option><option value="1">wegen Min unter Marge ({liqAnzahl})</option></select>
               </div>
+              <div className="field"><label className="label" htmlFor="leiter">Leiter / Zustand</label>
+                <select className="input" id="leiter" name="leiter" defaultValue={sp.leiter ?? ""} data-testid="bqool-filter-leiter"><option value="">alle</option><option value="ablauf7">Liquidation läuft in 7 Tagen ab</option><option value="schnell">Schnelldreher</option><option value="gebraucht_ohne">Gebraucht ohne eigenen Preis</option></select>
+              </div>
+              {sp.zustand && <input type="hidden" name="zustand" value={sp.zustand} />}
               <div className="field" style={{ flex: "1 1 160px" }}><label className="label" htmlFor="bq-q">Suche</label><input className="input" id="bq-q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="SKU, ASIN, Titel" /></div>
               <button className="btn" type="submit" data-testid="bqool-filter-anwenden">Anwenden</button>
-              {(sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.bq || sp.liq) && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#bqool-liste")}>zurücksetzen</Link>}
+              {(sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.bq || sp.liq || sp.leiter || sp.zustand) && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#bqool-liste")}>zurücksetzen</Link>}
             </form>
             {bqGefiltert.length === 0 ? (
-              <div className="notice notice-ok small" data-testid="bqool-keine">{sp.bq === "alle" || sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.liq ? "Keine SKUs für diese Auswahl." : "Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist)."}</div>
+              <div className="notice notice-ok small" data-testid="bqool-keine">{sp.bq === "alle" || sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.liq || extraAktiv ? "Keine SKUs für diese Auswahl." : "Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist)."}</div>
             ) : (
               <div style={{ overflow: "auto" }}>
                 <div className="small muted" data-testid="bqool-anzahl">{bqGefiltert.length} Zeilen{bqProbleme.length !== bqGefiltert.length ? ` · ${bqProbleme.length} mit Auffälligkeiten insgesamt` : ""}{bqSeiten > 1 ? ` · Seite ${bqSeite} von ${bqSeiten}` : ""}</div>
+                <form id="bq-wahl" />
                 <table className="table" data-testid="bqool-problems">
-                  <thead><tr><th>Land</th><th>SKU</th><th>Regel</th><th title="Seit wann die Regel in BQool steht (BQool-Ist)">Regel seit</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
+                  <thead><tr><th aria-label="Auswahl" /><th>Land</th><th>SKU</th><th>Regel</th><th title="Stufe der Regel-Leiter: 1 ia · 2 Abverkauf · 3 Liquidation">Stufe</th><th title="Seit wann die Regel in BQool steht (BQool-Ist)">Regel seit</th><th title="B31.6a: Liquidation bis (Restdauer)">Liquidation bis</th><th title="B31.7: Zustand, Zielpreis gebraucht, Min gebraucht">Zustand</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
                   <tbody>
                     {bqZeigen.map((z) => (
-                      <tr key={`${z.marktplatz}|${z.sku}`}>
+                      <tr key={`${z.marktplatz}|${z.sku}`} data-testid="bqool-zeile" data-sku={z.sku} data-land={z.marktplatz}>
+                        <td><input type="checkbox" form="bq-wahl" name="wahl" value={`${z.marktplatz}|${z.sku}`} aria-label={`${z.sku} wählen`} data-testid="bqool-wahl" /></td>
                         <td>{z.marktplatz}</td>
                         <td className="num small">{z.sku}</td>
                         <td className="small" data-testid="bqool-regel">{z.regel ?? "–"}{z.status === "pausiert" ? " (pausiert)" : z.status === null ? <span className="muted" title="Kein Repricing-Status in der Datei"> (Status ?)</span> : ""}{z.liqMarge && <div className="muted" data-testid="bqool-liq-marge">wegen Min unter Marge{z.liqMarge.regelVorher ? ` (vorher ${z.liqMarge.regelVorher})` : ""}{z.liqMarge.status === "zurueck_vorgeschlagen" ? " · Rückkehr vorgeschlagen" : ""}</div>}</td>
+                        <td className="small" data-testid="bqool-stufe">{stufeVonRegel(z.regel, s.bqool.katalog, s.bqool.abverkaufRegel) ?? "–"}{pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnelldreher && <div data-testid="bqool-schnell" title="Schnelldreher: Boden Break-even + 7 %, kein Abverkauf">⚡ Schnelldreher{pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnellBis ? ` bis ${formatDate(pfJe.get(`${z.marktplatz}|${z.sku}`)!.schnellBis!)}` : ""}</div>}</td>
                         <td className="small" data-testid="bqool-regel-seit">{z.regelSeit ? formatDate(z.regelSeit.toISOString().slice(0, 10)) : "–"}</td>
+                        <td className="small" data-testid="bqool-liq-bis">{(() => { const l = lqJe.get(`${z.marktplatz}|${z.sku}`); if (!l) return "–"; const a = ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.bqool.leiter.ablaufVorwarnTage }); return a.stand === "dauerhaft" ? "dauerhaft" : l.bis ? <>{formatDate(l.bis)}<div className="muted">{a.stand === "abgelaufen" ? "überfällig" : `noch ${a.restTage} T`}</div></> : "–"; })()}</td>
+                        <td className="small" data-testid="bqool-zustand">{(() => { const v = pvJe.get(`${z.marktplatz}|${z.sku}`); if (unbekanntSkus.has(z.sku) && !v) return <span style={{ color: "var(--warn)" }}>unbekannt</span>; if (!v) return "–"; return <>{ZUSTAND_TEXT[v.zustand]}{istGebraucht(v.zustand) && <div className="muted" data-testid="bqool-zielpreis">Ziel {formatEuro(v.zielpreis)} · Min geb. {formatEuro(v.minGebraucht)}</div>}</>; })()}</td>
                         <td className="num right">{formatEuro(z.preis)}</td>
                         <td className="num right" style={{ color: z.hinweise.includes("min_unter_untergrenze") ? "var(--danger)" : undefined, fontWeight: 600 }}>{formatEuro(z.min)}</td>
                         <td className="num right">{formatEuro(z.untergrenze)}</td>
@@ -165,6 +201,16 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
                     ))}
                   </tbody>
                 </table>
+                {session.role === "owner" && !session.readOnly && (
+                  <div className="row small" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }} data-testid="bqool-mehrfach">
+                    <span className="muted">Auswahl:</span>
+                    <select name="zustand" form="bq-wahl" defaultValue="" data-testid="bqool-zustand-wahl" aria-label="Zustand"><option value="">Zustand …</option>{ZUSTAENDE.filter((x) => x !== "unbekannt").map((x) => <option key={x} value={x}>{ZUSTAND_TEXT[x as Zustand]}</option>)}<option value="auto">automatisch erkennen</option></select>
+                    <input type="hidden" name="zurueck_q" value={sp.q ?? ""} form="bq-wahl" />
+                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={zustandAction} data-testid="bqool-zustand-setzen">Zustand setzen</button>
+                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAction} name="an" value="1" data-testid="bqool-schnell-an">⚡ Schnelldreher an</button>
+                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAction} name="an" value="0" data-testid="bqool-schnell-aus">Schnelldreher aus</button>
+                  </div>
+                )}
                 {bqSeiten > 1 && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} data-testid="bqool-seiten">
                     {bqSeite > 1 && <Link className="chip" href={mitParam(sp, { bqseite: String(bqSeite - 1) }, "#bqool-liste")}>← zurück</Link>}

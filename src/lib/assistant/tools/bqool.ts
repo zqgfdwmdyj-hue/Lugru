@@ -12,7 +12,7 @@ export const bqoolExportVorschauTool = defineTool({
   name: "bqool_export_vorschau",
   title: "BQool-Export: Vorschau",
   description:
-    "Was ein BQool-Export je Land ändern würde: Anzahl SKUs, neu/geändert/gleich, Regelwechsel (Ist in BQool → Soll im System, z. B. ia/Abverkauf/Liquidation), größte Min-Änderungen, Warnungen (Min über Buy Box × 1,2, Min unter Break-even), SKUs ohne EK (nicht in der Datei), Vorschläge der Kapital-Ampel und Abweichungen Ist ↔ Soll. Dazu liquidation (B31.6): Regelwechsel auf „Liquidation“, weil der gewünschte Min unter dem effektiven Min der Margen-Regel liegt (alte Regel → Liquidation, Min alt → neu, Marge neu, Break-even, Buy Box; nie unter Break-even ohne Freigabe „Verlust akzeptiert bis x €“), Stand des Tests mit einer SKU, aktive Liquidationen und Vorschläge „zurück auf die ursprüngliche Regel“ (Buy Box 14 Tage über effektivem Min + 3 %). Für „Was würde sich bei BQool ändern?“, „Welche SKUs fehlen im BQool-Export?“.",
+    "Was ein BQool-Export je Land ändern würde: Anzahl SKUs, neu/geändert/gleich, Regelwechsel (Ist in BQool → Soll im System, z. B. ia/Abverkauf/Liquidation), größte Min-Änderungen, Warnungen (Min über Buy Box × 1,2, Min unter Break-even), SKUs ohne EK (nicht in der Datei), Vorschläge der Kapital-Ampel und Abweichungen Ist ↔ Soll. Dazu liquidation (B31.6): Regelwechsel auf „Liquidation“, weil der gewünschte Min unter dem effektiven Min der Margen-Regel liegt (alte Regel → Liquidation, Min alt → neu, Marge neu, Break-even, Buy Box; nie unter Break-even ohne Freigabe „Verlust akzeptiert bis x €“), Stand des Tests mit einer SKU, aktive Liquidationen und Vorschläge „zurück auf die ursprüngliche Regel“ (Buy Box 14 Tage über effektivem Min + 3 %). Dazu leiter (B31.6b/B31.7/B31.8): offene Vorschläge der Regel-Leiter (ia → Abverkauf → Liquidation → zurück auf Abverkauf), Schnelldreher, gebrauchte Ware mit Zielpreis/Min gebraucht, SKUs ohne Zustand (nicht in der Datei). Für „Was würde sich bei BQool ändern?“, „Welche SKUs fehlen im BQool-Export?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "Seller-System (EK, Gebühren, Regel-Katalog) + hochgeladene BQool-Dateien (Ist)" },
@@ -32,7 +32,7 @@ export const bqoolExportVorschauTool = defineTool({
         groesste_aenderungen: l.zeilen
           .filter((z) => z.art !== "gleich" || z.warnungen.length)
           .slice(0, i.limit)
-          .map((z) => ({ sku: z.sku, titel: z.titel ?? undefined, regel_ist: z.istRegel, regel_soll: z.regel, min_ist: z.istMin, min_datei: z.min, max: z.max, cost: z.cost, effektiver_min: z.effMin, marge_prozent: z.marge, buybox: z.buybox, warnungen: z.warnungen.length ? z.warnungen : undefined, buybox_erklaerung: z.erklaerung ?? undefined, art: z.art })),
+          .map((z) => ({ sku: z.sku, titel: z.titel ?? undefined, regel_ist: z.istRegel, regel_soll: z.regel, stufe: z.stufe ?? undefined, min_ist: z.istMin, min_datei: z.min, max: z.max, cost: z.cost, effektiver_min: z.effMin, marge_prozent: z.marge, buybox: z.buybox, warnungen: z.warnungen.length ? z.warnungen : undefined, buybox_erklaerung: z.erklaerung ?? undefined, art: z.art, zustand: z.zustand !== "neu" ? z.zustand : undefined, zielpreis_gebraucht: z.zielpreis ?? undefined, min_gebraucht: z.minGebraucht ?? undefined, schnelldreher: z.schnelldreher || undefined })),
       })),
       ek_fehlt: { anzahl: new Set(v.ekFehlt.map((x) => x.sku)).size, skus: [...new Set(v.ekFehlt.map((x) => x.sku))].slice(0, 50) },
       vorschlaege_kapital_ampel: v.vorschlaege.slice(0, 20),
@@ -51,6 +51,17 @@ export const bqoolExportVorschauTool = defineTool({
           aktiv: st.anzahl,
           unter_break_even: st.unterBreakEven,
           rueckkehr_vorgeschlagen: st.zeilen.filter((r) => r.status === "zurueck_vorgeschlagen").map((r) => ({ land: r.land, sku: r.sku, zurueck_auf: r.regelVorher, buybox_ueber_seit: r.ueberSeit })),
+        };
+      })(),
+      // B31.6b/B31.7/B31.8: Regel-Leiter (Vorschläge zur Freigabe), Zustand unbekannt (nicht in der Datei)
+      leiter: await (async () => {
+        const { vorschlaegeOffen, VORSCHLAG_TEXT } = await import("@/lib/bqool/leiter");
+        const offen = await vorschlaegeOffen(ctx.session.tenantId);
+        const st = (await getSettings(ctx.session.tenantId)).bqool.leiterStand;
+        return {
+          stand: st ? { am: st.am, stufe_2: st.stufe2, stufe_3: st.stufe3, stufe_3_unter_break_even: st.unterBe, schnelldreher_unter_min: st.schnellUnterMin, gebrauchte_mit_neupreis_min: st.gebrauchtNeupreis } : "noch kein Lauf",
+          vorschlaege: offen.slice(0, i.limit).map((x) => ({ land: x.land, sku: x.sku, vorschlag: VORSCHLAG_TEXT[x.art as keyof typeof VORSCHLAG_TEXT] ?? x.art, von: x.vonRegel ?? undefined, nach: x.nachRegel ?? undefined, min: x.min ?? undefined, gruende: x.gruende })),
+          zustand_unbekannt: { anzahl: new Set(v.zustandUnbekannt.map((u) => u.sku)).size, skus: [...new Set(v.zustandUnbekannt.map((u) => u.sku))].slice(0, 30) },
         };
       })(),
       link: abs(ctx, "/repricer/bqool"),

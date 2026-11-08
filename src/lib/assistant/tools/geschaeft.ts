@@ -506,7 +506,7 @@ export const repricer = defineTool({
   name: "repricer",
   title: "Repricer (BQool)",
   description:
-    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie mit „regel_seit“ (B31.6; Liquidation wegen Min unter Marge gekennzeichnet, dort kein Hinweis „Min unter System-Min“), Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
+    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie mit „regel_seit“ (B31.6; Liquidation wegen Min unter Marge gekennzeichnet, dort kein Hinweis „Min unter System-Min“), „stufe“ der Regel-Leiter (1 ia · 2 Abverkauf · 3 Liquidation), „liquidation_bis“ (Restdauer), „schnelldreher“ (Boden Break-even + 7 %), Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
   area: ["buchhaltung", "amazon"],
   write: false,
   quelle: { text: "BQool-Export (hochgeladen unter Repricer), EK und Gebühren im Seller-System" },
@@ -522,6 +522,14 @@ export const repricer = defineTool({
     const { zeilen, stand } = await bqoolStand(ctx.session.tenantId);
     const { standText } = await import("@/lib/bqool/kreislauf-logic");
     const bb = await import("@/lib/bqool/berichte").then((x) => x.buyboxUebersicht(ctx.session.tenantId));
+    // B31.6a/b, B31.8: Stufe der Regel-Leiter, „Liquidation bis“, Schnelldreher
+    const { stufeVonRegel, ablaufStand } = await import("@/lib/bqool/leiter-logic");
+    const { db: dbx, schema: sx } = await import("@/db");
+    const { eq: eqx } = await import("drizzle-orm");
+    const sets = (await import("@/lib/settings").then((x) => x.getSettings(ctx.session.tenantId))).bqool;
+    const lqJe = new Map((await dbx.select().from(sx.bqoolLiquidationen).where(eqx(sx.bqoolLiquidationen.tenantId, ctx.session.tenantId))).filter((l) => l.status === "aktiv" || l.status === "zurueck_vorgeschlagen").map((l) => [`${l.land}|${l.sku}`, l]));
+    const pfJe = new Map((await dbx.select().from(sx.bqoolSkuPflege).where(eqx(sx.bqoolSkuPflege.tenantId, ctx.session.tenantId))).map((p) => [`${p.land}|${p.sku}`, p]));
+    const heuteX = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
     const q = i.suche?.toLowerCase();
     const list = zeilen
       .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!i.regel || (z.regel?.trim() || "(ohne Regel)").toLowerCase() === i.regel.toLowerCase()) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
@@ -550,6 +558,9 @@ export const repricer = defineTool({
         // B31.6: seit wann die Regel in BQool steht; Liquidation wegen Min unter Marge (bewusst unter dem System-Min)
         regel_seit: z.regelSeit ? z.regelSeit.toISOString().slice(0, 10) : undefined,
         liquidation_wegen_min_unter_marge: z.liqMarge ? { regel_vorher: z.liqMarge.regelVorher, rueckkehr_vorgeschlagen: z.liqMarge.status === "zurueck_vorgeschlagen" || undefined } : undefined,
+        stufe: stufeVonRegel(z.regel, sets.katalog, sets.abverkaufRegel) ?? undefined,
+        liquidation_bis: (() => { const l = lqJe.get(`${z.marktplatz}|${z.sku}`); if (!l) return undefined; const a = ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute: heuteX, vorwarnTage: sets.leiter.ablaufVorwarnTage }); return a.stand === "dauerhaft" ? "dauerhaft" : l.bis ? { bis: l.bis, rest_tage: a.restTage, ueberfaellig: a.stand === "abgelaufen" || undefined } : undefined; })(),
+        schnelldreher: pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnelldreher ? { sperre_bis: pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnellBis ?? undefined, boden_prozent: sets.leiter.schnell.margeBoden } : undefined,
         status: z.status,
         preis: z.preis,
         min_bqool: z.min,
