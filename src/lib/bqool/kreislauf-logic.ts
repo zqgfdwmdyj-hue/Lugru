@@ -95,26 +95,120 @@ export function rueckmeldungLesen(text: string, skus: string[]): { uebernommen: 
   return { uebernommen: erste(UEBERNOMMEN), fehler: fehler ?? (fehlerZeilen.length ? fehlerZeilen.length : null), fehlerZeilen };
 }
 
+// ---- B33.6 Processing Report der Uploads und BQool-Zeit ---------------------------------------------------------
+
+/**
+ * Fehlerzeilen aus einem BQool-„Processing Report“ (Text, HTML oder Tab-Datei): Zeilen mit Fehlerwort; SKU aus „SKU: …“,
+ * „SellerSKU“-Spalte oder bekannter SKU. Ohne erkennbare SKU steht „?“.
+ */
+export function processingReportZeilen(roh: string, skus: string[] = []): { sku: string; text: string }[] {
+  const text = roh
+    .replace(/<\/(tr|p|div|li|h\d)>/gi, "\n")
+    .replace(/<\/t[dh]>/gi, "\t")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+  const zeilen = text.split(/\r?\n/).map((z) => z.trim()).filter(Boolean);
+  const kopf = zeilen.find((z) => z.includes("\t") && z.split("\t").some((h) => /^(seller\s*sku|sku)$/i.test(h.trim())));
+  const spalte = kopf ? kopf.split("\t").findIndex((h) => /^(seller\s*sku|sku)$/i.test(h.trim())) : -1;
+  const bekannt = [...new Set(skus.filter(Boolean))].sort((a, b) => b.length - a.length);
+  const out: { sku: string; text: string }[] = [];
+  for (const z of zeilen) {
+    if (z === kopf || !FEHLER_WORT.test(z) || /^\d+\s*(errors?|fehler)\s*$/i.test(z) || /view processing report|processing report/i.test(z)) continue;
+    const ausSpalte = spalte >= 0 && z.includes("\t") ? (z.split("\t")[spalte] ?? "").trim() : "";
+    const sku = bekannt.find((x) => z.includes(x)) || ausSpalte || /\bSKU\b[:\s]+([A-Za-z0-9._\-]+)/i.exec(z)?.[1] || "?";
+    out.push({ sku, text: z.replace(/\t+/g, " · ").slice(0, 200) });
+  }
+  return out;
+}
+
+/** BQool-Versatz „+02:00“ → Minuten (Standard 120: BQool zeigt UTC+02:00, im November 1 Stunde später als Deutschland). */
+export function versatzMinuten(v: string | null | undefined): number {
+  const m = /([+-])\s*(\d{1,2})(?::?(\d{2}))?/.exec(v ?? "");
+  if (!m) return 120;
+  return (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+}
+
+/**
+ * Zeitangabe aus BQool („11/07/2026 3:32 PM“, „2026-11-07 15:32“, „07.11.2026 15:32“) in UTC (ISO) und deutsche Zeit
+ * („07.11., 14:32“). null, wenn nicht lesbar.
+ */
+export function bqoolZeit(roh: string, versatz = 120): { iso: string; berlin: string } | null {
+  let j: number, mo: number, t: number, h: number, mi: number;
+  let m = /(\d{1,2})\/(\d{1,2})\/(\d{4})[ ,T]+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(roh);
+  if (m) {
+    [mo, t, j, h, mi] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+    if (m[6]) h = (h % 12) + (m[6].toUpperCase() === "PM" ? 12 : 0);
+  } else if ((m = /(\d{4})-(\d{2})-(\d{2})[ T]+(\d{1,2}):(\d{2})/.exec(roh))) {
+    [j, mo, t, h, mi] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+  } else if ((m = /(\d{1,2})\.(\d{1,2})\.(\d{4})[ ,]+(\d{1,2}):(\d{2})/.exec(roh))) {
+    [t, mo, j, h, mi] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])];
+  } else return null;
+  const utc = Date.UTC(j, mo - 1, t, h, mi) - versatz * 60_000;
+  if (!Number.isFinite(utc)) return null;
+  const d = new Date(utc);
+  const tag = tagBerlin(d);
+  return { iso: d.toISOString(), berlin: `${tag.slice(8, 10)}.${tag.slice(5, 7)}., ${uhrBerlin(d)}` };
+}
+
+export type UploadFehler = { land: string; zeitBqool: string; zeitDe: string | null; iso: string | null; datei: string | null; fehlerAnzahl: number | null; zeilen: { sku: string; text: string }[] };
+
+/** Hinweistext je Upload: „DE 07.11., 14:32 (BQool 3:32 PM): 1 Fehler – TEST-SKU-1: Invalid Min Price“. */
+export function uploadFehlerText(f: UploadFehler): string {
+  const zeit = f.zeitDe ? `${f.zeitDe} (BQool ${f.zeitBqool})` : f.zeitBqool;
+  const n = f.fehlerAnzahl ?? f.zeilen.length;
+    const rest = (z: { sku: string; text: string }) => {
+    const i = z.sku !== "?" ? z.text.indexOf(z.sku) : -1;
+    return (i >= 0 ? z.text.slice(i + z.sku.length) : z.text).replace(/^[\s·:–-]+/, "");
+  };
+  return `${f.land} ${zeit}${f.datei ? ` ${f.datei}` : ""}: ${n} Fehler${f.zeilen.length ? ` – ${f.zeilen.map((z) => `${z.sku}: ${rest(z)}`).join(" · ")}` : " – Inhalt nicht lesbar"}`;
+}
+
 const cent = (n: number) => Math.round(n * 100);
 const geld = (n: number | null) => (n === null ? "–" : n.toFixed(2).replace(".", ","));
 
-/** Nachkontrolle: Regel und Min je hochgeladener SKU gegen das BQool-Ist (Schlüssel „Land|SKU“). */
-export function nachkontrolle(hochgeladen: { land: string; sku: string; regel: string; min: number }[], ist: Map<string, { regel: string | null; min: number | null }>): BqoolKontrolle {
+export const RESET_HINWEIS = "Min wird täglich zurückgesetzt – kein Fehler";
+
+/**
+ * Nachkontrolle: Regel und Min je hochgeladener SKU gegen das BQool-Ist (Schlüssel „Land|SKU“), mit Min vorher/Datei/
+ * nachher (B33.6). Bei Regeln mit täglichem Margen-Reset (ia, Abverkauf) ist ein anderer Min kein Fehler, sondern ein
+ * Hinweis; bei Liquidation (fester Min) und Regeln ohne Reset ist er ein Fehler.
+ */
+export function nachkontrolle(hochgeladen: { land: string; sku: string; regel: string; min: number; minVorher?: number | null; minReset?: boolean }[], ist: Map<string, { regel: string | null; min: number | null }>): BqoolKontrolle {
   const abweichungen: BqoolKontrolle["abweichungen"] = [];
+  const hinweise: NonNullable<BqoolKontrolle["hinweise"]> = [];
+  const minVergleich: NonNullable<BqoolKontrolle["minVergleich"]> = [];
   for (const z of hochgeladen) {
     const i = ist.get(`${z.land}|${z.sku}`);
+    const vorher = z.minVorher ?? null;
     if (!i) {
       abweichungen.push({ land: z.land, sku: z.sku, text: "nicht im BQool-Export" });
+      minVergleich.push({ land: z.land, sku: z.sku, regel: z.regel, vorher, datei: z.min, nachher: null, status: "fehlt" });
       continue;
     }
     const teile: string[] = [];
-    if ((i.regel ?? "").trim().toLowerCase() !== z.regel.trim().toLowerCase()) teile.push(`Regel „${i.regel ?? "–"}“ statt „${z.regel}“`);
-    if (i.min === null || cent(i.min) !== cent(z.min)) teile.push(`Min ${geld(i.min)} statt ${geld(z.min)}`);
+    const regelGleich = (i.regel ?? "").trim().toLowerCase() === z.regel.trim().toLowerCase();
+    if (!regelGleich) teile.push(`Regel „${i.regel ?? "–"}“ statt „${z.regel}“`);
+    const minGleich = i.min !== null && cent(i.min) === cent(z.min);
+    const vn = `Min vorher ${geld(vorher)} / Datei ${geld(z.min)} / nachher ${geld(i.min)}`;
+    let status: "gleich" | "reset" | "fehler" = "gleich";
+    if (!minGleich) {
+      if (z.minReset && regelGleich && i.min !== null) {
+        status = "reset";
+        hinweise.push({ land: z.land, sku: z.sku, text: `${vn} – ${RESET_HINWEIS}` });
+      } else {
+        status = "fehler";
+        teile.push(`${vn}${z.minReset ? "" : " – Min hätte stehen bleiben müssen"}`);
+      }
+    }
+    minVergleich.push({ land: z.land, sku: z.sku, regel: z.regel, vorher, datei: z.min, nachher: i.min, status: teile.length ? "fehler" : status });
     if (teile.length) abweichungen.push({ land: z.land, sku: z.sku, text: teile.join(", ") });
   }
   const ok = hochgeladen.length - abweichungen.length;
-  const text = !hochgeladen.length ? "Nichts hochgeladen – nichts zu prüfen." : abweichungen.length ? `${mehr(abweichungen.length, "Abweichung", "Abweichungen")} bei ${mehr(hochgeladen.length, "SKU", "SKUs")} – Min/Regel in BQool anders als hochgeladen.` : `Min und Regel stimmen bei allen ${mehr(hochgeladen.length, "SKU", "SKUs")}.`;
-  return { geprueft: hochgeladen.length, ok, abweichungen, text };
+  const reset = hinweise.length ? ` ${mehr(hinweise.length, "SKU", "SKUs")} mit anderem Min bei Regel mit täglichem Reset – kein Fehler.` : "";
+  const text = !hochgeladen.length ? "Nichts hochgeladen – nichts zu prüfen." : abweichungen.length ? `${mehr(abweichungen.length, "Abweichung", "Abweichungen")} bei ${mehr(hochgeladen.length, "SKU", "SKUs")} – Min/Regel in BQool anders als hochgeladen.${reset}` : `Min und Regel stimmen bei allen ${mehr(hochgeladen.length, "SKU", "SKUs")}.${reset}`;
+  return { geprueft: hochgeladen.length, ok, abweichungen, text, minVergleich, hinweise };
 }
 
 /** Übernommen je Land (BQool-Rückmeldung, sonst die Zeilen der Datei, wenn der Upload ok war). */

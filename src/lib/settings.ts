@@ -1,4 +1,4 @@
-import { AI_WIN_SALES_BOOSTER, KATALOG_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
+import { AI_WIN_SALES_BOOSTER, KATALOG_STANDARD, PROVISION_STAFFELN_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
 import { LEITER_STANDARD, leiterMitStandard, type LeiterStand } from "@/lib/bqool/leiter-logic";
 
 /** B20.9: gespeicherte Regel-Kataloge bekommen die Strategie „AI Win Sales Booster“, falls sie fehlt. */
@@ -121,6 +121,10 @@ export const DEFAULT_SETTINGS = {
     abverkaufRegel: { DE: "Abverkauf DE", sonst: "Abverkauf" },
     /** „Cost“ = EK netto × (1 + costUst) – so stehen die Werte in den bisherigen BQool-Dateien. */
     costUst: 0.19,
+    /** B33.1: Preisstufen der Provision je Kategorie (BQool rechnet die Marge mit dem Satz der Preisstufe). */
+    provisionStaffeln: PROVISION_STAFFELN_STANDARD,
+    /** B33.6: Uploads mit Fehlern laut „Processing Report“ (Hinweise auf der BQool-Seite). */
+    uploadFehler: null as { gelesenAm: string; eintraege: import("@/lib/bqool/kreislauf-logic").UploadFehler[] } | null,
     /** Ausnahmen je Land: ASIN oder Marke/Produktname im Titel → Regel (Stand Bauauftrag 30.10.). */
     markenRegeln: [
       { marke: "B0DT6N95XH", land: "DE", regel: "Abverkauf" },

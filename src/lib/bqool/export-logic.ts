@@ -63,7 +63,183 @@ export const bqZahl = (n: number) => n.toFixed(2);
 
 /** BQool-Unterregel je Altersstufe: Sales Booster (≤ Min → Min) bzw. Equalizer (≤ Min → Buy Box + 0,01 €, verliert bewusst die Buy Box). */
 export type Unterregel = "Sales Booster" | "Equalizer";
-export type MargeStufe = { bisTage: number | null; marge: number; unterregel?: Unterregel };
+/**
+ * B33.3 Typ der Altersstufe: „marge“ = „Reset Min Price to Est. Profit Margin = x %“ (BQool setzt den Min täglich auf
+ * P(x)); „lowest_price“ = „Lowest Price + x %“ und „sales_maximizer“ = Sales Maximizer – keine feste Marge
+ * (Wettbewerbspreis), dafür wird keine Prozentzahl angezeigt und kein Min gerechnet.
+ */
+export type StufenTyp = "marge" | "lowest_price" | "sales_maximizer";
+export type MargeStufe = {
+  bisTage: number | null;
+  /** Mindestmarge in % – nur bei typ „marge“ (Standard) maßgeblich. */
+  marge: number;
+  unterregel?: Unterregel;
+  typ?: StufenTyp;
+  /** „Lowest Price + x %“: x. */
+  aufschlag?: number;
+  /** Strategie-Name der Stufe in BQool, z. B. „Sales Maximizer“, „Profit Booster“. */
+  strategie?: string;
+  /** Bedingung der Stufe in BQool, z. B. „Available ≥ 1“, „Inbound ≥ 0“. */
+  bedingung?: string;
+};
+
+export const stufenTyp = (s: MargeStufe | null | undefined): StufenTyp => s?.typ ?? "marge";
+/** Stufe mit fester Marge (Margen-Reset)? */
+export const hatFesteMarge = (s: MargeStufe | null | undefined) => !!s && stufenTyp(s) === "marge";
+
+/** Altersbereich einer Stufe als Text: „0–30“, „31–60“, „> 365“. */
+export function stufenBereich(stufen: MargeStufe[], i: number): string {
+  const bis = stufen[i].bisTage;
+  const von = i === 0 ? 0 : (stufen[i - 1].bisTage ?? 0) + 1;
+  return bis === null ? `> ${von - 1}` : `${von}–${bis}`;
+}
+
+/** Marge/Typ einer Stufe als Text – Stufen ohne feste Marge tragen keine Prozentzahl (B33.3). */
+export function stufenText(s: MargeStufe): string {
+  const t = stufenTyp(s);
+  const zus = [s.strategie && t === "marge" ? s.strategie : null, s.bedingung ? `(${s.bedingung})` : null].filter(Boolean).join(" ");
+  if (t === "lowest_price") return `${s.strategie ? `${s.strategie} ` : ""}„Lowest Price + ${String(s.aufschlag ?? 0).replace(".", ",")} %“ – keine feste Marge${s.bedingung ? ` (${s.bedingung})` : ""}`;
+  if (t === "sales_maximizer") return `Sales Maximizer – keine feste Marge${s.bedingung ? ` (${s.bedingung})` : ""}`;
+  return `${String(s.marge).replace(".", ",")} %${zus ? ` ${zus}` : ""}`;
+}
+
+/**
+ * Staffel als Eingabetext und zurück: „30:10 SB [Available ≥ 1], 60:8 EQ, 90:LP+6 SM, 180:1 PB, 270:SM, :0“.
+ * Wert = Marge in % · „LP+x“ = Lowest Price + x % · „SM“ = Sales Maximizer. Kürzel danach: SB/EQ = Unterregel,
+ * PB = Profit Booster, SM hinter LP = Strategie Sales Maximizer. Bedingung in eckigen Klammern.
+ */
+export function staffelAlsText(stufen: MargeStufe[] | null | undefined): string {
+  return (stufen ?? [])
+    .map((x) => {
+      const t = stufenTyp(x);
+      const wert = t === "lowest_price" ? `LP+${x.aufschlag ?? 0}` : t === "sales_maximizer" ? "SM" : String(x.marge);
+      const kz = [x.unterregel ? (x.unterregel === "Equalizer" ? "EQ" : "SB") : null, x.strategie === "Profit Booster" ? "PB" : t === "lowest_price" && x.strategie === "Sales Maximizer" ? "SM" : null].filter(Boolean).join(" ");
+      return `${x.bisTage ?? ""}:${wert}${kz ? ` ${kz}` : ""}${x.bedingung ? ` [${x.bedingung}]` : ""}`;
+    })
+    .join(", ");
+}
+
+export function staffelAusText(text: string): MargeStufe[] | null {
+  const teile = text.split(/,(?![^[]*\])/).map((x) => x.trim()).filter(Boolean);
+  if (!teile.length) return null;
+  return teile.map((x) => {
+    const bed = /\[([^\]]*)\]/.exec(x)?.[1]?.trim();
+    const ohne = x.replace(/\[[^\]]*\]/, "").trim();
+    const [bis, rest = "0"] = ohne.split(":").map((y) => y.trim());
+    const tok = rest.split(/\s+/).filter(Boolean);
+    const w = (tok.shift() ?? "0").toUpperCase();
+    const kz = tok.map((t) => t.toUpperCase());
+    const stufe: MargeStufe = { bisTage: bis ? Number(bis) : null, marge: 0 };
+    if (/^LP\+?[\d.,]*$/.test(w)) {
+      stufe.typ = "lowest_price";
+      stufe.aufschlag = Number(w.replace(/^LP\+?/, "").replace(",", ".") || "0");
+    } else if (w === "SM") stufe.typ = "sales_maximizer";
+    else stufe.marge = Number(w.replace(",", "."));
+    for (const k of kz) {
+      if (k === "SB" || k === "SALES" || k === "BOOSTER") stufe.unterregel = "Sales Booster";
+      else if (k === "EQ" || k === "EQUALIZER") stufe.unterregel = "Equalizer";
+      else if (k === "PB") stufe.strategie = "Profit Booster";
+      else if (k === "SM") stufe.strategie = "Sales Maximizer";
+    }
+    if (bed) stufe.bedingung = bed;
+    return stufe;
+  });
+}
+
+// ---- B33.1 BQool-Formel (aus 20 SKUs belegt) -------------------------------------------------------------------------
+// Est. Profit = P/(1+v) − r·P − F − C/(1+v); Marge = Est. Profit / P; Preis für Marge m: P(m) = (F + C/(1+v)) / (1/(1+v) − r − m).
+// v = USt des Landes, C = Cost in BQool (Brutto-EK wie in der Datei), r = Provision vom Brutto-Preis (je Kategorie, teils
+// in Preisstufen), F = FBA-Gebühr des Landes. „Additional Cost“ und Fixgebühr gehen nicht ein.
+
+/** Provision mit Preisstufen (z. B. Beauty: bis 10 € 8 %, darüber 15 %); `bis` = Preis brutto inklusive. */
+export type ProvisionStufe = { bis: number | null; satz: number };
+export type Provision = number | ProvisionStufe[];
+/** Bekannte Amazon-Preisstufen je Kategorie (erkannt an der Kategorie aus Gebührenvorschau bzw. BQool-Liste). */
+export type ProvisionStaffel = { name: string; erkennen: string[]; stufen: ProvisionStufe[] };
+export const PROVISION_STAFFELN_STANDARD: ProvisionStaffel[] = [
+  { name: "Beauty, Drogerie, Gesundheit, Lebensmittel", erkennen: ["beauty", "drugstore", "health", "personal care", "grocery", "drogerie", "kosmetik", "gesundheit", "lebensmittel"], stufen: [{ bis: 10, satz: 0.08 }, { bis: null, satz: 0.15 }] },
+  { name: "Bekleidung", erkennen: ["apparel", "clothing", "bekleidung"], stufen: [{ bis: 15, satz: 0.05 }, { bis: 20, satz: 0.1 }, { bis: null, satz: 0.15 }] },
+];
+
+/** Provisionssatz aus Betrag/Preis: auf 0,5-%-Schritte, wenn höchstens 0,15 Prozentpunkte daneben (Cent-Rundung), sonst 4 Stellen. */
+export function satzRunden(r: number): number {
+  const stufe = Math.round(r * 200) / 200;
+  return Math.abs(stufe - r) <= 0.0015 ? stufe : Math.round(r * 10000) / 10000;
+}
+
+export function satzBeiPreis(preis: number, provision: Provision): number {
+  if (typeof provision === "number") return provision;
+  for (const s of provision) if (s.bis === null || preis <= s.bis + 1e-9) return s.satz;
+  return provision[provision.length - 1]?.satz ?? 0;
+}
+
+/**
+ * Kleinster Preis mit Marge ≥ m für Zähler K (Kosten ohne Provision, netto): P = K / (1/(1+v) − r − m). Mit Preisstufen
+ * wird je Stufe gerechnet und der kleinste Preis genommen, der in seiner Stufe liegt (so setzt BQool den Min).
+ */
+function preisFuerMarge(k: number, ust: number, provision: Provision, m: number): number | null {
+  const stufen = typeof provision === "number" ? [{ bis: null, satz: provision }] : provision;
+  let unten = 0;
+  for (const s of stufen) {
+    const nenner = 1 / (1 + ust) - s.satz - m;
+    const p = nenner > 0 ? k / nenner : null;
+    if (p !== null) {
+      // Marge schon an der Untergrenze der Stufe erreicht → knapp darüber; sonst liegt p in der Stufe?
+      if (p <= unten + 1e-9) return unten + 0.01;
+      if (s.bis === null || p <= s.bis + 1e-9) return p;
+    }
+    unten = s.bis ?? unten;
+  }
+  return null;
+}
+
+/** P(m) laut BQool, auf den Cent gerundet (BQool rundet kaufmännisch). null, wenn Provision + Marge zu hoch. */
+export function bqoolPreisFuerMarge(o: { cost: number; fba: number; ust: number; provision: Provision; margeProzent: number }): number | null {
+  const p = preisFuerMarge(o.fba + o.cost / (1 + o.ust), o.ust, o.provision, o.margeProzent / 100);
+  return p === null ? null : r2(p);
+}
+
+/** Est. Profit Margin laut BQool in % (zwei Nachkommastellen). */
+export function bqoolMarge(o: { preis: number; cost: number; fba: number; ust: number; provision: Provision }): number | null {
+  if (!(o.preis > 0)) return null;
+  const r = satzBeiPreis(o.preis, o.provision);
+  const gewinn = o.preis / (1 + o.ust) - r * o.preis - o.fba - o.cost / (1 + o.ust);
+  return Math.round((gewinn / o.preis) * 10000) / 100;
+}
+
+/**
+ * Preisstufen einer Kategorie – nur, wenn der beobachtete Satz zum Preis der Beobachtung passt (sonst gilt der
+ * beobachtete Satz pauschal, z. B. Elektronik 7 %).
+ */
+export function provisionFuer(o: { satz: number; preis: number | null; kategorie: string | null; staffeln?: ProvisionStaffel[] }): Provision {
+  const kat = (o.kategorie ?? "").toLowerCase();
+  if (!kat) return o.satz;
+  const st = (o.staffeln ?? PROVISION_STAFFELN_STANDARD).find((x) => x.erkennen.some((e) => kat.includes(e.toLowerCase())));
+  if (!st) return o.satz;
+  if (o.preis !== null && o.preis > 0 && Math.abs(satzBeiPreis(o.preis, st.stufen) - o.satz) > 0.0025) return o.satz;
+  return st.stufen;
+}
+
+export type GebuehrenQuelle = "bqool" | "amazon" | "produkt";
+export type LandGebuehren = { fba: number; provision: Provision; satz: number; quelle: GebuehrenQuelle; geschaetzt: boolean; kategorie: string | null };
+export type GebuehrenBeobachtung = { fba: number | null; satz: number | null; preis: number | null; kategorie: string | null };
+
+/**
+ * Gebühren je Land (B33.1: F je Land, nicht aus DE): BQool-Listing-Zeile (Referral, FBA) → Amazon-Gebührenvorschau des
+ * Landes → Werte am Produkt (DE). Außerhalb DE ist der Produktwert nur eine Schätzung.
+ */
+export function gebuehrenFuerLand(o: { land: ExportLand; bqool?: GebuehrenBeobachtung | null; amazon?: GebuehrenBeobachtung | null; produkt: { fba: number; satz: number; geschaetzt?: boolean }; staffeln?: ProvisionStaffel[] }): LandGebuehren {
+  const kategorie = o.bqool?.kategorie ?? o.amazon?.kategorie ?? null;
+  const prov = (satz: number, preis: number | null) => provisionFuer({ satz, preis, kategorie, staffeln: o.staffeln });
+  const quellen: [GebuehrenQuelle, GebuehrenBeobachtung | null | undefined][] = [["bqool", o.bqool], ["amazon", o.amazon]];
+  const fbaQ = quellen.find(([, b]) => b?.fba !== null && b?.fba !== undefined);
+  const satzQ = quellen.find(([, b]) => b?.satz !== null && b?.satz !== undefined);
+  const fba = fbaQ ? fbaQ[1]!.fba! : o.produkt.fba;
+  const satz = satzQ ? satzQ[1]!.satz! : o.produkt.satz;
+  const quelle: GebuehrenQuelle = fbaQ?.[0] ?? satzQ?.[0] ?? "produkt";
+  const geschaetzt = !fbaQ || !satzQ ? o.land !== "DE" || !!o.produkt.geschaetzt : false;
+  return { fba, satz, provision: prov(satz, satzQ ? satzQ[1]!.preis : null), quelle, geschaetzt, kategorie };
+}
 /** Regel „ia“: Mindestmarge nach Lagerdauer 10/8/7/5/3/1/0 % (Stufen änderbar in den Einstellungen). */
 export const MARGE_NACH_ALTER: MargeStufe[] = [
   { bisTage: 30, marge: 10, unterregel: "Sales Booster" },
@@ -86,13 +262,13 @@ export function margeNachAlter(tage: number | null, stufen: MargeStufe[] = MARGE
 }
 
 /**
- * Break-even-Mindestpreis brutto je Land: P = (FBA + Fixgebühr + EK + Zusatzkosten) / (1/(1+USt) − Provision − Zielmarge).
- * Aufgerundet auf den Cent. null, wenn der Nenner ≤ 0 ist (Provision + Marge zu hoch).
+ * Break-even-Mindestpreis brutto je Land (eigene Kosten): P = (FBA + Fixgebühr + EK netto + Zusatzkosten) /
+ * (1/(1+USt) − Provision − Zielmarge). Aufgerundet auf den Cent. null, wenn der Nenner ≤ 0 ist (Provision + Marge zu hoch).
+ * Provision auch mit Preisstufen (kleinster Preis, der die Marge erreicht).
  */
-export function breakEvenMin(o: { ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: number; margeProzent: number }): number | null {
-  const nenner = 1 / (1 + o.ust) - o.provision - o.margeProzent / 100;
-  if (nenner <= 0) return null;
-  return auf2((o.fba + o.fix + o.ek + o.zusatz) / nenner);
+export function breakEvenMin(o: { ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: Provision; margeProzent: number }): number | null {
+  const p = preisFuerMarge(o.fba + o.fix + o.ek + o.zusatz, o.ust, o.provision, o.margeProzent / 100);
+  return p === null ? null : auf2(p);
 }
 
 /** Höchstpreis: max(Ø Buy Box 90 Tage × Faktor; Listenpreis); ohne beides Mindestpreis × Ersatzfaktor. Nie unter Min. */
@@ -227,14 +403,19 @@ export function liesBqoolDatei(text: string, dateiname: string): { land: ExportL
 export type IstStand = { regel: string | null; min: number | null; max: number | null; cost?: number | null };
 export type Aenderung = { sku: string; art: "neu" | "geaendert" | "gleich"; regelWechsel: boolean; minAlt: number | null; minNeu: number; minDiff: number | null };
 
-/** Vergleich mit dem Ist-Stand (BQool-Export bzw. letzter eigener Export). Cent-genau. */
-export function vergleiche(neu: ExportZeile[], ist: Map<string, IstStand>): Aenderung[] {
+/**
+ * Vergleich mit dem Ist-Stand (BQool-Export bzw. letzter eigener Export). Cent-genau. `minZaehlt` = false (B33.2: Regel
+ * mit Margen-Reset, gleiche Regel): eine reine Min-Abweichung ist keine Änderung – BQool setzt den Min ohnehin täglich
+ * auf P(Marge); fehlt in BQool ein Min, zählt sie trotzdem.
+ */
+export function vergleiche(neu: ExportZeile[], ist: Map<string, IstStand>, o: { minZaehlt?: (z: ExportZeile) => boolean } = {}): Aenderung[] {
   return neu.map((z) => {
     const a = ist.get(z.sku);
     if (!a) return { sku: z.sku, art: "neu", regelWechsel: false, minAlt: null, minNeu: z.min, minDiff: null };
     const regelWechsel = (a.regel ?? "").trim().toLowerCase() !== z.regel.trim().toLowerCase();
     const costGleich = a.cost === undefined || (a.cost !== null && Math.abs(a.cost - z.cost) < 0.005);
-    const gleich = !regelWechsel && costGleich && a.min !== null && Math.abs(a.min - z.min) < 0.005 && a.max !== null && Math.abs(a.max - z.max) < 0.005;
+    const minEgal = !regelWechsel && a.min !== null && a.min > 0 && o.minZaehlt !== undefined && !o.minZaehlt(z);
+    const gleich = !regelWechsel && costGleich && a.min !== null && (minEgal || Math.abs(a.min - z.min) < 0.005) && a.max !== null && Math.abs(a.max - z.max) < 0.005;
     return { sku: z.sku, art: gleich ? "gleich" : "geaendert", regelWechsel, minAlt: a.min, minNeu: z.min, minDiff: a.min !== null ? r2(z.min - a.min) : null };
   });
 }
@@ -277,12 +458,34 @@ export type KatalogRegel = {
   strategie: string;
   /** Mindestmarge nach Lagerdauer (Margen-Regel); null = keine Margen-Untergrenze. */
   staffel: MargeStufe[] | null;
+  /** B33.3: Stufen je Land, wie BQool sie zeigt (sonst gilt `staffel`). */
+  staffelJeLand?: Partial<Record<ExportLand, MargeStufe[]>>;
+  /**
+   * B33.2: BQool setzt den Min einmal täglich auf P(Marge der Stufe) zurück („Rule + Min Price“ mit „Reset Min Price to
+   * Est. Profit Margin“) – Datei-Min wirkt höchstens bis zum nächsten Reset. Ohne Angabe: Margen-Regeln (Staffel, keine
+   * feste Untergrenze) setzen zurück.
+   */
+  minReset?: boolean;
+  /** Regel-ID in BQool je Land (nur zur Anzeige). */
+  bqoolIds?: Partial<Record<ExportLand, number>>;
   /** Min Price je SKU und Land maßgeblich (Liquidation). */
   festeUntergrenze: boolean;
   /** Im Abgleich als Risiko melden (z. B. „mbb“ ohne Untergrenze). */
   risiko: boolean;
   hinweis: string;
 };
+
+/** B33.2: Überschreibt BQool den Min dieser Regel täglich (Margen-Reset)? */
+export function setztMinZurueck(k: KatalogRegel | null | undefined): boolean {
+  if (!k) return false;
+  return k.minReset ?? (!!k.staffel && !k.festeUntergrenze && !k.risiko);
+}
+
+/** Stufen der Regel im Land (B33.3), sonst die allgemeine Staffel. */
+export function staffelFuer(k: KatalogRegel | null | undefined, land: ExportLand | null | undefined): MargeStufe[] | null {
+  if (!k) return null;
+  return (land ? k.staffelJeLand?.[land] : undefined) ?? k.staffel;
+}
 
 /**
  * B20.9: „AI Win Sales Booster“ als eigene Strategie im Katalog – BQool-KI, die den Preis so setzt, dass die Buy Box
@@ -291,55 +494,55 @@ export type KatalogRegel = {
 export const AI_WIN_SALES_BOOSTER: KatalogRegel = {
   name: "AI Win Sales Booster",
   laender: null,
-  strategie: "BQool-KI: Buy Box gewinnen und Abverkauf beschleunigen (Basis der Liquidation)",
+  strategie: "BQool-KI: Buy Box gewinnen und Abverkauf beschleunigen (Basis der Liquidation, BQool-ID 2)",
   staffel: null,
+  minReset: false,
   festeUntergrenze: true,
   risiko: false,
   hinweis: "Die KI senkt den Preis Schritt für Schritt bis zum Min Price, wenn die Buy Box fehlt oder sich nichts verkauft, und hebt ihn wieder, sobald es läuft. Der Min Price je SKU und Land ist die feste Untergrenze – deshalb Min = Break-even bzw. Liquidationspreis bewusst setzen.",
 };
 
-/** Startwerte laut Bauauftrag – einmal mit BQool abgleichen (Altersstufen der Abverkauf-Regeln prüfen). */
+// B33.3 Stufen laut BQool (08.11., aus der Feldreihenfolge abgeleitet – einmal gegen Screenshot prüfen).
+// Reihenfolge hier 0–30, 31–60, 61–90, 91–180, 181–270, 271–365, > 365.
+const st = (bisTage: number | null, marge: number, x: Omit<MargeStufe, "bisTage" | "marge"> = {}): MargeStufe => ({ bisTage, marge, ...x });
+const lp = (bisTage: number | null, aufschlag: number, x: Omit<MargeStufe, "bisTage" | "marge" | "typ" | "aufschlag"> = {}): MargeStufe => ({ bisTage, marge: 0, typ: "lowest_price", aufschlag, ...x });
+const sm = (bisTage: number | null, x: Omit<MargeStufe, "bisTage" | "marge" | "typ"> = {}): MargeStufe => ({ bisTage, marge: 0, typ: "sales_maximizer", ...x });
+const SB = { unterregel: "Sales Booster" as const };
+const EQ = { unterregel: "Equalizer" as const };
+export const IA_JE_LAND: Record<ExportLand, MargeStufe[]> = {
+  DE: [st(30, 10, { ...SB, bedingung: "Available ≥ 1" }), st(60, 8, EQ), st(90, 7, EQ), st(180, 5, EQ), st(270, 3, SB), st(365, 1, SB), st(null, 0, SB)],
+  FR: [st(30, 11, { ...SB, bedingung: "Inbound ≥ 0" }), st(60, 8, EQ), lp(90, 6, { strategie: "Sales Maximizer" }), st(180, 4, EQ), st(270, 3, SB), st(365, 1, SB), st(null, 0, SB)],
+  IT: [lp(30, 11, { bedingung: "Inbound ≥ 0" }), st(60, 8, EQ), st(90, 6, EQ), st(180, 4, EQ), st(270, 3, SB), st(365, 1, SB), st(null, 0, SB)],
+  ES: [st(30, 11, { ...SB, bedingung: "Available ≥ 1" }), st(60, 8, EQ), st(90, 5, EQ), st(180, 4, EQ), st(270, 3, SB), st(365, 1, SB), st(null, 0, SB)],
+};
+export const ABVERKAUF_JE_LAND: Record<ExportLand, MargeStufe[]> = {
+  DE: [st(30, 5, EQ), st(60, 4, EQ), st(90, 3, EQ), st(180, 1, EQ), st(270, 0, SB), st(365, 1, SB), st(null, 0, SB)],
+  FR: [st(30, 5, SB), st(60, 4, SB), lp(90, 3), st(180, 1, { ...SB, strategie: "Profit Booster" }), sm(270), st(365, 1, SB), st(null, 0, SB)],
+  IT: [st(30, 5, SB), st(60, 4, SB), st(90, 3, SB), st(180, 1, SB), sm(270), st(365, 1, SB), st(null, 0, SB)],
+  ES: [st(30, 5, SB), st(60, 4, SB), st(90, 3, SB), st(180, 1, SB), sm(270), st(365, 1, SB), st(null, 0, SB)],
+};
+const HINWEIS_B33 = "Stufen laut BQool 08.11. (Zuordnung aus der Feldreihenfolge abgeleitet – einmal gegen Screenshot prüfen).";
+
+/** Stand B33 (BQool 08.11.) – Margen-Regeln setzen den Min täglich zurück, Liquidation/mbb nicht. */
 export const KATALOG_STANDARD: KatalogRegel[] = [
-  { name: "ia", laender: null, strategie: "Strategie nach FBA-Lageralter (BQool-ID 37)", staffel: MARGE_NACH_ALTER, festeUntergrenze: false, risiko: false, hinweis: "Standard; 0–30 T nur wenn ≥ 1 Stück verfügbar" },
-  {
-    name: "Abverkauf DE",
-    laender: ["DE"],
-    strategie: "wie ia, niedrigere Margen (BQool-ID 47)",
-    staffel: [
-      { bisTage: 30, marge: 7, unterregel: "Equalizer" },
-      { bisTage: 60, marge: 5, unterregel: "Equalizer" },
-      { bisTage: 90, marge: 3, unterregel: "Equalizer" },
-      { bisTage: 180, marge: 1, unterregel: "Equalizer" },
-      { bisTage: 270, marge: 0, unterregel: "Sales Booster" },
-      { bisTage: 365, marge: 0, unterregel: "Sales Booster" },
-      { bisTage: null, marge: 0, unterregel: "Sales Booster" },
-    ],
-    festeUntergrenze: false,
-    risiko: false,
-    hinweis: "271–365 T in BQool noch 1 % – Ludwig stellt auf 0 %",
-  },
-  // Soll laut Ludwig (30.10.): je Land eigene Regel (BQool-ID FR 48 · IT 50 · ES 49), alle Stufen AI Win Sales Booster,
-  // Mindestmarge 0–30 T 4 % (nur mit ≥ 1 Stück verfügbar) · 31–60 T 3 % · 61–90 T 2 % · 91–180 T 1 % · ab 181 T 0 %.
-  {
-    name: "Abverkauf",
-    // In BQool DE gibt es nur „Abverkauf DE“.
-    laender: ["FR", "IT", "ES"],
-    strategie: "AI Win Sales Booster je Land (BQool-ID FR 48 · IT 50 · ES 49)",
-    staffel: [
-      { bisTage: 30, marge: 4, unterregel: "Sales Booster" },
-      { bisTage: 60, marge: 3, unterregel: "Sales Booster" },
-      { bisTage: 90, marge: 2, unterregel: "Sales Booster" },
-      { bisTage: 180, marge: 1, unterregel: "Sales Booster" },
-      { bisTage: null, marge: 0, unterregel: "Sales Booster" },
-    ],
-    festeUntergrenze: false,
-    risiko: false,
-    hinweis: "Soll 4/3/2/1/0 % (0–30 T nur mit ≥ 1 verfügbar). Ist 30.10.: 7/5/3/1/0/1/0 %, Strategien gemischt (z. T. „Tiefstpreis + x %“) – Ludwig stellt in BQool um; das Seller-System rechnet mit dem Soll und meldet abweichende Regeln je SKU nach dem nächsten BQool-Export.",
-  },
-  { name: "Liquidation", aliase: ["AI Win Sales Booster"], laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload (BQool-ID 43)", staffel: null, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich" },
-  { name: "mbb", laender: null, strategie: "Match Buy Box (BQool-ID 33)", staffel: null, festeUntergrenze: false, risiko: true, hinweis: "nur hochgeladener Min, keine Marge – Ziel: auf ia umstellen" },
+  { name: "ia", laender: null, strategie: "Strategie nach FBA-Lageralter, „Rule + Min Price“ mit Margen-Reset (BQool-ID DE 37 · FR 39 · IT 40 · ES 38)", staffel: MARGE_NACH_ALTER, staffelJeLand: IA_JE_LAND, minReset: true, bqoolIds: { DE: 37, FR: 39, IT: 40, ES: 38 }, festeUntergrenze: false, risiko: false, hinweis: `Standard. ${HINWEIS_B33}` },
+  { name: "Abverkauf DE", laender: ["DE"], strategie: "wie ia, niedrigere Margen, Margen-Reset (BQool-ID 47)", staffel: ABVERKAUF_JE_LAND.DE, staffelJeLand: { DE: ABVERKAUF_JE_LAND.DE }, minReset: true, bqoolIds: { DE: 47 }, festeUntergrenze: false, risiko: false, hinweis: HINWEIS_B33 },
+  // In BQool DE gibt es nur „Abverkauf DE“.
+  { name: "Abverkauf", laender: ["FR", "IT", "ES"], strategie: "Abverkauf je Land, Margen-Reset (BQool-ID FR 48 · IT 50 · ES 49)", staffel: ABVERKAUF_JE_LAND.IT, staffelJeLand: { FR: ABVERKAUF_JE_LAND.FR, IT: ABVERKAUF_JE_LAND.IT, ES: ABVERKAUF_JE_LAND.ES }, minReset: true, bqoolIds: { FR: 48, IT: 50, ES: 49 }, festeUntergrenze: false, risiko: false, hinweis: HINWEIS_B33 },
+  { name: "Liquidation", aliase: ["AI Win Sales Booster"], laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload, kein Reset (BQool-ID DE 43 · ES 44 · FR 45 · IT 46)", staffel: null, minReset: false, bqoolIds: { DE: 43, ES: 44, FR: 45, IT: 46 }, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich (feste Untergrenze); gebrauchte Ware: AI Repricing. Zählt gegen das AI+CR-Kontingent – vor großen Wechseln prüfen." },
+  { name: "mbb", laender: null, strategie: "Match Buy Box, kein Reset (BQool-ID 33)", staffel: null, minReset: false, bqoolIds: { DE: 33 }, festeUntergrenze: false, risiko: true, hinweis: "nur hochgeladener Min, keine Marge – Ziel: auf ia umstellen" },
   AI_WIN_SALES_BOOSTER,
 ];
+
+/**
+ * B33.5 Variante 2: BQool-Regel „Schnelldreher“ = Kopie von ia mit allen Stufen auf der Boden-Marge (7 %), Margen-Reset auf
+ * 7 %. Ludwig legt sie in BQool an; das System ordnet SKUs über den Rule Name zu. Variante 3 (Modus „Rule“ statt „Rule +
+ * Min Price“, kein Reset) = dieselbe Regel mit Min-Reset aus – erst mit einer Test-SKU prüfen.
+ */
+export function schnelldreherRegel(name: string, margeProzent: number, minReset = true): KatalogRegel {
+  const stufen = MARGE_NACH_ALTER.map((x) => ({ bisTage: x.bisTage, marge: margeProzent, unterregel: "Sales Booster" as const }));
+  return { name, laender: null, strategie: `Kopie von ia, alle Stufen ${margeProzent} %${minReset ? " (Reset auf die Marge)" : ", Modus „Rule“ ohne Min-Reset – ungeprüft"}`, staffel: stufen, minReset, festeUntergrenze: false, risiko: false, hinweis: `B33.5 Variante ${minReset ? 2 : 3}: in BQool je Land anlegen (von Ludwig), das System ordnet Schnelldreher über den Rule Name zu.` };
+}
 
 export const katalogRegel = (katalog: KatalogRegel[], name: string | null | undefined) => {
   if (!name) return null;
@@ -363,20 +566,36 @@ export function dateiMin(o: { regel: KatalogRegel | null; untergrenze: number | 
   return o.breakEven;
 }
 
+export type EffMin = {
+  min: number | null;
+  marge: number | null;
+  unterregel: Unterregel | null;
+  /** wettbewerb = Stufe ohne feste Marge („Lowest Price + x %“, Sales Maximizer) – kein Min gerechnet. */
+  art: "untergrenze" | "marge" | "wettbewerb" | "ohne_untergrenze" | "unbekannte_regel";
+  stufe: MargeStufe | null;
+  /** B33.2: BQool überschreibt den Min täglich mit P(Marge). */
+  minReset: boolean;
+};
+
+export const KEINE_FESTE_MARGE = "keine feste Marge (Wettbewerbspreis)";
+
 /**
- * Effektiver Mindestpreis je SKU/Land, wie BQool ihn ansetzt: EK + Gebühren + Mindestmarge der Regel in der
- * Altersstufe (amazon_lageralter); Liquidation = Untergrenze; Regel ohne Untergrenze (mbb) = Break-even + Risiko.
+ * Effektiver Mindestpreis je SKU/Land, wie BQool ihn ansetzt (B33.1): P(m) mit der Marge der Altersstufe der Regel im
+ * Land, Cost (brutto wie in der Datei), FBA-Gebühr und Provision des Landes. Liquidation = Untergrenze aus dem Upload;
+ * Stufe ohne feste Marge = kein Min („keine feste Marge (Wettbewerbspreis)“); Regel ohne Staffel (mbb) bzw. unbekannte
+ * Regel = P(0 %).
  */
-export function effektiverMin(o: { regel: KatalogRegel | null; untergrenze: number | null; ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: number; alterTage: number | null }): { min: number | null; marge: number | null; unterregel: Unterregel | null; art: "untergrenze" | "marge" | "ohne_untergrenze" | "unbekannte_regel" } {
-  // Annahme bis zum Nachrechnen an einer echten SKU: BQools „geschätzte Gewinnmarge“ bezieht sich auf den
-  // Brutto-Verkaufspreis (wie die Zielmarge im Break-even oben). Bei Abweichung hier anpassen.
-  const be = (marge: number) => breakEvenMin({ ek: o.ek, fba: o.fba, fix: o.fix, zusatz: o.zusatz, ust: o.ust, provision: o.provision, margeProzent: marge });
-  if (o.regel?.festeUntergrenze) return { min: o.untergrenze, marge: null, unterregel: "Sales Booster", art: "untergrenze" };
-  if (!o.regel) return { min: be(0), marge: 0, unterregel: null, art: "unbekannte_regel" };
-  if (!o.regel.staffel) return { min: be(0), marge: 0, unterregel: null, art: "ohne_untergrenze" };
-  const stufe = stufeNachAlter(o.alterTage, o.regel.staffel);
+export function effektiverMin(o: { regel: KatalogRegel | null; land?: ExportLand | null; untergrenze: number | null; cost: number; fba: number; ust: number; provision: Provision; alterTage: number | null }): EffMin {
+  const p = (marge: number) => bqoolPreisFuerMarge({ cost: o.cost, fba: o.fba, ust: o.ust, provision: o.provision, margeProzent: marge });
+  if (o.regel?.festeUntergrenze) return { min: o.untergrenze, marge: null, unterregel: "Sales Booster", art: "untergrenze", stufe: null, minReset: false };
+  if (!o.regel) return { min: p(0), marge: 0, unterregel: null, art: "unbekannte_regel", stufe: null, minReset: false };
+  const staffel = staffelFuer(o.regel, o.land);
+  if (!staffel) return { min: p(0), marge: 0, unterregel: null, art: "ohne_untergrenze", stufe: null, minReset: setztMinZurueck(o.regel) };
+  const stufe = stufeNachAlter(o.alterTage, staffel);
+  const reset = setztMinZurueck(o.regel);
+  if (stufe && !hatFesteMarge(stufe)) return { min: null, marge: null, unterregel: stufe.unterregel ?? null, art: "wettbewerb", stufe, minReset: false };
   const marge = stufe?.marge ?? 0;
-  return { min: be(marge), marge, unterregel: stufe?.unterregel ?? null, art: "marge" };
+  return { min: p(marge), marge, unterregel: stufe?.unterregel ?? null, art: "marge", stufe, minReset: reset };
 }
 
 /**
@@ -426,9 +645,9 @@ export function liquidationsName(katalog: KatalogRegel[]): string {
 }
 
 /** Marge in % vom Brutto-Preis bei diesem Preis – Umkehrung von breakEvenMin (eine Nachkommastelle). */
-export function margeBeiPreis(o: { preis: number; ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: number }): number | null {
+export function margeBeiPreis(o: { preis: number; ek: number; fba: number; fix: number; zusatz: number; ust: number; provision: Provision }): number | null {
   if (!(o.preis > 0)) return null;
-  const netto = o.preis * (1 / (1 + o.ust) - o.provision);
+  const netto = o.preis * (1 / (1 + o.ust) - satzBeiPreis(o.preis, o.provision));
   return Math.round(((netto - (o.fba + o.fix + o.ek + o.zusatz)) / o.preis) * 1000) / 10;
 }
 
@@ -463,7 +682,8 @@ export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | nu
   const mitBoden = (m: number | null) => (m !== null && boden !== null ? Math.max(m, boden) : m);
   const leer = { regelVorher: null, angehoben: false, keinWechsel: null } as const;
   if (o.regel?.festeUntergrenze) {
-    const min = o.gewuenscht ?? be;
+    // B33.5 Variante 1: Schnelldreher mit Liquidation ohne festen Min → Min = Boden P(7 %)
+    const min = o.gewuenscht ?? (o.schnelldreher && boden !== null ? boden : be);
     return { ...leer, regel: o.regelName, min, art: "liquidation", unterBreakEven: unter(min), verlustFreigegeben: freigegeben(min) };
   }
   if (o.regel?.staffel) {

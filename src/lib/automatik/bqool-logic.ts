@@ -15,7 +15,10 @@ export function bqoolAbleiten(deUrl: string | null | undefined, land: BqoolLand)
   if (!deUrl) return null;
   if (land === "DE") return deUrl;
   const code = land === "UK" ? "uk" : land.toLowerCase();
-  return /amazonde/i.test(deUrl) ? deUrl.replace(/amazonde/i, `amazon${code}`) : null;
+  if (/amazonde/i.test(deUrl)) return deUrl.replace(/amazonde/i, `amazon${code}`);
+  // B33.6: Berichtsseiten mit „locale=DE“ (…/reports?setApp=1&module=R&locale=DE → locale=FR)
+  if (/([?&]locale=)DE\b/i.test(deUrl)) return deUrl.replace(/([?&]locale=)DE\b/i, `$1${land}`);
+  return null;
 }
 
 export type BqoolAdresse = { land: BqoolLand; url: string | null; abgeleitet: boolean };

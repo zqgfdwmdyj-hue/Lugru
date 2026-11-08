@@ -195,6 +195,32 @@ export function leseBqool(headers: string[], rows: string[][], standardMarkt: Bq
   };
 }
 
+// ---- B33.1 Gebühren je Land aus der BQool-Liste („Download listings“) ----------------------------------------------
+
+/**
+ * Referral- und FBA-Gebühr aus den Zusatzspalten einer BQool-Listenzeile (Spalten am Namen erkannt): Betrag oder Satz
+ * („Referral Fee %“, „15%“); Satz = Betrag / Preis. Kategorie, wenn vorhanden (für Preisstufen der Provision).
+ */
+export function gebuehrenAusListing(zusatz: Record<string, string>, preis: number | null): { fba: number | null; satz: number | null; kategorie: string | null } {
+  let fba: number | null = null;
+  let satz: number | null = null;
+  let kategorie: string | null = null;
+  for (const [h, v] of Object.entries(zusatz)) {
+    const n = norm(h);
+    const roh = (v ?? "").trim();
+    if (!roh) continue;
+    if (fba === null && /(fbafee|fulfil+mentfee|fbagebuhr|versandgebuhr|fulfil+ment(fee)?perunit)/.test(n) && !/rate|percent|%/.test(n)) fba = zahl(roh);
+    else if (satz === null && /(referral|commission|verkaufsgebuhr|provision)/.test(n)) {
+      const proz = /%/.test(roh) || /rate|percent|prozent|%/.test(h.toLowerCase());
+      const x = zahl(roh.replace("%", ""));
+      if (x === null) continue;
+      if (proz) satz = x > 1 ? x / 100 : x;
+      else if (preis && preis > 0) satz = x / preis;
+    } else if (kategorie === null && /^(category|productgroup|kategorie|productcategory|produktgruppe)$/.test(n)) kategorie = roh.slice(0, 120);
+  }
+  return { fba: fba !== null && fba >= 0 ? fba : null, satz: satz !== null && satz > 0 && satz < 0.6 ? Math.round(satz * 10000) / 10000 : null, kategorie };
+}
+
 // ---- Prüfen --------------------------------------------------------------------------------------
 
 export type Hinweis = "min_unter_untergrenze" | "ohne_min" | "ohne_max" | "pausiert" | "preis_unter_min" | "preis_ueber_max" | "buybox_verloren" | "ohne_regel" | "min_ueber_max";

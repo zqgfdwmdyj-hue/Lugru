@@ -88,6 +88,10 @@ export type CheckEingabe = {
   /** B32.4: Median der eigenen Verkaufspreise (14 Tage) und Anzahl. */
   verkaufspreisMedian: number | null;
   verkaufspreisAnzahl: number;
+  /** B33.4: Regel laut BQool (Ist), setzt sie den Min täglich zurück (Margen-Reset), Stufe als Text. */
+  istRegel?: string | null;
+  istMinReset?: boolean;
+  stufeText?: string | null;
 };
 
 export type Befund = { nr: number; titel: string; vorschlag: string; potenzial: number; zahlen: Record<string, number | string | null>; aktion: "min" | "aktivieren" | "schnelldreher" | "max" | "leiter" | "hinweis" | "verlust" | "zustand"; wert: number | null };
@@ -103,6 +107,7 @@ export const BEFUND_TITEL: Record<number, string> = {
   8: "Preis über Markt",
   9: "Ladenhüter",
   10: "Verkaufspreis dauerhaft unter Min",
+  11: "Frischbestand-Falle",
 };
 
 /** Nachfrage in Stück je Monat, die wir realistisch abbekommen (Keepa-Mindestwert, höchstens Bestand). */
@@ -123,7 +128,9 @@ export function befundePruefen(e: CheckEingabe, s: CheckSchwellen = CHECK_STANDA
   // 1 Min über Buy Box (und über dem 30-Tage-Schnitt minus 3 %)
   if (e.minBqool !== null && e.buybox !== null && e.minBqool > e.buybox + 0.005 && (e.bb30 === null || e.minBqool > e.bb30 * (1 - s.minUeberBbAbschlag / 100))) {
     const ziel = e.zielMin;
-    b.push({ nr: 1, titel: BEFUND_TITEL[1], vorschlag: ziel !== null ? `Min senken auf ${ziel.toFixed(2)} (${e.schnelldreher || e.schnelldreherKandidat ? "Break-even + 7 %, nie unter effektivem Min" : "effektiver Min"})` : "Min senken auf effektiven Min", potenzial: r2(fehlend * margeJeStueck(e, e.buybox)), zahlen: { min: e.minBqool, buybox: e.buybox, bb30: e.bb30, ziel_min: ziel }, aktion: "min", wert: ziel });
+    // B33.2: bei Regeln mit Margen-Reset wirkt ein niedrigerer Min nur über den Regelwechsel (Liquidation)
+    const reset = e.istMinReset ? ` – bei „${e.istRegel ?? "ia"}“ nur über Regelwechsel auf Liquidation (BQool setzt den Min sonst täglich zurück)` : "";
+    b.push({ nr: 1, titel: BEFUND_TITEL[1], vorschlag: `${ziel !== null ? `Min senken auf ${ziel.toFixed(2)} (${e.schnelldreher || e.schnelldreherKandidat ? "Break-even + 7 %, nie unter effektivem Min" : "effektiver Min"})` : "Min senken auf effektiven Min"}${reset}`, potenzial: r2(fehlend * margeJeStueck(e, e.buybox)), zahlen: { min: e.minBqool, buybox: e.buybox, bb30: e.bb30, ziel_min: ziel }, aktion: "min", wert: ziel });
   }
   // 2 Pausiert trotz Bestand und Nachfrage
   if (e.status === "pausiert" && e.bestand > 0 && (nachfrage(e) > 0 || (e.rang !== null && e.rang > 0 && e.rang < 50000))) {
@@ -161,6 +168,12 @@ export function befundePruefen(e: CheckEingabe, s: CheckSchwellen = CHECK_STANDA
   // 10 (B32.4) eigener Verkaufspreis dauerhaft unter dem Min der Datei
   if (e.verkaufspreisMedian !== null && e.verkaufspreisAnzahl >= 3 && e.minBqool !== null && e.verkaufspreisMedian < e.minBqool * 0.99) {
     b.push({ nr: 10, titel: BEFUND_TITEL[10], vorschlag: `Min ${e.minBqool.toFixed(2)} zu hoch angelegt (verkauft zu ${e.verkaufspreisMedian.toFixed(2)}) oder BQool unterschreitet ihn`, potenzial: 0, zahlen: { min: e.minBqool, verkaufspreis: e.verkaufspreisMedian, verkaeufe: e.verkaufspreisAnzahl }, aktion: "hinweis", wert: null });
+  }
+  // 11 B33.4 Frischbestand-Falle: Stufe 0–30 Tage, Min (BQool) über der Buy Box, 7 Tage kein Verkauf – frische Ware läuft mit
+  // 10–11 % Marge und wird bei fallender Buy Box täglich über den Markt gesetzt.
+  if (e.lagerdauer !== null && e.lagerdauer <= 30 && e.minBqool !== null && e.buybox !== null && e.minBqool > e.buybox + 0.005 && e.verkaeufe7 === 0 && e.bestand > 0) {
+    const wie = e.istMinReset ? `„${e.istRegel ?? "ia"}“ setzt den Min täglich auf die Marge der Stufe 0–30${e.stufeText ? ` (${e.stufeText})` : ""}` : `Min ${e.minBqool.toFixed(2)} in Stufe 0–30`;
+    b.push({ nr: 11, titel: BEFUND_TITEL[11], vorschlag: `${wie} – über der Buy Box ${e.buybox.toFixed(2)}, 7 Tage kein Verkauf. Regel wechseln (Liquidation mit Min = P(7 %) bzw. Regel „Schnelldreher“); ein Min-Upload allein wirkt nicht`, potenzial: r2(Math.max(1, nachfrage(e) - v30) * margeJeStueck(e, e.buybox)), zahlen: { min: e.minBqool, buybox: e.buybox, verkaeufe_7: 0, lagerdauer: e.lagerdauer, regel: e.istRegel ?? null }, aktion: "hinweis", wert: null });
   }
   return b;
 }

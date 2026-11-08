@@ -82,7 +82,7 @@ describe("Nachkontrolle", () => {
     expect(k.geprueft).toBe(3);
     expect(k.ok).toBe(1);
     expect(k.abweichungen).toEqual([
-      { land: "DE", sku: "B", text: "Regel „ia“ statt „Abverkauf DE“, Min 19,50 statt 20,00" },
+      { land: "DE", sku: "B", text: "Regel „ia“ statt „Abverkauf DE“, Min vorher – / Datei 20,00 / nachher 19,50 – Min hätte stehen bleiben müssen" },
       { land: "FR", sku: "A", text: "nicht im BQool-Export" },
     ]);
     expect(nachkontrolle(hoch.slice(0, 1), ist).text).toBe("Min und Regel stimmen bei allen 1 SKU.");

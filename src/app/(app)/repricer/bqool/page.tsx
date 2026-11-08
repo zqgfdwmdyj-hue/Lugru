@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
-import { EXPORT_LAENDER } from "@/lib/bqool/export-logic";
+import { EXPORT_LAENDER, KATALOG_STANDARD, katalogRegel, setztMinZurueck, staffelAlsText, staffelFuer, stufenBereich, stufenTyp, type KatalogRegel, type MargeStufe } from "@/lib/bqool/export-logic";
 import { bqoolExporte, bqoolVorschau, zuweisungen } from "@/lib/bqool/export-service";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/store";
 import { bqoolUploadAdressen } from "@/lib/automatik/bqool-logic";
 import { letzterBqoolVergleich } from "@/lib/arbitrageone/service";
-import { ablaufAction, anBqoolAction, exportErzeugenAction, leiterEinstellungenAction, leiterVorschlagAction, istUebernehmenAction, katalogAction, liquidationPruefenAction, liquidationTestAction, liquidationTestExportAction, rueckkehrAction, verlustFreigabeAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { ablaufAction, anBqoolAction, exportErzeugenAction, leiterEinstellungenAction, leiterVorschlagAction, istUebernehmenAction, katalogAction, katalogB33Action, liquidationPruefenAction, schnellRegelAction, uploadVerlaufAction, liquidationTestAction, liquidationTestExportAction, rueckkehrAction, verlustFreigabeAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
 import { liquidationsStand } from "@/lib/bqool/liquidation";
 import { RUECKKEHR_AUFSCHLAG, RUECKKEHR_TAGE } from "@/lib/bqool/export-logic";
+import { uploadFehlerText } from "@/lib/bqool/kreislauf-logic";
 import { kreislaufStand, letzteLaeufe } from "@/lib/bqool/kreislauf";
 import { KreislaufKarte } from "./kreislauf-karte";
 import { VORSCHLAG_TEXT, vorschlaegeOffen, type VorschlagArt } from "@/lib/bqool/leiter";
@@ -44,10 +45,25 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <p className="small muted" style={{ marginTop: 0 }}>
-        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Min Price bei Margen-Regeln: mindestens der effektive Min (Break-even mit landeseigener USt + Mindestmarge der Altersstufe) – BQool setzt einen niedrigeren Min ohnehin auf den Margen-Wert zurück. Soll eine SKU darunter verkaufen (gewünschter Min unter dem effektiven Min), kommt sie auf „Liquidation“ mit festem Min, nie unter Break-even ohne Freigabe (B31.6). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: täglich 06:00 automatisch bzw. BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
+        Je Land eine Datei im BQool-Format (Tab-getrennt, Dezimalpunkt) – ohne den Umweg über ArbitrageOne. Cost = EK netto × {String(1 + b.costUst).replace(".", ",")} wie bisher. Effektiver Min = BQool-Formel P(m) = (F + C/(1+v)) / (1/(1+v) − r − m) mit USt, FBA-Gebühr und Provision des Landes (B33). Bei Margen-Regeln (ia, Abverkauf) überschreibt BQool den Min einmal täglich mit P(Marge der Altersstufe) – der Datei-Min wirkt dort höchstens bis zum nächsten Reset; Steuerhebel sind Regel, Max, Cost und Aktiv/Pause. Soll eine SKU darunter verkaufen (gewünschter Min unter dem effektiven Min), kommt sie auf „Liquidation“ mit festem Min, nie unter Break-even ohne Freigabe (B31.6). Bei „Liquidation“ zählt die feste Untergrenze. Ist-Stand: täglich 06:00 automatisch bzw. BQool-Datei je Land unter <Link href="/uploads">Uploads</Link> hochladen.
       </p>
 
       <KreislaufKarte stand={kStand} lauf={lauf} laeufe={laeufe} inhaber={session.role === "owner" && !session.readOnly} freigebenHinweis={sp.freigeben === "1"} einstellungen={b.kreislauf} />
+
+      <section id="upload-fehler" className={`card card-pad stack small ${b.uploadFehler?.eintraege.length ? "notice-warn" : ""}`} style={{ marginTop: 12, scrollMarginTop: 70 }} data-testid="bq-upload-fehler">
+        <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <b>Upload-Fehler laut BQool („View Processing Report“)</b>
+          {session.role === "owner" && !session.readOnly && (
+            <form action={uploadVerlaufAction}><button className="btn btn-sm" type="submit" data-testid="bq-upload-fehler-lesen">Processing Reports lesen</button></form>
+          )}
+        </div>
+        {b.uploadFehler?.eintraege.length ? (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>{b.uploadFehler.eintraege.slice(0, 12).map((f) => <li key={`${f.land}|${f.zeitBqool}|${f.datei ?? ""}`} data-testid="bq-upload-fehler-zeile" data-land={f.land}>{uploadFehlerText(f)}</li>)}</ul>
+        ) : (
+          <div className="muted">{b.uploadFehler ? "Keine Uploads mit Fehlern gefunden." : "Noch nicht gelesen – der tägliche Lauf liest die Upload-Verläufe mit, oder hier „Processing Reports lesen“."}</div>
+        )}
+        <div className="muted">Nur lesen, in BQool wird nichts geändert. Zeiten in BQool: UTC+02:00 – im November 1 Stunde später als deutsche Zeit (in Klammern die BQool-Zeit).{b.uploadFehler ? ` Zuletzt gelesen: ${formatDate(b.uploadFehler.gelesenAm)}.` : ""}</div>
+      </section>
 
       <section className="card card-pad stack" data-testid="bq-export">
         <h2 style={{ margin: 0 }}>Freigabe und Export</h2>
@@ -346,9 +362,9 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
                       <td>{(z.titel ?? "").slice(0, 50)}</td>
                       <td style={{ color: z.regelWechsel ? "var(--warn)" : undefined }}>{z.istRegel ?? "–"} → <b>{z.regel}</b></td>
                       <td>{z.cost.toFixed(2)}</td>
-                      <td>{z.istMin?.toFixed(2) ?? "–"} → {z.min.toFixed(2)}</td>
+                      <td>{z.istMin?.toFixed(2) ?? "–"} → {z.min.toFixed(2)}{z.minReset && <div className="muted" data-testid="bq-min-reset" title="B33.2: Regel mit Margen-Reset – BQool setzt den Min einmal täglich auf P(Marge der Stufe)">Min wird von BQool täglich überschrieben</div>}</td>
                       <td>{z.max.toFixed(2)}</td>
-                      <td>{z.effMin?.toFixed(2) ?? "–"}{z.marge !== null ? ` (${z.marge} %)` : ""}</td>
+                      <td data-testid="bq-effmin">{z.effMinText ? <span className="muted">{z.effMinText}</span> : <>{z.effMin?.toFixed(2) ?? "–"}{z.marge !== null ? ` (${z.marge} %)` : ""}</>}{z.stufeText && !z.effMinText && <div className="muted">{z.stufeText}</div>}<div className="muted" data-testid="bq-gebuehren" title="B33.1: FBA-Gebühr und Provision des Landes">F {z.fba.toFixed(2)} · r {(z.provision * 100).toFixed(1).replace(".", ",")} %{z.gebuehren.staffel ? " (Preisstufen)" : ""} · {z.gebuehren.quelle === "bqool" ? "BQool" : z.gebuehren.quelle === "amazon" ? "Amazon" : "Produkt"}{z.gebuehren.geschaetzt ? <span style={{ color: "var(--warn)" }}> · geschätzt (Gebühren DE)</span> : null}</div></td>
                       <td>{z.buybox?.toFixed(2) ?? "–"}</td>
                       <td>{ART_TEXT[z.art]}{z.enable === "0" ? " · in BQool aus" : ""}{z.warnungen.map((w) => <div key={w} style={{ color: "var(--warn)" }}>{w}</div>)}{z.erklaerung && <div className="muted">{z.erklaerung}</div>}</td>
                     </tr>
@@ -449,19 +465,34 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
 
       <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="bq-katalog">
         <h2 style={{ margin: 0 }}>Regel-Katalog (spiegelt BQool)</h2>
-        <p className="small muted" style={{ margin: 0 }}>Namen exakt wie in BQool. Staffel als „Tage:Marge Unterregel“, z. B. „30:10 SB, 60:8 EQ, :0 SB“ (SB = Sales Booster: an/unter Min → Min; EQ = Equalizer: an/unter Min → Buy Box + 0,01 €, verliert bewusst die Buy Box; letzte Stufe ohne Tage). Einmal mit BQool abgleichen – vor allem die Altersstufen der Abverkauf-Regeln.</p>
+        <p className="small muted" style={{ margin: 0 }}>Namen exakt wie in BQool. Staffel als „Tage:Marge Unterregel [Bedingung]“, z. B. „30:10 SB [Available ≥ 1], 60:8 EQ, 90:LP+6 SM, 180:1 PB, 270:SM, :0 SB“ (SB = Sales Booster: an/unter Min → Min; EQ = Equalizer: an/unter Min → Buy Box + 0,01 €; LP+x = „Lowest Price + x %“, SM = Sales Maximizer – beide ohne feste Marge; PB = Profit Booster; letzte Stufe ohne Tage). Je Land eigene Stufen, sonst gilt die obere Zeile. Einmal mit BQool abgleichen – vor allem die Altersstufen der Abverkauf-Regeln.</p>
+        <KatalogJeLand katalog={b.katalog} />
+        {kannSchreiben && KATALOG_STANDARD.some((st) => st.staffelJeLand && !katalogRegel(b.katalog, st.name)?.staffelJeLand) && (
+          <form action={katalogB33Action} className="notice small" data-testid="bq-katalog-b33">
+            Gespeicherter Katalog hat noch keine Stufen je Land. Stand BQool 08.11. (ia DE 10/8/7/5/3/1/0, FR/IT/ES mit „Lowest Price + x %“/Sales Maximizer, Abverkauf je Land) – vor Übernahme einmal gegen den Screenshot prüfen. <button className="btn btn-sm" type="submit">Stufen je Land übernehmen</button>
+          </form>
+        )}
+        {kannSchreiben && !(b.leiter.schnell.regel && katalogRegel(b.katalog, b.leiter.schnell.regel)) && (
+          <form action={schnellRegelAction} className="small row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="bq-schnell-regel">
+            <span>Schnelldreher (B33.5): Variante 1 = Liquidation mit Min = P({b.leiter.schnell.margeBoden} %) läuft. Empfohlen dauerhaft: Variante 2 – Regel „Schnelldreher“ in BQool als Kopie von ia mit allen Stufen {b.leiter.schnell.margeBoden} % anlegen, dann hier übernehmen:</span>
+            <input name="name" defaultValue="Schnelldreher" style={{ width: 130 }} />
+            <label title="Variante 3, ungeprüft: Modus „Rule“ statt „Rule + Min Price“ – erst mit einer Test-SKU prüfen"><input type="checkbox" name="ohne_reset" value="1" /> ohne Min-Reset (Variante 3)</label>
+            <button className="btn btn-sm" type="submit">In Katalog übernehmen</button>
+          </form>
+        )}
         <form action={katalogAction} className="stack" style={{ gap: 8 }}>
           <div className="table-wrap">
             <table className="table small">
-              <thead><tr><th>Name</th><th>Länder</th><th>Strategie</th><th>Staffel</th><th>feste Untergrenze</th><th>Risiko</th><th>Hinweis</th><th>löschen</th></tr></thead>
+              <thead><tr><th>Name</th><th>Länder</th><th>Strategie</th><th>Staffel</th><th>feste Untergrenze</th><th title="B33.2: BQool setzt den Min täglich auf P(Marge der Stufe)">Min-Reset täglich</th><th>Risiko</th><th>Hinweis</th><th>löschen</th></tr></thead>
               <tbody>
                 {[...b.katalog, { name: "", laender: null, strategie: "", staffel: null, festeUntergrenze: false, risiko: false, hinweis: "" }].map((k, i) => (
                   <tr key={i}>
                     <td><input name="name" defaultValue={k.name} placeholder="neue Regel" style={{ width: 120 }} /></td>
                     <td><input name={`laender_${i}`} defaultValue={k.laender?.join(" ") ?? ""} placeholder="alle" style={{ width: 90 }} /></td>
                     <td><input name={`strategie_${i}`} defaultValue={k.strategie} style={{ width: 150 }} /></td>
-                    <td><input name={`staffel_${i}`} defaultValue={k.staffel?.map((x) => `${x.bisTage ?? ""}:${x.marge}${x.unterregel ? ` ${x.unterregel === "Equalizer" ? "EQ" : "SB"}` : ""}`).join(", ") ?? ""} style={{ width: 240 }} /></td>
+                    <td><input name={`staffel_${i}`} defaultValue={staffelAlsText(k.staffel)} style={{ width: 240 }} />{k.name && (k.laender ?? EXPORT_LAENDER).map((land) => <div key={land} className="row small" style={{ gap: 4, marginTop: 2 }}><span style={{ width: 22 }}>{land}</span><input name={`staffel_${i}_${land}`} defaultValue={staffelAlsText((k as KatalogRegel).staffelJeLand?.[land])} placeholder="wie oben" style={{ width: 214 }} /></div>)}</td>
                     <td><input type="checkbox" name={`fest_${i}`} value="1" defaultChecked={k.festeUntergrenze} /></td>
+                    <td><input type="hidden" name={`reset_feld_${i}`} value="1" /><input type="checkbox" name={`reset_${i}`} value="1" defaultChecked={k.name ? setztMinZurueck(k as KatalogRegel) : false} /></td>
                     <td><input type="checkbox" name={`risiko_${i}`} value="1" defaultChecked={k.risiko} /></td>
                     <td><input name={`hinweis_${i}`} defaultValue={k.hinweis} style={{ width: 180 }} /></td>
                     <td>{k.name && <input type="checkbox" name={`loeschen_${i}`} value="1" />}</td>
@@ -482,5 +513,45 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
         </form>
       </section>
     </>
+  );
+}
+
+const STUFEN_BIS: (number | null)[] = [30, 60, 90, 180, 270, 365, null];
+
+/** Typ, Marge und Bedingung einer Stufe (B33.3) – Stufen ohne feste Marge ohne Prozentzahl. */
+function StufeZelle({ s }: { s: MargeStufe }) {
+  const t = stufenTyp(s);
+  return (
+    <td data-testid="bq-stufe" data-typ={t} data-bis={s.bisTage ?? ""}>
+      {t === "marge" ? <><b>{String(s.marge).replace(".", ",")} %</b>{s.strategie ? <div className="muted">{s.strategie}</div> : null}</> : t === "lowest_price" ? <><b>Lowest Price + {String(s.aufschlag ?? 0).replace(".", ",")} %</b>{s.strategie ? <div className="muted">{s.strategie}</div> : null}<div className="muted">keine feste Marge</div></> : <><b>Sales Maximizer</b><div className="muted">keine feste Marge</div></>}
+      {s.bedingung && <div className="muted">{s.bedingung}</div>}
+    </td>
+  );
+}
+
+/** B33.3 Katalog je Land und Stufe: Typ (Marge / Lowest Price + x / Sales Maximizer), Marge, Bedingung, Margen-Reset. */
+function KatalogJeLand({ katalog }: { katalog: KatalogRegel[] }) {
+  const zeilen = katalog.flatMap((k) => (k.laender ?? EXPORT_LAENDER).map((land) => ({ k, land, st: staffelFuer(k, land) })).filter((x) => x.st));
+  if (!zeilen.length) return null;
+  return (
+    <div className="table-wrap" data-testid="bq-katalog-je-land">
+      <table className="table small">
+        <thead><tr><th>Regel</th><th>Land</th><th>BQool-ID</th><th>Min-Reset</th>{STUFEN_BIS.map((b, i) => <th key={i}>{b === null ? "> 365" : `${i === 0 ? 0 : (STUFEN_BIS[i - 1] ?? 0) + 1}–${b}`} T</th>)}</tr></thead>
+        <tbody>
+          {zeilen.map(({ k, land, st }) => {
+            const passt = st!.length === STUFEN_BIS.length && st!.every((x, i) => x.bisTage === STUFEN_BIS[i]);
+            return (
+              <tr key={`${k.name}|${land}`} data-testid="bq-katalog-land" data-regel={k.name} data-land={land}>
+                <td>{k.name}</td>
+                <td>{land}{!k.staffelJeLand?.[land] ? <span className="muted"> (allg.)</span> : null}</td>
+                <td>{k.bqoolIds?.[land] ?? "–"}</td>
+                <td title="B33.2: BQool setzt den Min täglich auf P(Marge der Stufe)">{setztMinZurueck(k) ? "täglich" : "nein"}</td>
+                {passt ? st!.map((x, i) => <StufeZelle key={i} s={x} />) : <td colSpan={STUFEN_BIS.length}>{st!.map((x, i) => <span key={i} style={{ marginRight: 10 }}>{stufenBereich(st!, i)} T: {stufenTyp(x) === "marge" ? `${x.marge} %` : stufenTyp(x) === "lowest_price" ? `Lowest Price + ${x.aufschlag ?? 0} %` : "Sales Maximizer"}{x.bedingung ? ` (${x.bedingung})` : ""}</span>)}</td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -62,6 +62,7 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
   const E = schema.bqoolExporte;
   await db.update(E).set({ uebertragung: "laeuft" }).where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
   const ergebnis: BqoolLandErgebnis[] = [];
+  const nachUpload: import("@/lib/bqool/kreislauf-logic").UploadFehler[] = [];
   const zeiten = new Map<string, string>();
   // B31.2: Dateityp auf der Upload-Seite (BQool „Upload File“ → „Repricing Central File“), in der Anbindung änderbar.
   const typ = new RegExp(((z.uploadTyp ?? "").trim() || "Repricing Central").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
@@ -80,7 +81,19 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
         const h = await dateiHochladen(page, { url, datei: { name: d.name, mimeType: "text/plain", buffer: Buffer.from(d.text, "utf8") }, erfolg: ERFOLG, fehler: FEHLER, typ }, log);
         // B31.2: Rückmeldung von BQool lesen – Anzahl übernommen/Fehler und Fehlerzeilen mit SKU.
         const rm = rueckmeldungLesen(h.text, bqoolSkus(d.text));
-        const rueck = { uebernommen: rm.uebernommen, fehlerAnzahl: rm.fehler, fehlerZeilen: rm.fehlerZeilen };
+        // B33.6: BQool nennt nur „1 Error – View Processing Report“ → Bericht öffnen und die Fehlerzeilen lesen (nur lesen).
+        let fehlerZeilen = rm.fehlerZeilen;
+        if ((rm.fehler ?? 0) > 0 && !fehlerZeilen.length) {
+          const { verlaufLesen } = await import("./bqool-ist");
+          const { versatzMinuten } = await import("@/lib/bqool/kreislauf-logic");
+          const f = await verlaufLesen(page, url, d.land, { nurSeite: true, max: 1, skus: bqoolSkus(d.text), versatz: versatzMinuten(z.zeitzone) }).catch(() => []);
+          if (f[0]?.zeilen.length) {
+            fehlerZeilen = f[0].zeilen;
+            nachUpload.push(f[0]);
+            await log(`${d.land}: Processing Report gelesen – ${f[0].zeilen.length} Fehlerzeile${f[0].zeilen.length === 1 ? "" : "n"}`);
+          }
+        }
+        const rueck = { uebernommen: rm.uebernommen, fehlerAnzahl: rm.fehler, fehlerZeilen };
         // Nichts erkannt, aber auch kein Fehler → „bitte in BQool prüfen“ (gelb), nicht „Fehler“.
         ergebnis.push(h.wie === "unklar" ? { land: d.land, datei: d.name, zeilen, ok: false, unklar: true, fehler: h.grund, ...rueck } : { land: d.land, datei: d.name, zeilen, ok: true, wie: h.wie, ...rueck });
       } catch (e) {
@@ -100,6 +113,7 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
     .update(E)
     .set({ uebertragung: status, protokoll: [...(e?.protokoll ?? []), ...r.protokoll.map((p) => ({ zeit: p.zeit, text: p.text })), ...jeLand, { zeit: new Date().toISOString(), text: r.ok ? `Ergebnis: ${bqoolErgebnisText(ergebnis)}` : `Abgebrochen: ${r.fehler}` }] })
     .where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
+  if (nachUpload.length) await import("@/lib/bqool/kreislauf").then((x) => x.uploadFehlerSpeichern(tenantId, nachUpload)).catch(() => undefined);
   // B31.2: Fehlerzeilen von BQool als Aufgabe mit SKU und Fehlertext (die übrigen Zeilen sind übernommen).
   const fz = ergebnis.flatMap((x) => (x.fehlerZeilen ?? []).map((f) => `${x.land} ${f.sku}: ${f.text}`));
   if (fz.length) await upsertSystemTask(db, tenantId, `bqool-fehlerzeilen-${exportId}`, { title: `BQool-Upload: ${fz.length} Fehlerzeile${fz.length === 1 ? "" : "n"}`, notes: `${fz.slice(0, 40).join("\n")}${fz.length > 40 ? `\n… und ${fz.length - 40} weitere` : ""}\nDiese SKUs hat BQool nicht übernommen – Wert prüfen (Min/Max/Regel) und mit dem nächsten Upload erneut senden.`, priority: "normal", category: "amazon", link: `/repricer/bqool?export=${exportId}` });

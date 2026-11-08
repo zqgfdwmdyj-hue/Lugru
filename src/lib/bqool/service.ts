@@ -4,7 +4,8 @@ import { db, schema } from "@/db";
 import { repricerRows } from "@/lib/repricer";
 import { aeltesteTage } from "@/lib/money/kapital";
 import { getSettings } from "@/lib/settings";
-import { buyboxErklaerung, effektiverMin, katalogRegel, UST, type ExportLand } from "./export-logic";
+import { bqoolCost, buyboxErklaerung, effektiverMin, gebuehrenFuerLand, katalogRegel, UST, type ExportLand } from "./export-logic";
+import { gebuehrenLaden } from "./gebuehren";
 import { readTable } from "@/lib/tabular";
 import { leseBqool, pruefe, type BqoolMarkt, type BqoolZeile, type Hinweis } from "./logic";
 
@@ -32,11 +33,15 @@ export async function importBqool(tenantId: string, bytes: Uint8Array, datei: st
     });
     for (let i = 0; i < values.length; i += 500) await tx.insert(L).values(values.slice(i, i + 500));
   });
+  // B33.1: Referral/FBA je Land aus der Liste merken (Grundlage der BQool-Formel)
+  const { gebuehrenAusListing } = await import("./logic");
+  const { gebuehrenSpeichern } = await import("./gebuehren");
+  const gebuehren = await gebuehrenSpeichern(tenantId, "bqool", [...unique.values()].map((z) => ({ land: z.marktplatz, sku: z.sku, asin: z.asin, preis: z.preis, ...gebuehrenAusListing(z.zusatz, z.preis) }))).catch(() => 0);
   await import("./liquidation").then((x) => x.liquidationIstAbgleich(tenantId)).catch(() => undefined);
   await db.insert(schema.reportImports).values({ tenantId, reportType: "BQool Manage Listings", fileName: datei.slice(0, 200), via: "upload", rows: r.zeilen.length, inserted: unique.size, message: maerkte.join(", ") });
   const je = maerkte.map((m) => `${m} ${[...unique.values()].filter((z) => z.marktplatz === m).length}`).join(", ");
   const warn = [r.fehlt.length ? `nicht in der Datei: ${r.fehlt.join(", ")}` : "", r.ohneMarkt ? `${r.ohneMarkt} Zeilen ohne Marktplatz übersprungen` : "", r.ohneSku ? `${r.ohneSku} Zeilen ohne SKU übersprungen` : ""].filter(Boolean).join(" · ");
-  return { ok: true as const, message: `${unique.size} SKUs eingelesen (${je}).${warn ? ` Hinweis: ${warn}.` : ""}`, erkannt: r.erkannt };
+  return { ok: true as const, message: `${unique.size} SKUs eingelesen (${je})${gebuehren ? `, Gebühren je Land für ${gebuehren}` : ""}.${warn ? ` Hinweis: ${warn}.` : ""}`, erkannt: r.erkannt };
 }
 
 export type BqoolAnsicht = BqoolZeile & { untergrenze: number | null; ek: number | null; hinweise: Hinweis[]; eingelesenAm: Date; datei: string | null; effMin: number | null; marge: number | null; unterregel: string | null; erklaerung: string | null; /** B31.6 */ regelSeit: Date | null; liqMarge: { regelVorher: string | null; status: string } | null };
@@ -44,7 +49,7 @@ export type BqoolAnsicht = BqoolZeile & { untergrenze: number | null; ek: number
 export async function bqoolStand(tenantId: string) {
   const L = schema.bqoolListings;
   const LQ = schema.bqoolLiquidationen;
-  const [rows, sys, s, liq] = await Promise.all([db.select().from(L).where(eq(L.tenantId, tenantId)), repricerRows(tenantId), getSettings(tenantId), db.select({ land: LQ.land, sku: LQ.sku, regelVorher: LQ.regelVorher, status: LQ.status, grund: LQ.grund }).from(LQ).where(eq(LQ.tenantId, tenantId))]);
+  const [rows, sys, s, liq, gebJe] = await Promise.all([db.select().from(L).where(eq(L.tenantId, tenantId)), repricerRows(tenantId), getSettings(tenantId), db.select({ land: LQ.land, sku: LQ.sku, regelVorher: LQ.regelVorher, status: LQ.status, grund: LQ.grund }).from(LQ).where(eq(LQ.tenantId, tenantId)), gebuehrenLaden(tenantId, ["DE", "FR", "IT", "ES"]).catch(() => new Map() as Awaited<ReturnType<typeof gebuehrenLaden>>)]);
   // B31.6: Liquidation wegen Min unter Marge (nicht beendet) – bewusst unter dem System-Min, kein Hinweis „Min zu niedrig“
   const liqJe = new Map(liq.filter((l) => (l.grund === "min_unter_marge" || l.grund === "leiter") && l.status !== "beendet").map((l) => [`${l.land}|${l.sku}`, l]));
   const bySku = new Map(sys.map((r) => [r.sku, r]));
@@ -63,7 +68,11 @@ export async function bqoolStand(tenantId: string) {
     const untergrenze = sy?.min ?? null;
     // Effektiver Mindestpreis laut Regel-Katalog (Marge der Altersstufe, landeseigene USt) und Erklärung zur Buy Box.
     const kat = katalogRegel(s.bqool.katalog, r.regel);
-    const eff = sy?.unitCost != null ? effektiverMin({ regel: kat, untergrenze: r.min, ek: sy.unitCost, fba: sy.fbaFee, fix: s.bqool.fixGebuehr, zusatz: s.bqool.zusatzkosten, ust: UST[r.marktplatz as ExportLand] ?? 0.2, provision: sy.referralRate, alterTage: alterJe.get(r.sku) ?? null }) : null;
+    // B33.1: BQool-Formel mit Gebühren des Landes (BQool-Liste → Amazon-Gebührenvorschau → Produkt/DE)
+    const land = (["DE", "FR", "IT", "ES"] as const).includes(r.marktplatz as ExportLand) ? (r.marktplatz as ExportLand) : null;
+    const gj = gebJe.get(`${r.marktplatz}|${r.sku}`);
+    const geb = sy && land ? gebuehrenFuerLand({ land, bqool: gj?.bqool ?? null, amazon: gj?.amazon ?? null, produkt: { fba: sy.fbaFee, satz: sy.referralRate, geschaetzt: sy.feeEstimated || sy.refEstimated }, staffeln: s.bqool.provisionStaffeln }) : null;
+    const eff = sy?.unitCost != null ? effektiverMin({ regel: kat, land, untergrenze: r.min, cost: bqoolCost(sy.unitCost, s.bqool.costUst), fba: geb?.fba ?? sy.fbaFee, ust: UST[r.marktplatz as ExportLand] ?? 0.2, provision: geb?.provision ?? sy.referralRate, alterTage: alterJe.get(r.sku) ?? null }) : null;
     const erklaerung = eff ? buyboxErklaerung({ buybox: r.buyboxPreis, effMin: eff.min, unterregel: eff.unterregel }) : null;
     const lq = liqJe.get(`${r.marktplatz}|${r.sku}`) ?? null;
     const liqMarge = lq && kat?.festeUntergrenze ? { regelVorher: lq.regelVorher, status: lq.status } : null;

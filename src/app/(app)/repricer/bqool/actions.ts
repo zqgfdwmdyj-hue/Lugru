@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireArea, requireOwner } from "@/lib/auth/session";
-import { EXPORT_LAENDER, type ExportLand, type KatalogRegel, type MarkenRegel } from "@/lib/bqool/export-logic";
+import { EXPORT_LAENDER, KATALOG_STANDARD, katalogRegel, schnelldreherRegel, staffelAusText, type ExportLand, type KatalogRegel, type MarkenRegel } from "@/lib/bqool/export-logic";
+import { getSettings } from "@/lib/settings";
 import { bqoolAbgleichAufgabe, bqoolEinstellungenSpeichern, bqoolExportErzeugen, istAlsSollUebernehmen, vorschlagFreigeben, zuweisungLoeschen, zuweisungSetzen } from "@/lib/bqool/export-service";
 import { lesbarerFehler } from "@/lib/fehler-text";
 import { parseAmount } from "@/lib/numbers";
@@ -72,30 +73,31 @@ export async function istUebernehmenAction() {
   zurueck(`Aus BQool übernommen: ${r.liquidation} Liquidation (mit Untergrenze), ${r.andere} andere Regeln.`);
 }
 
-/** Staffel „30:10, 60:8, …, :0“ → Stufen. */
-function staffelAus(t: string): KatalogRegel["staffel"] {
-  const teile = t.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
-  if (!teile.length) return null;
-  return teile.map((x) => {
-    // „30:10 SB“ / „60:8 EQ“ – Unterregel optional (SB = Sales Booster, EQ = Equalizer)
-    const [bis, rest] = x.split(":").map((y) => y.trim());
-    const m = /^([\d.,]+)\s*(SB|EQ|Sales Booster|Equalizer)?$/i.exec(rest ?? "0");
-    const u = m?.[2]?.toUpperCase();
-    return { bisTage: bis ? Number(bis) : null, marge: m ? Number(m[1].replace(",", ".")) : NaN, ...(u ? { unterregel: u.startsWith("E") ? ("Equalizer" as const) : ("Sales Booster" as const) } : {}) };
-  });
-}
-
+/** Regel-Katalog speichern: Staffel „30:10 SB, 60:8 EQ, …, :0“ allgemein und je Land (B33.3). */
 export async function katalogAction(fd: FormData) {
   const s = await schreibend();
+  const alt = (await getSettings(s.tenantId)).bqool.katalog;
   const namen = fd.getAll("name").map(String);
   const katalog: KatalogRegel[] = [];
   namen.forEach((n, i) => {
     const name = n.trim();
     if (!name || fd.get(`loeschen_${i}`) === "1") return;
     const laender = String(fd.get(`laender_${i}`) ?? "").toUpperCase().split(/[\s,;/]+/).filter((l): l is ExportLand => (EXPORT_LAENDER as readonly string[]).includes(l));
-    katalog.push({ name, laender: laender.length ? laender : null, strategie: String(fd.get(`strategie_${i}`) ?? "").trim(), staffel: staffelAus(String(fd.get(`staffel_${i}`) ?? "")), festeUntergrenze: fd.get(`fest_${i}`) === "1", risiko: fd.get(`risiko_${i}`) === "1", hinweis: String(fd.get(`hinweis_${i}`) ?? "").trim() });
+    // B33.3: Stufen je Land („staffel_i_DE“ …); Aliase, Regel-IDs und Margen-Reset bleiben wie gespeichert
+    const vorher = katalogRegel(alt, name);
+    const jeLand: Partial<Record<ExportLand, NonNullable<KatalogRegel["staffel"]>>> = {};
+    for (const land of EXPORT_LAENDER) {
+      const st = staffelAusText(String(fd.get(`staffel_${i}_${land}`) ?? ""));
+      if (st) jeLand[land] = st;
+    }
+    const fest = fd.get(`fest_${i}`) === "1";
+    const staffel = staffelAusText(String(fd.get(`staffel_${i}`) ?? ""));
+    // B33.2/B33.5: Min-Reset je Regel (Häkchen); ohne Häkchen-Feld bleibt der gespeicherte Wert
+    const minReset = fd.has(`reset_feld_${i}`) ? fd.get(`reset_${i}`) === "1" : vorher?.minReset;
+    katalog.push({ ...(vorher?.aliase ? { aliase: vorher.aliase } : {}), name, laender: laender.length ? laender : null, strategie: String(fd.get(`strategie_${i}`) ?? "").trim(), staffel, ...(Object.keys(jeLand).length ? { staffelJeLand: jeLand } : {}), ...(minReset !== undefined ? { minReset } : {}), ...(vorher?.bqoolIds ? { bqoolIds: vorher.bqoolIds } : {}), festeUntergrenze: fest, risiko: fd.get(`risiko_${i}`) === "1", hinweis: String(fd.get(`hinweis_${i}`) ?? "").trim() });
   });
-  if (katalog.some((k) => k.staffel?.some((x) => !Number.isFinite(x.marge) || (x.bisTage !== null && !Number.isFinite(x.bisTage))))) zurueck("Staffel bitte als „Tage:Marge“ angeben, z. B. „30:10 SB, 60:8 EQ, :0“.");
+  const stufenOk = (st: KatalogRegel["staffel"]) => !st?.some((x) => ((x.typ ?? "marge") === "marge" && !Number.isFinite(x.marge)) || (x.bisTage !== null && !Number.isFinite(x.bisTage)) || (x.typ === "lowest_price" && !Number.isFinite(x.aufschlag ?? 0)));
+  if (katalog.some((k) => !stufenOk(k.staffel) || Object.values(k.staffelJeLand ?? {}).some((st) => !stufenOk(st)))) zurueck("Staffel bitte als „Tage:Marge“ angeben, z. B. „30:10 SB [Available ≥ 1], 60:8 EQ, 90:LP+6 SM, 270:SM, :0“.");
   const markenRegeln: MarkenRegel[] = String(fd.get("marken") ?? "")
     .split("\n")
     .map((z) => z.trim())
@@ -123,6 +125,40 @@ export async function katalogAction(fd: FormData) {
   await bqoolAbgleichAufgabe(s.tenantId).catch(() => undefined);
   revalidatePath(PFAD);
   zurueck("Regeln gespeichert. Änderungen an Regeln bitte auch in BQool selbst eintragen – das System ändert keine BQool-Regeln.");
+}
+
+/**
+ * B33.5 Variante 2: Regel „Schnelldreher“ (in BQool von Ludwig angelegt) in den Katalog aufnehmen und als Schnelldreher-Regel
+ * eintragen – ab dann ordnet das System Schnelldreher über den Rule Name zu. In BQool wird nichts angelegt.
+ */
+export async function schnellRegelAction(fd: FormData) {
+  const s = await schreibend();
+  const st = await getSettings(s.tenantId);
+  const name = String(fd.get("name") ?? "").trim() || "Schnelldreher";
+  const ohneReset = fd.get("ohne_reset") === "1";
+  const katalog = katalogRegel(st.bqool.katalog, name) ? st.bqool.katalog : [...st.bqool.katalog, schnelldreherRegel(name, st.bqool.leiter.schnell.margeBoden, !ohneReset)];
+  await bqoolEinstellungenSpeichern(s.tenantId, { katalog, leiter: { ...st.bqool.leiter, schnell: { ...st.bqool.leiter.schnell, regel: name } } });
+  revalidatePath(PFAD);
+  zurueck(`Regel „${name}“ im Katalog und als Schnelldreher-Regel eingetragen – sie muss in BQool je Land genauso heißen (Kopie von ia, alle Stufen ${st.bqool.leiter.schnell.margeBoden} %${ohneReset ? ", Modus „Rule“" : ""}).`);
+}
+
+/**
+ * B33.3: Stufen je Land, Regel-IDs und Margen-Reset aus dem Stand BQool 08.11. in den gespeicherten Katalog übernehmen
+ * (gleichnamige Regeln; fehlende Standardregeln kommen dazu). Erst nach dem Abgleich mit dem Screenshot drücken.
+ */
+export async function katalogB33Action() {
+  const s = await schreibend();
+  const alt = (await getSettings(s.tenantId)).bqool.katalog;
+  const katalog: KatalogRegel[] = alt.map((k) => {
+    const st = katalogRegel(KATALOG_STANDARD, k.name);
+    if (!st || st.name.toLowerCase() !== k.name.trim().toLowerCase()) return k;
+    return { ...k, staffel: st.staffel, staffelJeLand: st.staffelJeLand, minReset: st.minReset, bqoolIds: st.bqoolIds, strategie: st.strategie, hinweis: st.hinweis };
+  });
+  for (const st of KATALOG_STANDARD) if (!katalog.some((k) => k.name.trim().toLowerCase() === st.name.toLowerCase())) katalog.push(st);
+  await bqoolEinstellungenSpeichern(s.tenantId, { katalog });
+  await bqoolAbgleichAufgabe(s.tenantId).catch(() => undefined);
+  revalidatePath(PFAD);
+  zurueck("Stufen je Land (Stand BQool 08.11.) übernommen. In BQool wurde nichts geändert.");
 }
 
 /** Freigegebenen Export per Browser-Automatik bei BQool hochladen – nur mit ausdrücklicher Bestätigung. */
@@ -179,6 +215,15 @@ export async function nachkontrolleAction(fd: FormData) {
   const r = /^[0-9a-f-]{36}$/i.test(id) ? await nachkontrolleAusfuehren(s.tenantId, id) : { text: "Lauf nicht gefunden." };
   revalidatePath(PFAD);
   zurueck(`Nachkontrolle: ${r.text}`, laufZiel(id));
+}
+
+/** B33.6: Processing Reports der letzten Uploads je Land lesen (nur lesen – in BQool wird nichts geändert). */
+export async function uploadVerlaufAction() {
+  const s = await requireOwner();
+  const { uploadVerlaufLesen } = await import("@/lib/bqool/kreislauf");
+  const r = await uploadVerlaufLesen(s.tenantId);
+  revalidatePath(PFAD);
+  zurueck(`Processing Reports: ${r.text}`);
 }
 
 /**

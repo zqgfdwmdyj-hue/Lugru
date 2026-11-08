@@ -2,24 +2,28 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { bqoolBerichtAdressen, bqoolExportAdressen } from "./bqool-logic";
 import { anmelden, AutomatikAbbruch, cookiesWeg, debugFesthalten, mitBrowser, type Schritt } from "./runner";
+import { bqoolZeit, processingReportZeilen, versatzMinuten, type UploadFehler } from "@/lib/bqool/kreislauf-logic";
 
-// B31.2: BQool-Ist holen – anmelden und je Land den Export „Repricing Central File – Full Template“ (bzw. „Manage
-// Listings“) herunterladen. Nur lesen: in BQool wird nichts geändert. Gemeinsame Sperre der Browser-Automatik,
-// Bildschirmfoto je Schritt, Zwei-Faktor → Abbruch mit Aufgabe.
+// B31.2/B33.6: BQool-Ist holen – anmelden und je Land die Listen-Seite (…/repricing/amazonde) öffnen, „Download“ →
+// „Download listings“ klicken (BQool hat keine Export-URL und keinen Zeitplan; früher „Full Template“). Dazu die
+// „Processing Reports“ der letzten Uploads lesen. Nur lesen: in BQool wird nichts geändert. Gemeinsame Sperre der
+// Browser-Automatik, Bildschirmfoto je Schritt, Zwei-Faktor → Abbruch mit Aufgabe.
 
 type Page = import("playwright").Page;
 type Locator = import("playwright").Locator;
 type Cfg = Record<string, string | undefined>;
 
 const SCHRITT_MS = Number(process.env.BQOOL_SCHRITT_MS) || 180_000;
-const VOLL = /full template|vollständige vorlage/i;
+/** B33.6: Menüpunkt „Download listings“ (Listings → Active Listings → Download), sonst „Full Template“. */
+const LISTE = /download listings|listings herunterladen|listings exportieren/i;
+const VOLL = /download listings|listings herunterladen|full template|vollständige vorlage/i;
 const KNOPF = /download file|datei herunterladen|herunterladen|download|export/i;
 const BESTAETIGEN = /download|herunterladen|export|bestätigen|confirm|\bok\b/i;
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export type IstDatei = { land: string; name: string; bytes: Uint8Array };
 export type BerichtDatei = IstDatei & { art: "listing_performance" | "daily_sales" };
-export type IstBrowserErgebnis = { ok: boolean; belegt?: boolean; zweiFaktor?: boolean; fehler: string | null; dateien: IstDatei[]; jeLand: { land: string; ok: boolean; text: string; bild?: string }[]; berichte: BerichtDatei[]; berichtFehler: string[]; protokoll: Schritt[] };
+export type IstBrowserErgebnis = { ok: boolean; belegt?: boolean; zweiFaktor?: boolean; fehler: string | null; dateien: IstDatei[]; jeLand: { land: string; ok: boolean; text: string; bild?: string }[]; berichte: BerichtDatei[]; berichtFehler: string[]; protokoll: Schritt[]; /** B33.6: Uploads mit Fehlern laut „Processing Report“. */ uploadFehler?: UploadFehler[]; verlaufFehler?: string[] };
 
 const SIEBEN = /last\s*7\s*days|letzte[n]?\s*7\s*tage|^\s*7\s*(days|tage)\s*$|past\s*7\s*days/i;
 const BERICHT_KNOPF = /download|herunterladen|export/i;
@@ -74,7 +78,7 @@ async function herunterladen(page: Page, url: string, land: string, cfg: Cfg): P
   const eigen = (cfg.exportKnopf ?? "").trim();
   const knopfRe = eigen ? new RegExp(esc(eigen), "i") : KNOPF;
   const knopf = await erstesSichtbares([
-    ...(eigen ? [] : [page.getByRole("button", { name: VOLL }), page.getByRole("link", { name: VOLL })]),
+    ...(eigen ? [] : [page.getByRole("button", { name: LISTE }), page.getByRole("link", { name: LISTE }), page.getByRole("button", { name: VOLL }), page.getByRole("link", { name: VOLL })]),
     page.getByRole("button", { name: knopfRe }),
     page.getByRole("link", { name: knopfRe }),
   ]);
@@ -112,7 +116,7 @@ async function herunterladen(page: Page, url: string, land: string, cfg: Cfg): P
     }
     let geklickt = false;
     if (!gewaehlt) {
-      const punkt = await erstesSichtbares([page.getByRole("menuitem", { name: VOLL }), page.getByRole("button", { name: VOLL }), page.getByRole("link", { name: VOLL }), page.getByText(VOLL)]);
+      const punkt = await erstesSichtbares([page.getByRole("menuitem", { name: LISTE }), page.getByRole("button", { name: LISTE }), page.getByRole("link", { name: LISTE }), page.getByText(LISTE), page.getByRole("menuitem", { name: VOLL }), page.getByRole("button", { name: VOLL }), page.getByRole("link", { name: VOLL }), page.getByText(VOLL)]);
       if (punkt) {
         await punkt.click({ timeout: 10_000 });
         geklickt = true;
@@ -131,16 +135,58 @@ async function herunterladen(page: Page, url: string, land: string, cfg: Cfg): P
   return { name: d.suggestedFilename() || `BQool_${land}.txt`, bytes: new Uint8Array(await readFile(pfad)) };
 }
 
+const BERICHT_LINK = /view processing report|processing report|verarbeitungsbericht/i;
+
+/**
+ * B33.6: Upload-Verlauf einer Upload-Seite lesen – Zeilen mit „View Processing Report“ (höchstens `max`, neueste zuerst),
+ * Bericht öffnen (Link per Abruf mit den Browser-Cookies, sonst Klick und Dialog lesen) und Fehlerzeilen auslesen. Nur lesen.
+ */
+export async function verlaufLesen(page: Page, url: string, land: string, o: { versatz?: number; max?: number; skus?: string[]; nurSeite?: boolean } = {}): Promise<UploadFehler[]> {
+  if (!o.nurSeite) {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
+    await cookiesWeg(page);
+  }
+  const links = page.getByRole("link", { name: BERICHT_LINK }).or(page.getByRole("button", { name: BERICHT_LINK }));
+  const n = Math.min(await links.count(), o.max ?? 5);
+  const out: UploadFehler[] = [];
+  for (let i = 0; i < n; i++) {
+    const l = links.nth(i);
+    const zeile = l.locator("xpath=ancestor::tr[1]");
+    const zt = ((await zeile.count()) ? await zeile.innerText().catch(() => "") : "").replace(/\s+/g, " ");
+    const zeitRoh = /\d{1,2}\/\d{1,2}\/\d{4}[ ,]+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?|\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}|\d{1,2}\.\d{1,2}\.\d{4}[ ,]+\d{1,2}:\d{2}/i.exec(zt)?.[0] ?? "";
+    const datei = /[\w.\- ]+\.(?:txt|csv|xlsx?)/i.exec(zt)?.[0]?.trim() ?? null;
+    const anzahl = /(\d+)\s*(?:errors?|fehler)/i.exec(zt);
+    let inhalt = "";
+    const href = await l.getAttribute("href").catch(() => null);
+    if (href && !/^(#|javascript:)/i.test(href)) {
+      const r = await page.request.get(new URL(href, page.url()).toString(), { timeout: 30_000 }).catch(() => null);
+      inhalt = r && r.ok() ? await r.text() : "";
+    } else {
+      await l.click({ timeout: 10_000 }).catch(() => undefined);
+      await page.waitForTimeout(500);
+      const dialog = page.locator('[role="dialog"]:visible, dialog[open], .modal.show').last();
+      inhalt = (await dialog.count()) ? await dialog.innerText().catch(() => "") : await page.locator("body").innerText().catch(() => "");
+      await page.keyboard.press("Escape").catch(() => undefined);
+    }
+    const z = bqoolZeit(zeitRoh, o.versatz ?? 120);
+    out.push({ land, zeitBqool: zeitRoh || "?", zeitDe: z?.berlin ?? null, iso: z?.iso ?? null, datei, fehlerAnzahl: anzahl ? Number(anzahl[1]) : null, zeilen: processingReportZeilen(inhalt, o.skus ?? []) });
+  }
+  return out.filter((f) => (f.fehlerAnzahl ?? f.zeilen.length) > 0);
+}
+
 /**
  * Je Land die Export-Datei holen. Ein Fehler in einem Land stoppt die anderen nicht; Anmeldung fehlgeschlagen bzw.
  * Zwei-Faktor stoppt alles (Aufgabe mit Bildschirmfoto). Verarbeitet wird erst nach dem Browser (Aufrufer).
  */
-export async function bqoolIstHerunterladen(tenantId: string, laender: string[], cfg: Cfg, o: { titel: string; aufgabeKey: string; link: string; /** B31.5: auch „Listing Performance“ und „Daily Sales“ für diese Länder. */ berichte?: string[] }): Promise<IstBrowserErgebnis> {
+export async function bqoolIstHerunterladen(tenantId: string, laender: string[], cfg: Cfg, o: { titel: string; aufgabeKey: string; link: string; /** B31.5: auch „Listing Performance“ und „Daily Sales“ für diese Länder. */ berichte?: string[]; /** B33.6: Upload-Verlauf (Processing Reports) dieser Seiten lesen. */ verlauf?: { land: string; url: string }[] }): Promise<IstBrowserErgebnis> {
   const adressen = new Map(bqoolExportAdressen(cfg).map((a) => [a.land as string, a.url]));
   const dateien: IstDatei[] = [];
   const jeLand: IstBrowserErgebnis["jeLand"] = [];
   const berichte: BerichtDatei[] = [];
   const berichtFehler: string[] = [];
+  const uploadFehler: UploadFehler[] = [];
+  const verlaufFehler: string[] = [];
   const berichtSeiten = o.berichte?.length
     ? [
         ...bqoolBerichtAdressen(cfg, "leistungUrl", o.berichte).map((a) => ({ ...a, art: "listing_performance" as const, titel: "Listing Performance" })),
@@ -180,6 +226,18 @@ export async function bqoolIstHerunterladen(tenantId: string, laender: string[],
         await log(grund).catch(() => undefined);
       }
     }
+    // B33.6: Processing Reports der letzten Uploads je Land (nur lesen)
+    for (const v of o.verlauf ?? []) {
+      try {
+        const f = await verlaufLesen(page, v.url, v.land, { versatz: versatzMinuten(cfg.zeitzone) });
+        uploadFehler.push(...f);
+        await log(`Upload-Verlauf ${v.land}: ${f.length ? `${f.length} Upload${f.length === 1 ? "" : "s"} mit Fehlern` : "keine Fehler"}`);
+      } catch (e) {
+        const grund = (e instanceof Error ? e.message.split("\n")[0] : String(e)).slice(0, 200);
+        verlaufFehler.push(`${v.land}: ${grund}`);
+        await log(`Upload-Verlauf ${v.land}: ${grund}`).catch(() => undefined);
+      }
+    }
   });
-  return { ok: r.ok, belegt: r.belegt, zweiFaktor: r.zweiFaktor, fehler: r.fehler, dateien, jeLand, berichte, berichtFehler, protokoll: r.protokoll };
+  return { ok: r.ok, belegt: r.belegt, zweiFaktor: r.zweiFaktor, fehler: r.fehler, dateien, jeLand, berichte, berichtFehler, protokoll: r.protokoll, uploadFehler, verlaufFehler };
 }

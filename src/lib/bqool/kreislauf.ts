@@ -8,7 +8,7 @@ import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { ABRUF_PLAN } from "@/lib/today/abruf-plan";
 import { recordJob, recordJobHinweis } from "@/lib/today/jobs";
 import type { ExportLand } from "./export-logic";
-import { autoFreigabe, freigabeFristen, freigabeText, KONTROLLE_MINUTEN, KREISLAUF_UHRZEIT, nachkontrolle, tagBerlin, uhrBerlin, uebernommenJeLand, jeLandText } from "./kreislauf-logic";
+import { autoFreigabe, freigabeFristen, freigabeText, KONTROLLE_MINUTEN, KREISLAUF_UHRZEIT, nachkontrolle, tagBerlin, uhrBerlin, uebernommenJeLand, jeLandText, uploadFehlerText, type UploadFehler } from "./kreislauf-logic";
 
 // B31.2 Täglicher BQool-Kreislauf (06:00): Ist je Land holen → Soll erzeugen (nur Änderungen) → Freigabe per Push →
 // Upload je Land („Repricing Central File“) mit Rückmeldung → Nachkontrolle 30 Minuten später. Hochgeladen wird nur
@@ -68,6 +68,32 @@ export async function pushen(tenantId: string, m: { titel: string; text: string;
   await melden(tenantId, an, { ...m, art, aktionen: m.aktionen ?? null }, { ohneDiscord: true }).catch((e) => console.error("[BQool] Push", e instanceof Error ? e.message : e));
 }
 
+const TASK_UPLOAD_FEHLER = "bqool-upload-fehler";
+
+/**
+ * B33.6: Uploads mit Fehlern laut „Processing Report“ merken (neueste zuerst, höchstens 30) und als Hinweis/Aufgabe zeigen.
+ * Gelesen wird nur – in BQool ändert das System nichts.
+ */
+export async function uploadFehlerSpeichern(tenantId: string, neu: UploadFehler[]): Promise<void> {
+  const s = await getSettings(tenantId);
+  const alt = s.bqool.uploadFehler?.eintraege ?? [];
+  const key = (f: UploadFehler) => `${f.land}|${f.zeitBqool}|${f.datei ?? ""}`;
+  const je = new Map(alt.map((f) => [key(f), f]));
+  for (const f of neu) je.set(key(f), f);
+  const eintraege = [...je.values()].sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 30);
+  const { bqoolEinstellungenSpeichern } = await import("./export-service");
+  await bqoolEinstellungenSpeichern(tenantId, { uploadFehler: { gelesenAm: new Date().toISOString(), eintraege } });
+  const frisch = eintraege.filter((f) => !f.iso || Date.now() - Date.parse(f.iso) < 14 * 86_400_000);
+  if (!frisch.length) return resolveSystemTask(db, tenantId, TASK_UPLOAD_FEHLER);
+  await upsertSystemTask(db, tenantId, TASK_UPLOAD_FEHLER, {
+    title: `BQool-Upload-Fehler laut Processing Report: ${frisch.map((f) => `${f.land} ${f.zeitDe ?? f.zeitBqool}`).slice(0, 4).join(", ")}`.slice(0, 200),
+    notes: `${frisch.slice(0, 20).map(uploadFehlerText).join("\n")}\nBQool-Zeiten sind UTC+02:00 (im November 1 Stunde später als deutsche Zeit). Werte der genannten SKUs prüfen und mit dem nächsten Upload erneut senden – das System ändert in BQool nichts von selbst.`,
+    priority: "normal",
+    category: "amazon",
+    link: "/repricer/bqool#upload-fehler",
+  });
+}
+
 /**
  * Ist holen: je Land die Export-Datei herunterladen und als BQool-Ist einlesen (Repricing-Datei bzw. „Manage
  * Listings“). Ohne Export-Seite: Hinweis, Ist bleibt vom letzten Stand.
@@ -90,7 +116,10 @@ async function istHolen(tenantId: string, laender: string[], laufId: string, zwe
     return { nichtEingerichtet: true, jeLand };
   }
   const t0 = Date.now();
-  const r = await bqoolIstHerunterladen(tenantId, laender, z, { titel: zweck === "ist" ? "BQool: Ist holen" : "BQool: Nachkontrolle", aufgabeKey: "automatik-bqool-ist", link: LINK, berichte: berichtLaender });
+  // B33.6: beim morgendlichen Ist auch die Processing Reports der letzten Uploads lesen (Upload-Seiten je Land)
+  const { bqoolUploadAdressen } = await import("@/lib/automatik/bqool-logic");
+  const verlauf = zweck === "ist" ? bqoolUploadAdressen(z).filter((a): a is typeof a & { url: string } => laender.includes(a.land) && !!a.url).map((a) => ({ land: a.land as string, url: a.url })) : [];
+  const r = await bqoolIstHerunterladen(tenantId, laender, z, { titel: zweck === "ist" ? "BQool: Ist holen" : "BQool: Nachkontrolle", aufgabeKey: "automatik-bqool-ist", link: LINK, berichte: berichtLaender, verlauf });
   if (r.belegt) return { belegt: true, jeLand: [] };
   const protokoll = r.protokoll.map((p) => ({ zeit: p.zeit, text: `${zweck === "ist" ? "Ist" : "Nachkontrolle"}: ${p.text}`, bildId: p.bildId }));
   if (!r.ok) {
@@ -127,7 +156,28 @@ async function istHolen(tenantId: string, laender: string[], laufId: string, zwe
   await aendern(tenantId, laufId, zweck === "ist" ? { ist: jeLand, istAm: new Date() } : {}, [...protokoll, { zeit: new Date().toISOString(), text: `${zweck === "ist" ? "Ist" : "Nachkontrolle"}: ${jeLand.map((x) => `${x.land} ${x.ok ? (x.skus !== undefined ? `${x.skus} SKUs` : "ok") : `Fehler – ${x.text}`}`).join(" · ")}` }]);
   await recordJob(tenantId, JOB_IST, fehler.length ? `${fehler.map((x) => `${x.land}: ${x.text}`).join(" · ")}` : null, Date.now() - t0, ABRUF_PLAN[JOB_IST]);
   if (berichtLaender.length) await berichteEinlesen(tenantId, laufId, r.berichte, r.berichtFehler);
+  if (verlauf.length && (r.uploadFehler || r.verlaufFehler)) {
+    await uploadFehlerSpeichern(tenantId, r.uploadFehler ?? []).catch((e) => console.error("[BQool] Upload-Fehler:", e instanceof Error ? e.message : e));
+    if (r.uploadFehler?.length || r.verlaufFehler?.length) await aendern(tenantId, laufId, {}, [...(r.uploadFehler ?? []).map((f) => ({ zeit: new Date().toISOString(), text: `Processing Report: ${uploadFehlerText(f)}`.slice(0, 500) })), ...(r.verlaufFehler ?? []).map((t) => ({ zeit: new Date().toISOString(), text: `Upload-Verlauf nicht lesbar: ${t}`.slice(0, 500) }))]);
+  }
   return { jeLand };
+}
+
+/** B33.6: Knopf „Processing Reports lesen“ – nur die Upload-Verläufe je Land lesen (nichts hochladen, nichts ändern). */
+export async function uploadVerlaufLesen(tenantId: string): Promise<{ ok: boolean; text: string }> {
+  const z = await zugang(tenantId);
+  if (!z) return { ok: false, text: "BQool-Anmeldung für die Automatik fehlt (Anbindungen → BQool)." };
+  const s = await getSettings(tenantId);
+  const { bqoolUploadAdressen } = await import("@/lib/automatik/bqool-logic");
+  const verlauf = bqoolUploadAdressen(z).filter((a): a is typeof a & { url: string } => (s.bqool.laender as string[]).includes(a.land) && !!a.url).map((a) => ({ land: a.land as string, url: a.url }));
+  if (!verlauf.length) return { ok: false, text: "Keine Upload-Seite eingetragen (Anbindungen → BQool)." };
+  const { bqoolIstHerunterladen } = await import("@/lib/automatik/bqool-ist");
+  const r = await bqoolIstHerunterladen(tenantId, [], z, { titel: "BQool: Processing Reports", aufgabeKey: "automatik-bqool-ist", link: LINK, verlauf });
+  if (r.belegt) return { ok: false, text: "Es läuft gerade eine andere Browser-Automatik – bitte gleich noch einmal." };
+  if (!r.ok) return { ok: false, text: `Abgebrochen: ${r.fehler ?? "unbekannt"}` };
+  await uploadFehlerSpeichern(tenantId, r.uploadFehler ?? []);
+  const f = r.uploadFehler ?? [];
+  return { ok: !r.verlaufFehler?.length, text: `${f.length ? `${f.length} Upload${f.length === 1 ? "" : "s"} mit Fehlern: ${f.map(uploadFehlerText).join(" · ")}` : "Keine Uploads mit Fehlern gefunden."}${r.verlaufFehler?.length ? ` Nicht lesbar: ${r.verlaufFehler.join(" · ")}` : ""}`.slice(0, 600) };
 }
 
 /** B31.5: heruntergeladene Berichte einlesen (Land kennt der Lauf – keine Rückfrage), Protokoll und Abruf „BQool: Berichte“. */
@@ -317,7 +367,10 @@ export async function nachkontrolleAusfuehren(tenantId: string, id: string): Pro
   const hoch = (e?.zeilen ?? []).filter((z) => geholt.includes(z.land) && !fehlerSkus.has(`${z.land}|${z.sku}`));
   const L = schema.bqoolListings;
   const istRows = hoch.length ? await db.select({ land: L.marktplatz, sku: L.sku, regel: L.regel, min: L.min }).from(L).where(and(eq(L.tenantId, tenantId), inArray(L.marktplatz, geholt), inArray(L.sku, [...new Set(hoch.map((z) => z.sku))]))) : [];
-  const k = nachkontrolle(hoch, new Map(istRows.map((r) => [`${r.land}|${r.sku}`, { regel: r.regel, min: r.min }])));
+  // B33.6: Margen-Reset aus der Datei (ältere Exporte: aus dem Katalog), Min vorher = Ist vor dem Upload
+  const { katalogRegel, setztMinZurueck } = await import("./export-logic");
+  const katalog = (await getSettings(tenantId)).bqool.katalog;
+  const k = nachkontrolle(hoch.map((z) => ({ ...z, minReset: z.minReset ?? setztMinZurueck(katalogRegel(katalog, z.regel)) })), new Map(istRows.map((r) => [`${r.land}|${r.sku}`, { regel: r.regel, min: r.min }])));
   const ohneIst = laender.filter((x) => !geholt.includes(x));
   const text = `${k.text}${ohneIst.length ? ` Nicht geprüft: ${ohneIst.join(", ")} (Ist nicht geholt).` : ""}`;
   await aendern(tenantId, id, { kontrolleAm: new Date(), phase: "fertig", kontrolle: { ...k, text } }, `Nachkontrolle: ${text}`);

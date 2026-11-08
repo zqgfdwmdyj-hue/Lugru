@@ -125,15 +125,17 @@ describe("Freigabe", () => {
 });
 
 describe("Regel-Katalog", () => {
-  const basis = { untergrenze: null, ek: 10, fba: 3.5, fix: 0, zusatz: 0, ust: 0.19, provision: 0.15, alterTage: 45 };
-  it("Margen-Regel: effektiver Min mit Marge der Altersstufe; Datei-Min = Break-even ohne Marge", () => {
+  const basis = { untergrenze: null, ek: 10, fba: 3.5, fix: 0, zusatz: 0, ust: 0.19, provision: 0.15, alterTage: 45, cost: 11.9 };
+  it("Margen-Regel: effektiver Min = P(Marge der Altersstufe) laut BQool-Formel; Datei-Min = Break-even ohne Marge", () => {
     const ia = katalogRegel(KATALOG_STANDARD, "IA");
-    expect(effektiverMin({ ...basis, regel: ia })).toEqual({ min: breakEvenMin({ ...basis, margeProzent: 8 }), marge: 8, unterregel: "Equalizer", art: "marge" });
+    // B33.1: P(8 %) = (3,5 + 11,9/1,19) / (1/1,19 − 0,15 − 0,08) = 13,5 / 0,610336 = 22,12
+    expect(effektiverMin({ ...basis, regel: ia })).toMatchObject({ min: 22.12, marge: 8, unterregel: "Equalizer", art: "marge", minReset: true });
     expect(effektiverMin({ ...basis, regel: ia, alterTage: 10 })).toMatchObject({ marge: 10, unterregel: "Sales Booster" });
-    // Abverkauf DE: 0–30 T Equalizer 7 %, 181–270 T Sales Booster 0 %
+    // B33.3 Abverkauf DE: 0–30 T 5 %, 181–270 T 0 %, 271–365 T 1 %
     const ad = katalogRegel(KATALOG_STANDARD, "Abverkauf DE");
-    expect(effektiverMin({ ...basis, regel: ad, alterTage: 20 })).toMatchObject({ marge: 7, unterregel: "Equalizer" });
+    expect(effektiverMin({ ...basis, regel: ad, alterTage: 20 })).toMatchObject({ marge: 5 });
     expect(effektiverMin({ ...basis, regel: ad, alterTage: 200 })).toMatchObject({ marge: 0, unterregel: "Sales Booster" });
+    expect(effektiverMin({ ...basis, regel: ad, alterTage: 300 })).toMatchObject({ marge: 1 });
     const be = breakEvenMin({ ...basis, margeProzent: 0 });
     // B31.3: ohne effektiven Min bleibt es beim Break-even; Standard „effektiv“ = effektiver Min als harte Untergrenze
     expect(dateiMin({ regel: ia, untergrenze: null, breakEven: be })).toBe(be);
@@ -143,6 +145,16 @@ describe("Regel-Katalog", () => {
     expect(dateiMin({ regel: ia, untergrenze: null, breakEven: be, effMin: eff, modus: "sicherheitsnetz" })).toBe(be);
     // mbb (keine Staffel): Break-even, auch im Modus „effektiv“
     expect(dateiMin({ regel: katalogRegel(KATALOG_STANDARD, "mbb"), untergrenze: null, breakEven: be, effMin: be })).toBe(be);
+  });
+  it("B33.3: Stufen je Land – Stufen ohne feste Marge liefern keinen Min", () => {
+    const ia = katalogRegel(KATALOG_STANDARD, "ia");
+    expect(effektiverMin({ ...basis, regel: ia, land: "FR", alterTage: 10 })).toMatchObject({ marge: 11 });
+    expect(effektiverMin({ ...basis, regel: ia, land: "FR", alterTage: 75 })).toMatchObject({ min: null, marge: null, art: "wettbewerb", minReset: false });
+    expect(effektiverMin({ ...basis, regel: ia, land: "IT", alterTage: 5 })).toMatchObject({ min: null, art: "wettbewerb" });
+    expect(effektiverMin({ ...basis, regel: ia, land: "ES", alterTage: 75 })).toMatchObject({ marge: 5 });
+    const abv = katalogRegel(KATALOG_STANDARD, "Abverkauf");
+    expect(effektiverMin({ ...basis, regel: abv, land: "FR", alterTage: 200 }).art).toBe("wettbewerb");
+    expect(effektiverMin({ ...basis, regel: abv, land: "FR", alterTage: 120 })).toMatchObject({ marge: 1 });
   });
   it("Liquidation: Untergrenze maßgeblich; mbb: Break-even, ohne Untergrenze; unbekannt", () => {
     const liq = katalogRegel(KATALOG_STANDARD, "Liquidation");

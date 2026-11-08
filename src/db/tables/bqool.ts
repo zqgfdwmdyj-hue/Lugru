@@ -35,6 +35,29 @@ export const bqoolListings = pgTable(
 );
 
 /**
+ * B33.1 Gebühren je Land und SKU für die BQool-Formel P(m) = (F + C/(1+v)) / (1/(1+v) − r − m): FBA-Gebühr F und
+ * Provisionssatz r (vom Brutto-Preis) je Quelle – „bqool“ aus der BQool-Liste („Download listings“: Referral, FBA),
+ * „amazon“ aus der Amazon-Gebührenvorschau des Landes. Vorrang beim Rechnen: BQool vor Amazon vor Produkt (DE).
+ */
+export const bqoolGebuehren = pgTable(
+  "bqool_gebuehren",
+  {
+    tenantId: tenantId(),
+    land: text("land").notNull(),
+    sku: text("sku").notNull(),
+    quelle: text("quelle", { enum: ["bqool", "amazon"] }).notNull(),
+    asin: text("asin"),
+    fba: numeric("fba", { precision: 12, scale: 2, mode: "number" }),
+    provisionSatz: numeric("provision_satz", { precision: 6, scale: 4, mode: "number" }),
+    /** Preis, bei dem Amazon/BQool die Provision gerechnet hat (für Preisstufen). */
+    preis: numeric("preis", { precision: 12, scale: 2, mode: "number" }),
+    kategorie: text("kategorie"),
+    stand: timestamp("stand", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku, t.quelle] })],
+);
+
+/**
  * Feste Regel je Land und SKU für die BQool-Dateien aus dem System: aus Ludwigs Vorlagen (Liquidation mit fester
  * Untergrenze, Abverkauf), von Hand oder als Vorschlag der Kapital-Ampel (gilt erst nach Freigabe).
  */
@@ -56,7 +79,7 @@ export const bqoolZuweisungen = pgTable(
   (t) => [primaryKey({ columns: [t.tenantId, t.land, t.sku] })],
 );
 
-export type BqoolExportZeile = { land: string; sku: string; cost: number; zusatz: number; regel: string; min: number; max: number };
+export type BqoolExportZeile = { land: string; sku: string; cost: number; zusatz: number; regel: string; min: number; max: number; /** B33.6: Min in BQool vor dem Upload (Ist), Regel mit täglichem Margen-Reset. */ minVorher?: number | null; minReset?: boolean };
 
 /** Erzeugte BQool-Dateien (Inhalt je Land) – für den Download, den Vergleich „nur Änderungen“ und das Protokoll. */
 export const bqoolExporte = pgTable(
@@ -85,7 +108,16 @@ export type BqoolUploadLand = { land: string; ok: boolean; zeilen: number; ueber
 /** B31.2: Zusammenfassung des Soll-Exports für Freigabe-Push und Anzeige. */
 export type BqoolLaufZusammenfassung = { jeLand: Record<string, number>; gesamt: number; regelWechsel: number; warnungen: number; unterBreakEven: number; /** B31.6: davon Regelwechsel auf Liquidation (Min unter Marge). */ liquidation?: number };
 /** B31.2: Nachkontrolle – Abweichungen zwischen hochgeladener Datei und BQool-Ist 30 Minuten später. */
-export type BqoolKontrolle = { geprueft: number; ok: number; abweichungen: { land: string; sku: string; text: string }[]; text: string };
+export type BqoolKontrolle = {
+  geprueft: number;
+  ok: number;
+  abweichungen: { land: string; sku: string; text: string }[];
+  text: string;
+  /** B33.6: je hochgeladener SKU Min vorher (Ist vor dem Upload) / Datei / nachher (Ist nach dem Upload). */
+  minVergleich?: { land: string; sku: string; regel: string; vorher: number | null; datei: number; nachher: number | null; status: "gleich" | "reset" | "fehler" | "fehlt" }[];
+  /** B33.6: Hinweise ohne Fehler (Margen-Reset: „Min wird täglich zurückgesetzt – kein Fehler“). */
+  hinweise?: { land: string; sku: string; text: string }[];
+};
 
 /**
  * B31.2 Täglicher BQool-Kreislauf (06:00): Ist holen → Soll erzeugen → Freigabe (Push) → Upload je Land → Nachkontrolle.

@@ -6,7 +6,7 @@ import { getSettings } from "@/lib/settings";
 import type { KeepaStand, Marktplatz } from "@/lib/keepa/auswertung";
 import { BEFUND_TITEL, befundePruefen, checkMorgenZeile, median, pushNoetig, schwellenMitStandard, stufeA, stufeFuer, type CheckEingabe, type CheckStand } from "./listing-check-logic";
 import { istGebraucht, plusTage, schnelldreherKandidat, tageZwischen, type Zustand } from "./leiter-logic";
-import type { ExportLand } from "./export-logic";
+import { katalogRegel, setztMinZurueck, type ExportLand } from "./export-logic";
 
 // B32 Listing-Check: läuft nach dem BQool-Ist (06:00, B31.2) bzw. auf Knopfdruck. Stufe A täglich (Wert = Kapital ×
 // Nachfrage, Schnelldreher, offene Befunde), Stufe B wöchentlich, Stufe C (ohne Bestand) monatlich. Keepa nur für
@@ -144,6 +144,10 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
       kapital: kz?.kapital ?? null,
       verkaufspreisMedian: median(preise),
       verkaufspreisAnzahl: anzahl,
+      // B33.4: Regel laut BQool-Ist (Frischbestand-Falle, Hinweis bei Befund 1)
+      istRegel: i?.regel ?? null,
+      istMinReset: setztMinZurueck(katalogRegel(b.katalog, i?.regel ?? null)),
+      stufeText: z.regel === i?.regel ? z.stufeText : null,
     };
     // Stufe C: nur Min-Prüfung aus der Datei (Befund 1 und 6)
     const befunde = befundePruefen(e, schwellen).filter((x) => stufe !== "C" || x.nr === 1 || x.nr === 6);

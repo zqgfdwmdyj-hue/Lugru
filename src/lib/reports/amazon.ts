@@ -392,6 +392,13 @@ export function parseFeedback(table: Table) {
   });
 }
 
+/** „DE“, „Amazon.de“, „amazon.de“, Marktplatz-ID → Land (B33.1: Gebühren je Land aus der Gebührenvorschau). */
+const STORE_LAND: Record<string, string> = { de: "DE", fr: "FR", it: "IT", es: "ES", a1pa6795ukmfr9: "DE", a13v1ib3viyzzh: "FR", apj6jra9ng5v4: "IT", a1rkkupihcs9hs: "ES" };
+export function landAusStore(v: string | null | undefined): string | null {
+  const s = (v ?? "").trim().toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, "").replace(/^amazon\./, "");
+  return STORE_LAND[s] ?? null;
+}
+
 export function parseFees(table: Table) {
   return each(table, (r, a) => {
     const asin = a.get(r, "asin");
@@ -403,6 +410,11 @@ export function parseFees(table: Table) {
       sku: orNull(a.get(r, "sku")),
       fbaFee: parseAmount(a.get(r, "expected-fulfillment-fee-per-unit", "expected-domestic-fulfilment-fee-per-unit")),
       referralRate: price && referral ? Math.round((referral / price) * 10000) / 10000 : null,
+      /** Land der Zeile (Spalte „amazon-store“), null = unbekannt. */
+      land: landAusStore(a.get(r, "amazon-store", "marketplace", "store")),
+      preis: price,
+      kategorie: orNull(a.get(r, "product-group")),
+      waehrung: orNull(a.get(r, "currency")),
     };
   });
 }

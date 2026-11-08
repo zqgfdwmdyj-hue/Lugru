@@ -16,9 +16,12 @@ import {
   bqoolCost,
   bqoolDatei,
   breakEvenMin,
+  bqoolMarge,
+  bqoolPreisFuerMarge,
   effektiverMin,
+  gebuehrenFuerLand,
+  KEINE_FESTE_MARGE,
   liquidationsName,
-  margeBeiPreis,
   minEntscheidung,
   EXPORT_LAENDER,
   FORMAT_STANDARD,
@@ -27,6 +30,7 @@ import {
   maxPreis,
   minBlockiertBuybox,
   regelFuer,
+  stufenText,
   titelHatMarke,
   UST,
   vergleiche,
@@ -101,9 +105,19 @@ export type VorschauZeile = ExportZeile & {
   boden: number | null;
   /** Bestand FBA (verkaufbar + reserviert + unterwegs) + eigenes Lager (FBM). */
   bestand: number;
-  /** FBA-Gebühr und Provision (für Vergleiche, z. B. eBay). */
+  /** FBA-Gebühr und Provision des Landes (für Vergleiche, z. B. eBay). */
   fba: number;
   provision: number;
+  /** B33.1: Herkunft der Gebühren (BQool-Liste, Amazon-Gebührenvorschau, Produkt = DE-Wert), Provision mit Preisstufen. */
+  gebuehren: { quelle: "bqool" | "amazon" | "produkt"; geschaetzt: boolean; staffel: boolean; kategorie: string | null };
+  /** B33.2: BQool überschreibt den Min täglich mit P(Marge der Stufe) – Datei-Min wirkt höchstens bis zum nächsten Reset. */
+  minReset: boolean;
+  /** B33.3: Stufe der Regel im Land als Text („10 % (Available ≥ 1)“, „Lowest Price + 6 % – keine feste Marge“). */
+  stufeText: string | null;
+  /** Effektiver Min nicht gerechnet: Stufe ohne feste Marge. */
+  effMinText: string | null;
+  /** Est. Profit Margin laut BQool-Formel beim Min aus BQool (Ist). */
+  margeIst: number | null;
 };
 
 export type LandVorschau = { land: ExportLand; zeilen: VorschauZeile[]; neu: number; geaendert: number; gleich: number; regelWechsel: number; mitWarnung: number; istStand: Date | null; vergleichMit: "bqool" | "export" | "nichts" };
@@ -173,6 +187,8 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
     db.select({ createdAt: E.createdAt, zeilen: E.zeilen, protokoll: E.protokoll }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.uebertragung, ["fertig", "teilweise", "pruefen"]))).orderBy(desc(E.createdAt)).limit(20),
     db.select().from(LQ).where(eq(LQ.tenantId, tenantId)),
   ]);
+  // B33.1: Gebühren je Land (BQool-Liste, Amazon-Gebührenvorschau)
+  const gebJe = await import("./gebuehren").then((x) => x.gebuehrenLaden(tenantId, laender)).catch(() => new Map() as Awaited<ReturnType<typeof import("./gebuehren").gebuehrenLaden>>);
   // B31.7/B31.8: Zustand (von Hand, Berichte, Retouren-Station, Einkauf) und Schnelldreher je SKU
   const [zustandRows, pflegeRows, chargen, invZustand, station] = await Promise.all([
     db.select().from(schema.artikelZustand).where(eq(schema.artikelZustand.tenantId, tenantId)),
@@ -254,12 +270,17 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       // B31.8: eigene BQool-Regel für Schnelldreher (Einstellung), sonst bleibt die Regel und der Boden steht als Min in der Datei.
       if (schnelldreher && leiter.schnell.regel && katalogRegel(b.katalog, leiter.schnell.regel) && rf.quelle !== "zuweisung") rf = { ...rf, regel: leiter.schnell.regel };
       const kat = katalogRegel(b.katalog, rf.regel);
-      const kosten = { ek: r.unitCost, fba: r.fbaFee, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: r.referralRate };
+      // B33.1: Gebühren des Landes (nicht aus DE), BQool-Formel mit Cost brutto wie in der Datei
+      const gj = gebJe.get(key);
+      const geb = gebuehrenFuerLand({ land, bqool: gj?.bqool ?? null, amazon: gj?.amazon ?? null, produkt: { fba: r.fbaFee, satz: r.referralRate, geschaetzt: r.feeEstimated || r.refEstimated }, staffeln: b.provisionStaffeln });
+      const cost = bqoolCost(r.unitCost, b.costUst);
+      const kosten = { ek: r.unitCost, fba: geb.fba, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: geb.provision };
+      const formel = { cost, fba: geb.fba, ust: UST[land], provision: geb.provision, land };
       const alterTage = alterJe.get(r.sku) ?? null;
       const be0 = breakEvenMin({ ...kosten, margeProzent: 0 });
-      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage });
-      const effMinStufe1 = effektiverMin({ regel: katalogRegel(b.katalog, b.standardRegel), untergrenze: null, ...kosten, alterTage }).min;
-      const effMinStufe2 = effektiverMin({ regel: katalogRegel(b.katalog, abvRegel), untergrenze: null, ...kosten, alterTage }).min;
+      const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...formel, alterTage });
+      const effMinStufe1 = effektiverMin({ regel: katalogRegel(b.katalog, b.standardRegel), untergrenze: null, ...formel, alterTage }).min;
+      const effMinStufe2 = effektiverMin({ regel: katalogRegel(b.katalog, abvRegel), untergrenze: null, ...formel, alterTage }).min;
       const liq = liqJe.get(key) ?? null;
       const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
       const neuBuybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
@@ -267,7 +288,9 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const ziel = gebraucht ? zielpreisGebraucht({ zustand: zb.zustand, keepa: k?.aktuell?.gebraucht ?? null, neuBuybox, faktoren: leiter.zustand.faktoren }) : { preis: null, quelle: null as string | null };
       const minGebraucht = gebraucht ? breakEvenMin({ ...kosten, margeProzent: leiter.zustand.mindestmarge }) : null;
       const buybox = gebraucht ? (ziel.preis ?? neuBuybox) : neuBuybox;
-      const bodenSchnell = breakEvenMin({ ...kosten, margeProzent: leiter.schnell.margeBoden });
+      // B33.5 Variante 1: Schnelldreher-Boden = P(7 %) laut BQool-Formel (nie unter Break-even)
+      const pBoden = bqoolPreisFuerMarge({ ...formel, margeProzent: leiter.schnell.margeBoden });
+      const bodenSchnell = pBoden !== null && be0 !== null ? Math.max(pBoden, be0) : (pBoden ?? be0);
       const boden = schnelldreher ? bodenSchnell : null;
       // B31.6: Min unter dem effektiven Min der Margen-Regel wirkt nur mit „Liquidation“ (fester Min, nie unter Break-even
       // ohne Freigabe) – und nur, wenn die Buy Box darunter liegt (B31.6b); sonst Min = effektiver Min (Sicherheitsnetz).
@@ -277,7 +300,7 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const min = ent.min;
       soll.set(key, ent.regel);
       const regelVorher = ent.regelVorher ?? (liq && liq.grund !== "hand" ? liq.regelVorher : null);
-      const effMinVorher = ent.art === "liquidation_neu" ? eff.min : regelVorher ? effektiverMin({ regel: katalogRegel(b.katalog, regelVorher), untergrenze: null, ...kosten, alterTage }).min : null;
+      const effMinVorher = ent.art === "liquidation_neu" ? eff.min : regelVorher ? effektiverMin({ regel: katalogRegel(b.katalog, regelVorher), untergrenze: null, ...formel, alterTage }).min : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
       const max0 = gebraucht && ziel.preis ? Math.max(Math.round(ziel.preis * leiter.zustand.maxFaktor * 100) / 100, Math.round(min * 1.05 * 100) / 100) : maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
       // B32 Befund 5: Max nach Freigabe („Max anheben“), nie unter Min + 5 %
@@ -297,12 +320,13 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       // Regelwechsel auf Liquidation durch das System (Min unter Marge, Leiter) wartet auf den Test mit einer SKU.
       const wartetAufTest = !testBestanden && !istFest && (ent.art === "liquidation_neu" || (ent.art === "liquidation" && rf.quelle === "zuweisung" && (zuwJe.get(key)?.quelle as string) === "leiter"));
       if (wartetAufTest) w.push("Regelwechsel auf Liquidation wartet auf den Test mit einer SKU – noch nicht in der Datei");
-      const blockiert = minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
+      // B33.2: bei Margen-Reset-Regeln hilft kein neuer Min-Upload (BQool setzt ihn täglich zurück) → Listing-Check „Frischbestand-Falle“
+      const blockiert = eff.minReset ? null : minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
       if (blockiert) w.push(blockiert);
       // B25.5: In BQool steht für die SKU kein Mindestpreis – ohne Upload bepreist BQool ohne Untergrenze.
       if (i && (i.min === null || i.min === undefined || i.min <= 0)) w.push("kein Min in BQool – erst mit diesem Upload abgesichert");
       const inv = invJe.get(r.sku);
-      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) und Buy Box ${f2(buybox)} darunter – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: gewuenscht, regelSeit: i?.regelSeit ?? null, stufe: stufeVonRegel(ent.regel, b.katalog, b.abverkaufRegel), istStufe: stufeVonRegel(i?.regel ?? null, b.katalog, b.abverkaufRegel), alterTage, effMinStufe1, effMinStufe2, keinWechsel: ent.keinWechsel, zustand: zb.zustand, zustandQuelle: zb.quelle, zielpreis: ziel.preis, zielpreisQuelle: ziel.quelle, minGebraucht, schnelldreher, boden, bodenSchnell, bestand: r.stock + (inv?.mfn ?? 0), fba: r.fbaFee, provision: r.referralRate });
+      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) und Buy Box ${f2(buybox)} darunter – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: bqoolMarge({ preis: min, ...formel }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: gewuenscht, regelSeit: i?.regelSeit ?? null, stufe: stufeVonRegel(ent.regel, b.katalog, b.abverkaufRegel), istStufe: stufeVonRegel(i?.regel ?? null, b.katalog, b.abverkaufRegel), alterTage, effMinStufe1, effMinStufe2, keinWechsel: ent.keinWechsel, zustand: zb.zustand, zustandQuelle: zb.quelle, zielpreis: ziel.preis, zielpreisQuelle: ziel.quelle, minGebraucht, schnelldreher, boden, bodenSchnell, bestand: r.stock + (inv?.mfn ?? 0), fba: geb.fba, provision: geb.satz, gebuehren: { quelle: geb.quelle, geschaetzt: geb.geschaetzt, staffel: typeof geb.provision !== "number", kategorie: geb.kategorie }, minReset: ent.art === "marge" && eff.minReset, stufeText: eff.stufe ? stufenText(eff.stufe) : null, effMinText: eff.art === "wettbewerb" ? KEINE_FESTE_MARGE : null, margeIst: i?.min ? bqoolMarge({ preis: i.min, ...formel }) : null });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.
     const vergleichMit: LandVorschau["vergleichMit"] = istRows.length ? "bqool" : letzteZeilen.some((z) => z.land === land) ? "export" : "nichts";
@@ -321,7 +345,8 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
         for (const z of ex.zeilen) if (z.land === land) istMap.set(z.sku, { regel: z.regel, min: z.min, max: z.max, cost: z.cost });
       }
     }
-    const v = new Map(vergleiche(zeilen, istMap).map((a) => [a.sku, a]));
+    // B33.2: bei Margen-Reset-Regeln zählt eine reine Min-Abweichung nicht als Änderung (BQool setzt den Min täglich zurück).
+    const v = new Map(vergleiche(zeilen, istMap, { minZaehlt: (z) => !(z as VorschauZeile).minReset }).map((a) => [a.sku, a]));
     for (const z of zeilen) {
       const a = v.get(z.sku)!;
       z.art = a.art;
@@ -363,7 +388,7 @@ export async function bqoolExportErzeugen(tenantId: string, userId: string | nul
   const nur = o.nurSkus?.length ? new Set(o.nurSkus) : null;
   // B31.6: Regelwechsel auf Liquidation erst nach bestandenem Test mit einer SKU – außer im Test-Export selbst.
   const gewaehlt = v.laender.flatMap((l) => l.zeilen.filter((z) => (nur ? nur.has(`${z.land}|${z.sku}`) : (!o.nurAenderungen || z.art !== "gleich") && !z.wartetAufTest)));
-  const zeilen = gewaehlt.map((z) => ({ land: z.land, sku: z.sku, cost: z.cost, zusatz: z.zusatz, regel: z.regel, min: z.min, max: z.max, enable: z.enable }));
+  const zeilen = gewaehlt.map((z) => ({ land: z.land, sku: z.sku, cost: z.cost, zusatz: z.zusatz, regel: z.regel, min: z.min, max: z.max, enable: z.enable, minVorher: z.istMin, minReset: z.minReset }));
   const anzahl = Object.fromEntries(v.laender.map((l) => [l.land, zeilen.filter((z) => z.land === l.land).length]));
   // B31.2: Zusammenfassung für Freigabe-Push und „automatisch hochladen“ (nur über die Zeilen der Datei).
   const zusammenfassung: BqoolLaufZusammenfassung = {
