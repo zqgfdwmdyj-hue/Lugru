@@ -179,7 +179,7 @@ test.describe("Navigation links", () => {
 
       // Einstellungen: ein Menüeintrag, Unterseiten als Reiter, Abschnitte über die Sprungleiste
       await page.goto("/einstellungen");
-      await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Allgemein", "Anbindungen", "KI-Assistent", "Hintergrund & Importe", "Geräte: Handy & Tesla", "Apple Watch", "Benachrichtigungen", "Shop-Profile", "Abholung", "Testumgebung"]);
+      await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Allgemein", "Anbindungen", "KI-Assistent", "Hintergrund & Importe", "Geräte: Handy & Tesla", "Apple Watch", "Benachrichtigungen", "Shop-Profile", "Abholung", "Drucker", "Testumgebung"]);
       // Reiter „Hintergrund & Importe“: Abrufe, Amazon-Berichte, ArbitrageOne, BQool-Uploads – unter Anbindungen nur noch der Hinweis
       await page.getByTestId("sub-tabs").getByRole("link", { name: "Hintergrund & Importe" }).click();
       await page.waitForURL(/\/einstellungen\/hintergrund/);

@@ -24,11 +24,29 @@ async function drucker() {
   return { port: (s.address() as net.AddressInfo).port, auftraege, zu: () => new Promise((ok) => s.close(ok)) };
 }
 
-const zaehle = (b: Buffer, folge: number[]) => {
-  let n = 0;
-  for (let i = 0; i <= b.length - folge.length; i++) if (folge.every((x, k) => b[i + k] === x)) n++;
-  return n;
-};
+/** Brother-Rasterstrom zerlegen: Etiketten zählen (Kopf ESC i z … M 0, Rasterzeilen g 0x00 n, Ende 0x0C/0x1A). */
+function etiketten(b: Buffer, bytesJeZeile: number) {
+  let p = 0;
+  while (b[p] === 0) p++;
+  expect([...b.subarray(p, p + 6)]).toEqual([0x1b, 0x40, 0x1b, 0x69, 0x61, 0x01]);
+  p += 6;
+  const liste: { zeilen: number }[] = [];
+  for (;;) {
+    expect([...b.subarray(p, p + 3)]).toEqual([0x1b, 0x69, 0x7a]);
+    const zeilen = b.readUInt32LE(p + 7);
+    p += 13 + 4 + 4 + 4 + 5 + 2; // ESC i z, ESC i M, ESC i A, ESC i K, ESC i d, M 0
+    for (let z = 0; z < zeilen; z++) {
+      expect([b[p], b[p + 1], b[p + 2]]).toEqual([0x67, 0x00, bytesJeZeile]);
+      p += 3 + bytesJeZeile;
+    }
+    liste.push({ zeilen });
+    const ende = b[p++];
+    if (ende === 0x1a) break;
+    expect(ende).toBe(0x0c);
+  }
+  expect(p).toBe(b.length);
+  return liste;
+}
 
 /** Agent über die Einstellungen anlegen (Umzug: andere Agenten deaktivieren) → Token aus der einmaligen Anzeige. */
 async function agentAnlegen(page: Page, name: string, umzug = true) {
@@ -111,10 +129,11 @@ test.describe("Druckagent im Lager", () => {
       // Push, wenn ein Auftrag > 15 Min. wartet (Hintergrund alle 2 Min.; hier „Wartende prüfen“), genau einmal
       await sql("update druck_auftraege set created_at = now() - interval '20 minutes' where id = $1", [id1]);
       const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from druck_auftraege where id = $1", [id1]);
-      const vorher = (await sql<{ n: number }>("select count(*)::int n from meldungen where tenant_id = $1 and art = 'druck'", [T]))[0].n;
+      const [{ id: INH }] = await sql<{ id: string }>("select id from users where email = 'inhaber'");
+      const vorher = (await sql<{ n: number }>("select count(*)::int n from meldungen where tenant_id = $1 and user_id = $2 and art = 'druck'", [T, INH]))[0].n;
       await Promise.all([page.waitForURL(/druck=/), page.getByTestId("druck-pruefen").click()]);
       await expect(page.getByTestId("druck-meldung")).toContainText("Geprüft: 1 Push gesendet");
-      const pushs = await sql<{ titel: string; text: string; link: string }>("select titel, text, link from meldungen where tenant_id = $1 and art = 'druck' order by created_at desc", [T]);
+      const pushs = await sql<{ titel: string; text: string; link: string }>("select titel, text, link from meldungen where tenant_id = $1 and user_id = $2 and art = 'druck' order by created_at desc", [T, INH]);
       expect(pushs.length).toBe(vorher + 1);
       expect(pushs[0].titel).toBe("🖨️ 1 Druckauftrag wartet seit 15 Min.");
       expect(pushs[0].text).toMatch(/nicht erreichbar seit/);
@@ -128,10 +147,9 @@ test.describe("Druckagent im Lager", () => {
       expect(a1).toMatchObject({ id: id1, drucker: "QL-800", anzahl: 2 });
       await agent.auftragAusfuehren(a1);
       await expect.poll(() => status(id1)).toBe("gedruckt");
-      const daten = ql800.auftraege.at(-1)!;
-      expect([...daten.subarray(200, 206)]).toEqual([0x1b, 0x40, 0x1b, 0x69, 0x61, 0x01]);
-      expect(zaehle(daten, [0x1b, 0x69, 0x7a])).toBe(2); // zwei Etiketten
-      expect(daten.at(-1)).toBe(0x1a);
+      await expect.poll(() => ql800.auftraege.length).toBe(1);
+      expect([...ql800.auftraege[0].subarray(0, 200)].every((x) => x === 0)).toBe(true); // Rücksetzen
+      expect(etiketten(ql800.auftraege[0], 90)).toEqual([{ zeilen: 271 }, { zeilen: 271 }]); // zwei Etiketten 62 × 29
       await page.goto("/drucken");
       await expect(symbol(page, "QL-800")).toHaveAttribute("title", /bereit .*zuletzt gedruckt/);
       const gedruckt = page.locator(`[data-testid="druck-auftrag"][data-id="${id1}"]`);
@@ -146,7 +164,8 @@ test.describe("Druckagent im Lager", () => {
       expect(a2?.id).toBe(neu.id);
       await agent.auftragAusfuehren(a2);
       await expect.poll(() => status(neu.id)).toBe("gedruckt");
-      expect(createHash("sha256").update(ql800.auftraege.at(-1)!).digest("hex")).toBe(neu.sha256);
+      await expect.poll(() => ql800.auftraege.length).toBe(2);
+      expect(createHash("sha256").update(ql800.auftraege[1]).digest("hex")).toBe(neu.sha256);
 
       // Abnahme 5c: Umzug auf den Mini-PC – neuer Token, alter Agent „deaktiviert“ und bekommt „abgemeldet“
       const token2 = await agentAnlegen(page, `Mini-PC ${m}`, true);
@@ -169,6 +188,7 @@ test.describe("Druckagent im Lager", () => {
       expect(mini.einstellungen).toMatchObject({ ordner: { pfad: "/tmp/scans-test", intervallSek: 60 }, leerlaufAusMin: 15 });
 
       // Widerrufen → sofort „abgemeldet“ (401)
+      await page.goto("/einstellungen/drucker");
       page.once("dialog", (d) => d.accept());
       await Promise.all([page.waitForURL(/meldung=/), zeile(page, `Mini-PC ${m}`).getByTestId("agent-widerrufen").click()]);
       await expect(zeile(page, `Mini-PC ${m}`)).toHaveAttribute("data-status", "deaktiviert");
@@ -203,7 +223,8 @@ test.describe("Druckagent im Lager", () => {
       expect(j).toMatchObject({ ok: true, text: "3× FNSKU-Etikett X00TEST0001 (TEST-SOCKEN) an QL-800 gesendet." });
       await expect.poll(() => status(j.auftragId), { timeout: 30_000 }).toBe("gedruckt");
       expect(Date.now() - t0).toBeLessThan(30_000);
-      expect(zaehle(ql800.auftraege.at(-1)!, [0x1b, 0x69, 0x7a])).toBe(3);
+      await expect.poll(() => ql800.auftraege.length).toBe(1);
+      expect(etiketten(ql800.auftraege[0], 90).length).toBe(3);
       expect((await page.request.post("/api/mobil/drucken", { headers: { Authorization: `Bearer ${mk}` }, data: { sku: "GIBT-ES-NICHT" } })).status()).toBe(404);
 
       // Etiketten-Seite (bisher Browser-Druck): „An QL-800 im Lager senden“
@@ -267,9 +288,8 @@ test.describe("Druckagent im Lager", () => {
       expect(a).toMatchObject({ drucker: "QL-1100", seiten: 3 });
       await agent.auftragAusfuehren(a);
       await expect.poll(() => status(a!.id)).toBe("gedruckt");
-      const daten = ql1100.auftraege.at(-1)!;
-      expect(zaehle(daten, [0x1b, 0x69, 0x7a])).toBe(3); // alle Seiten
-      expect(zaehle(daten, [0x67, 0x00, 162])).toBeGreaterThanOrEqual(3 * 1660); // 102 × 152 mm am QL-1100
+      await expect.poll(() => ql1100.auftraege.length).toBe(1);
+      expect(etiketten(ql1100.auftraege[0], 162)).toEqual([{ zeilen: 1660 }, { zeilen: 1660 }, { zeilen: 1660 }]); // alle Seiten, 102 × 152 am QL-1100
       expect(ql800.auftraege.length).toBe(0);
 
       // FNSKU-Bogen A4 (27er, 4 belegt) über das Teilen-Menü am iPhone → einzelne 62-mm-Etiketten am QL-800
@@ -292,7 +312,8 @@ test.describe("Druckagent im Lager", () => {
       expect(b).toMatchObject({ drucker: "QL-800", seiten: 4 });
       await agent.auftragAusfuehren(b);
       await expect.poll(() => status(b!.id)).toBe("gedruckt");
-      expect(zaehle(ql800.auftraege.at(-1)!, [0x1b, 0x69, 0x7a])).toBe(4);
+      await expect.poll(() => ql800.auftraege.length).toBe(1);
+      expect(etiketten(ql800.auftraege[0], 90).length).toBe(4);
     } finally {
       await ql1100.zu();
       await ql800.zu();
@@ -309,13 +330,16 @@ test.describe("Druckagent im Lager", () => {
     try {
       await anmelden(page, "inhaber");
       await page.goto("/lager/scannen");
+      await page.getByText("Steuer-Barcodes (Karte für die Werkbank)").click(); // eingeklappt
       await expect(page.getByTestId("steuerkarte")).toBeVisible();
       const scan = async (code: string) => {
-        const vorher = await page.getByTestId("scanner-meldung").innerText().catch(() => "");
+        const meldung = page.getByTestId("scanner-meldung");
+        const vorher = (await meldung.count()) ? await meldung.innerText() : "";
         await page.getByTestId("scanner-eingabe").fill(code); // Handscanner = Tastatur-Eingabe + Enter
         await page.getByTestId("scanner-eingabe").press("Enter");
-        await expect(page.getByTestId("scanner-meldung")).not.toHaveText(vorher === "" ? /^$/ : vorher, { timeout: 15_000 });
-        await expect(page.getByTestId("scanner-meldung")).not.toHaveText("…");
+        if (vorher) await expect(meldung).not.toHaveText(vorher, { timeout: 15_000 });
+        else await expect(meldung).toBeVisible({ timeout: 15_000 });
+        await expect(meldung).not.toHaveText("…");
       };
       await scan(FNSKU);
       await expect(page.getByTestId("scanner-artikel")).toContainText(`SKU ${SKU}`);
@@ -326,6 +350,7 @@ test.describe("Druckagent im Lager", () => {
       expect(job).toEqual({ anzahl: 5, seite: "/lager/scannen", drucker: "QL-800" });
 
       // Wareneingang: Steuer-Barcode, Artikel zweimal scannen (Menge 2), Stellplatz scannen → gebucht
+      await scan("LUGRU-ABBRECHEN");
       await scan("LUGRU-WARENEINGANG");
       await expect(page.getByTestId("scanner")).toHaveAttribute("data-modus", "wareneingang");
       await scan(FNSKU);
@@ -335,6 +360,7 @@ test.describe("Druckagent im Lager", () => {
       await expect(page.getByTestId("scanner-meldung")).toHaveText(`Gebucht: 2 × ${SKU} auf Fach T-${m}.`);
       const [lager] = await sql<{ quantity: number; location: string }>("select quantity, location from own_stock where tenant_id = $1 and sku = $2", [T, SKU]);
       expect(lager).toEqual({ quantity: 2, location: `T-${m}` });
+      await scan(FNSKU);
       await scan("LUGRU-ABBRECHEN");
       await expect(page.getByTestId("scanner")).toHaveAttribute("data-modus", "normal");
       await scan("LUGRU-DRUCKEN-1");
@@ -343,7 +369,7 @@ test.describe("Druckagent im Lager", () => {
       // VA: FNSKU/Retouren/DHL ja, Preisetiketten und Agent-Einstellungen nein
       const pw = `Erfunden-${m}-Passwort`;
       const [u] = await sql<{ id: string }>("insert into users (email, name, password_hash) values ($1, $2, $3) returning id", [`va-druck-${m}`, `VA Druck ${m}`, await bcrypt.hash(pw, 4)]);
-      await sql("insert into memberships (tenant_id, user_id, role, areas, read_only, private_access, private_scope) values ($1, $2, 'staff', $3, false, false, 'voll')", [T, u.id, ["start", "amazon", "service"]]);
+      await sql("insert into memberships (tenant_id, user_id, role, areas, read_only, private_access, private_scope) values ($1, $2, 'staff', $3::jsonb, false, false, 'voll')", [T, u.id, JSON.stringify(["start", "amazon", "service"])]);
       const ctx = await browser.newContext({ locale: "de-DE", timezoneId: "Europe/Berlin" });
       const va = await ctx.newPage();
       await va.goto("/login");

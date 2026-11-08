@@ -98,7 +98,7 @@ describe("Stand aus einem Keepa-Produkt", () => {
   const s = standAusKeepa(produkt, "DE", NOW)!;
 
   it("aktuell: Buy Box inkl. Versand, Amazon auf Lager, Angebote gesamt/FBA/FBM, Rang, Verkäufe/Monat", () => {
-    expect(s.aktuell).toEqual({ buybox: 22.99, amazon: 22.99, amazon_status: "auf Lager", angebote_neu: 12, angebote_fba: 9, angebote_fbm: 3, verkaufsrang: 3000, monatlich_verkauft: 50, monatlich_verkauft_aus: "amazon", rang_drops_30: null });
+    expect(s.aktuell).toEqual({ buybox: 22.99, amazon: 22.99, amazon_status: "auf Lager", angebote_neu: 12, angebote_fba: 9, angebote_fbm: 3, verkaufsrang: 3000, monatlich_verkauft: 50, monatlich_verkauft_aus: "amazon", rang_drops_30: null, gebraucht: { wie_neu: null, sehr_gut: null, gut: null, akzeptabel: null, buybox: null } });
     expect(s).toMatchObject({ asin: "B0TEST0001", marktplatz: "DE", waehrung: "EUR", titel: "Testprodukt" });
   });
   it("Kennzahlen: Schnitt von Keepa (wenn vorhanden), Min/Max aus dem Verlauf, Amazon nicht auf Lager in %", () => {

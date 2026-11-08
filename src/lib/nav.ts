@@ -116,8 +116,9 @@ export const NAV: NavSection[] = [
       { href: "/artikel", label: "Artikelstamm", unter: "lager" },
       { href: "/chargen", label: "Chargen", unter: "lager" },
       { href: "/paletten", label: "Paletten-Lager", unter: "lager" },
-      { href: "/drucken", label: "Drucken (Etiketten)", unter: "lager" },
-      { href: "/lager/scannen", label: "Scannen", unter: "lager" },
+      // Druckagent: für Lager, WaWi, Amazon (VA: FNSKU) und Service (Retouren, DHL) – nicht für reine Geld-/Büro-Konten
+      { href: "/drucken", label: "Drucken (Etiketten)", unter: "lager", sichtbarMit: ["/paletten", "/auftraege", "/inbound", "/retouren"] },
+      { href: "/lager/scannen", label: "Scannen", unter: "lager", sichtbarMit: ["/paletten", "/auftraege", "/inbound", "/retouren"] },
       { href: "/auftraege", label: "Aufträge & Versand", unter: "versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL", unter: "versand" },
       { href: "/versand/label", label: "Label aus Chat (DHL)", unter: "versand" },

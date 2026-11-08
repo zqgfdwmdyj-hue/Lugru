@@ -81,11 +81,11 @@ export default async function LeistungPage({ searchParams }: { searchParams: Pro
 
       <section className="card card-pad stack" data-testid="leistung-stand">
         <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-          <Link href={link(sp, { land: undefined })} className={`chip${!land ? " active" : ""}`}>Alle Länder</Link>
-          {LAENDER.map((l) => <Link key={l} href={link(sp, { land: l })} className={`chip${land === l ? " active" : ""}`}>{l}</Link>)}
+          <Link href={link(sp, { land: undefined })} className={`chip${!land ? " active" : ""}`} aria-current={!land ? "page" : undefined}>Alle Länder</Link>
+          {LAENDER.map((l) => <Link key={l} href={link(sp, { land: l })} className={`chip${land === l ? " active" : ""}`} aria-current={land === l ? "page" : undefined}>{l}</Link>)}
           <span style={{ width: 12 }} />
-          <Link href={link(sp, { tage: undefined })} className={`chip${tage === 7 ? " active" : ""}`}>7 Tage</Link>
-          <Link href={link(sp, { tage: "30" })} className={`chip${tage === 30 ? " active" : ""}`}>30 Tage</Link>
+          <Link href={link(sp, { tage: undefined })} className={`chip${tage === 7 ? " active" : ""}`} aria-current={tage === 7 ? "page" : undefined}>7 Tage</Link>
+          <Link href={link(sp, { tage: "30" })} className={`chip${tage === 30 ? " active" : ""}`} aria-current={tage === 30 ? "page" : undefined}>30 Tage</Link>
         </div>
         {st.laender.length === 0 ? (
           <div className="notice notice-warn small" data-testid="leistung-leer">Noch kein Bericht „Listing Performance“. In BQool unter Reports je Marktplatz herunterladen und unter <Link href="/uploads">Uploads</Link> hochladen – oder der tägliche BQool-Lauf holt ihn.</div>

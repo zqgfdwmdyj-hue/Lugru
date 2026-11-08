@@ -36,13 +36,15 @@ const ALT: [string, string][] = [
 const ENTFALLEN = ["/?ansicht=liste", "/kalender/tagesplan?anrufe=1", "/ebay?ansicht=artikel", "/ebay?ansicht=verlauf", "/ebay?ansicht=rechnungen", "/ebay?ansicht=einstellungen", "/listings/temu#rechner", "/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile"];
 
 describe("Zielstruktur (Abschnitt 4)", () => {
-  it("11 Gruppen in der Reihenfolge des Auftrags, 83 Einträge (82 + Privat › Nachrichten), 35 in Untergruppen, direkt 48", () => {
+  it("11 Gruppen in der Reihenfolge des Auftrags, 85 Einträge (82 + Privat › Nachrichten + Drucken/Scannen), 37 in Untergruppen, direkt 48", () => {
     expect(NAV.map((s) => s.label)).toEqual(["Heute", "Einkauf & Deals", "Amazon", "eBay & Temu", "Lager & Versand", "Finanzen", "B2B", "Marken & Content", "Team & Verwaltung", "Privat", "Einstellungen"]);
     const alle = NAV.flatMap((s) => s.items);
-    expect(alle).toHaveLength(83);
-    expect(alle.filter((i) => i.unter)).toHaveLength(35);
+    expect(alle).toHaveLength(85);
+    expect(alle.filter((i) => i.unter)).toHaveLength(37);
     expect(alle.filter((i) => !i.unter)).toHaveLength(48);
-    expect(new Set(alle.map((i) => i.href)).size).toBe(83);
+    expect(new Set(alle.map((i) => i.href)).size).toBe(85);
+    // Druckagent (08.11.): Lager › Drucken und Scannen
+    expect(NAV.find((s) => s.key === "lager")!.items.filter((i) => i.unter === "lager").map((i) => i.href)).toEqual(expect.arrayContaining(["/drucken", "/lager/scannen"]));
     expect(NAV.find((s) => s.key === "privat")!.items.map((i) => i.href)).toContain("/privat/nachrichten");
   });
   it("kein Block länger als 8 Zeilen; Untergruppen nur mit eigenem Thema; Gruppen mit weniger als 4 Einträgen nur für eBay & Temu (3 Seiten) und Einstellungen (1)", () => {
@@ -141,6 +143,13 @@ describe("Sichtbarkeit nach Rollen (wie vorher)", () => {
     const fin = sicht(false, ["geld"]).find((s) => s.key === "finanzen")!;
     expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Kapital-Ampel", "Hebel: Umsatz & Marge", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste"]);
     expect(sicht(false, ["geld"]).some((s) => s.key === "lager" || s.key === "einstellungen")).toBe(false);
+  });
+  it("Druckagent: Drucken/Scannen für VA, Lager und Amazon – nicht für reine Geld-Konten", () => {
+    const hrefs = (areas: string[]) => sicht(false, areas).flatMap((s) => s.items.map((i) => i.href));
+    expect(hrefs([...VA_BEREICHE])).toEqual(expect.arrayContaining(["/drucken", "/lager/scannen"]));
+    expect(hrefs(["paletten"])).toContain("/drucken");
+    expect(hrefs(["amazon"])).toContain("/drucken");
+    expect(hrefs(["geld"])).not.toContain("/drucken");
   });
   it("nur „Amazon“: nur freigegebene Amazon-Punkte, Untergruppen bleiben", () => {
     const am = sicht(false, ["amazon"]).find((s) => s.key === "amazon")!;

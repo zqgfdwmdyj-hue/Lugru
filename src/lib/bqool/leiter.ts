@@ -160,7 +160,13 @@ export async function leiterPflegen(tenantId: string, heute = todayIso()): Promi
   if (unbekannt.length) await upsertSystemTask(db, tenantId, TASK_ZUSTAND, { title: `Zustand prüfen: ${unbekannt.length} SKU${unbekannt.length === 1 ? "" : "s"} ohne Zustand (kein BQool-Upload)`, notes: `Kein Einkauf, kein Amazon-Zustand, keine Retouren-Station – Zustand von Hand setzen (Repricer → Zustand).\n${unbekannt.slice(0, 25).map((u) => `• ${u.sku}${u.titel ? ` – ${u.titel.slice(0, 50)}` : ""}`).join("\n")}`, category: "amazon", link: "/repricer?zustand=unbekannt#bqool-liste" });
   else await resolveSystemTask(db, tenantId, TASK_ZUSTAND);
   const [{ n: offen }] = await db.select({ n: sql<number>`count(*)::int` }).from(V).where(and(eq(V.tenantId, tenantId), eq(V.status, "offen"), sql`${V.art} not like 'check_%'`));
-  if (offen) await upsertSystemTask(db, tenantId, TASK_LEITER, { title: `BQool Regel-Leiter: ${offen} Vorschl${offen === 1 ? "ag" : "äge"} zur Freigabe`, notes: "Stufenwechsel (ia → Abverkauf → Liquidation), Schnelldreher-Schutz, gebrauchte Ware. Erst nach Freigabe kommt der Wechsel in die nächste BQool-Datei.", category: "amazon", link: "/repricer/bqool#leiter" });
+  if (offen) {
+    // Die betroffenen SKUs gleich in der Aufgabe nennen (höchstens 15) – entschieden wird auf der Freigabe-Seite.
+    const liste = await db.select({ land: V.land, sku: V.sku, art: V.art }).from(V).where(and(eq(V.tenantId, tenantId), eq(V.status, "offen"), sql`${V.art} not like 'check_%'`)).orderBy(V.sku).limit(15);
+    const ART: Record<string, string> = { stufe_1_2: "Stufe 1 → 2 (Abverkauf)", stufe_1_3: "Stufe 1 → 3 (Liquidation)", stufe_2_3: "Stufe 2 → 3 (Liquidation)", stufe_2_1: "zurück auf Stufe 1", schnelldreher: "Schnelldreher?", schnelldreher_ende: "Schnelldreher ohne Buy Box", aktivieren: "aktivieren", ebay: "eBay statt Amazon" };
+    const zeilen = liste.map((l) => `• ${l.sku} (${l.land}): ${ART[l.art] ?? l.art}`).join("\n");
+    await upsertSystemTask(db, tenantId, TASK_LEITER, { title: `BQool Regel-Leiter: ${offen} Vorschl${offen === 1 ? "ag" : "äge"} zur Freigabe`, notes: `Stufenwechsel (ia → Abverkauf → Liquidation), Schnelldreher-Schutz, gebrauchte Ware. Erst nach Freigabe kommt der Wechsel in die nächste BQool-Datei.\n${zeilen}${offen > liste.length ? `\n… und ${offen - liste.length} weitere` : ""}`, category: "amazon", link: "/repricer/bqool#leiter" });
+  }
   else await resolveSystemTask(db, tenantId, TASK_LEITER);
 
   // Stand für Morgenbericht/Kapital-Ampel: Stufen nach BQool-Ist

@@ -38,6 +38,7 @@ async function aufraeumen(T: string, muster: string) {
     else await sql(`delete from ${tab} where tenant_id = $1 and sku like $2`, [T, muster]);
   }
   await sql("update tasks set status = 'done' where tenant_id = $1 and system_key in ('bqool-leiter', 'bqool-zustand-pruefen', 'bqool-liquidation-ablauf', 'bqool-rueckkehr') and status = 'open'", [T]);
+  await sql("update tenants set settings = settings #- '{bqool,liquidationTest}' where id = $1", [T]);
 }
 
 const zeileVon = (v: { laender: { groesste_aenderungen: Zeile[] }[] }, sku: string) => v.laender.flatMap((l) => l.groesste_aenderungen).find((z) => z.sku === sku);
@@ -75,6 +76,10 @@ test.describe("B31.6a/b – Regel-Leiter und „Liquidation bis“", () => {
       await page.goto("/repricer/bqool#liquidation");
       await Promise.all([aktion(page), page.getByTestId("bq-liq-pruefen").click()]);
       await expect(page.getByRole("status")).toContainText("Liquidation geprüft");
+      // L3 steht nach dem Ist weiter mit „Liquidation“ und dem gesetzten Min → „Test mit einer SKU“ automatisch bestanden
+      const [{ liqTest }] = await sql<{ liqTest: { bestanden: boolean; sku: string; vonHand: boolean } }>("select settings->'bqool'->'liquidationTest' as \"liqTest\" from tenants where id = $1", [T]);
+      expect(liqTest).toMatchObject({ bestanden: true, sku: L3, vonHand: false });
+      await sql("update tenants set settings = settings #- '{bqool,liquidationTest}' where id = $1", [T]); // für die Prüfung „wartet auf den Test“ zurücksetzen
 
       // ---- Freigabe-Seite zeigt jeden Stufenwechsel einzeln ------------------------------------------------------------
       await page.goto("/repricer/bqool#leiter");

@@ -60,9 +60,9 @@ export default async function ListingCheckPage({ searchParams }: { searchParams:
         )}
         {treffer && treffer.freigaben > 0 && <div className="small" data-testid="lc-treffer">Trefferquote: {treffer.mitVerkauf} von {treffer.freigaben} Freigaben (älter als 14 Tage) führten zu mehr Verkäufen ({treffer.quote} %).</div>}
         <div className="row small" style={{ gap: 6, flexWrap: "wrap" }}>
-          <Link className={`chip${!filter ? " active" : ""}`} href="/repricer/listing-check">alle ({befunde.length})</Link>
+          <Link className={`chip${!filter ? " active" : ""}`} aria-current={!filter ? "page" : undefined} href="/repricer/listing-check">alle ({befunde.length})</Link>
           {[...jeNr.entries()].sort((a, b) => a[0] - b[0]).map(([nr, n]) => (
-            <Link key={nr} className={`chip${filter === nr ? " active" : ""}`} href={`/repricer/listing-check?befund=${nr}`} data-testid={`lc-filter-${nr}`}>{nr} {BEFUND_TITEL[nr]} ({n})</Link>
+            <Link key={nr} className={`chip${filter === nr ? " active" : ""}`} aria-current={filter === nr ? "page" : undefined} href={`/repricer/listing-check?befund=${nr}`} data-testid={`lc-filter-${nr}`}>{nr} {BEFUND_TITEL[nr]} ({n})</Link>
           ))}
         </div>
       </section>
