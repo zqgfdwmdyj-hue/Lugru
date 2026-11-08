@@ -454,7 +454,7 @@ export type MinEntscheidung = {
  *    Mindestgewinn), darunter nur mit Freigabe „Verlust akzeptiert bis x €“ je Stück.
  * Regel ist schon Liquidation → Min = gewünschter Min (Untergrenze), sonst Break-even; unter Break-even nur warnen.
  */
-export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | null; gewuenscht: number | null; effMin: number | null; breakEven: number | null; verlustBis?: number | null; liquidation: string; /** B31.6b: Regelwechsel nur, wenn die Buy Box unter dem effektiven Min liegt. */ buybox?: number | null; /** B31.8: Schnelldreher – Margen-Boden (Break-even + 7 %), kein Wechsel auf Liquidation. */ boden?: number | null; schnelldreher?: boolean }): MinEntscheidung {
+export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | null; gewuenscht: number | null; effMin: number | null; breakEven: number | null; verlustBis?: number | null; liquidation: string; /** B31.6b: Regelwechsel nur, wenn die Buy Box unter dem effektiven Min liegt. */ buybox?: number | null; /** B31.8: Schnelldreher – Margen-Boden (Break-even + 7 %), kein Wechsel auf Liquidation. */ boden?: number | null; schnelldreher?: boolean; /** B31.6a: laufende Liquidation – bis „Liquidation bis“ bleiben Regel und fester Min stehen. */ laeuft?: boolean }): MinEntscheidung {
   const be = o.breakEven;
   const vb = o.verlustBis !== null && o.verlustBis !== undefined && o.verlustBis > 0 ? o.verlustBis : null;
   const unter = (m: number | null) => m !== null && be !== null && m < be - 0.005;
@@ -470,7 +470,7 @@ export function minEntscheidung(o: { regelName: string; regel: KatalogRegel | nu
     const basis = o.effMin !== null ? (be !== null ? Math.max(o.effMin, be) : o.effMin) : be;
     if (o.gewuenscht !== null && o.effMin !== null && o.gewuenscht < o.effMin - 0.005) {
       const bb = o.buybox ?? null;
-      const keinWechsel = o.schnelldreher ? "schnelldreher" : bb === null ? "buybox_unbekannt" : bb >= o.effMin - 0.005 ? "buybox_ueber" : null;
+      const keinWechsel = o.schnelldreher ? "schnelldreher" : o.laeuft ? null : bb === null ? "buybox_unbekannt" : bb >= o.effMin - 0.005 ? "buybox_ueber" : null;
       if (!keinWechsel) {
         const unten = be === null ? null : vb !== null ? r2(be - vb) : be;
         const min = unten !== null ? Math.max(o.gewuenscht, unten) : o.gewuenscht;

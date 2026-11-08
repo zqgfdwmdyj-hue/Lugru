@@ -195,9 +195,9 @@ export function ablaufStand(o: { bis: string | null; dauerhaft: boolean; heute: 
 }
 
 /** Frühere Rückkehr (B31.6a): Bestand 0, Margen-Min der Stufe 2 nicht mehr über der Buy Box, Buy Box 14 Tage darüber. */
-export function fruehereRueckkehr(o: { bestand: number | null; effMinZiel: number | null; buybox: number | null; rueckkehr14: boolean }): string | null {
+export function fruehereRueckkehr(o: { bestand: number | null; effMinZiel: number | null; buybox: number | null; rueckkehr14: boolean; leiter?: boolean }): string | null {
   if (o.bestand !== null && o.bestand <= 0) return "Bestand 0 (FBA + Lager)";
-  if (o.effMinZiel !== null && o.buybox !== null && o.effMinZiel <= o.buybox + 0.005) return "Margen-Min der Regel liegt nicht mehr über der Buy Box (Lageralter-Stufe weitergewandert)";
+  if (o.effMinZiel !== null && o.buybox !== null && o.effMinZiel <= o.buybox + 0.005) return o.leiter ? "effektiver Min der Stufe 2 liegt nicht mehr über der Buy Box" : "Margen-Min der Regel liegt nicht mehr über der Buy Box (Lageralter-Stufe weitergewandert)";
   if (o.rueckkehr14) return "Buy Box seit 14 Tagen über effektivem Min + 3 %";
   return null;
 }

@@ -32,7 +32,7 @@ export const bqoolExportVorschauTool = defineTool({
         groesste_aenderungen: l.zeilen
           .filter((z) => z.art !== "gleich" || z.warnungen.length)
           .slice(0, i.limit)
-          .map((z) => ({ sku: z.sku, titel: z.titel ?? undefined, regel_ist: z.istRegel, regel_soll: z.regel, stufe: z.stufe ?? undefined, min_ist: z.istMin, min_datei: z.min, max: z.max, cost: z.cost, effektiver_min: z.effMin, marge_prozent: z.marge, buybox: z.buybox, warnungen: z.warnungen.length ? z.warnungen : undefined, buybox_erklaerung: z.erklaerung ?? undefined, art: z.art, zustand: z.zustand !== "neu" ? z.zustand : undefined, zielpreis_gebraucht: z.zielpreis ?? undefined, min_gebraucht: z.minGebraucht ?? undefined, schnelldreher: z.schnelldreher || undefined })),
+          .map((z) => ({ sku: z.sku, titel: z.titel ?? undefined, regel_ist: z.istRegel, regel_soll: z.regel, stufe: z.stufe ?? undefined, min_ist: z.istMin, min_datei: z.min, max: z.max, cost: z.cost, effektiver_min: z.effMin, marge_prozent: z.marge, buybox: z.buybox, warnungen: z.warnungen.length ? z.warnungen : undefined, buybox_erklaerung: z.erklaerung ?? undefined, art: z.art, zustand: z.zustand !== "neu" ? z.zustand : undefined, zielpreis_gebraucht: z.zielpreis ?? undefined, min_gebraucht: z.minGebraucht ?? undefined, schnelldreher: z.schnelldreher || undefined, schnelldreher_boden: z.boden ?? undefined, break_even: z.breakEven })),
       })),
       ek_fehlt: { anzahl: new Set(v.ekFehlt.map((x) => x.sku)).size, skus: [...new Set(v.ekFehlt.map((x) => x.sku))].slice(0, 50) },
       vorschlaege_kapital_ampel: v.vorschlaege.slice(0, 20),

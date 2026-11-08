@@ -92,11 +92,15 @@ export async function liquidationenPflegen(tenantId: string, heute = todayIso())
       const r = rueckkehrStand({ buybox: z?.buybox ?? null, effMinVorher, ueberSeit: l.ueberSeit, heute });
       // B31.6b: Rückkehr auf Stufe 2 (Abverkauf), auf Stufe 1 nur mit frischem Nachschub
       const ziel = rueckkehrZiel({ land: l.land, alterTage: z?.alterTage ?? null, gebraucht: istGebraucht((z?.zustand ?? "neu") as Zustand), abverkauf: s.bqool.abverkaufRegel, standard: s.bqool.standardRegel });
-      const effMinZiel = z ? (ziel.stufe === 2 ? z.effMinStufe2 : z.effMinStufe1) : null;
-      const frueher = l.status === "aktiv" ? fruehereRueckkehr({ bestand: bestandJe.get(l.sku) ?? 0, effMinZiel, buybox: z?.buybox ?? null, rueckkehr14: r.vorschlagen }) : null;
+      // (b) Leiter (B31.6b): zurück, sobald der effektive Min der Stufe 2 nicht mehr über der Buy Box liegt.
+      //     Min unter Marge (B31.6a): nur wenn die Lageralter-Stufe weitergewandert ist – der effektive Min der alten Regel
+      //     liegt heute unter dem beim Wechsel gespeicherten Wert. Steigt nur die Buy Box, gilt die 14-Tage-Regel (c).
+      const effMinZiel = !z ? null : l.grund === "leiter" ? z.effMinStufe2 : l.effMinVorher !== null && z.effMinVorher !== null && z.effMinVorher < l.effMinVorher - 0.005 ? z.effMinVorher : null;
+      const frueher = l.status === "aktiv" ? fruehereRueckkehr({ bestand: bestandJe.get(l.sku) ?? 0, effMinZiel, buybox: z?.buybox ?? null, rueckkehr14: r.vorschlagen, leiter: l.grund === "leiter" }) : null;
       const set: Partial<typeof LQ.$inferInsert> = {};
       if (r.ueberSeit !== l.ueberSeit) set.ueberSeit = r.ueberSeit;
-      if (effMinVorher !== null && effMinVorher !== l.effMinVorher) set.effMinVorher = effMinVorher;
+      // effMinVorher bleibt der Wert beim Wechsel (Vergleich für (b)); nur nachtragen, wenn er fehlt.
+      if (effMinVorher !== null && l.effMinVorher === null) set.effMinVorher = effMinVorher;
       if (frueher) {
         Object.assign(set, { status: "zurueck_vorgeschlagen" as const, zurueckVorgeschlagenAm: new Date(), rueckkehrGrund: frueher, rueckkehrRegel: ziel.regel });
         vorgeschlagen++;

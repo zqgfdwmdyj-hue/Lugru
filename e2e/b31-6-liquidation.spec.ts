@@ -21,7 +21,11 @@ test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
     const heute = ohneZeit();
     await sql("insert into lots (tenant_id, product_id, sku, kind, sku_schema, purchase_date, quantity, unit_cost_net) values ($1, $2, $3, 'purchase', 'test', $4, 10, '20.00')", [T, P, A, heute]);
     await sql("insert into amazon_inventory (tenant_id, sku, asin, title, fulfillable, snapshot_date) values ($1, $2, null, $3, 4, $4)", [T, A, `Testartikel ${A} (erfunden)`, heute]);
+    // Lageralter 0–30 Tage (frischer Bestand): Rückkehr aus der Liquidation darf auf ia (Stufe 1), sonst Abverkauf (B31.6b)
+    await sql("insert into amazon_lageralter (tenant_id, land, sku, verfuegbar, \"alter\", abgerufen_am) values ($1, 'DE', $2, 4, '{\"0-90\": 4}', now())", [T, A]);
     await sql("update tenants set settings = settings #- '{bqool,liquidationTest}' where id = $1", [T]);
+    // Hinweis B31.6: Regelwechsel auf Liquidation nur, wenn die Buy Box unter dem effektiven Min liegt
+    const bbSetzen = (preis: string) => sql("update bqool_listings set buybox_preis = $3 where tenant_id = $1 and marktplatz = 'DE' and sku = $2", [T, A, preis]);
     const istHochladen = async (regel: string, min: string, max = "150.00") => {
       const datei = [ERSTE, KOPF, `Amazon DE\t${A}\t23.80\t\t${regel}\t${min}\t${max}\t0.00\t\t\t1`, ""].join("\r\n");
       await page.goto("/uploads");
@@ -47,6 +51,14 @@ test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
 
       // BQool-Ist vorher: Regel ia, Min 80
       await istHochladen("ia", "80.00");
+      // Buy Box über dem effektiven Min: kein Regelwechsel, Min-Korrektur reicht (Hinweis B31.6)
+      await bbSetzen("500.00");
+      await zuweisen("1,00");
+      expect(await wechsel()).toBeUndefined();
+      const ohne = (JSON.parse(await c.call("bqool_export_vorschau", { land: "DE", limit: 100 })).laender[0].groesste_aenderungen as { sku: string; regel_soll: string; warnungen?: string[] }[]).find((z) => z.sku === A)!;
+      expect(ohne.regel_soll).toBe("ia");
+      expect((ohne.warnungen ?? []).some((w) => w.includes("kein Regelwechsel, die Buy Box 500.00 liegt darüber"))).toBe(true);
+      await bbSetzen("2.00");
 
       // ---- Untergrenze Break-even: gewünschter Min weit darunter → Liquidation, Min auf Break-even angehoben ----------
       await zuweisen("1,00");
@@ -134,7 +146,12 @@ test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
 
       // ---- Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % → Vorschlag „zurück auf ia“ ----------------------------
       const schwelle = Math.round(w1.effektiver_min! * 1.03 * 100) / 100;
-      await sql("update bqool_listings set buybox_preis = $3 where tenant_id = $1 and marktplatz = 'DE' and sku = $2", [T, A, f2(schwelle + 5)]);
+      // Laufende Liquidation bleibt bis „Liquidation bis“ stehen, auch wenn die Buy Box steigt (B31.6a)
+      await bbSetzen(f2(schwelle + 5));
+      const steht = (JSON.parse(await c.call("bqool_export_vorschau", { land: "DE", limit: 100 })).laender[0].groesste_aenderungen as { sku: string; regel_soll: string }[]).find((z) => z.sku === A);
+      if (steht) expect(steht.regel_soll).toBe("Liquidation");
+      const [{ bis }] = await sql<{ bis: string }>("select bis::text from bqool_liquidationen where tenant_id = $1 and sku = $2", [T, A]);
+      expect(bis).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       // Tag 13: noch kein Vorschlag
       await sql("update bqool_liquidationen set ueber_seit = current_date - 13 where tenant_id = $1 and sku = $2", [T, A]);
       await page.goto("/repricer/bqool#liquidation");
@@ -174,6 +191,7 @@ test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
       await sql("delete from bqool_zuweisungen where tenant_id = $1 and sku = $2", [T, A]);
       await sql("delete from bqool_listings where tenant_id = $1 and sku = $2", [T, A]);
       await sql("delete from amazon_inventory where tenant_id = $1 and sku = $2", [T, A]);
+      await sql("delete from amazon_lageralter where tenant_id = $1 and sku = $2", [T, A]);
       await sql("delete from lots where tenant_id = $1 and sku = $2", [T, A]);
     }
   });

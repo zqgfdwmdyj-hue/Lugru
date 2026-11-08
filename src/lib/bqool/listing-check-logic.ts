@@ -99,7 +99,7 @@ export function befundePruefen(e: CheckEingabe, s: CheckSchwellen = CHECK_STANDA
   // 1 Min über Buy Box (und über dem 30-Tage-Schnitt minus 3 %)
   if (e.minBqool !== null && e.buybox !== null && e.minBqool > e.buybox + 0.005 && (e.bb30 === null || e.minBqool > e.bb30 * (1 - s.minUeberBbAbschlag / 100))) {
     const ziel = e.zielMin;
-    b.push({ nr: 1, titel: BEFUND_TITEL[1], vorschlag: ziel !== null ? `Min senken auf ${ziel.toFixed(2)} (${e.schnelldreher ? "Break-even + 7 %" : "effektiver Min"})` : "Min senken auf effektiven Min", potenzial: r2(fehlend * margeJeStueck(e, e.buybox)), zahlen: { min: e.minBqool, buybox: e.buybox, bb30: e.bb30, ziel_min: ziel }, aktion: "min", wert: ziel });
+    b.push({ nr: 1, titel: BEFUND_TITEL[1], vorschlag: ziel !== null ? `Min senken auf ${ziel.toFixed(2)} (${e.schnelldreher || e.schnelldreherKandidat ? "Break-even + 7 %, nie unter effektivem Min" : "effektiver Min"})` : "Min senken auf effektiven Min", potenzial: r2(fehlend * margeJeStueck(e, e.buybox)), zahlen: { min: e.minBqool, buybox: e.buybox, bb30: e.bb30, ziel_min: ziel }, aktion: "min", wert: ziel });
   }
   // 2 Pausiert trotz Bestand und Nachfrage
   if (e.status === "pausiert" && e.bestand > 0 && (nachfrage(e) > 0 || (e.rang !== null && e.rang > 0 && e.rang < 50000))) {

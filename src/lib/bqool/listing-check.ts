@@ -109,6 +109,9 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
     const preise = lp.filter((x) => x.units && x.units > 0 && x.sales && tageZwischen(x.stichtag, heute) <= 14).map((x) => (x.sales as number) / (x.units as number));
     const anzahl = lp.filter((x) => tageZwischen(x.stichtag, heute) <= 14).reduce((n, x) => n + (x.units ?? 0), 0);
     const gebraucht = istGebraucht(z.zustand as Zustand);
+    const kandidat = !gebraucht && !z.schnelldreher && schnelldreherKandidat({ verkaeufe30: kz?.verkaufProTag != null ? Math.round(kz.verkaufProTag * 30) : null, reichweite: kz?.reichweite ?? null, alterTage: z.alterTage, bbQuote: lp7?.bbWins ?? null }, b.leiter.schnell);
+    // Befund 1: Ziel-Min = effektiver Min; Schnelldreher (auch Kandidat) Break-even + 7 %, nie unter dem effektiven Min
+    const schnellZiel = z.bodenSchnell !== null ? Math.max(z.effMin ?? 0, z.bodenSchnell) : z.effMin;
     const e: CheckEingabe = {
       land: z.land,
       sku: z.sku,
@@ -129,11 +132,11 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
       ohneBuyboxTage: pf?.ohneBuyboxSeit ? tageZwischen(pf.ohneBuyboxSeit, heute) : 0,
       breakEven: z.breakEven,
       effMin: z.effMin,
-      zielMin: z.schnelldreher ? (z.boden ?? z.effMin) : (gebraucht ? z.min : z.effMin),
+      zielMin: z.schnelldreher || kandidat ? schnellZiel : gebraucht ? z.min : z.effMin,
       liquidationFreigegeben: liqFrei.has(key),
       gebrauchtMitNeupreisMin: gebraucht && i?.min != null && z.effMinStufe1 !== null && i.min >= z.effMinStufe1 - 0.005,
       schnelldreher: z.schnelldreher,
-      schnelldreherKandidat: !gebraucht && schnelldreherKandidat({ verkaeufe30: kz?.verkaufProTag != null ? Math.round(kz.verkaufProTag * 30) : null, reichweite: kz?.reichweite ?? null, alterTage: z.alterTage, bbQuote: lp7?.bbWins ?? null }, b.leiter.schnell),
+      schnelldreherKandidat: kandidat,
       reichweite: kz?.reichweite ?? null,
       lagerdauer: z.alterTage,
       kapital: kz?.kapital ?? null,
@@ -148,7 +151,7 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
       const alt = await db.select({ id: V.id, status: V.status, entschiedenAm: V.entschiedenAm, spaeterBis: V.spaeterBis }).from(V).where(and(eq(V.tenantId, tenantId), eq(V.land, z.land), eq(V.sku, z.sku), eq(V.art, art), inArray(V.status, ["offen", "spaeter", "abgelehnt"])));
       const off = alt.find((a) => a.status === "offen" || a.status === "spaeter");
       if (!off && alt.some((a) => a.status === "abgelehnt" && a.entschiedenAm && tageZwischen(a.entschiedenAm.toISOString().slice(0, 10), heute) < 14)) continue;
-      const werte = { vonRegel: z.regel, nachRegel: null, min: x.wert, gruende: [x.vorschlag], daten: { titel: z.titel, asin: z.asin, befund: x.titel, nr: x.nr, aktion: x.aktion, zahlen: x.zahlen, stufe, verkaeufe30: e.verkaeufe30 ?? 0 }, potenzial: x.potenzial, updatedAt: new Date() };
+      const werte = { vonRegel: z.regel, nachRegel: null, min: x.wert, gruende: [x.vorschlag], daten: { titel: z.titel, asin: z.asin, befund: x.titel, nr: x.nr, aktion: x.aktion, zahlen: x.zahlen, stufe, verkaeufe30: e.verkaeufe30 ?? 0, schnell: e.schnelldreher || e.schnelldreherKandidat }, potenzial: x.potenzial, updatedAt: new Date() };
       if (off) {
         const status = off.status === "spaeter" && off.spaeterBis && off.spaeterBis <= heute ? "offen" : off.status;
         await db.update(V).set({ ...werte, status }).where(eq(V.id, off.id));
@@ -214,7 +217,9 @@ export async function befundEntscheiden(tenantId: string, id: string, entscheidu
   let text = "erledigt";
   if (d.aktion === "min" && x.min !== null) {
     await zuweisungSetzen(tenantId, { land: x.land as ExportLand, sku: x.sku, regel: x.vonRegel ?? s.bqool.standardRegel, untergrenze: x.min, quelle: "hand", grund: `Listing-Check: ${d.befund ?? ""}`.slice(0, 300) });
-    text = `Min ${x.min.toFixed(2)} kommt in den nächsten Upload`;
+    // Schnelldreher-Kandidat: Schutz gleich mit setzen (Boden 7 %, keine Liquidation durch den Min-Wunsch)
+    if ((d as { schnell?: boolean }).schnell) await pflege({ schnelldreher: true, schnellQuelle: "auto", schnellSeit: new Date(), schnellBis: null });
+    text = `Min ${x.min.toFixed(2)} kommt in den nächsten Upload${(d as { schnell?: boolean }).schnell ? " (Schnelldreher-Schutz gesetzt)" : ""}`;
   } else if (d.aktion === "aktivieren") {
     await pflege({ aktivieren: true });
     text = "wird mit dem nächsten Upload aktiviert";

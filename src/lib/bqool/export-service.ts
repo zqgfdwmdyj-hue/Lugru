@@ -88,6 +88,8 @@ export type VorschauZeile = ExportZeile & {
   effMinStufe2: number | null;
   /** Gewünschter Min unter effektivem Min ohne Regelwechsel (Buy Box darüber/unbekannt, Schnelldreher). */
   keinWechsel: "buybox_ueber" | "buybox_unbekannt" | "schnelldreher" | null;
+  /** B31.8: Break-even + Schnelldreher-Boden (7 %) – auch für Kandidaten (Listing-Check Befund 1). */
+  bodenSchnell: number | null;
   /** B31.7: Zustand der Ware, Zielpreis und Min gebraucht. */
   zustand: Zustand;
   zustandQuelle: ZustandQuelle;
@@ -265,11 +267,12 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const ziel = gebraucht ? zielpreisGebraucht({ zustand: zb.zustand, keepa: k?.aktuell?.gebraucht ?? null, neuBuybox, faktoren: leiter.zustand.faktoren }) : { preis: null, quelle: null as string | null };
       const minGebraucht = gebraucht ? breakEvenMin({ ...kosten, margeProzent: leiter.zustand.mindestmarge }) : null;
       const buybox = gebraucht ? (ziel.preis ?? neuBuybox) : neuBuybox;
-      const boden = schnelldreher ? breakEvenMin({ ...kosten, margeProzent: leiter.schnell.margeBoden }) : null;
+      const bodenSchnell = breakEvenMin({ ...kosten, margeProzent: leiter.schnell.margeBoden });
+      const boden = schnelldreher ? bodenSchnell : null;
       // B31.6: Min unter dem effektiven Min der Margen-Regel wirkt nur mit „Liquidation“ (fester Min, nie unter Break-even
       // ohne Freigabe) – und nur, wenn die Buy Box darunter liegt (B31.6b); sonst Min = effektiver Min (Sicherheitsnetz).
       const gewuenscht = gebraucht && rf.quelle !== "zuweisung" && !kat?.festeUntergrenze ? minGebraucht : rf.untergrenze;
-      const ent = minEntscheidung({ regelName: rf.regel, regel: kat, gewuenscht, effMin: eff.min, breakEven: be0, verlustBis: liq?.verlustBis ?? null, liquidation: liqName, buybox, boden, schnelldreher });
+      const ent = minEntscheidung({ regelName: rf.regel, regel: kat, gewuenscht, effMin: eff.min, breakEven: be0, verlustBis: liq?.verlustBis ?? null, liquidation: liqName, buybox, boden, schnelldreher, laeuft: !!liq && liq.grund !== "hand" && (liq.status === "aktiv" || liq.status === "zurueck_vorgeschlagen") });
       if (ent.min === null) continue;
       const min = ent.min;
       soll.set(key, ent.regel);
@@ -299,7 +302,7 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       // B25.5: In BQool steht für die SKU kein Mindestpreis – ohne Upload bepreist BQool ohne Untergrenze.
       if (i && (i.min === null || i.min === undefined || i.min <= 0)) w.push("kein Min in BQool – erst mit diesem Upload abgesichert");
       const inv = invJe.get(r.sku);
-      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) und Buy Box ${f2(buybox)} darunter – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: gewuenscht, regelSeit: i?.regelSeit ?? null, stufe: stufeVonRegel(ent.regel, b.katalog, b.abverkaufRegel), istStufe: stufeVonRegel(i?.regel ?? null, b.katalog, b.abverkaufRegel), alterTage, effMinStufe1, effMinStufe2, keinWechsel: ent.keinWechsel, zustand: zb.zustand, zustandQuelle: zb.quelle, zielpreis: ziel.preis, zielpreisQuelle: ziel.quelle, minGebraucht, schnelldreher, boden, bestand: r.stock + (inv?.mfn ?? 0), fba: r.fbaFee, provision: r.referralRate });
+      zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: ent.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: ent.art === "liquidation_neu" ? `Min ${f2(gewuenscht)} unter effektivem Min ${f2(eff.min)} (${rf.regel}) und Buy Box ${f2(buybox)} darunter – wirkt nur mit „${liqName}“: Regelwechsel, Min fest ${f2(min)}` : buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null, liquidation: ent.art === "liquidation_neu" ? "neu" : ent.art === "liquidation" ? "ja" : null, regelVorher, breakEven: be0, margeNeu: margeBeiPreis({ preis: min, ...kosten }), effMinVorher, wartetAufTest, verlustBis: liq?.verlustBis ?? null, minGewuenscht: gewuenscht, regelSeit: i?.regelSeit ?? null, stufe: stufeVonRegel(ent.regel, b.katalog, b.abverkaufRegel), istStufe: stufeVonRegel(i?.regel ?? null, b.katalog, b.abverkaufRegel), alterTage, effMinStufe1, effMinStufe2, keinWechsel: ent.keinWechsel, zustand: zb.zustand, zustandQuelle: zb.quelle, zielpreis: ziel.preis, zielpreisQuelle: ziel.quelle, minGebraucht, schnelldreher, boden, bodenSchnell, bestand: r.stock + (inv?.mfn ?? 0), fba: r.fbaFee, provision: r.referralRate });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.
     const vergleichMit: LandVorschau["vergleichMit"] = istRows.length ? "bqool" : letzteZeilen.some((z) => z.land === land) ? "export" : "nichts";

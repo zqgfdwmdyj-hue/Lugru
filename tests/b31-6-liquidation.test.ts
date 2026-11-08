@@ -134,3 +134,11 @@ describe("Texte: Freigabe, Kapital-Ampel, Morgenbericht", () => {
     expect(morgenText({ ueberNacht: 0, fristen: 0, wichtig: 0, paletten: 0, liquidation: "3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even" })).toBe("3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even.");
   });
 });
+
+describe("B31.6a laufende Liquidation", () => {
+  it("bleibt bis „Liquidation bis“ stehen, auch wenn die Buy Box über den effektiven Min steigt", () => {
+    const ia = katalogRegel(KATALOG_STANDARD, "ia");
+    expect(minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: 60, laeuft: true })).toMatchObject({ regel: "Liquidation", min: 47, art: "liquidation_neu" });
+    expect(minEntscheidung({ regelName: "ia", regel: ia, gewuenscht: 47, effMin: 50, breakEven: 45, liquidation: "Liquidation", buybox: null, laeuft: true }).regel).toBe("Liquidation");
+  });
+});
