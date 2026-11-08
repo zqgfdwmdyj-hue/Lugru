@@ -85,6 +85,8 @@ export async function leiterPflegen(tenantId: string, heute = todayIso()): Promi
   let schnellUnterMinTage = 0;
   let gebrauchtNeupreis = 0;
   for (const z of zeilen) {
+    // Nur SKUs, die im Land bei BQool stehen (BQool-Ist vorhanden) – sonst gäbe es Vorschläge für nicht gelistete Länder.
+    if (z.istRegel === null) continue;
     const key = `${z.land}|${z.sku}`;
     const pf = pflege.get(key);
     const k = kapJe.get(z.sku);

@@ -22,7 +22,7 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
   const schwellen = schwellenMitStandard(b.listingCheckSchwellen);
   const { bqoolVorschau } = await import("./export-service");
   const v = await bqoolVorschau(tenantId, { heute });
-  const zeilen = v.laender.flatMap((l) => l.zeilen);
+  let zeilen = v.laender.flatMap((l) => l.zeilen);
   const [ist, pflegeRows, offen, leistung, kap, lq] = await Promise.all([
     db.select().from(schema.bqoolListings).where(eq(schema.bqoolListings.tenantId, tenantId)),
     db.select().from(P).where(eq(P.tenantId, tenantId)),
@@ -45,6 +45,8 @@ export async function listingCheck(tenantId: string, heute = todayIso(), o: { ke
   const keepaJe = new Map(keepaRows.map((k) => [`${k.asin}|${k.mp}`, k]));
 
   // Stufe A: Wert = Kapital × Nachfrage (Keepa „monatlich verkauft“), dazu Schnelldreher und offene Befunde
+  // Geprüft wird je SKU und Marktplatz, die bei BQool stehen (BQool-Ist vorhanden).
+  zeilen = zeilen.filter((z) => z.istRegel !== null);
   const basis = zeilen.map((z) => {
     const k = z.asin ? (keepaJe.get(`${z.asin}|${z.land}`)?.stand as KeepaStand | null) : null;
     return { key: `${z.land}|${z.sku}`, kapital: kapJe.get(z.sku)?.kapital ?? null, nachfrage: k?.aktuell?.monatlich_verkauft ?? 0, schnelldreher: z.schnelldreher, offen: offenJe.has(`${z.land}|${z.sku}`) };
