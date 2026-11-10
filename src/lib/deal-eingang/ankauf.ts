@@ -22,8 +22,12 @@ async function deal(tenantId: string, id: string) {
 /** Wissenseintrag „Ankaufserver“ (insider, Herkunft Call) einmal je Mandant anlegen. */
 export async function ankaufWissenSicherstellen(tenantId: string) {
   const K = schema.knowledgeEntries;
-  const [da] = await db.select({ id: K.id }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.title, ANKAUF_WISSEN.title))).limit(1);
-  if (da) return da.id;
+  const [da] = await db.select({ id: K.id, body: K.body }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.title, ANKAUF_WISSEN.title))).limit(1);
+  if (da) {
+    // Vom System angelegter Eintrag: neue Hinweise (z. B. „Einsteiger bekommen kaum Deals“) nachziehen.
+    if (da.body !== ANKAUF_WISSEN.body) await db.update(K).set({ body: ANKAUF_WISSEN.body }).where(eq(K.id, da.id));
+    return da.id;
+  }
   const [neu] = await db
     .insert(K)
     .values({ tenantId, kind: "article", category: "Aus Calls", title: ANKAUF_WISSEN.title, body: ANKAUF_WISSEN.body, tags: ["ankauf", "ausstieg", "insider"], origin: "call", insider: true, quelleDatum: ANKAUF_WISSEN.quelleDatum, quelleWer: ANKAUF_WISSEN.quelleWer, erkenntnis: "erfahrung" })
@@ -64,6 +68,8 @@ export async function ankaufSpeichern(tenantId: string, id: string, f: Partial<O
   if (f.preis !== undefined && f.preis !== null && !(f.preis > 0 && f.preis < 100_000)) throw new DealEingangFehler("Ankaufspreis unplausibel.");
   if (f.mengeAngemeldet !== undefined && f.mengeAngemeldet !== null && !(f.mengeAngemeldet >= 0 && f.mengeAngemeldet <= 100_000)) throw new DealEingangFehler("Angemeldete Menge unplausibel.");
   if (f.annahmefrist && !/^\d{4}-\d{2}-\d{2}$/.test(f.annahmefrist)) throw new DealEingangFehler("Annahmefrist bitte als Datum.");
+  if (f.versandfrist && !/^\d{4}-\d{2}-\d{2}$/.test(f.versandfrist)) throw new DealEingangFehler("Versandfrist bitte als Datum.");
+  if (f.ankauftBestaetigtAm && !/^\d{4}-\d{2}-\d{2}$/.test(f.ankauftBestaetigtAm)) throw new DealEingangFehler("„Kauft noch an“ bitte als Datum.");
   if (f.zeile !== undefined && f.zeile !== null && !e.zeilen.some((z) => z.nr === f.zeile)) throw new DealEingangFehler("Angebotszeile nicht gefunden.");
   const alt = e.ankauf ?? ankaufLeer();
   const neu: DealAnkauf = { ...alt, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined)), geaendertAm: new Date().toISOString() };

@@ -15,6 +15,9 @@ const FREE = new Set([
   "src/app/portal/actions.ts:anmeldenAction",
   "src/app/portal/actions.ts:einladungAction",
   "src/app/portal/actions.ts:abmeldenAction",
+  // B34.3b öffentliche Anfrageseite (QR-Code im Händler-Brief): ohne Sitzung, nur Formular – prüft Kampagne,
+  // Pflichtfelder, USt-ID-Format, Zustimmung und Honigtopf selbst; legt nur eine Anfrage + Aufgabe an.
+  "src/app/anfrage/actions.ts:anfrageSendenAction",
 ]);
 
 function functionBodies(src: string) {

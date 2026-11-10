@@ -104,7 +104,7 @@ export default async function LabelPage({ searchParams }: { searchParams: Promis
         <section className="card card-pad stack" style={{ gap: 8, marginTop: 16 }} id="einstellungen" data-testid="label-einstellungen">
           <h2 style={{ margin: 0 }}>Einstellungen (nur Inhaber)</h2>
           <form action={labelEinstellungenAction} className="stack" style={{ gap: 8 }}>
-            <strong className="small">Zweiter Absender (z. B. Wittmann & Grunert)</strong>
+            <strong className="small">Zweiter Absender (z. B. zweite Firma)</strong>
             <div className="label-felder">
               {([["a2_name", "Name", a2?.name1], ["a2_name2", "Zusatz", a2?.name2], ["a2_street", "Straße", a2?.street], ["a2_house", "Hausnr.", a2?.houseNo], ["a2_zip", "PLZ", a2?.zip], ["a2_city", "Ort", a2?.city], ["a2_country", "Land (DEU)", a2?.country], ["a2_email", "E-Mail", a2?.email], ["a2_phone", "Telefon", a2?.phone]] as const).map(([k, t, w]) => (
                 <div className="field" key={k}>

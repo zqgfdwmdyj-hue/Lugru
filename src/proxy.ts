@@ -60,6 +60,7 @@ export const config = {
   // api/assistent (Fragefeld) prüft die Sitzung selbst – auch Nur-ansehen-Konten dürfen lesend fragen.
   // api/mcp (Claude-Konnektor) und .well-known (OAuth-Metadaten): eigene Anmeldung per Bearer-Token.
   // sendung/<token>: Sendungsverfolgung für Kunden ohne Anmeldung – die Seite prüft den befristeten Link selbst.
+  // anfrage/<code>: öffentliche Anfrageseite aus dem Händler-Brief (QR-Code) – nur Angebot und Formular, keine internen Daten.
   // portal: Kundenportal der B2B-Deals mit eigener Anmeldung (Cookie b2b_portal) – jede Seite prüft sie selbst.
   // api/ebay, api/import und api/rechnungsstation ohne Proxy (große Uploads würden sonst gekürzt) – sie prüfen Sitzung
   // und Bereich selbst.
@@ -68,5 +69,5 @@ export const config = {
   // api/druckagent: Druckagent im Lager – nur mit Gerätetoken (da_…), prüft selbst.
   // api/sellerboard/callback: Rücksprung landet am Handy oft in einem Fenster ohne Anmeldung; geschützt durch
   // signierten state + serverseitigen PKCE-Prüfwert.
-  matcher: ["/((?!login|sendung/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/rechnungsstation|api/deal-eingang|api/mobil|api/druckagent|api/sms|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|sendung/|anfrage/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/rechnungsstation|api/deal-eingang|api/mobil|api/druckagent|api/sms|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };

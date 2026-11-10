@@ -47,6 +47,9 @@ services:
       ASANA_BASE_URL: http://testdienste:4010/asana
       TWILIO_BASE_URL: http://testdienste:4010/twilio
       GOOGLE_DOCS_BASE_URL: http://testdienste:4010/gdocs
+      DRIVE_API_BASE_URL: http://testdienste:4010/drive/v3
+      LETTERXPRESS_BASE_URL: http://testdienste:4010/letterxpress/v3
+      EBRIEF_BASE_URL: http://testdienste:4010/ebrief
       DISCORD_API_BASE_URL: http://testdienste:4010/discord-api
       MEDIA_DIR: /medien
     volumes:

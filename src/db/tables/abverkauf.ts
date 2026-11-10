@@ -50,6 +50,12 @@ export const abverkaufLeads = pgTable(
     loeschenAm: text("loeschen_am").notNull(),
     schluessel: text("schluessel").notNull(),
     importName: text("import_name"),
+    /** B34.3.6 Zielgruppe AdelPrep (Lager & Logistik) – Beilage bzw. eigener Brief möglich. */
+    adelprep: boolean("adelprep").notNull().default(false),
+    /** B34.3b Koordinaten aus der CSV (Umkreis um das Lager), Größe (klein/mittel/groß). */
+    lat: numeric("lat", { precision: 9, scale: 6, mode: "number" }),
+    lng: numeric("lng", { precision: 9, scale: 6, mode: "number" }),
+    groesse: text("groesse"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("abverkauf_leads_schluessel").on(t.tenantId, t.schluessel), index("abverkauf_leads_status").on(t.tenantId, t.status)],
@@ -105,7 +111,89 @@ export const abverkaufAnschreiben = pgTable(
     antwortAm: timestamp("antwort_am", { withTimezone: true }),
     umsatz: numeric("umsatz", { precision: 12, scale: 2, mode: "number" }),
     marge: numeric("marge", { precision: 12, scale: 2, mode: "number" }),
+    /** B34.3.6 AdelPrep-Beilage je Brief zu-/abgewählt (eigener Brief der anderen Firma im selben Umschlag). */
+    adelprepBeilage: boolean("adelprep_beilage").notNull().default(false),
+    kampagneId: uuid("kampagne_id"),
+    /** Nachfassen (Aufgabe, kein automatischer Versand) angelegt. */
+    nachfassAm: timestamp("nachfass_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("abverkauf_anschreiben_code").on(t.tenantId, t.code), index("abverkauf_anschreiben_lead").on(t.tenantId, t.leadId)],
+);
+
+/** B34.3b Position einer Kampagne: aus dem Bestand, mit MHD/Charge (Kosmetik), Preis = Einstand + Aufschlag. */
+export type KampagnePosition = { sku: string; asin: string | null; titel: string; marke: string | null; menge: number; mindestmenge: number; einstand: number; preis: number; staffel: { ab: number; preis: number }[]; mhd: string | null; charge: string | null; angeboten: boolean; grund: string | null };
+export type KampagneFilter = { branche: string | null; plz: string | null; umkreisKm: number | null; groesse: string | null; status: string[]; nurAdelprep: boolean };
+
+/**
+ * B34.3b Kampagne = Zielgruppe + Produktauswahl + Preise + Brieftext + Lead-Filter. QR-Code/Kurzlink mit dem Code
+ * führt zur öffentlichen Anfrageseite (/anfrage/<code>). Nachfassen nur als Aufgabe.
+ */
+export const abverkaufKampagnen = pgTable(
+  "abverkauf_kampagnen",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    zielgruppe: text("zielgruppe", { enum: ["amazon_haendler", "friseure", "spielwaren", "adelprep_lager", "sonstige"] }).notNull(),
+    code: text("code").notNull(),
+    positionen: jsonb("positionen").$type<KampagnePosition[]>().notNull().default([]),
+    filter: jsonb("filter").$type<KampagneFilter>().notNull(),
+    brieftext: text("brieftext").notNull(),
+    aufschlagProzent: numeric("aufschlag_prozent", { precision: 6, scale: 2, mode: "number" }).notNull().default(10),
+    mindestRestlaufzeitMonate: integer("mindest_restlaufzeit_monate").notNull().default(6),
+    nachfassTage: integer("nachfass_tage"),
+    offenePunkte: jsonb("offene_punkte").$type<Record<string, boolean>>().notNull().default({}),
+    aktiv: boolean("aktiv").notNull().default(true),
+    erstelltVon: uuid("erstellt_von").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("abverkauf_kampagnen_code").on(t.code), index("abverkauf_kampagnen_idx").on(t.tenantId, t.createdAt)],
+);
+
+/** Anfrage über die öffentliche Seite (QR-Code im Brief): landet als Aufgabe im Posteingang. Kontaktdaten verschlüsselt. */
+export const abverkaufAnfragen = pgTable(
+  "abverkauf_anfragen",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kampagneId: uuid("kampagne_id").notNull(),
+    anschreibenCode: text("anschreiben_code"),
+    firma: text("firma").notNull(),
+    ustId: text("ust_id"),
+    ustIdOk: boolean("ust_id_ok").notNull().default(false),
+    /** verschlüsselt: Name, E-Mail, Telefon */
+    kontakt: text("kontakt"),
+    wunsch: text("wunsch"),
+    menge: text("menge"),
+    taskId: uuid("task_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("abverkauf_anfragen_idx").on(t.tenantId, t.createdAt)],
+);
+
+/**
+ * B34.3a Brief über einen Versand-Anbieter (eBrief, LetterXpress, E-POST) – nur nach Freigabe. Testmodus (Sandbox)
+ * bzw. live (nur mit AV-Vertrag). Status vom Anbieter, Kosten je Brief für die Erfolgskontrolle.
+ */
+export const abverkaufBriefe = pgTable(
+  "abverkauf_briefe",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    anschreibenId: uuid("anschreiben_id"),
+    chargeId: uuid("charge_id"),
+    anbieter: text("anbieter", { enum: ["ebrief", "letterxpress", "epost"] }).notNull(),
+    modus: text("modus", { enum: ["test", "live"] }).notNull(),
+    testbrief: boolean("testbrief").notNull().default(false),
+    externeId: text("externe_id"),
+    status: text("status", { enum: ["uebergeben", "angenommen", "gedruckt", "zugestellt", "fehler", "storniert"] }).notNull(),
+    statusText: text("status_text"),
+    seiten: integer("seiten").notNull().default(1),
+    kostenNetto: numeric("kosten_netto", { precision: 10, scale: 2, mode: "number" }),
+    freigegebenVon: uuid("freigegeben_von").references(() => users.id, { onDelete: "set null" }),
+    statusAm: timestamp("status_am", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("abverkauf_briefe_idx").on(t.tenantId, t.createdAt), index("abverkauf_briefe_anschreiben").on(t.tenantId, t.anschreibenId)],
 );

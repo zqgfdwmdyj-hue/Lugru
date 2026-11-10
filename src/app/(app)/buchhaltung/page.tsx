@@ -360,7 +360,7 @@ export default async function BuchhaltungPage({ searchParams }: { searchParams: 
                 <input type="checkbox" name="dauerfrist" defaultChecked={settings.buchhaltung.ustva.dauerfrist} /> Dauerfristverlängerung
               </label>
             </div>
-            <div className="muted">Konten und Rhythmus mit dem Steuerberater abstimmen – das System rechnet nur das Datum. AdelPrep (Wittmann & Grunert) läuft über Lexoffice und gehört nicht hierher.</div>
+            <div className="muted">Konten und Rhythmus mit dem Steuerberater abstimmen – das System rechnet nur das Datum. AdelPrep läuft über Lexoffice und gehört nicht hierher.</div>
             <button className="btn" type="submit">Speichern</button>
           </form>
         </details>

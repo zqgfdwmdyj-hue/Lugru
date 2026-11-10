@@ -1473,6 +1473,62 @@ Migrationen: `0143_b34_scan_ablage`, `0144_b34_abverkauf`, `0145_b34_ankauf`.
 3. Läuft die Ordnerüberwachung auf dem Druckagent-PC? – Annahme: ja, im selben Agent (1.1.0), aus, bis ein Pfad eingetragen ist.
 4. Der „B34.2-Prüfauftrag zum Kontoauszug vom 09.11.“ ist nicht angekommen – Kontoauszug-Erkennung nach eigener Regel; bitte nachreichen.
 
+### B34 Ergänzung (10.11.): Drive-Rechnungsordner, AdelPrep-Beilage, Briefversand per API, Kampagnen
+
+„Ordner auf einem PC (Downloads oder Scanner-Ausgabe)“: **ist umgesetzt** – Druckagent 1.1.0 überwacht den
+Download-Ordner (B34.2 oben), die Rechnungsstation liest zusätzlich den Scanner-Ordner. Neu ist der Weg ohne
+PC-Programm direkt im Drive-Rechnungsordner. Firmendaten der Logistik-Firma, Preise der Briefanbieter und
+Lager-Koordinaten stehen nicht im Code – sie werden in den Einstellungen eingetragen.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B34.1 (0) Verknüpfung auf dem Handy-Startbildschirm, Test mit 3 bekannten EANs | 🟡 Manifest mit Kurzbefehl „Scan-Modus“ | ✅ Anleitung iPhone/Android auf `/scan` + 3 Probe-EANs aus den eigenen Produkten (ein Tipp = Online-Prüfung) | `src/app/(app)/scan/page.tsx`, `src/app/manifest.ts` |
+| B34.2.1 Drive-Ordner regelmäßig lesen (neu seit letztem Lauf), nur lesen bis Freigabe; Rechnung/Beleg/Kontoauszug erkennen, Kontoauszug nicht als Rechnung | 🟡 stündlicher Abruf als Rechnung | ✅ je neuer Datei direkt im Ordner ein Vorschlag; Kontoauszug → Vorschlag „Kontoauszüge/JJJJ-MM“ (Import erst bei Freigabe), keine Rechnung; Schreibrecht-Schalter (Inhaber), aus = nur lesen | `driveDateiVorschlagen` (`src/lib/belege/drive-ablage.ts`), `syncDrive` (`src/lib/invoices/service.ts`) |
+| B34.2.2 Umbenennen `JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr`, Ablage Monat/Lieferant – erst Vorschlag mit Vorschau, Ausführung nach Freigabe (Charge) | ❌ | ✅ Vorschau (alter/neuer Name, Zielordner, PDF ansehen), Freigabe Auswahl/alle (≤ 50) → Unterordner anlegen, verschieben, umbenennen per Dienstkonto | `driveFreigeben`, `ordnerSichern`/`dateiVerschieben` (`src/lib/integrations/clients/drive.ts`), `rechnungsstation/ablage/drive-abschnitt.tsx` |
+| B34.2.3 Dubletten (Prüfsumme, Nr + Betrag) nach „Dubletten“, Löschen nur nach Freigabe, Liste vorher | ❌ | ✅ Dublettenliste; nach Freigabe in „Dubletten“ verschoben; Papierkorb (30 Tage wiederherstellbar) nur mit eigener Freigabe, nie endgültig gelöscht | `dubletteVon`, `driveDublettenPapierkorb`, `inPapierkorb` |
+| B34.2.4/5/6 Zahlungsabgleich, Entgeltabschluss, lokaler PC-Ordner | ✅ | ✅ unverändert (Stotax-Ablauf bleibt) | B34.2 oben |
+| B34.3.6 AdelPrep-Beilage: eigener Brief (Absender, Impressum, Datenschutz), nicht vermischt; Textbaustein in Einstellungen; je Brief zu-/abwählbar; Lead-Feld „Zielgruppe AdelPrep“ + Filter | ❌ | ✅ eigenes Blatt mit eigenem Kopf „Eigenes Schreiben der …“, Impressum und Datenschutzhinweis; Schalter je Brief; Lead-Spalte + CSV-Spalte „Zielgruppe AdelPrep“ + Filter; Firmendaten leer bis eingetragen | `beilageSeite` (`src/lib/abverkauf/pdf.ts`), `briefeBauen` (`briefe.ts`), Abschnitt „Beilage AdelPrep“ (`b2b/abverkauf/page.tsx`) |
+| B34.3.6 Formulierung „ab … € netto je Artikel“, kein „all-in“/„Komplettpreis“; unbelegte Angaben (Fläche, kostenlose Zählung, NDA, LQ-Gefahrgut) nur nach Rückfrage | ❌ | ✅ Textprüfung: „all-in“/„Komplettpreis“/ohne „netto“ = Beilage wird nicht beigelegt; Fläche/Zählung/NDA/Gefahrgut nur mit Haken „nach Rückfrage belegt“ | `beilageLint`, `beilageVollstaendig` (`src/lib/abverkauf/kampagne-logic.ts`) |
+| B34.3a Schnittstelle `senden`/`status`/`stornieren`/`preis_schaetzen`, austauschbar; eBrief, LetterXpress, E-POST | ❌ | ✅ LetterXpress (API v3, Testmodus = Warenkorb), eBrief (Token, Job anlegen, live gestartet), E-POST vorbereitet (meldet „noch nicht angebunden“) | `src/lib/integrations/clients/briefversand.ts` |
+| B34.3a Zugangsdaten verschlüsselt unter Anbindungen, Preise in Einstellungen | ❌ | ✅ Anbindungen „eBrief“, „LetterXpress“, „E-POST“ mit Verbindungstest; Preise je Anbieter (1. Blatt + je weitere Seite) unter Abverkauf → Briefversand, Standard leer | `registry.ts`, `ABVERKAUF_STANDARD.briefversand` |
+| B34.3a PDF je Lead → Vorschau → Kostenvorschau → Freigabe (Charge ≤ 20) → Versand; Tageslimit + Gesamtbudget | ❌ | ✅ Seite „Briefversand“ je Charge: Vorschau mit Seiten und Kosten, Summe muss bestätigt werden (sonst nichts), Tageslimit/Budget nur live | `versandVorschau`, `chargeVersenden` (`src/lib/abverkauf/versand.ts`), `b2b/abverkauf/versand/[charge]/page.tsx` |
+| B34.3a Testbrief zuerst an die eigene Adresse | ❌ | ✅ Pflicht vor jedem Versand (je Modus) | `testbriefSenden` |
+| B34.3a Adressprüfung (Pflichtfelder, PLZ/Land, Dubletten, Sperrliste, Rechtsgrundlage) | ❌ | ✅ je Brief, Fehler sperren nur diesen Brief | `adressePruefen` |
+| B34.3a Status zurück (angenommen/gedruckt/zugestellt/Fehler), Kosten je Brief → Kosten je Rücklauf | ❌ | ✅ „Status abrufen“ + stündlich; Erfolg je Charge mit Briefkosten und Kosten je Rücklauf | `briefStatusAbrufen`, `kostenJeCharge`, `erfolgJeCharge` |
+| B34.3a Pflicht-Haken „AV-Vertrag liegt vor“, sonst kein Live-Versand; Fallback Sammel-PDF; nie automatisch | ❌ | ✅ live ohne Haken gesperrt (auch Testbrief), Sammel-PDF bleibt, nur Inhaber gibt frei | `anbieterFuer`, `versand/[charge]/page.tsx` |
+| B34.3b Kampagne = Zielgruppe + Produkte + Preise + Brieftext + Lead-Filter; Zielgruppen Amazon-Händler, Friseure, Spielwaren, Lager & Logistik (eigener Brief) | ❌ | ✅ Seiten „Kampagnen“ und Kampagne; Lager & Logistik schreibt komplett als Logistik-Firma | `src/lib/abverkauf/kampagnen.ts`, `ZIELGRUPPEN`, `b2b/abverkauf/kampagnen/` |
+| B34.3b Produktauswahl aus Bestand (Marke/Kategorie, Reichweite, Kapital); Kosmetik MHD + Charge, Mindestrestlaufzeit; Preis Einstand + Aufschlag, Staffeln, Mindestmenge, netto | ❌ | ✅ Suche im Bestand, MHD/Charge je Position, „nicht angeboten“ mit Grund; Preis = EK + Aufschlag, Staffeln, Mindestmenge | `bestandKandidaten`, `positionenSetzen`, `mhdPruefen` |
+| B34.3b Lead-Filter Branche, PLZ + Umkreis um Lager, Größe, Status; nur CSV | ❌ | ✅ Koordinaten aus der CSV (Spalten lat/lng), Luftlinie zum Lager-Standort, Gründe je Lead („ohne Koordinaten“, „… km entfernt“) | `leadImFilter`, `entfernungKm`, `leadsFuerKampagne` |
+| B34.3b QR-Code/Kurzlink mit Kampagnen-ID → Anfrageseite (Firma, Wunschartikel, Menge, Kontakt); Gewerbenachweis (USt-ID) | ❌ | ✅ QR + Link + Kampagnen-ID je Brief; öffentliche Seite `/anfrage/<Code>` (nur Angebot), USt-ID-Format geprüft, Honigtopf | `qrPng`, `src/app/anfrage/[code]/page.tsx`, `anfrageAnlegen`, `ustIdFormat` |
+| B34.3b Anfrage → Posteingang als Aufgabe; Nachfassen nach 3 Wochen (optional) | ❌ | ✅ Aufgabe + Eintrag im Posteingang (Ordner „Anfrageseite“), Anschreiben „beantwortet“; Nachfassen als Aufgabe (täglicher Lauf), nie automatisch | `anfrageAnlegen`, `nachfassPruefen` (`scheduler.ts`) |
+| B34.3b Rechtliche Hinweise (MHD/Kennzeichnung, CE/GPSR, Vertrieb, Art. 14 DSGVO) | ❌ | ✅ je Zielgruppe auf der Kampagnenseite, „keine Rechtsberatung“ | `ZIELGRUPPEN[..].hinweise` |
+| B34.3b Lager-Kampagne: Umkreis 100 km, Lagerkostenrechner (Europalette 1,44 m³ × Preis), Palettenlager nutzbar, offene Punkte | ❌ | ✅ Rechner (Paletten → m³, je Palette/m³/Monat), Hinweis aufs Palettenlager (Abrechnung je Palette/Monat), Checkliste Kapazität/Versicherung/Gefahrgut/Mindestmenge/AGB | `lagerkosten`, `OFFENE_PUNKTE_LAGER` |
+| B34.4.3 Discord nur für abonnierte Kanäle | ✅ | ✅ unverändert: gelesen werden nur unter Anbindungen eingetragene Kanäle; Hinweis im Wissen | `src/lib/deal-eingang/profitpath.ts`, `src/lib/discord-wissen/` |
+| B34.4.4 Wissen „Einsteiger bekommen kaum Deals“ (Einzelmeinung) | ❌ | ✅ im Wissenseintrag „Ankaufserver“; bestehender Eintrag wird nachgezogen | `ANKAUF_WISSEN`, `ankaufWissenSicherstellen` |
+| B34.5 Checkliste: Menge angemeldet, Ankäufer kauft noch an (Datum), Versandfrist – Warnung, Aufgabe, Ausgang → Lernschleife | 🟡 ohne „kauft noch an“/Versandfrist | ✅ zwei neue Punkte (Bestätigung ≤ 7 Tage alt, Versandfrist nicht vorbei); Aufgabe-Frist = früheste offene Frist | `ankaufCheckliste`, `ankaufFrist` (`ankauf-logic.ts`), Felder im Formular |
+
+| Abnahme | Ergebnis |
+|---|---|
+| B34.1 (0) Startbildschirm + 3 bekannte EANs | ✅ automatisch (`b34-scan-start.spec.ts`: Manifest-Kurzbefehl, Anleitung, 3 Probe-EANs je mit Ampel); echtes Handy live |
+| B34.2 Drive: Test-Ordner mit 5 Rechnungen + 2 Dubletten → Vorschau mit neuen Namen + Dublettenliste; nach Freigabe sortiert; nichts gelöscht | ✅ automatisch gegen den Drive-Nachbau (`b34-drive.spec.ts`), dazu Kontoauszug, Schreibrecht-Sperre, Papierkorb nur nach Freigabe |
+| B34.3a Testanbieter im Testmodus, 3 Test-Leads, Kostenvorschau stimmt, Testbrief an Absender, Status zurück, ohne AV kein Live, ohne Freigabe nichts verschickt | ✅ automatisch gegen den LetterXpress-Nachbau (`b34-briefversand.spec.ts`), dazu Beilage-Prüfung und Kosten je Rücklauf |
+| B34.3b Kampagne „Friseure“ mit 2 Testprodukten, MHD-Filter, Umkreis 50 km, Brief-PDF mit QR + Kampagnen-ID, Anfrage → Aufgabe im Posteingang | ✅ automatisch (`b34-kampagnen.spec.ts`), dazu Lagerkostenrechner |
+| B34.5 neue Checklistenpunkte | ✅ automatisch (`b34-ankauf.spec.ts` + Unit-Tests) |
+
+Unit-Tests: `tests/b34-kampagnen.test.ts` (neu), `tests/b34-ankauf.test.ts` (erweitert).
+Ablauftests: `e2e/b34-drive.spec.ts`, `e2e/b34-briefversand.spec.ts`, `e2e/b34-kampagnen.spec.ts`, `e2e/b34-scan-start.spec.ts`.
+Testdienste: Nachbau Google Drive (`/drive/v3`, Token, Ordner, Verschieben, Papierkorb), LetterXpress v3, eBrief.
+Migration: `0146_b34_drive_brief_kampagnen`.
+
+**Werkzeuge:** keine neuen und keine geänderten Claude-Werkzeuge → kein `notifications/tools/list_changed` nötig.
+
+**Offene Fragen an Ludwig** (mit diesen Annahmen gebaut):
+1. `scan_pruefen` noch nie genutzt – bitte `/scan` auf den Startbildschirm legen und die 3 Probe-EANs antippen (Abnahme 0).
+2. Briefe als Standard / welche Ladenhüter zuerst? – Annahme: Brief; Auswahl per Haken bzw. je Kampagne.
+3. Drive-Schreibrechte: erst nach deiner Freigabe (Schalter auf der Belegablage + Dienstkonto als Bearbeiter) – bis dahin nur Vorschau.
+4. Absender und Text der AdelPrep-Beilage: bitte selbst eintragen und prüfen (Firmendaten, Impressum, Preis „ab … € netto je Artikel“); unbelegte Angaben bleiben gesperrt, bis du sie bestätigst.
+5. eBrief als erster Anbieter bestätigen? – Annahme: ja, Preis laut Preisseite selbst eintragen; LetterXpress ist gleichwertig angebunden.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2441,3 +2497,20 @@ nie in Chats oder Mails.
 147. **Wissenseintrag „Ankaufserver“**: im Wissen den Sprecher ergänzen, falls gewünscht (der Name steht bewusst nicht im Code).
 148. **Ankauf-Deals**: Menge vor dem Kauf beim Ankäufer anmelden und im Deal eintragen; nach dem Abschluss den Ausgang
      (angekauft / liegt / Verlust) setzen – „liegt“/„Verlust“ beantwortest du dann in der Lernschleife.
+149. **Drive-Ablage freischalten**: unter Anbindungen → Google Drive das Dienstkonto (JSON) und die Ordner-ID eintragen,
+     den Rechnungsordner in Drive für die Dienstkonto-Adresse als „Bearbeiter“ freigeben; dann unter Finanzen →
+     Belegablage „Umbenennen/Verschieben erlauben“. Erste Charge klein halten und die Vorschau prüfen.
+150. **Bestand im Drive-Ordner**: einmal „Vorhandene Dateien vorschlagen“ – schon früher eingelesene Rechnungen bekommen
+     dann auch einen Ablage-Vorschlag.
+151. **AdelPrep-Beilage**: unter B2B → Abverkauf Firmendaten, Impressum, Datenschutzhinweis und Text der Logistik-Firma
+     eintragen und prüfen lassen; Angaben zu Fläche/Stellplätzen, kostenloser Zählung, NDA und Gefahrgut erst nach
+     Rückfrage per Haken freigeben.
+152. **Briefversand**: Anbieter wählen (Vorschlag eBrief), Zugang unter Anbindungen eintragen und testen, Preise je Brief
+     laut Preisseite unter Abverkauf → Briefversand eintragen, Tageslimit und Gesamtbudget setzen.
+153. **AV-Vertrag** mit dem Briefanbieter abschließen und den Haken setzen – erst dann ist Live-Versand möglich; vorher
+     Testbrief an die eigene Adresse und Druckbild prüfen.
+154. **Lager-Standort** (Breite/Länge) und Preis je Palette/Monat unter Abverkauf → Lager-Standort eintragen; in der
+     Lead-CSV Spalten „Latitude“/„Longitude“ mitliefern (z. B. aus dem Apify-Export), sonst greift der Umkreis nicht.
+155. **Kampagnen**: Kosmetik nur mit MHD und Charge je Position; Vertriebsbeschränkungen der Marken und
+     Kennzeichnung/CE/GPSR vor dem Versand prüfen (keine Rechtsberatung). Lager-Kampagne: offene Punkte
+     (Kapazität, Versicherung, Gefahrgut, Mindestmenge, AGB) vorher klären.

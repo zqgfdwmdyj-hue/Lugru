@@ -17,7 +17,7 @@ export default async function VerfahrenPage() {
       </div>
       <article className="card card-pad article-body" style={{ whiteSpace: "normal" }}>
         <h3>1. Geltungsbereich</h3>
-        <p>Buchhaltung der Firmen {s.firmen.join(" und ")} (je Firma getrennt, Feld „Firma“). Nicht enthalten: AdelPrep / Wittmann &amp; Grunert GmbH (eigene Buchhaltung in Lexoffice). Kontenrahmen {s.kontenrahmen}.</p>
+        <p>Buchhaltung der Firmen {s.firmen.join(" und ")} (je Firma getrennt, Feld „Firma“). Nicht enthalten: AdelPrep (eigene Buchhaltung in Lexoffice). Kontenrahmen {s.kontenrahmen}.</p>
         <h3>2. Belegeingang</h3>
         <p>Belege kommen aus Google Drive, den verbundenen Postfächern, per Upload oder Handy-Scan. Jede Datei wird unverändert und verschlüsselt gespeichert (mit Prüfsumme SHA-256). Die KI liest Lieferant, Rechnungsnummer, Datum, Beträge und Belegart aus; unsichere Werte und mögliche Doppelte (gleiche Nummer + Lieferant + Betrag oder gleiche Datei) werden zur Prüfung markiert, nichts wird automatisch gelöscht.</p>
         <h3>3. Kontoauszüge</h3>

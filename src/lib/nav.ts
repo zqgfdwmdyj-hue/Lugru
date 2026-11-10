@@ -148,7 +148,7 @@ export const NAV: NavSection[] = [
       { href: "/rechnungen/belege", label: "Belege scannen", unter: "rechnungen" },
       { href: "/rechnungsstation", label: "Rechnungsstation (Kamera)", sichtbarMit: STATION, unter: "rechnungen" },
       { href: "/rechnungsstation/pruefen", label: "Rechnungsstation: Prüfliste", sichtbarMit: STATION, unter: "rechnungen" },
-      { href: "/rechnungsstation/ablage", label: "Download-Ordner (Belege)", sichtbarMit: STATION, unter: "rechnungen" },
+      { href: "/rechnungsstation/ablage", label: "Belegablage (Drive, Download-Ordner)", sichtbarMit: STATION, unter: "rechnungen" },
       { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen", unter: "rechnungen" },
       { href: "/rechnungen/kunden", label: "Kunden", unter: "rechnungen" },
     ],

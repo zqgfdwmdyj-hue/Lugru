@@ -2,8 +2,8 @@ import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, tex
 import { createdAt, id, suppliers, tenantId, updatedAt, users } from "./core";
 import { encryptedText } from "./encrypted";
 
-// B2B-Deals für Prep-Center-Kunden: Großhandelsware, die wir (Firma laut Einstellungen, z. B. Wittmann & Grunert
-// GmbH / AdelPrep) an Amazon-Händler weiterverkaufen. Kunden haben einen eigenen Zugang zum Kundenportal (/portal),
+// B2B-Deals für Prep-Center-Kunden: Großhandelsware, die wir (Firma laut Einstellungen, z. B. die Firma hinter
+// AdelPrep) an Amazon-Händler weiterverkaufen. Kunden haben einen eigenen Zugang zum Kundenportal (/portal),
 // getrennt von den Konten des Seller-Systems – sie sehen nur Deals und ihre eigenen Vorgänge.
 
 const geld = (name: string) => numeric(name, { precision: 12, scale: 4, mode: "number" });

@@ -168,6 +168,9 @@ export async function runScheduledJobs(force = false) {
       // B2B-Deals: Erfolgskontrolle 30/60 Tage nach Wareneingang (Keepa, einmal am Tag).
       if (force || due(`${t}:b2b-kontrolle`, 719)) await step(t, "B2B-Erfolgskontrolle", async () => (await import("@/lib/b2b/kontrolle")).erfolgskontrolle(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step(t, "Rechnungen", () => syncDrive(t, 100));
+      // B34.3a Briefversand: Status beim Anbieter (angenommen → gedruckt → zugestellt) stündlich; B34.3b Nachfassen als Aufgabe (täglich).
+      if (force || due(`${t}:briefversand`, 59)) await step(t, "Briefversand: Status", async () => (await import("@/lib/abverkauf/versand")).briefStatusAbrufen(t));
+      if (force || due(`${t}:kampagnen-nachfass`, 719)) await step(t, "Kampagnen: Nachfassen", async () => (await import("@/lib/abverkauf/kampagnen")).nachfassPruefen(t));
       // EK-Liste für AccountOne (tax.fish braucht die EKs für PAN-EU-Verbringungen): Erinnerung bei Neuem, höchstens alle 4 Wochen.
       if (force || due(`${t}:cog-reminder`, 720)) await step(t, "EK-Liste AccountOne", () => cogReminder(t));
       // Ausgangsrechnungen (eBay + B2B) an Stotax Select – neue sofort, Fehlgeschlagene nach einer Stunde erneut.

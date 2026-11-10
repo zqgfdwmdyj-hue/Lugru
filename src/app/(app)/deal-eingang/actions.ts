@@ -503,6 +503,8 @@ export async function ankaufAction(fd: FormData) {
       legitNotiz: text("legit_notiz"),
       mengeAngemeldet: menge === null ? null : Math.round(menge),
       annahmefrist: /^\d{4}-\d{2}-\d{2}$/.test(String(fd.get("annahmefrist") ?? "")) ? String(fd.get("annahmefrist")) : null,
+      ankauftBestaetigtAm: /^\d{4}-\d{2}-\d{2}$/.test(String(fd.get("bestaetigt") ?? "")) ? String(fd.get("bestaetigt")) : null,
+      versandfrist: /^\d{4}-\d{2}-\d{2}$/.test(String(fd.get("versandfrist") ?? "")) ? String(fd.get("versandfrist")) : null,
       zahlungszielTage: ziel === null ? null : Math.max(0, Math.round(ziel)),
       rueckverguetungProzent: rueck === null ? 0 : Math.min(20, Math.max(0, rueck)),
     });

@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { openPii, sealPii } from "@/lib/pii";
-import { ABVERKAUF_STANDARD, CHARGE_MAX, RECHTSGRUNDLAGE_BRIEF, ZWECK, anschreibenVorlage, chargeErfolg, codeAus, datenschutzHinweis, istAbmeldung, istKandidat, kiAuftrag, leadSchluessel, leadsAusTabelle, mailErlaubt, mailSchluessel, preisPosition, tagesRest, type Absender, type AbverkaufEinstellungen } from "./logic";
+import { ABVERKAUF_STANDARD, CHARGE_MAX, RECHTSGRUNDLAGE_BRIEF, ZWECK, anschreibenVorlage, kampagneAnschreiben, chargeErfolg, codeAus, datenschutzHinweis, istAbmeldung, istKandidat, kiAuftrag, leadSchluessel, leadsAusTabelle, mailErlaubt, mailSchluessel, preisPosition, tagesRest, type Absender, type AbverkaufEinstellungen } from "./logic";
 
 // B34.3 B2B-Abverkauf von Ladenhütern. Nichts wird automatisch verschickt: Entwürfe → Freigabe (einzeln oder Charge
 // bis 20, Tageslimit) → Brief als PDF zum Drucken bzw. E-Mail nur, wenn erlaubt. Das Seller-System scrapt nicht –
@@ -24,7 +24,17 @@ const plusTage = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:0
 export async function einstellungen(tenantId: string): Promise<AbverkaufEinstellungen> {
   const [t] = await db.select({ s: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
   const roh = ((t?.s ?? {}) as { abverkauf?: Partial<AbverkaufEinstellungen> }).abverkauf ?? {};
-  return { ...ABVERKAUF_STANDARD, ...roh, kriterien: { ...ABVERKAUF_STANDARD.kriterien, ...(roh.kriterien ?? {}) }, staffeln: roh.staffeln ?? ABVERKAUF_STANDARD.staffeln };
+  const d = ABVERKAUF_STANDARD;
+  const bv = roh.briefversand;
+  return {
+    ...d,
+    ...roh,
+    kriterien: { ...d.kriterien, ...(roh.kriterien ?? {}) },
+    staffeln: roh.staffeln ?? d.staffeln,
+    adelprep: { ...d.adelprep, ...(roh.adelprep ?? {}), bestaetigt: { ...d.adelprep.bestaetigt, ...(roh.adelprep?.bestaetigt ?? {}) } },
+    briefversand: { ...d.briefversand, ...(bv ?? {}), preise: { ebrief: { ...d.briefversand.preise.ebrief, ...(bv?.preise?.ebrief ?? {}) }, letterxpress: { ...d.briefversand.preise.letterxpress, ...(bv?.preise?.letterxpress ?? {}) }, epost: { ...d.briefversand.preise.epost, ...(bv?.preise?.epost ?? {}) } } },
+    lager: { ...d.lager, ...(roh.lager ?? {}) },
+  };
 }
 
 export async function einstellungenSpeichern(s: Session, patch: Partial<AbverkaufEinstellungen>) {
@@ -37,7 +47,7 @@ export async function einstellungenSpeichern(s: Session, patch: Partial<Abverkau
   return neu;
 }
 
-async function absender(tenantId: string): Promise<Absender> {
+export async function absender(tenantId: string): Promise<Absender> {
   const { getSettings } = await import("@/lib/settings");
   const f = (await getSettings(tenantId)).b2b.firma;
   return { name: f.handelsname || f.name || "", strasse: f.strasse, plz: f.plz, ort: f.ort, email: f.email, telefon: f.telefon };
@@ -119,7 +129,7 @@ export async function leadsImportieren(s: Session, o: { name: string; bytes: Uin
     }
     const ins = await db
       .insert(L)
-      .values({ tenantId: s.tenantId, firma: l.firma, strasse: l.strasse ? sealPii(l.strasse) : null, plz: l.plz, ort: l.ort, land: l.land, kategorie: l.kategorie, email: l.email ? sealPii(l.email) : null, emailQuelle: l.emailQuelle, website: l.website, quelle: o.quelle.trim().slice(0, 200), quelleDatum: o.quelleDatum, kontaktweg: "brief", rechtsgrundlage: RECHTSGRUNDLAGE_BRIEF, zweck: ZWECK, loeschenAm, schluessel: key, importName: o.name.slice(0, 200) })
+      .values({ tenantId: s.tenantId, firma: l.firma, strasse: l.strasse ? sealPii(l.strasse) : null, plz: l.plz, ort: l.ort, land: l.land, kategorie: l.kategorie, email: l.email ? sealPii(l.email) : null, emailQuelle: l.emailQuelle, website: l.website, quelle: o.quelle.trim().slice(0, 200), quelleDatum: o.quelleDatum, kontaktweg: "brief", rechtsgrundlage: RECHTSGRUNDLAGE_BRIEF, zweck: ZWECK, loeschenAm, schluessel: key, importName: o.name.slice(0, 200), adelprep: l.adelprep, lat: l.lat, lng: l.lng, groesse: l.groesse })
       .onConflictDoNothing()
       .returning({ id: L.id });
     if (ins.length) neu++;
@@ -135,9 +145,9 @@ export async function leadsListe(tenantId: string, limit = 300): Promise<LeadZei
   return (await db.select().from(L).where(eq(L.tenantId, tenantId)).orderBy(desc(L.createdAt)).limit(limit)).map(offen);
 }
 
-export async function leadAendern(s: Session, id: string, o: { kontaktweg?: "brief" | "email"; einwilligung?: string | null; bestandskunde?: boolean; status?: (typeof L.$inferSelect)["status"] }) {
+export async function leadAendern(s: Session, id: string, o: { kontaktweg?: "brief" | "email"; einwilligung?: string | null; bestandskunde?: boolean; status?: (typeof L.$inferSelect)["status"]; adelprep?: boolean }) {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
-  await db.update(L).set({ ...(o.kontaktweg ? { kontaktweg: o.kontaktweg } : {}), ...(o.einwilligung !== undefined ? { einwilligung: o.einwilligung?.trim().slice(0, 300) || null } : {}), ...(o.bestandskunde !== undefined ? { bestandskunde: o.bestandskunde } : {}), ...(o.status ? { status: o.status } : {}) }).where(and(eq(L.tenantId, s.tenantId), eq(L.id, id)));
+  await db.update(L).set({ ...(o.adelprep !== undefined ? { adelprep: o.adelprep } : {}), ...(o.kontaktweg ? { kontaktweg: o.kontaktweg } : {}), ...(o.einwilligung !== undefined ? { einwilligung: o.einwilligung?.trim().slice(0, 300) || null } : {}), ...(o.bestandskunde !== undefined ? { bestandskunde: o.bestandskunde } : {}), ...(o.status ? { status: o.status } : {}) }).where(and(eq(L.tenantId, s.tenantId), eq(L.id, id)));
 }
 
 /** Sperren (Widerspruch/Abmeldung): Lead gesperrt, offene Entwürfe gestoppt, Prüfsummen auf die Sperrliste. */
@@ -167,13 +177,14 @@ export async function leadLoeschen(s: Session, id: string) {
 const neuerCode = () => `AV-${randomBytes(4).toString("hex").toUpperCase().slice(0, 6)}`;
 
 /** KI-Entwurf je Händler (ohne KI: Vorlage). Nie automatischer Versand – erst Freigabe. Höchstens 20 auf einmal. */
-export async function entwuerfeErstellen(s: Session, leadIds: string[], preislisteId: string | null): Promise<{ neu: number; text: string }> {
+export async function entwuerfeErstellen(s: Session, leadIds: string[], preislisteId: string | null, kampagne?: { id: string; positionen: { titel: string; menge: number; preis: number }[]; brieftext: string; betreff: string; absender?: Absender } | null): Promise<{ neu: number; text: string }> {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
   const ids = [...new Set(leadIds)].slice(0, CHARGE_MAX);
   const leads = ids.length ? await db.select().from(L).where(and(eq(L.tenantId, s.tenantId), inArray(L.id, ids))) : [];
-  const liste = preislisteId ? await preislisteLesen(s.tenantId, preislisteId) : (await letztePreislisten(s.tenantId, 1))[0] ?? null;
-  const positionen = (liste?.positionen ?? []).map((p) => ({ titel: p.titel, menge: p.menge, preis: p.preis }));
-  const abs = await absender(s.tenantId);
+  const liste = kampagne ? null : preislisteId ? await preislisteLesen(s.tenantId, preislisteId) : (await letztePreislisten(s.tenantId, 1))[0] ?? null;
+  const positionen = kampagne ? kampagne.positionen : (liste?.positionen ?? []).map((p) => ({ titel: p.titel, menge: p.menge, preis: p.preis }));
+  const abs = kampagne?.absender ?? (await absender(s.tenantId));
+  const cfg = await einstellungen(s.tenantId);
   const { getIntegration } = await import("@/lib/integrations/store");
   const ai = await getIntegration(s.tenantId, "anthropic");
   let neu = 0;
@@ -182,10 +193,10 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
     const [schon] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, s.tenantId), eq(A.leadId, l.id), eq(A.status, "entwurf"))).limit(1);
     if (schon) continue;
     const code = neuerCode();
-    const v = anschreibenVorlage({ firma: l.firma, kategorie: l.kategorie, absender: abs, positionen, code });
+    const v = kampagne ? kampagneAnschreiben({ betreff: kampagne.betreff, brieftext: kampagne.brieftext, absender: abs, positionen, code, firma: l.firma }) : anschreibenVorlage({ firma: l.firma, kategorie: l.kategorie, absender: abs, positionen, code });
     let text = v.text;
     let ki = false;
-    if (ai?.apiKey) {
+    if (ai?.apiKey && !kampagne) {
       try {
         const { askClaude, modelFor } = await import("@/lib/ai/claude");
         const r = await askClaude(ai.apiKey, kiAuftrag({ firma: l.firma, kategorie: l.kategorie, positionen, absender: abs.name }), { model: modelFor(ai, "simple"), task: "simple", maxTokens: 600, timeoutMs: 60_000 });
@@ -198,7 +209,7 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
         // Vorlage bleibt
       }
     }
-    await db.insert(A).values({ tenantId: s.tenantId, leadId: l.id, preislisteId: liste?.id ?? null, kanal: l.kontaktweg, code, betreff: v.betreff, text: text.slice(0, 6000), ki });
+    await db.insert(A).values({ tenantId: s.tenantId, leadId: l.id, preislisteId: liste?.id ?? null, kanal: kampagne ? "brief" : l.kontaktweg, code, betreff: v.betreff, text: text.slice(0, 6000), ki, kampagneId: kampagne?.id ?? null, adelprepBeilage: l.adelprep && cfg.adelprep.standardBeilegen && !kampagne?.absender });
     neu++;
   }
   return { neu, text: `${neu} ${neu === 1 ? "Entwurf" : "Entwürfe"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.` };
@@ -214,9 +225,9 @@ export async function anschreibenListe(tenantId: string, limit = 200) {
     .limit(limit);
 }
 
-export async function anschreibenAendern(s: Session, id: string, o: { betreff?: string; text?: string; umsatz?: number | null; marge?: number | null }) {
+export async function anschreibenAendern(s: Session, id: string, o: { betreff?: string; text?: string; umsatz?: number | null; marge?: number | null; adelprepBeilage?: boolean }) {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
-  await db.update(A).set({ ...(o.betreff ? { betreff: o.betreff.slice(0, 200) } : {}), ...(o.text ? { text: o.text.slice(0, 6000) } : {}), ...(o.umsatz !== undefined ? { umsatz: o.umsatz } : {}), ...(o.marge !== undefined ? { marge: o.marge } : {}) }).where(and(eq(A.tenantId, s.tenantId), eq(A.id, id)));
+  await db.update(A).set({ ...(o.adelprepBeilage !== undefined ? { adelprepBeilage: o.adelprepBeilage } : {}), ...(o.betreff ? { betreff: o.betreff.slice(0, 200) } : {}), ...(o.text ? { text: o.text.slice(0, 6000) } : {}), ...(o.umsatz !== undefined ? { umsatz: o.umsatz } : {}), ...(o.marge !== undefined ? { marge: o.marge } : {}) }).where(and(eq(A.tenantId, s.tenantId), eq(A.id, id)));
 }
 
 /**
@@ -289,11 +300,9 @@ export async function serienbrief(tenantId: string, chargeId: string): Promise<{
   const zeilen = await db.select({ a: A, l: L }).from(A).innerJoin(L, eq(L.id, A.leadId)).where(and(eq(A.tenantId, tenantId), eq(A.chargeId, chargeId), eq(A.kanal, "brief"), inArray(A.status, ["freigegeben", "versendet", "beantwortet"])));
   const abs = await absender(tenantId);
   const { serienbriefPdf } = await import("./pdf");
-  const bytes = await serienbriefPdf({
-    absender: abs,
-    datum: new Date(),
-    briefe: zeilen.map((z) => ({ anschrift: [z.l.firma, z.l.strasse ? openPii(z.l.strasse) : "", [z.l.plz, z.l.ort].filter(Boolean).join(" "), z.l.land !== "DE" ? z.l.land : ""].filter(Boolean), betreff: z.a.betreff, text: z.a.text, datenschutz: datenschutzHinweis(abs, { quelle: z.l.quelle, quelleDatum: z.l.quelleDatum, loeschenAm: z.l.loeschenAm }), code: z.a.code })),
-  });
+  const { briefeBauen } = await import("./briefe");
+  const gebaut = await briefeBauen(tenantId, zeilen, await einstellungen(tenantId), abs);
+  const bytes = await serienbriefPdf({ absender: abs, datum: new Date(), briefe: gebaut.map((g) => g.brief) });
   return { name: `Serienbrief_Charge-${c.nr}.pdf`, bytes };
 }
 
@@ -327,5 +336,12 @@ export async function antwortAusMail(tenantId: string, m: { messageKey: string; 
 export async function erfolgJeCharge(tenantId: string) {
   const ch = await db.select().from(C).where(eq(C.tenantId, tenantId)).orderBy(desc(C.nr)).limit(50);
   const an = ch.length ? await db.select({ chargeId: A.chargeId, status: A.status, umsatz: A.umsatz, marge: A.marge }).from(A).where(and(eq(A.tenantId, tenantId), inArray(A.chargeId, ch.map((c) => c.id)))) : [];
-  return ch.map((c) => ({ ...c, ...chargeErfolg(an.filter((x) => x.chargeId === c.id)), anzahl: an.filter((x) => x.chargeId === c.id).length }));
+  const { kostenJeCharge } = await import("./versand");
+  const kosten = await kostenJeCharge(tenantId);
+  return ch.map((c) => {
+    const e = chargeErfolg(an.filter((x) => x.chargeId === c.id));
+    const k = kosten.get(c.id) ?? null;
+    // B34.3a Kosten je Rücklauf: Briefkosten (live) ÷ Antworten
+    return { ...c, ...e, anzahl: an.filter((x) => x.chargeId === c.id).length, kosten: k, kostenJeRuecklauf: k !== null && e.beantwortet > 0 ? Math.round((k / e.beantwortet) * 100) / 100 : null };
+  });
 }

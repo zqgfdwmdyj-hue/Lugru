@@ -134,14 +134,14 @@ describe("Sichtbarkeit nach Rollen (wie vorher)", () => {
     expect(va.some((s) => s.key === "privat" || s.key === "einstellungen")).toBe(false);
     for (const h of ["/gewinn", "/cashflow", "/kapital", "/hebel", "/verlust", "/buchhaltung", "/amazon-faelle", "/amazon-todos", "/delegation", "/rechtsfaelle"]) expect(hrefs).not.toContain(h);
     const fin = va.find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Download-Ordner (Belege)"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Belegablage (Drive, Download-Ordner)"]);
     expect(fin.untergruppen?.map((u) => u.key)).toEqual(["rechnungen"]);
     expect(navBloecke(fin).map((b) => b.unter?.key ?? "direkt")).toEqual(["rechnungen"]);
     expect(sichtbareNebenseiten((p) => canAccess({ role: "staff", areas: [...VA_BEREICHE] }, areaForPath(p)), false).some((n) => n.href.startsWith("/einstellungen") || n.href === "/anbindungen")).toBe(false);
   });
   it("nur „Geld“: Finanzen direkt + Rechnungsstation, keine Inhaber-Punkte", () => {
     const fin = sicht(false, ["geld"]).find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Kapital-Ampel", "Hebel: Umsatz & Marge", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Download-Ordner (Belege)"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Kapital-Ampel", "Hebel: Umsatz & Marge", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Belegablage (Drive, Download-Ordner)"]);
     expect(sicht(false, ["geld"]).some((s) => s.key === "lager" || s.key === "einstellungen")).toBe(false);
   });
   it("Druckagent: Drucken/Scannen für VA, Lager und Amazon – nicht für reine Geld-Konten", () => {

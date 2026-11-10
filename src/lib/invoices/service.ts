@@ -120,19 +120,32 @@ export async function syncDrive(tenantId: string, max = 150) {
   );
   // Von der Rechnungsstation selbst abgelegte Belege nicht noch einmal als neue Rechnung einlesen.
   for (const r of await db.select({ id: schema.invoices.driveDateiId }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), isNotNull(schema.invoices.driveDateiId)))) known.add(r.id);
-  const todo = files.filter((f) => !known.has(f.id)).slice(0, max);
+  // B34.2: Dateien mit Ablage-Vorschlag (auch Dubletten/Kontoauszüge ohne Rechnung) nicht noch einmal laden.
+  const { driveBekannt, driveDateiVorschlagen } = await import("@/lib/belege/drive-ablage");
+  for (const id of await driveBekannt(tenantId)) known.add(id);
+  // Älteste zuerst – bei Dubletten bleibt die frühere Datei das Original.
+  const offen = files.filter((f) => !known.has(f.id)).sort((a, b) => (a.createdTime < b.createdTime ? -1 : a.createdTime > b.createdTime ? 1 : 0));
+  const todo = offen.slice(0, max);
   let created = 0;
+  let vorschlaege = 0;
   for (const f of todo) {
     try {
       const bytes = await access.download(f.id);
-      const r = await ingestInvoice({ tenantId, source: "drive", externalId: f.id, fileName: f.name, bytes, storeBytes: false });
-      if (r.created) created++;
+      if ((f.pfad ?? "") === "") {
+        // Direkt im Rechnungsordner: Vorschlag (umbenennen/ablegen, Kontoauszug, Dublette) – Ausführung erst nach Freigabe.
+        const r = await driveDateiVorschlagen(tenantId, f, bytes);
+        vorschlaege++;
+        if (r.rechnung) created++;
+      } else {
+        const r = await ingestInvoice({ tenantId, source: "drive", externalId: f.id, fileName: f.name, bytes, storeBytes: false });
+        if (r.created) created++;
+      }
     } catch (e) {
       console.error("Rechnung nicht verarbeitet", f.name, e);
     }
   }
   await refreshInvoiceTasks(tenantId);
-  return { total: files.length, created, remaining: files.filter((f) => !known.has(f.id)).length - todo.length };
+  return { total: files.length, created, vorschlaege, remaining: offen.length - todo.length };
 }
 
 export async function refreshInvoiceTasks(tenantId: string) {

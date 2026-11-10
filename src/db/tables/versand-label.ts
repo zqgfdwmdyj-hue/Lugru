@@ -17,7 +17,7 @@ export const versandLabels = pgTable(
     /** entwurf (vom iPhone geteilt, noch nicht fertig) | vorlage (ohne DHL gespeichert) | erstellt | fehler */
     status: text("status").notNull().default("vorlage"),
     kanal: text("kanal").notNull(),
-    /** lugru (Standard) | zweiter (z. B. Wittmann & Grunert) */
+    /** lugru (Standard) | zweiter (z. B. zweite Firma) */
     absender: text("absender").notNull().default("lugru"),
     produkt: text("produkt").notNull(),
     empfaenger: encryptedJson<VersandEmpfaenger>("empfaenger"),

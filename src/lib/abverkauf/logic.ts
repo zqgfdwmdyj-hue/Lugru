@@ -3,6 +3,24 @@
 // Erfolg je Charge. Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen.
 
 import { createHash } from "node:crypto";
+import type { BeilageBestaetigt, BeilageFirma, BriefPreis } from "./kampagne-logic";
+
+/** B34.3.6 Beilage der Logistik-Firma (AdelPrep): eigener Brief mit eigenem Absender, Impressum, Datenschutz. Leer bis eingetragen. */
+export type AdelprepEinstellungen = BeilageFirma & { text: string; standardBeilegen: boolean; bestaetigt: BeilageBestaetigt };
+/** B34.3a Briefversand über einen Anbieter. Preise hier (nicht im Code), live nur mit AV-Vertrag. */
+export type BriefversandEinstellungen = {
+  anbieter: "ebrief" | "letterxpress" | "epost";
+  live: boolean;
+  avVertrag: boolean;
+  avDatum: string | null;
+  tageslimit: number;
+  budget: number | null;
+  farbe: boolean;
+  duplex: boolean;
+  preise: Record<"ebrief" | "letterxpress" | "epost", BriefPreis>;
+};
+/** B34.3b Lager-Standort für den Umkreis und Preis je Palette (Lagerkostenrechner). */
+export type LagerEinstellungen = { name: string; lat: number | null; lng: number | null; preisJePaletteMonat: number | null };
 
 export type AbverkaufEinstellungen = {
   /** „Rechtlich geprüft“: erst dann E-Mails an Fremdkontakte (mit dokumentierter Einwilligung). */
@@ -12,7 +30,12 @@ export type AbverkaufEinstellungen = {
   staffeln: { ab: number; rabattProzent: number }[];
   kriterien: { reichweiteTage: number; lagerTage: number; kapital: number };
   loeschfristTage: number;
+  adelprep: AdelprepEinstellungen;
+  briefversand: BriefversandEinstellungen;
+  lager: LagerEinstellungen;
 };
+
+const OHNE_PREIS: BriefPreis = { grund: null, jeWeitereSeite: null };
 
 export const ABVERKAUF_STANDARD: AbverkaufEinstellungen = {
   rechtlichGeprueft: false,
@@ -24,6 +47,11 @@ export const ABVERKAUF_STANDARD: AbverkaufEinstellungen = {
   ],
   kriterien: { reichweiteTage: 90, lagerTage: 60, kapital: 300 },
   loeschfristTage: 180,
+  // Firmendaten der Logistik-Firma trägt der Inhaber ein – nichts davon im Code.
+  adelprep: { firma: "", strasse: "", plz: "", ort: "", email: "", telefon: "", web: "", impressum: "", datenschutz: "", text: "", standardBeilegen: false, bestaetigt: { flaeche: false, zaehlung: false, nda: false, gefahrgut: false } },
+  // Preise je Anbieter trägt der Inhaber ein (laut Preisseite) – ohne Preis keine Kostenvorschau und kein Versand.
+  briefversand: { anbieter: "ebrief", live: false, avVertrag: false, avDatum: null, tageslimit: 20, budget: null, farbe: false, duplex: false, preise: { ebrief: OHNE_PREIS, letterxpress: OHNE_PREIS, epost: OHNE_PREIS } },
+  lager: { name: "", lat: null, lng: null, preisJePaletteMonat: null },
 };
 
 export const CHARGE_MAX = 20;
@@ -70,7 +98,7 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0,
 export const leadSchluessel = (firma: string, plz: string | null) => sha(`firma|${firmaNorm(firma)}|${(plz ?? "").replace(/\s/g, "")}`);
 export const mailSchluessel = (email: string) => sha(`mail|${email.trim().toLowerCase()}`);
 
-export type LeadEingabe = { firma: string; strasse: string | null; plz: string | null; ort: string | null; land: string; kategorie: string | null; email: string | null; emailQuelle: string | null; website: string | null };
+export type LeadEingabe = { firma: string; strasse: string | null; plz: string | null; ort: string | null; land: string; kategorie: string | null; email: string | null; emailQuelle: string | null; website: string | null; adelprep: boolean; lat: number | null; lng: number | null; groesse: string | null };
 
 const SPALTE: Record<keyof LeadEingabe | "adresse", RegExp> = {
   firma: /^(firma|firmenname|name|title|titel|unternehmen|company|business name|haendler)$/,
@@ -83,6 +111,15 @@ const SPALTE: Record<keyof LeadEingabe | "adresse", RegExp> = {
   email: /^(e mail|email|emails|e mails|mail)$/,
   emailQuelle: /^(e mail quelle|email quelle|quelle e mail|email source|e mail source|emailquelle)$/,
   website: /^(website|webseite|web|url|domain|homepage)$/,
+  adelprep: /^(adelprep|zielgruppe adelprep|lager logistik|zielgruppe lager)$/,
+  lat: /^(lat|latitude|breitengrad|location lat)$/,
+  lng: /^(lng|lon|long|longitude|lae?ngengrad|location lng)$/,
+  groesse: /^(groe?sse|size|betriebsgroe?sse|unternehmensgroe?sse)$/,
+};
+const janein = (v: string) => /^(ja|j|yes|y|x|1|true|wahr)$/i.test(v.trim());
+const koordinate = (v: string, max: number) => {
+  const n = Number(v.trim().replace(",", "."));
+  return v.trim() && Number.isFinite(n) && Math.abs(n) <= max ? Math.round(n * 1e6) / 1e6 : null;
 };
 
 /**
@@ -117,7 +154,7 @@ export function leadsAusTabelle(headers: string[], rows: string[][]): { leads: L
     const quelle = z(r, idx.emailQuelle) || null;
     const email = mailRoh && quelle && /impressum|imprint/i.test(quelle) ? mailRoh.toLowerCase() : null;
     if (mailRoh && !email) ohneMail++;
-    leads.push({ firma, strasse: strasse?.slice(0, 200) ?? null, plz: plz?.slice(0, 10) ?? null, ort: ort?.slice(0, 100) ?? null, land: (z(r, idx.land) || "DE").slice(0, 2).toUpperCase(), kategorie: z(r, idx.kategorie).slice(0, 120) || null, email, emailQuelle: email ? quelle!.slice(0, 200) : null, website: z(r, idx.website).slice(0, 300) || null });
+    leads.push({ firma, strasse: strasse?.slice(0, 200) ?? null, plz: plz?.slice(0, 10) ?? null, ort: ort?.slice(0, 100) ?? null, land: (z(r, idx.land) || "DE").slice(0, 2).toUpperCase(), kategorie: z(r, idx.kategorie).slice(0, 120) || null, email, emailQuelle: email ? quelle!.slice(0, 200) : null, website: z(r, idx.website).slice(0, 300) || null, adelprep: janein(z(r, idx.adelprep)), lat: koordinate(z(r, idx.lat), 90), lng: koordinate(z(r, idx.lng), 180), groesse: z(r, idx.groesse).toLowerCase().slice(0, 20) || null });
   });
   return { leads, verworfen, ohneMail };
 }
@@ -164,6 +201,28 @@ export function anschreibenVorlage(o: { firma: string; kategorie: string | null;
       o.positionen.length > 8 ? `– und ${o.positionen.length - 8} weitere Artikel (siehe Preisliste)` : "",
       "",
       "Alle Preise netto zzgl. USt., solange Vorrat reicht, Staffelpreise auf Anfrage bzw. laut Preisliste. Bei Interesse antworten Sie einfach unter Angabe des Bezugs oben.",
+      "",
+      "Mit freundlichen Grüßen",
+      o.absender.name,
+      [o.absender.telefon, o.absender.email].filter(Boolean).join(" · "),
+    ]
+      .filter((x, i, a) => !(x === "" && a[i - 1] === ""))
+      .join("\n"),
+  };
+}
+
+/** Anschreiben einer Kampagne: fester Brieftext der Kampagne, Positionen (nur angebotene), Hinweis auf QR-Code/Link. */
+export function kampagneAnschreiben(o: { betreff: string; brieftext: string; absender: Absender; positionen: { titel: string; menge: number; preis: number }[]; code: string; firma: string }): { betreff: string; text: string } {
+  const liste = o.positionen.slice(0, 8).map((p) => `– ${p.titel}: ${p.menge} Stück, ${p.preis.toFixed(2).replace(".", ",")} € netto je Stück`);
+  return {
+    betreff: `${o.betreff} (${o.code})`,
+    text: [
+      "Sehr geehrte Damen und Herren,",
+      "",
+      o.brieftext.trim(),
+      ...(liste.length ? ["", ...liste, o.positionen.length > 8 ? `– und ${o.positionen.length - 8} weitere Artikel (siehe Anfrageseite)` : ""] : []),
+      "",
+      `Am schnellsten fragen Sie über den QR-Code bzw. den Link unten an (Bezug ${o.code}) – oder antworten Sie einfach mit diesem Bezug.`,
       "",
       "Mit freundlichen Grüßen",
       o.absender.name,

@@ -97,7 +97,14 @@ export async function preislistePdf(o: { absender: Absender; positionen: Abverka
   return doc.save();
 }
 
-export type Brief = { anschrift: string[]; betreff: string; text: string; datenschutz: string; code: string };
+/** B34.3.6 Beilage der Logistik-Firma: eigener Brief (eigenes Blatt) mit eigenem Absender, Impressum und Datenschutzhinweis. */
+export type Beilage = { absender: Absender & { web?: string }; betreff: string; text: string; impressum: string; datenschutz: string };
+/** B34.3b QR-Code/Kurzlink zur Anfrageseite mit Kampagnen-ID. */
+export type BriefQr = { png: Uint8Array; url: string; kampagne: string };
+export type Brief = { anschrift: string[]; betreff: string; text: string; datenschutz: string; code: string; qr?: BriefQr | null; beilage?: Beilage | null; eigenerName?: string; /** anderer Briefkopf (Kampagne der Logistik-Firma) */ kopf?: Absender | null };
+
+/** Seiten je Brief (für Kostenvorschau): 1 Blatt Anschreiben + 1 Blatt Beilage. */
+export const briefSeiten = (b: Pick<Brief, "beilage">) => 1 + (b.beilage ? 1 : 0);
 
 export async function serienbriefPdf(o: { absender: Absender; datum: Date; briefe: Brief[] }): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -105,14 +112,15 @@ export async function serienbriefPdf(o: { absender: Absender; datum: Date; brief
   doc.setProducer("Seller-System");
   const reg = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const absenderZeile = [o.absender.name, o.absender.strasse, [o.absender.plz, o.absender.ort].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
   for (const b of o.briefe) {
+    const k = b.kopf ?? o.absender;
+    const absenderZeile = [k.name, k.strasse, [k.plz, k.ort].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
     const page = doc.addPage([A4.w, A4.h]);
     const w = schreiber(page, reg);
     let y = A4.h - 45;
-    w.text(o.absender.name, M, y, 12, bold);
+    w.text(k.name, M, y, 12, bold);
     y -= 13;
-    w.text([o.absender.email, o.absender.telefon].filter(Boolean).join(" · "), M, y, 8.5, reg, MUTED);
+    w.text([k.email, k.telefon].filter(Boolean).join(" · "), M, y, 8.5, reg, MUTED);
     // Anschriftfeld (DIN 5008, Fenster links)
     y = A4.h - 140;
     w.text(absenderZeile, M, y, 7, reg, MUTED);
@@ -139,6 +147,60 @@ export async function serienbriefPdf(o: { absender: Absender; datum: Date; brief
       yy -= 9.5;
     }
     w.text(b.code, A4.w - M - 60, M - 20, 7, reg, MUTED);
+    if (b.qr) {
+      // QR-Code rechts über dem Datenschutz-Kasten, darunter Kurzlink und Kampagnen-ID
+      const bild = await doc.embedPng(b.qr.png);
+      const g = 78;
+      const qy = M - 6 + h + 14;
+      page.drawImage(bild, { x: A4.w - M - g, y: qy + 12, width: g, height: g });
+      w.text(`Anfrage: ${b.qr.url}`, M, qy + 4, 8, reg, INK);
+      w.text(`Kampagne ${b.qr.kampagne} · Bezug ${b.code}`, M, qy - 7, 7, reg, MUTED);
+    }
+    if (b.beilage) await beilageSeite(doc, reg, bold, b, b.beilage, o.datum);
   }
   return doc.save();
+}
+
+/** Eigenes Blatt der Logistik-Firma – nicht mit dem Anschreiben vermischt: eigener Kopf, Absender, Impressum, Datenschutz. */
+async function beilageSeite(doc: PDFDocument, reg: PDFFont, bold: PDFFont, b: Brief, x: Beilage, datum: Date) {
+  const page = doc.addPage([A4.w, A4.h]);
+  const w = schreiber(page, reg);
+  const a = x.absender;
+  let y = A4.h - 45;
+  w.text(a.name, M, y, 12, bold);
+  y -= 13;
+  w.text([a.email, a.telefon, a.web].filter(Boolean).join(" · "), M, y, 8.5, reg, MUTED);
+  y -= 12;
+  w.text(`Eigenes Schreiben der ${a.name}${b.eigenerName ? ` – nicht von ${b.eigenerName}` : ""}.`, M, y, 7.5, reg, MUTED);
+  y = A4.h - 140;
+  w.text([a.name, a.strasse, [a.plz, a.ort].filter(Boolean).join(" ")].filter(Boolean).join(" · "), M, y, 7, reg, MUTED);
+  y -= 14;
+  for (const z of b.anschrift) {
+    w.text(z, M, y, 10.5);
+    y -= 13;
+  }
+  y = A4.h - 270;
+  w.text(datum.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" }), A4.w - M - 70, y + 20, 9.5);
+  w.text(x.betreff, M, y, 11, bold);
+  y -= 22;
+  for (const z of w.umbruch(["Sehr geehrte Damen und Herren,", "", x.text.trim(), "", "Mit freundlichen Grüßen", a.name].join("\n"), 10, reg, A4.w - 2 * M)) {
+    w.text(z, M, y, 10);
+    y -= 13;
+  }
+  // Fuß: Impressum und Datenschutzhinweis der Logistik-Firma
+  const ds = w.umbruch(x.datenschutz, 7, reg, A4.w - 2 * M - 16);
+  const imp = w.umbruch(`Impressum: ${x.impressum.replace(/\s*\n\s*/g, " · ")}`, 7, reg, A4.w - 2 * M - 16);
+  const h = (ds.length + imp.length) * 9 + 20;
+  page.drawRectangle({ x: M, y: M - 6, width: A4.w - 2 * M, height: h, borderColor: LINE, borderWidth: 0.6 });
+  let yy = M - 6 + h - 13;
+  for (const z of [...imp, "", ...ds]) {
+    if (z) w.text(z, M + 8, yy, 7, reg, MUTED);
+    yy -= 9;
+  }
+}
+
+/** QR-Code als PNG (bwip-js). */
+export async function qrPng(text: string): Promise<Uint8Array> {
+  const bwipjs = (await import("bwip-js/node")).default;
+  return new Uint8Array(await bwipjs.toBuffer({ bcid: "qrcode", text, scale: 4, paddingwidth: 2, paddingheight: 2 }));
 }

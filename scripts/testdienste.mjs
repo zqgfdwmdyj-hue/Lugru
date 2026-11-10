@@ -562,6 +562,135 @@ const dhlAbholAuftraege = new Set();
 const upsAbholAuftraege = new Set();
 let upsPrn = 0;
 
+// B34.2 Google Drive (Nachbau): Dateien/Ordner im Speicher. Lesen (Liste mit q, Download), Ordner anlegen, verschieben/
+// umbenennen (PATCH addParents/removeParents), Papierkorb (trashed). Prüf-Hilfe: POST /__drive (Dateien anlegen),
+// GET /__drive (Stand mit Pfaden). Token: POST /google-oauth/token (Signatur wird nicht geprüft).
+const drive = { dateien: new Map(), n: 0 };
+const driveQ = (q) => {
+  const wert = (re) => {
+    const m = re.exec(q);
+    return m ? m[1].replace(/\\'/g, "'").replace(/\\\\/g, "\\") : null;
+  };
+  return { eltern: wert(/'((?:[^'\\]|\\.)*)' in parents/), name: wert(/name = '((?:[^'\\]|\\.)*)'/), mime: wert(/mimeType = '((?:[^'\\]|\\.)*)'/), ohnePapierkorb: /trashed = false/.test(q) };
+};
+const driveSicht = (f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, createdTime: f.createdTime, modifiedTime: f.createdTime, trashed: f.trashed, size: f.inhalt ? String(f.inhalt.length) : undefined });
+function drivePfad(f) {
+  const teile = [];
+  let p = f.parents[0];
+  while (p && drive.dateien.has(p)) {
+    const o = drive.dateien.get(p);
+    teile.unshift(o.name);
+    p = o.parents[0];
+  }
+  return teile.join("/");
+}
+function driveRoute(req, url, p, b) {
+  if (p === "/google-oauth/token") return [200, { access_token: `test-drive-token-${++drive.n}`, token_type: "Bearer", expires_in: 3600 }];
+  if (!/^Bearer test-drive-token-/.test(req.headers.authorization ?? "")) return [401, { error: { code: 401, message: "Invalid Credentials" } }];
+  if (p === "/drive/v3/files" && req.method === "GET") {
+    const q = driveQ(url.searchParams.get("q") ?? "");
+    const files = [...drive.dateien.values()].filter((f) => (!q.eltern || f.parents.includes(q.eltern)) && (!q.name || f.name === q.name) && (!q.mime || f.mimeType === q.mime) && (!q.ohnePapierkorb || !f.trashed));
+    return [200, { files: files.map(driveSicht) }];
+  }
+  if (p === "/drive/v3/files" && req.method === "POST") {
+    const id = `drv-${++drive.n}`;
+    drive.dateien.set(id, { id, name: String(b.name ?? "Ordner"), mimeType: b.mimeType ?? "application/octet-stream", parents: Array.isArray(b.parents) ? b.parents : [], createdTime: new Date().toISOString(), trashed: false, inhalt: null });
+    return [200, { id }];
+  }
+  const m = /^\/drive\/v3\/files\/([^/]+)$/.exec(p);
+  const f = m ? drive.dateien.get(decodeURIComponent(m[1])) : null;
+  if (!f) return [404, { error: { code: 404, message: "File not found" } }];
+  if (req.method === "GET" && url.searchParams.get("alt") === "media") return [200, f.inhalt ?? Buffer.alloc(0), f.mimeType];
+  if (req.method === "GET") return [200, driveSicht(f)];
+  if (req.method === "PATCH") {
+    const weg = (url.searchParams.get("removeParents") ?? "").split(",").filter(Boolean);
+    const dazu = (url.searchParams.get("addParents") ?? "").split(",").filter(Boolean);
+    f.parents = [...f.parents.filter((x) => !weg.includes(x)), ...dazu.filter((x) => !f.parents.includes(x))];
+    if (typeof b.name === "string" && b.name) f.name = b.name;
+    if (b.trashed === true) f.trashed = true;
+    return [200, driveSicht(f)];
+  }
+  if (req.method === "DELETE") return [403, { error: { code: 403, message: "Löschen ist im Nachbau gesperrt – das Seller-System darf nur in den Papierkorb legen." } }];
+  return [405, { error: { code: 405, message: "nicht nachgebildet" } }];
+}
+
+// B34.3a Briefversand (Nachbau): LetterXpress API v3 (Anmeldung im Body, auch bei GET; mode „test“ = Warenkorb) und
+// eBrief (Basic → Bearer, Jobs). Erfundene Preise: 0,90 € netto 1. Blatt + 0,10 € je weitere Seite. Nichts wird gedruckt.
+// Prüf-Hilfen: GET /__briefe (Aufträge), POST /__briefe {id|alle, status, tracking_status} (Status weiterschalten).
+const briefe = { jobs: new Map(), n: 7000 };
+const briefPreis = (seiten) => Math.round((0.9 + Math.max(0, seiten - 1) * 0.1) * 100) / 100;
+async function pdfSeiten(b64) {
+  try {
+    return (await PDFDocument.load(Buffer.from(b64, "base64"))).getPageCount();
+  } catch {
+    return 0;
+  }
+}
+async function letterxpress(req, p, b) {
+  const a = b.auth ?? {};
+  if (!a.username || !a.apikey) return [401, { status: 401, message: "Unauthorized" }];
+  if (a.apikey === "falsch") return [401, { status: 401, message: "Unauthorized" }];
+  const pfad = p.slice("/letterxpress/v3".length);
+  if (pfad === "/balance") return [200, { status: 200, message: "OK", data: { balance: 100.0, currency: "EUR" } }];
+  if (pfad === "/price") return [200, { status: 200, message: "OK", data: { price: briefPreis(Number(b.letter?.specification?.pages ?? 1)), letter: b.letter ?? {} } }];
+  if (pfad === "/printjobs" && req.method === "POST") {
+    const l = b.letter ?? {};
+    if (!l.base64_file || createHash("md5").update(String(l.base64_file)).digest("hex") !== l.base64_file_checksum) return [400, { status: 400, message: "checksum mismatch" }];
+    const seiten = await pdfSeiten(l.base64_file);
+    if (!seiten) return [400, { status: 400, message: "invalid pdf" }];
+    const id = ++briefe.n;
+    const job = { id, anbieter: "letterxpress", mode: a.mode === "live" ? "live" : "test", status: a.mode === "live" ? "queue" : "draft", seiten, amount: briefPreis(seiten), spec: l.specification ?? {}, tracking_status: null, tracking_code: null, at: new Date().toISOString() };
+    briefe.jobs.set(String(id), job);
+    return [200, { status: 200, message: "OK", data: lxpSicht(job) }];
+  }
+  const m = /^\/printjobs\/(\d+)$/.exec(pfad);
+  const job = m ? briefe.jobs.get(m[1]) : null;
+  if (!job) return [404, { status: 404, message: "Not found" }];
+  if (req.method === "DELETE") {
+    if (job.status === "done") return [409, { status: 409, message: "already printed" }];
+    job.status = "canceled";
+    return [200, { status: 200, message: "OK", data: lxpSicht(job) }];
+  }
+  return [200, { status: 200, message: "OK", data: lxpSicht(job) }];
+}
+const lxpSicht = (j) => ({ id: j.id, shipping: j.spec.shipping ?? "national", mode: j.spec.mode ?? "simplex", color: j.spec.color ?? "1", status: j.status, items: [{ address: "Testanschrift (Nachbau)", pages: j.seiten, amount: j.amount, vat: Math.round(j.amount * 0.19 * 100) / 100, status: j.status === "done" ? "sent" : j.status, ...(j.tracking_code ? { tracking_code: j.tracking_code } : {}), ...(j.tracking_status ? { tracking_status: j.tracking_status } : {}) }] });
+async function ebrief(req, p, b) {
+  const pfad = p.slice("/ebrief".length);
+  if (pfad === "/oauth2/token/generateBearerToken") {
+    const roh = Buffer.from(String(req.headers.authorization ?? "").replace(/^Basic\s+/i, ""), "base64").toString();
+    const [u, pw] = roh.split(":");
+    if (!u || !pw || pw === "falsch") return [401, { title: "Unauthorized" }];
+    return [200, { GenerateBearerTokenResult: "test-ebrief-token" }];
+  }
+  if (req.headers.authorization !== "Bearer test-ebrief-token") return [401, { ResultCode: "Unauthorized", ErrorMessage: "Token ungültig" }];
+  const ok = (Result) => [200, { ResultCode: "Ok", ErrorMessage: null, Result }];
+  if (pfad === "/Prices") return ok({ TotalSumNetto: briefPreis(Number(b.Attributes?.Pages ?? 1)) * Number(b.Amount ?? 1) });
+  if (pfad === "/Jobs/singleFiles" && req.method === "POST") {
+    const seiten = await pdfSeiten(b.Document?.FileContent ?? "");
+    if (!seiten) return [400, { ResultCode: "BadRequest", ErrorMessage: "Dokument ungültig" }];
+    const id = ++briefe.n;
+    const job = { id, anbieter: "ebrief", mode: "test", status: "Created", seiten, amount: briefPreis(seiten), adresse: b.AddressInformation ?? null, at: new Date().toISOString() };
+    briefe.jobs.set(String(id), job);
+    return ok({ Jobs: [ebSicht(job)] });
+  }
+  const m = /^\/Jobs\/(\d+)$/.exec(pfad);
+  const job = m ? briefe.jobs.get(m[1]) : null;
+  if (!job) return [404, { ResultCode: "NotFound", ErrorMessage: "Job nicht gefunden" }];
+  if (req.method === "PUT") {
+    if (!b.IsRollback) {
+      job.status = "Processing";
+      job.mode = "live";
+    }
+    return ok({ Jobs: [ebSicht(job)] });
+  }
+  if (req.method === "DELETE") {
+    job.status = "Deleted";
+    return ok({ Jobs: [ebSicht(job)] });
+  }
+  return ok({ Jobs: [ebSicht(job)] });
+}
+const ebSicht = (j) => ({ Id: j.id, JobStatus: j.status, PriceNetto: j.amount, Documents: [{ DocumentStatus: j.status, LastEvent: j.tracking_status ?? j.status, PriceNetto: j.amount }] });
+
 async function route(req, url, body) {
   const p = url.pathname;
   const json = (o) => [200, o];
@@ -572,6 +701,9 @@ async function route(req, url, body) {
       return {};
     }
   };
+  if (p.startsWith("/drive/v3/") || p === "/drive/v3/files" || p === "/google-oauth/token") return driveRoute(req, url, p, parsed());
+  if (p.startsWith("/letterxpress/v3/")) return letterxpress(req, p, parsed());
+  if (p.startsWith("/ebrief/")) return ebrief(req, p, parsed());
   // Claude
   if (p.startsWith("/anthropic/")) return p.endsWith("/v1/messages") ? kiAnswer(req, parsed()) : [404, { type: "error", error: { type: "not_found_error", message: "nicht nachgebildet" } }];
   // Deutsche Post INTERNETMARKE
@@ -1248,7 +1380,7 @@ ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
   return true;
 }
 
-const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
+const dienstOf = (p) => (p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -1450,6 +1582,34 @@ http
       if (name === "fba_shipments") return antwort({ result: [], total: 0, products: [] });
       return antwort(`Unbekanntes Werkzeug ${name}`, true);
     }
+    if (url.pathname === "/__drive" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) drive.dateien.clear();
+      const ids = [];
+      for (const o of b.ordner ?? []) {
+        drive.dateien.set(o.id, { id: o.id, name: o.name ?? o.id, mimeType: "application/vnd.google-apps.folder", parents: o.parents ?? [], createdTime: new Date().toISOString(), trashed: false, inhalt: null });
+        ids.push(o.id);
+      }
+      for (const d of b.dateien ?? []) {
+        const id = d.id ?? `drv-${++drive.n}`;
+        drive.dateien.set(id, { id, name: d.name, mimeType: d.mimeType ?? "application/pdf", parents: d.parents ?? [], createdTime: d.createdTime ?? new Date().toISOString(), trashed: false, inhalt: Buffer.from(d.base64 ?? "", "base64") });
+        ids.push(id);
+      }
+      return send(200, { ids });
+    }
+    if (url.pathname === "/__drive") return send(200, [...drive.dateien.values()].filter((f) => f.mimeType !== "application/vnd.google-apps.folder").map((f) => ({ id: f.id, name: f.name, pfad: drivePfad(f), trashed: f.trashed })));
+    if (url.pathname === "/__briefe" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) briefe.jobs.clear();
+      for (const j of briefe.jobs.values()) {
+        if (!b.alle && String(j.id) !== String(b.id)) continue;
+        if (b.status) j.status = b.status;
+        if ("tracking_status" in b) j.tracking_status = b.tracking_status;
+        if ("tracking_code" in b) j.tracking_code = b.tracking_code;
+      }
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__briefe") return send(200, [...briefe.jobs.values()].map((j) => ({ id: j.id, anbieter: j.anbieter, mode: j.mode, status: j.status, seiten: j.seiten, amount: j.amount })));
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     try {
       const [code, data, type] = await route(req, url, body);

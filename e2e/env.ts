@@ -35,6 +35,11 @@ export const E2E_ENV: Record<string, string> = {
   VIES_URL: `${TD}/vies`,
   LEXOFFICE_BASE_URL: `${TD}/lexoffice`,
   GOOGLE_DOCS_BASE_URL: `${TD}/gdocs`,
+  // B34.2 Drive-Rechnungsordner (Lesen, Ablage nach Freigabe) gegen den Nachbau
+  DRIVE_API_BASE_URL: `${TD}/drive/v3`,
+  // B34.3a Briefversand-Anbieter gegen den Nachbau (Testmodus = Sandbox)
+  LETTERXPRESS_BASE_URL: `${TD}/letterxpress/v3`,
+  EBRIEF_BASE_URL: `${TD}/ebrief`,
   DISCORD_API_BASE_URL: `${TD}/discord-api`,
   TESLA_BASE_URL: `${TD}/tesla`,
   TWILIO_BASE_URL: `${TD}/twilio`,

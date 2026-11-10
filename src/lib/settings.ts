@@ -85,7 +85,7 @@ export const DEFAULT_SETTINGS = {
   returns: { graceFba: 45, claimFba: 60, graceFbm: 21, marketplace: "sellercentral.amazon.de" },
   /** Retouren-Station: Fall ab 15 € Erstattung, Fotos/Videos 180 Tage, Aktivierungswort aus. */
   retourenStation: { minBetrag: 15, aufbewahrungTage: 180, aktivierungswort: "Station", aktivierungAn: false },
-  /** B2B-Deals: Firma bitte unter Einstellungen eintragen (Standard laut Bauauftrag: Wittmann & Grunert GmbH / AdelPrep). */
+  /** B2B-Deals: Firma bitte unter Einstellungen eintragen (z. B. die Firma hinter AdelPrep). */
   b2b: {
     firma: { name: "", handelsname: "", strasse: "", plz: "", ort: "", land: "DE", ustId: "", email: "", telefon: "" },
     marktplaetze: ["DE", "FR", "IT", "ES", "NL", "BE", "PL", "SE"],

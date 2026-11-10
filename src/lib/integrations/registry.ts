@@ -240,8 +240,38 @@ export const INTEGRATIONS: IntegrationDef[] = [
     provider: "lexoffice",
     name: "Lexoffice / Lexware Office (Rechnungen B2B-Deals)",
     purpose: "Vorkasse-Rechnungen und Gutschriften für B2B-Deals im Namen der Deal-Firma (Einstellungen → B2B-Deals), Zahlungseingang zurück ins Seller-System.",
-    fields: [{ key: "apiKey", label: "API-Schlüssel", secret: true, help: "Schlüssel der Firma, auf die die Deals laufen (z. B. Wittmann & Grunert GmbH)." }],
+    fields: [{ key: "apiKey", label: "API-Schlüssel", secret: true, help: "Schlüssel der Firma, auf die die Deals laufen." }],
     setup: ["In Lexware Office (Lexoffice) → Erweiterungen → „Public API“ → Schlüssel erzeugen und hier eintragen.", "„Verbindung testen“ zeigt den Firmennamen des Kontos – er muss zur Deal-Firma passen."],
+  },
+  {
+    provider: "ebrief",
+    name: "eBrief (Briefversand)",
+    purpose: "B34.3a Briefe an Händler drucken und verschicken lassen – nur nach Freigabe je Charge, Testmodus zuerst. Vorschlag als erster Anbieter (noch zu bestätigen).",
+    fields: [
+      { key: "username", label: "API-Benutzername" },
+      { key: "password", label: "API-Passwort", secret: true, help: "Zugang zur eBrief-REST-API (vom eBrief-Support)." },
+    ],
+    setup: ["Bei eBrief einen API-Zugang anfragen (Benutzername/Passwort für die REST-API).", "Hier eintragen → „Verbindung testen“.", "AV-Vertrag mit eBrief abschließen und unter Abverkauf → Einstellungen bestätigen – sonst nur Testmodus.", "Preise je Brief unter Abverkauf → Einstellungen eintragen (für Kostenvorschau und Budget)."],
+  },
+  {
+    provider: "letterxpress",
+    name: "LetterXpress (Briefversand)",
+    purpose: "B34.3a Briefe an Händler drucken und verschicken lassen – nur nach Freigabe je Charge. Testmodus = Warenkorb (nichts gedruckt).",
+    fields: [
+      { key: "username", label: "Benutzername" },
+      { key: "apiKey", label: "API-Schlüssel", secret: true, help: "Im LetterXpress-Konto unter API." },
+    ],
+    setup: ["Im LetterXpress-Konto den API-Schlüssel anzeigen und hier mit dem Benutzernamen eintragen → „Verbindung testen“.", "AV-Vertrag abschließen und unter Abverkauf → Einstellungen bestätigen – sonst nur Testmodus."],
+  },
+  {
+    provider: "epost",
+    name: "Deutsche Post E-POST (Briefversand, vorbereitet)",
+    purpose: "B34.3a dritter Anbieter – Schnittstelle vorbereitet, noch nicht angebunden. Bis dahin Sammel-PDF oder eBrief/LetterXpress.",
+    fields: [
+      { key: "username", label: "Benutzername" },
+      { key: "password", label: "Passwort", secret: true },
+    ],
+    setup: ["Noch nicht angebunden – Zugangsdaten können schon hinterlegt werden."],
   },
   {
     provider: "discord_b2b",

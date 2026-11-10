@@ -66,6 +66,8 @@ test.describe("B34.4/5 Ankauf als Ausstiegsweg", () => {
     await expect(warn).toContainText("Ankauf-Deal – vor dem Kauf prüfen");
     await expect(warn).toContainText("Annahmefrist fehlt");
     await expect(warn).toContainText("Rang/Legit-Check bestanden: noch offen");
+    await expect(warn).toContainText("Ankäufer kauft noch an");
+    await expect(warn).toContainText("Versandfrist fehlt");
     const g = page.getByTestId("de-gekauft-form");
     await g.locator('input[name="menge"]').fill("30");
     await g.locator('input[name="preis"]').fill("20");
@@ -85,7 +87,10 @@ test.describe("B34.4/5 Ankauf als Ausstiegsweg", () => {
     expect(aufgabe.link).toBe(`/deal-eingang/${id}#ankauf`);
     const [{ in2 }] = await sql<{ in2: string }>("select (current_date + 2)::text in2");
     expect(aufgabe.due).toBe(in2);
-    await expect(page.getByTestId("de-ankauf-check").locator('li[data-ok="0"]')).toHaveCount(3);
+    // offen: Menge, „kauft noch an“, Annahmefrist, Versandfrist, Legit-Check (Ankäufer ist eingetragen)
+    await expect(page.getByTestId("de-ankauf-check").locator('li[data-ok="0"]')).toHaveCount(5);
+    await expect(page.getByTestId("de-ankauf-check")).toContainText("Ankäufer kauft noch an");
+    await expect(page.getByTestId("de-ankauf-check")).toContainText("Versandfrist bekannt");
 
     // Ausgang „Verlust“ → Aufgabe erledigt, Frage in der Lernschleife
     await page.getByTestId("de-ankauf-ausgang-wahl").selectOption("verlust");

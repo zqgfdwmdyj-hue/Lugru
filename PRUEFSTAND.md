@@ -21,7 +21,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/7 Abläufe | – | 4 |
 | Einkauf & Deals | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
 | Einkauf & Deals | Deal-Ampel `/lieferanten/deal-ampel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf & Deals | Scanner `/scan` | ○ 0/4 Abläufe | – | 2 |
+| Einkauf & Deals | Scanner `/scan` | ○ 0/5 Abläufe | – | 2 |
 | Einkauf & Deals | Bestellvorschläge `/einkauf/vorschlaege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Deals | Einkauf & Wareneingang `/einkauf` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Deals | EK-Import (→ sellerboard) `/einkauf/ek-import` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -82,12 +82,12 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Finanzen › Rechnungen | Belege scannen `/rechnungen/belege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen › Rechnungen | Rechnungsstation (Kamera) `/rechnungsstation` | ○ 0/2 Abläufe | – | 3 |
 | Finanzen › Rechnungen | Rechnungsstation: Prüfliste `/rechnungsstation/pruefen` | ○ 0/2 Abläufe | – | – |
-| Finanzen › Rechnungen | Download-Ordner (Belege) `/rechnungsstation/ablage` | ○ 0/1 Abläufe | – | 2 |
+| Finanzen › Rechnungen | Belegablage (Drive, Download-Ordner) `/rechnungsstation/ablage` | ○ 0/2 Abläufe | – | 2 |
 | Finanzen › Rechnungen | Ausgangsrechnungen `/rechnungen/ausgang` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen › Rechnungen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Deals `/b2b` | ○ 0/6 Abläufe | – | 5 |
 | B2B | Preislisten je Land `/b2b/preislisten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/1 Abläufe | – | 3 |
+| B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/3 Abläufe | – | 3 |
 | B2B | B2B-Kunden `/b2b/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Lieferanten-Freigaben `/b2b/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Bilanz `/b2b/bilanz` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -218,6 +218,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B34.1 Abnahme 3: Amazon-Link aus der Shop-App teilen (Web Share Target), Modus Online, „Kauf vorbereiten“ | Ergebnis öffnet sich, Kauf-Link auf den Shop des geteilten Links (nichts automatisch gekauft) | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
 | B34.1 Abnahme 4: Scan ohne Netz | zwischengespeichert, bei Netz nachgeprüft, Push mit Ergebnis | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
 | B34.1 Abnahme 5: Kassenbon- und Preisschild-Foto | Kassenbon als Beleg in der Rechnungsstation, Preisschild in der Ablage des Scans | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
+| B34.1 Abnahme 0: Scan-Modus auf dem Handy-Startbildschirm, Probelauf mit 3 bekannten EANs | Manifest mit Kurzbefehl „Scan-Modus“, Anleitung iPhone/Android auf /scan, 3 Probe-EANs aus den eigenen Produkten liefern je eine Ampel | ○ im letzten Lauf nicht gelaufen | `b34-scan-start.spec.ts` |
 
 - – Offen: Kamera-Scan (BarcodeDetector/ZXing) und Vorlesen auf dem echten iPhone/Android – nur live
 - – Offen: Teilen-Menü der Amazon-App (Android: Web Share Target nach „Zum Startbildschirm“; iPhone: Kurzbefehl) – nur live
@@ -471,11 +472,12 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen | nur rote/gelbe Belege mit Bild; Weitergabe meldet „An Stotax übertragen: 47“ und bleibt im Stapel; nach Speichern geprüft und weitergegeben, verworfenes Duplikat „kein Beleg“; Liste danach leer | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
 | „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel | Meldung „1 PDF aus dem Scanner-Ordner: 20 Belege“, Stapel mit 20 Belegen | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
 
-### Finanzen › Rechnungen › Download-Ordner (Belege) (`/rechnungsstation/ablage`)
+### Finanzen › Rechnungen › Belegablage (Drive, Download-Ordner) (`/rechnungsstation/ablage`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | B34.2 Abnahme: Testordner mit 5 Rechnungen + 2 Dubletten, echtes Agent-Programm, Kontoauszug, Löschen einer Dublette | umbenannt JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr, Ordner Monat/Lieferant, Dubletten in „Dubletten“, nichts gelöscht; Kontoauszug nicht als Rechnung; Löschen erst nach Freigabe | ○ im letzten Lauf nicht gelaufen | `b34-ablage.spec.ts` |
+| B34.2 Drive-Abnahme: Test-Ordner in Drive (Nachbau) mit 5 Rechnungen + 2 Dubletten + Kontoauszug, Schreibrecht aus/an, Freigabe der Charge, Papierkorb | Vorschau mit neuen Namen JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr und Zielordner Monat/Lieferant, Dublettenliste (Prüfsumme bzw. Nr + Betrag), Kontoauszug nicht als Rechnung; ohne Schreibrecht nichts geändert; nach Freigabe sortiert und umbenannt, Dubletten in „Dubletten“, nichts gelöscht; Papierkorb nur nach eigener Freigabe | ○ im letzten Lauf nicht gelaufen | `b34-drive.spec.ts` |
 
 - – Offen: Agent 1.1.0 auf dem Arbeits-PC mit dem echten Download-Ordner (Windows-Pfade, Rechte) – nur live
 - – Offen: Echter Kontoauszug (MT940/CAMT/PDF) und PayPal-Export – Zuordnung „Zahlung ohne Beleg“/„Beleg ohne Zahlung“ live prüfen
@@ -502,6 +504,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an | Preisliste ohne EK/Break-even/interne Gründe, Preis über Break-even; 10 Leads (E-Mail nur mit Quelle Impressum, verschlüsselt); E-Mail gesperrt, keine Mail raus; Brief mit Anschrift und Datenschutzhinweis Art. 14 DSGVO (Quelle, Rechtsgrundlage, Löschfrist, Widerspruch, Abmelden); Antwort → Aufgabe, Abmeldung → Sperrliste, Import blockiert; Erfolg je Charge (Rücklauf, Umsatz, Marge) auch in der B2B-Bilanz; E-Mail erst mit Einwilligung + „Rechtlich geprüft“, mit Datenschutzhinweis | ○ im letzten Lauf nicht gelaufen | `b34-abverkauf.spec.ts` |
+| B34.3a/3.6 Abnahme: Beilage der Logistik-Firma (Textprüfung), 3 Test-Leads, Charge, Briefversand über den LetterXpress-Nachbau im Testmodus, Testbrief, Status, AV-Haken, live | Beilage als eigenes Blatt mit eigenem Impressum, „all-in“/unbelegte Fläche gesperrt; Kostenvorschau 2,80 € = Kosten laut Anbieter; ohne Testbrief und ohne bestätigte Freigabe nichts beim Anbieter; Status gedruckt/zugestellt kommt zurück; live ohne AV-Haken gesperrt; Kosten je Charge und je Rücklauf | ○ im letzten Lauf nicht gelaufen | `b34-briefversand.spec.ts` |
+| B34.3b Abnahme: Kampagne „Friseure“ mit 2 Testprodukten (MHD 06/2028 und 01/2027), Leads mit Koordinaten, Brief-PDF, Anfrageseite ohne Anmeldung | MHD unter 6 Monaten nicht angeboten; Umkreis 50 km zeigt nur Leads im Radius (Gründe für die anderen); Brief mit QR-Code, Kurzlink und Kampagnen-ID; falsche USt-ID abgelehnt, Anfrage → Aufgabe + Eintrag im Posteingang, Anschreiben beantwortet; Lagerkostenrechner 10 Paletten = 14,4 m³ | ○ im letzten Lauf nicht gelaufen | `b34-kampagnen.spec.ts`, `b34-kampagnen.spec.ts` |
 
 - – Offen: Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)
 - – Offen: Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
@@ -704,7 +708,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (167 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 167 nicht gelaufen.
+**Automatisch** (171 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 171 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -732,6 +736,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Scanner: B34.1 Abnahme 3: Amazon-Link aus der Shop-App teilen (Web Share Target), Modus Online, „Kauf vorbereiten“ – im letzten Lauf nicht gelaufen
 - ○ Scanner: B34.1 Abnahme 4: Scan ohne Netz – im letzten Lauf nicht gelaufen
 - ○ Scanner: B34.1 Abnahme 5: Kassenbon- und Preisschild-Foto – im letzten Lauf nicht gelaufen
+- ○ Scanner: B34.1 Abnahme 0: Scan-Modus auf dem Handy-Startbildschirm, Probelauf mit 3 bekannten EANs – im letzten Lauf nicht gelaufen
 - ○ Kontakt-Board: Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: Amazon-Mails einordnen: Freischaltung abgelehnt, Fall „Antwort nötig“ (2 Mails, gleiche Fall-ID), Freischaltung entzogen, unsichere Mail – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: 20 erfundene Amazon-Mails in 8 Sprachen einordnen (Unit-Test) – im letzten Lauf nicht gelaufen
@@ -802,7 +807,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Rechnungsstation (Kamera): PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff – im letzten Lauf nicht gelaufen
 - ○ Rechnungsstation: Prüfliste: Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen – im letzten Lauf nicht gelaufen
 - ○ Rechnungsstation: Prüfliste: „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel – im letzten Lauf nicht gelaufen
-- ○ Download-Ordner (Belege): B34.2 Abnahme: Testordner mit 5 Rechnungen + 2 Dubletten, echtes Agent-Programm, Kontoauszug, Löschen einer Dublette – im letzten Lauf nicht gelaufen
+- ○ Belegablage (Drive, Download-Ordner): B34.2 Abnahme: Testordner mit 5 Rechnungen + 2 Dubletten, echtes Agent-Programm, Kontoauszug, Löschen einer Dublette – im letzten Lauf nicht gelaufen
+- ○ Belegablage (Drive, Download-Ordner): B34.2 Drive-Abnahme: Test-Ordner in Drive (Nachbau) mit 5 Rechnungen + 2 Dubletten + Kontoauszug, Schreibrecht aus/an, Freigabe der Charge, Papierkorb – im letzten Lauf nicht gelaufen
 - ○ Deals: B25.10 Wo Deal-Blatt, Sammelbestellung und Prep-Export erscheinen – im letzten Lauf nicht gelaufen
 - ○ Deals: B15.12 SKU-Kürzel in der Lieferantenliste – im letzten Lauf nicht gelaufen
 - ○ Deals: Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord – im letzten Lauf nicht gelaufen
@@ -810,6 +816,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Deals: Kundenportal getrennt – im letzten Lauf nicht gelaufen
 - ○ Deals: Preislisten je Land, Lieferanten-Mail, Claude-Werkzeuge, Erfolgskontrolle – im letzten Lauf nicht gelaufen
 - ○ Abverkauf an Händler (Ladenhüter): B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an – im letzten Lauf nicht gelaufen
+- ○ Abverkauf an Händler (Ladenhüter): B34.3a/3.6 Abnahme: Beilage der Logistik-Firma (Textprüfung), 3 Test-Leads, Charge, Briefversand über den LetterXpress-Nachbau im Testmodus, Testbrief, Status, AV-Haken, live – im letzten Lauf nicht gelaufen
+- ○ Abverkauf an Händler (Ladenhüter): B34.3b Abnahme: Kampagne „Friseure“ mit 2 Testprodukten (MHD 06/2028 und 01/2027), Leads mit Koordinaten, Brief-PDF, Anfrageseite ohne Anmeldung – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Übungs-Deal – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Pflichtfeld-Fehler → Eingaben bleiben → speichern → neu laden → Status ändern → nochmals speichern – im letzten Lauf nicht gelaufen
@@ -925,8 +933,8 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Rechnungsstation (Kamera): Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live
 - Rechnungsstation (Kamera): Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
 - Rechnungsstation (Kamera): Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
-- Download-Ordner (Belege): Agent 1.1.0 auf dem Arbeits-PC mit dem echten Download-Ordner (Windows-Pfade, Rechte) – nur live
-- Download-Ordner (Belege): Echter Kontoauszug (MT940/CAMT/PDF) und PayPal-Export – Zuordnung „Zahlung ohne Beleg“/„Beleg ohne Zahlung“ live prüfen
+- Belegablage (Drive, Download-Ordner): Agent 1.1.0 auf dem Arbeits-PC mit dem echten Download-Ordner (Windows-Pfade, Rechte) – nur live
+- Belegablage (Drive, Download-Ordner): Echter Kontoauszug (MT940/CAMT/PDF) und PayPal-Export – Zuordnung „Zahlung ohne Beleg“/„Beleg ohne Zahlung“ live prüfen
 - Deals: Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)
 - Deals: Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)
 - Deals: Discord-Webhook im echten B2B-Kanal

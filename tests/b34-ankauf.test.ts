@@ -39,24 +39,33 @@ describe("B34.5 Checkliste beim Kauf", () => {
   });
   it("offene Punkte als Warnung, kein Stopp", () => {
     const c = ankaufCheckliste({ ...a, mengeAngemeldet: 5 }, 10, heute);
-    expect(c.map((x) => x.ok)).toEqual([false, false, false, false]);
+    expect(c.map((x) => x.ok)).toEqual([false, false, false, false, false, false]);
+    expect(c.map((x) => x.punkt)).toEqual(["Ankäufer festgelegt", "Menge beim Ankäufer angemeldet", "Ankäufer kauft noch an", "Annahmefrist bekannt", "Versandfrist bekannt", "Rang/Legit-Check bestanden"]);
     expect(c[1].hinweis).toBe("nur 5 von 10 Stk angemeldet");
     const w = ankaufWarnung(c)!;
     expect(w).toMatch(/^Ankauf-Deal – bitte prüfen: Ankäufer festgelegt/);
     expect(w).toContain("Menge beim Ankäufer angemeldet (nur 5 von 10 Stk angemeldet)");
-    const alles = ankaufCheckliste({ ...a, ankaeufer: "Testankauf (erfunden)", mengeAngemeldet: 10, annahmefrist: "2026-11-14", legitCheck: "bestanden" }, 10, heute);
+    const alles = ankaufCheckliste({ ...a, ankaeufer: "Testankauf (erfunden)", mengeAngemeldet: 10, annahmefrist: "2026-11-14", legitCheck: "bestanden", ankauftBestaetigtAm: "2026-11-08", versandfrist: "2026-11-13" }, 10, heute);
     expect(alles.every((x) => x.ok)).toBe(true);
     expect(ankaufWarnung(alles)).toBeNull();
-    expect(ankaufCheckliste({ ...a, annahmefrist: "2026-11-01" }, null, heute)[2]).toEqual({ punkt: "Annahmefrist bekannt", ok: false, hinweis: "Annahmefrist 01.11.2026 ist abgelaufen" });
+    expect(ankaufCheckliste({ ...a, annahmefrist: "2026-11-01" }, null, heute)[3]).toEqual({ punkt: "Annahmefrist bekannt", ok: false, hinweis: "Annahmefrist 01.11.2026 ist abgelaufen" });
+    // „Kauft noch an“: Bestätigung höchstens 7 Tage alt; Versandfrist vorbei = offen
+    expect(ankaufCheckliste({ ...a, ankauftBestaetigtAm: "2026-11-01" }, null, heute)[2]).toEqual({ punkt: "Ankäufer kauft noch an", ok: false, hinweis: "Bestätigung vom 01.11.2026 ist älter als 7 Tage" });
+    expect(ankaufCheckliste({ ...a, ankauftBestaetigtAm: "2026-11-09" }, null, heute)[2].ok).toBe(true);
+    expect(ankaufCheckliste({ ...a, versandfrist: "2026-11-09" }, null, heute)[4]).toEqual({ punkt: "Versandfrist bekannt", ok: false, hinweis: "Versandfrist 09.11.2026 ist vorbei" });
   });
   it("Frist der Aufgabe: Annahmefrist, sonst in 2 Tagen", () => {
     expect(ankaufFrist({ ...a, annahmefrist: "2026-11-14" }, heute)).toBe("2026-11-14");
     expect(ankaufFrist({ ...a, annahmefrist: "2026-11-01" }, heute)).toBe("2026-11-12");
     expect(ankaufFrist(a, heute)).toBe("2026-11-12");
+    // früheste offene Frist: Versandfrist vor Annahmefrist
+    expect(ankaufFrist({ ...a, annahmefrist: "2026-11-14", versandfrist: "2026-11-11" }, heute)).toBe("2026-11-11");
   });
   it("Wissenseintrag ohne Namen, als Einzelmeinung gekennzeichnet", () => {
     expect(ANKAUF_WISSEN.title).toContain("Einzelmeinung");
     expect(ANKAUF_WISSEN.body).toContain("Menge vorher beim Ankäufer anmelden");
     expect(ANKAUF_WISSEN.body).toContain("Keine Kauf-Bots");
+    expect(ANKAUF_WISSEN.body).toContain("Einsteiger bekommen kaum Deals");
+    expect(ANKAUF_WISSEN.body).toContain("nur Kanäle, die du selbst abonniert");
   });
 });

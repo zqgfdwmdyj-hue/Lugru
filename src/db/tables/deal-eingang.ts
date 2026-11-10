@@ -289,6 +289,10 @@ export type DealAnkauf = {
   ausgangAm: string | null;
   ausgangNotiz: string | null;
   geaendertAm: string;
+  /** B34.5: Ankäufer hat bestätigt, dass er noch ankauft (Datum). */
+  ankauftBestaetigtAm?: string | null;
+  /** B34.5: bis wann die Ware beim Ankäufer sein muss. */
+  versandfrist?: string | null;
 };
 
 /** Vorbereiteter Kauf (Push „In den Warenkorb (4)“ bzw. „Produktseite öffnen“). */

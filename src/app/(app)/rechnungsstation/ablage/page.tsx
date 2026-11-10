@@ -3,8 +3,9 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { ablageListe } from "@/lib/belege/ablage";
 import { freigebenAction } from "./actions";
+import { DriveAbschnitt } from "./drive-abschnitt";
 
-export const metadata: Metadata = { title: "Download-Ordner – Seller-System" };
+export const metadata: Metadata = { title: "Belegablage – Seller-System" };
 
 // B34.2 Download-Ordner am Arbeits-PC (Druckagent): was erkannt, umbenannt und wohin abgelegt wurde; Dubletten
 // liegen im Ordner „Dubletten“ und werden nur nach Freigabe gelöscht.
@@ -30,10 +31,13 @@ export default async function AblagePage({ searchParams }: { searchParams: Promi
   return (
     <div style={{ maxWidth: 1200 }} className="stack" data-testid="beleg-ablage">
       <div className="page-head">
-        <div><div className="crumb">Finanzen › Rechnungen</div><h1>Download-Ordner (Belege)</h1></div>
+        <div><div className="crumb">Finanzen › Rechnungen</div><h1>Belegablage (Drive + Download-Ordner)</h1></div>
         <Link href="/einstellungen/drucker" className="btn">Ordner einstellen</Link>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="ablage-meldung">{sp.meldung}</div>}
+      <DriveAbschnitt s={s} />
+
+      <h2 style={{ margin: "8px 0 0" }}>Download-Ordner am PC (Druckagent)</h2>
       <p className="small muted">
         Der Druckagent am Arbeits-PC schaut in den Download-Ordner: Rechnungen werden umbenannt (JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr) und nach Monat/Lieferant abgelegt, Kontoauszüge importiert (nicht als Rechnung), Dubletten (gleiche Datei oder gleiche Nummer + Betrag) in den Ordner „Dubletten“ verschoben. Gelöscht wird nichts – außer Dubletten, die hier freigegeben werden.
       </p>

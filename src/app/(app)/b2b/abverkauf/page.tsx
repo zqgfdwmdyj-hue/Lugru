@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
+import { beilageProbleme } from "@/lib/abverkauf/briefe";
+import { beilageLint } from "@/lib/abverkauf/kampagne-logic";
 import { CHARGE_MAX, mailErlaubt } from "@/lib/abverkauf/logic";
 import { anschreibenListe, einstellungen, erfolgJeCharge, kandidaten, leadsListe, letztePreislisten, loeschfaellig } from "@/lib/abverkauf/service";
-import { anschreibenAction, einstellungenAction, entwuerfeAction, freigebenAction, leadAction, leadsImportAction, preislisteAction, verschicktAction } from "./actions";
+import { adelprepAction, anschreibenAction, beilageAction, briefversandAction, einstellungenAction, entwuerfeAction, freigebenAction, lagerAction, leadAction, leadAdelprepAction, leadsImportAction, preislisteAction, verschicktAction } from "./actions";
 
 export const metadata: Metadata = { title: "Abverkauf an Händler – Seller-System" };
 export const dynamic = "force-dynamic";
@@ -16,16 +18,22 @@ const eur = (n: number | null | undefined) => (n === null || n === undefined ? "
 const datum = (iso: string) => iso.split("-").reverse().join(".");
 const STATUS: Record<string, string> = { entwurf: "Entwurf", freigegeben: "freigegeben (Brief drucken)", versendet: "verschickt", beantwortet: "beantwortet", gesperrt: "gesperrt" };
 
-export default async function AbverkaufPage({ searchParams }: { searchParams: Promise<{ meldung?: string; pl?: string }> }) {
+export default async function AbverkaufPage({ searchParams }: { searchParams: Promise<{ meldung?: string; pl?: string; adelprep?: string }> }) {
   const s = await requireArea("b2b");
   const sp = await searchParams;
   const [cfg, kand, listen, leads, anschreiben, erfolg, faellig] = await Promise.all([einstellungen(s.tenantId), kandidaten(s.tenantId).catch(() => []), letztePreislisten(s.tenantId), leadsListe(s.tenantId), anschreibenListe(s.tenantId), erfolgJeCharge(s.tenantId), loeschfaellig(s.tenantId)]);
   const inhaber = s.role === "owner" && !s.readOnly;
   const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
   const entwuerfe = anschreiben.filter((x) => x.a.status === "entwurf");
+  const nurAdelprep = sp.adelprep === "1";
+  const leadsSicht = nurAdelprep ? leads.filter((l) => l.adelprep) : leads;
+  const ap = cfg.adelprep;
+  const beilageFehler = beilageProbleme(cfg);
+  const lint = beilageLint(ap.text, ap.bestaetigt);
+  const bv = cfg.briefversand;
   return (
     <div className="stack" style={{ maxWidth: 1200 }} data-testid="abverkauf">
-      <div className="page-head"><div><div className="crumb">B2B</div><h1>Abverkauf an Händler (Ladenhüter)</h1></div><Link href="/b2b/bilanz" className="btn">B2B-Bilanz</Link></div>
+      <div className="page-head"><div><div className="crumb">B2B</div><h1>Abverkauf an Händler (Ladenhüter)</h1></div><div className="row" style={{ gap: 6 }}><Link href="/b2b/abverkauf/kampagnen" className="btn btn-primary" data-testid="av-kampagnen-link">Kampagnen</Link><Link href="/b2b/bilanz" className="btn">B2B-Bilanz</Link></div></div>
       {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="av-meldung">{sp.meldung}</div>}
       <div className="notice notice-warn small">Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen. Standard ist der Brief mit Datenschutzhinweis (Art. 14 DSGVO). E-Mails an Fremdkontakte nur mit dokumentierter Einwilligung und erst, wenn „Rechtlich geprüft“ an ist. Nichts wird automatisch verschickt. Das Seller-System sammelt keine Adressen – Leads kommen per CSV (z. B. Apify).</div>
 
@@ -38,6 +46,72 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
           <label>Ladenhüter: Reichweite &gt; <input className="input" name="reichweite" defaultValue={cfg.kriterien.reichweiteTage} style={{ width: 55 }} disabled={!inhaber} /> T oder Lager &gt; <input className="input" name="lagertage" defaultValue={cfg.kriterien.lagerTage} style={{ width: 55 }} disabled={!inhaber} /> T, Kapital &gt; <input className="input" name="kapital" defaultValue={cfg.kriterien.kapital} style={{ width: 65 }} disabled={!inhaber} /> €</label>
           <label>Löschfrist je Lead <input className="input" name="loeschfrist" defaultValue={cfg.loeschfristTage} style={{ width: 60 }} disabled={!inhaber} /> Tage</label>
           {inhaber && <button className="btn btn-sm" type="submit">Speichern</button>}
+        </form>
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="beilage" data-testid="av-beilage" data-bereit={beilageFehler.length ? "0" : "1"}>
+        <h2 style={{ margin: 0 }}>Beilage AdelPrep (eigener Brief der Logistik-Firma)</h2>
+        <p className="small muted" style={{ margin: 0 }}>Eigenes Blatt mit eigenem Absender, Impressum und Datenschutzhinweis – nicht mit dem Restposten-Brief vermischt. Je Brief zu- oder abwählbar; Leads mit „Zielgruppe AdelPrep“ bekommen sie vorgeschlagen. Formulierung z. B. „FBA-Prep ab … € netto je Artikel“ – nicht „all-in“ oder „Komplettpreis“. Angaben zu Fläche/Stellplätzen, kostenloser Zählung, NDA und Gefahrgut erst nach Rückfrage verwenden.</p>
+        <form action={adelprepAction} className="stack small" style={{ gap: 6 }}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <input className="input" name="firma" defaultValue={ap.firma} placeholder="Firma" style={{ width: 220 }} disabled={!inhaber} data-testid="av-ap-firma" />
+            <input className="input" name="strasse" defaultValue={ap.strasse} placeholder="Straße" style={{ width: 200 }} disabled={!inhaber} data-testid="av-ap-strasse" />
+            <input className="input" name="plz" defaultValue={ap.plz} placeholder="PLZ" style={{ width: 70 }} disabled={!inhaber} data-testid="av-ap-plz" />
+            <input className="input" name="ort" defaultValue={ap.ort} placeholder="Ort" style={{ width: 140 }} disabled={!inhaber} data-testid="av-ap-ort" />
+            <input className="input" name="email" defaultValue={ap.email} placeholder="E-Mail" style={{ width: 200 }} disabled={!inhaber} data-testid="av-ap-email" />
+            <input className="input" name="telefon" defaultValue={ap.telefon} placeholder="Telefon" style={{ width: 140 }} disabled={!inhaber} />
+            <input className="input" name="web" defaultValue={ap.web} placeholder="Website" style={{ width: 180 }} disabled={!inhaber} />
+          </div>
+          <label className="stack" style={{ gap: 2 }}>Impressum (Registergericht, Nummer, USt-ID, Geschäftsführung)<textarea className="input" name="impressum" defaultValue={ap.impressum} rows={2} disabled={!inhaber} data-testid="av-ap-impressum" /></label>
+          <label className="stack" style={{ gap: 2 }}>Datenschutzhinweis der Logistik-Firma (leer = Standardtext mit dieser Firma als Verantwortlicher)<textarea className="input" name="datenschutz" defaultValue={ap.datenschutz} rows={2} disabled={!inhaber} /></label>
+          <label className="stack" style={{ gap: 2 }}>Textbaustein<textarea className="input" name="text" defaultValue={ap.text} rows={4} disabled={!inhaber} data-testid="av-ap-text" /></label>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            <label><input type="checkbox" name="standard" defaultChecked={ap.standardBeilegen} disabled={!inhaber} /> bei Zielgruppe AdelPrep standardmäßig beilegen</label>
+            <span className="muted">Nach Rückfrage belegt:</span>
+            <label><input type="checkbox" name="b_flaeche" defaultChecked={ap.bestaetigt.flaeche} disabled={!inhaber} /> Fläche/Stellplätze</label>
+            <label><input type="checkbox" name="b_zaehlung" defaultChecked={ap.bestaetigt.zaehlung} disabled={!inhaber} /> kostenlose Zählung</label>
+            <label><input type="checkbox" name="b_nda" defaultChecked={ap.bestaetigt.nda} disabled={!inhaber} /> NDA</label>
+            <label><input type="checkbox" name="b_gefahrgut" defaultChecked={ap.bestaetigt.gefahrgut} disabled={!inhaber} /> Gefahrgut/LQ</label>
+          </div>
+          {inhaber && <div><button className="btn btn-sm" type="submit" data-testid="av-ap-speichern">Beilage speichern</button></div>}
+        </form>
+        <div className={`notice small ${beilageFehler.length ? "notice-warn" : "notice-ok"}`} data-testid="av-ap-pruefung">
+          {beilageFehler.length ? <>Beilage wird nicht beigelegt: {beilageFehler.join(" · ")}</> : "Beilage bereit – Text geprüft."}
+          {lint.hinweise.length > 0 && <div className="muted">Hinweis: {lint.hinweise.join(" · ")}</div>}
+        </div>
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="briefversand">
+        <h2 style={{ margin: 0 }}>Briefversand per Anbieter</h2>
+        <p className="small muted" style={{ margin: 0 }}>Austauschbarer Anbieter (eBrief – Vorschlag, noch zu bestätigen –, LetterXpress, E-POST vorbereitet). Zugangsdaten verschlüsselt unter <Link href="/einstellungen/anbindungen">Anbindungen</Link>. Preise je Brief hier eintragen (laut Preisseite des Anbieters). Live nur mit AV-Vertrag und nach einem Testbrief; jede Charge braucht deine Freigabe.</p>
+        <form action={briefversandAction} className="stack small" style={{ gap: 6 }} data-testid="av-bv-form">
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label>Anbieter <select className="input" name="anbieter" defaultValue={bv.anbieter} disabled={!inhaber} data-testid="av-bv-anbieter"><option value="ebrief">eBrief</option><option value="letterxpress">LetterXpress</option><option value="epost">E-POST (vorbereitet)</option></select></label>
+            <label><input type="checkbox" name="live" defaultChecked={bv.live} disabled={!inhaber} data-testid="av-bv-live" /> Live (sonst Testmodus)</label>
+            <label><input type="checkbox" name="av" defaultChecked={bv.avVertrag} disabled={!inhaber} data-testid="av-bv-av" /> AV-Vertrag liegt vor</label>
+            <input className="input" name="avdatum" type="date" defaultValue={bv.avDatum ?? ""} disabled={!inhaber} />
+            <label>Tageslimit <input className="input" name="tageslimit" defaultValue={bv.tageslimit} style={{ width: 60 }} disabled={!inhaber} /></label>
+            <label>Gesamtbudget € <input className="input" name="budget" defaultValue={bv.budget ?? ""} style={{ width: 80 }} disabled={!inhaber} data-testid="av-bv-budget" /></label>
+            <label><input type="checkbox" name="farbe" defaultChecked={bv.farbe} disabled={!inhaber} /> Farbe</label>
+            <label><input type="checkbox" name="duplex" defaultChecked={bv.duplex} disabled={!inhaber} /> beidseitig</label>
+          </div>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            {(["ebrief", "letterxpress", "epost"] as const).map((a) => (
+              <span key={a}>{a === "ebrief" ? "eBrief" : a === "letterxpress" ? "LetterXpress" : "E-POST"}: <input className="input" name={`p_${a}_grund`} defaultValue={bv.preise[a].grund ?? ""} placeholder="1. Blatt €" style={{ width: 70 }} disabled={!inhaber} data-testid={`av-bv-preis-${a}`} /> + <input className="input" name={`p_${a}_seite`} defaultValue={bv.preise[a].jeWeitereSeite ?? ""} placeholder="je weitere" style={{ width: 70 }} disabled={!inhaber} data-testid={`av-bv-seite-${a}`} /> € netto</span>
+            ))}
+          </div>
+          {inhaber && <div><button className="btn btn-sm" type="submit" data-testid="av-bv-speichern">Briefversand speichern</button></div>}
+        </form>
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="lager">
+        <h2 style={{ margin: 0 }}>Lager-Standort (Umkreis, Lagerkosten)</h2>
+        <form action={lagerAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="av-lager-form">
+          <input className="input" name="name" defaultValue={cfg.lager.name} placeholder="Bezeichnung" style={{ width: 160 }} disabled={!inhaber} />
+          <label>Breite <input className="input" name="lat" defaultValue={cfg.lager.lat ?? ""} style={{ width: 90 }} disabled={!inhaber} data-testid="av-lager-lat" /></label>
+          <label>Länge <input className="input" name="lng" defaultValue={cfg.lager.lng ?? ""} style={{ width: 90 }} disabled={!inhaber} data-testid="av-lager-lng" /></label>
+          <label>Preis je Palette/Monat € <input className="input" name="preis" defaultValue={cfg.lager.preisJePaletteMonat ?? ""} style={{ width: 70 }} disabled={!inhaber} /></label>
+          {inhaber && <button className="btn btn-sm" type="submit" data-testid="av-lager-speichern">Speichern</button>}
         </form>
       </section>
 
@@ -79,7 +153,9 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="leads">
-        <h2 style={{ margin: 0 }}>2. Händler-Leads ({leads.length})</h2>
+        <div className="between"><h2 style={{ margin: 0 }}>2. Händler-Leads ({leadsSicht.length}{nurAdelprep ? ` von ${leads.length}` : ""})</h2>
+          <Link className="btn btn-sm" href={nurAdelprep ? "/b2b/abverkauf#leads" : "/b2b/abverkauf?adelprep=1#leads"} data-testid="av-filter-adelprep">{nurAdelprep ? "Alle Leads" : "Nur Zielgruppe AdelPrep"}</Link>
+        </div>
         <form action={leadsImportAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} data-testid="av-import">
           <label className="stack" style={{ gap: 2 }}>CSV/Excel (Firma, Anschrift/PLZ/Ort, Kategorie, E-Mail + E-Mail-Quelle, Website)<input type="file" name="datei" accept=".csv,.xlsx,.xls,text/csv" /></label>
           <label className="stack" style={{ gap: 2 }}>Quelle (Pflicht)<input className="input" name="quelle" placeholder="z. B. Apify Google Maps, Suche …" style={{ width: 260 }} /></label>
@@ -95,9 +171,9 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
               <span className="muted">Nichts wird verschickt – erst nach Freigabe.</span>
             </form>
             <table className="table small" data-testid="av-leads">
-              <thead><tr><th></th><th>Firma</th><th>Ort</th><th>Kategorie</th><th>Kontaktweg</th><th>Quelle / Datum</th><th>Löschen am</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th></th><th>Firma</th><th>Ort</th><th>Kategorie</th><th>AdelPrep</th><th>Kontaktweg</th><th>Quelle / Datum</th><th>Löschen am</th><th>Status</th><th></th></tr></thead>
               <tbody>
-                {leads.map((l) => {
+                {leadsSicht.map((l) => {
                   const m = mailErlaubt({ bestandskunde: l.bestandskunde, einwilligung: l.einwilligung, email: l.email }, cfg.rechtlichGeprueft);
                   return (
                     <tr key={l.id} data-testid="av-lead" data-firma={l.firma} data-status={l.status}>
@@ -105,6 +181,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
                       <td>{l.firma}<div className="muted">{l.rechtsgrundlage}</div></td>
                       <td>{[l.plz, l.ort].filter(Boolean).join(" ")}</td>
                       <td>{l.kategorie ?? "–"}</td>
+                      <td><form action={leadAdelprepAction}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="adelprep" value={l.adelprep ? "0" : "1"} /><button className={`btn btn-sm ${l.adelprep ? "btn-primary" : ""}`} type="submit" disabled={s.readOnly} data-testid="av-lead-adelprep" data-an={l.adelprep ? "1" : "0"}>{l.adelprep ? "ja" : "nein"}</button></form></td>
                       <td>
                         <form action={leadAction} className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={l.id} />
@@ -139,7 +216,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
               </form>
             )}
             <table className="table small" data-testid="av-anschreiben">
-              <thead><tr><th></th><th>Bezug</th><th>Händler</th><th>Weg</th><th>Betreff / Text</th><th>Status</th><th>Umsatz / Marge</th></tr></thead>
+              <thead><tr><th></th><th>Bezug</th><th>Händler</th><th>Weg</th><th>Betreff / Text</th><th>Beilage</th><th>Status</th><th>Umsatz / Marge</th></tr></thead>
               <tbody>
                 {anschreiben.map(({ a, firma, ort }) => (
                   <tr key={a.id} data-testid="av-anschreiben-zeile" data-status={a.status} data-kanal={a.kanal} data-code={a.code}>
@@ -160,6 +237,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
                       </details>
                       {a.fehler && <div className="small" style={{ color: "var(--danger)" }} data-testid="av-fehler">{a.fehler}</div>}
                     </td>
+                    <td>{a.kanal === "brief" && (a.status === "entwurf" || a.status === "freigegeben") ? <form action={beilageAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="beilage" value={a.adelprepBeilage ? "0" : "1"} /><button className={`btn btn-sm ${a.adelprepBeilage ? "btn-primary" : ""}`} type="submit" disabled={s.readOnly} data-testid="av-beilage-schalter" data-an={a.adelprepBeilage ? "1" : "0"}>{a.adelprepBeilage ? "AdelPrep ✓" : "ohne"}</button></form> : a.adelprepBeilage ? "AdelPrep" : "–"}</td>
                     <td>{STATUS[a.status] ?? a.status}</td>
                     <td>
                       {(a.status === "beantwortet" || a.status === "versendet") ? (
@@ -183,7 +261,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
         <h2 style={{ margin: 0 }}>4. Chargen und Erfolg</h2>
         {erfolg.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Noch keine Charge freigegeben.</p> : (
           <table className="table small" data-testid="av-chargen">
-            <thead><tr><th>Charge</th><th>Weg</th><th>Freigegeben</th><th>Anschreiben</th><th>Rücklauf</th><th>Umsatz</th><th>Marge</th><th></th></tr></thead>
+            <thead><tr><th>Charge</th><th>Weg</th><th>Freigegeben</th><th>Anschreiben</th><th>Rücklauf</th><th>Umsatz</th><th>Marge</th><th>Briefkosten</th><th>je Rücklauf</th><th></th></tr></thead>
             <tbody>
               {erfolg.map((c) => (
                 <tr key={c.id} data-testid="av-charge" data-nr={c.nr}>
@@ -194,7 +272,10 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
                   <td>{c.ruecklaufProzent === null ? "–" : `${c.beantwortet} / ${c.ruecklaufProzent} %`}</td>
                   <td>{eur(c.umsatz)}</td>
                   <td>{eur(c.marge)}</td>
+                  <td data-testid="av-charge-kosten">{eur(c.kosten)}</td>
+                  <td data-testid="av-charge-je-ruecklauf">{eur(c.kostenJeRuecklauf)}</td>
                   <td className="row" style={{ gap: 6 }}>
+                    {c.kanal === "brief" && <Link className="btn btn-sm btn-primary" href={`/b2b/abverkauf/versand/${c.id}`} data-testid="av-versand">Per Anbieter versenden</Link>}
                     {c.kanal === "brief" && <a className="btn btn-sm" href={`/b2b/abverkauf/datei?art=serienbrief&id=${c.id}`} data-testid="av-serienbrief">Serienbrief-PDF</a>}
                     {c.kanal === "brief" && !c.versendetAm && <form action={verschicktAction}><input type="hidden" name="charge" value={c.id} /><button className="btn btn-sm" type="submit" disabled={s.readOnly}>als verschickt markieren</button></form>}
                   </td>
