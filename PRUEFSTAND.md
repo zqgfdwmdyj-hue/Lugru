@@ -18,10 +18,10 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Heute | Schnellerfassung `/schnell` | ○ 0/2 Abläufe | – | 3 |
 | Heute | Feierabend `/kalender/feierabend` | ○ 0/2 Abläufe | – | – |
 | Heute | Fahrtenbuch `/kalender/fahrten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/6 Abläufe | – | 4 |
+| Einkauf & Deals | Deal-Eingang `/deal-eingang` | ○ 0/7 Abläufe | – | 4 |
 | Einkauf & Deals | Lugru Deals `/deal-eingang/lugru` | ○ 0/1 Abläufe | – | – |
 | Einkauf & Deals | Deal-Ampel `/lieferanten/deal-ampel` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einkauf & Deals | Scanner `/scan` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einkauf & Deals | Scanner `/scan` | ○ 0/4 Abläufe | – | 2 |
 | Einkauf & Deals | Bestellvorschläge `/einkauf/vorschlaege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Deals | Einkauf & Wareneingang `/einkauf` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Deals | EK-Import (→ sellerboard) `/einkauf/ek-import` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -82,10 +82,12 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Finanzen › Rechnungen | Belege scannen `/rechnungen/belege` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen › Rechnungen | Rechnungsstation (Kamera) `/rechnungsstation` | ○ 0/2 Abläufe | – | 3 |
 | Finanzen › Rechnungen | Rechnungsstation: Prüfliste `/rechnungsstation/pruefen` | ○ 0/2 Abläufe | – | – |
+| Finanzen › Rechnungen | Download-Ordner (Belege) `/rechnungsstation/ablage` | ○ 0/1 Abläufe | – | 2 |
 | Finanzen › Rechnungen | Ausgangsrechnungen `/rechnungen/ausgang` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen › Rechnungen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Deals `/b2b` | ○ 0/6 Abläufe | – | 5 |
 | B2B | Preislisten je Land `/b2b/preislisten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/1 Abläufe | – | 3 |
 | B2B | B2B-Kunden `/b2b/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Lieferanten-Freigaben `/b2b/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Bilanz `/b2b/bilanz` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -194,6 +196,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge | History neu/aktualisiert/ungültig gezählt, ohne Schlüssel 401; Deal-Wert „Passt zu dir (X/100)“ mit ähnlichen Deals (Lugru-Gruppe); über Budget höchstens Gelb mit Budget-Grund; Push mit „Zum Angebot“ (Shop-Link) und „Gekauft …“; gekauft → Bestellung „bestellt“ + Aufgabe „Wareneingang buchen“; Mail → gekauft (Menge, Preis, Bestellnummer), Mail bleibt im Posteingang; 👍/👎 mit Weg gespeichert; Ergebnis nach 30 Tagen mit realem ROI; deal_wert/deal_lernen_bericht/deal_bewerten/deal_gekauft | ○ im letzten Lauf nicht gelaufen | `deal-wert.spec.ts` |
 | Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge | je Land Gewinn/Marge/ROI + max. EK Ziel-ROI/Ziel-Marge, Verk./Monat überall gefüllt (IT „geschätzt“), Seller-Central-Knopf; Szenario rechnet neu + „ca. n Verkäufe/Monat (Keepa „gekauft“)“; Deal-Wert des ähnlichen Deals steigt mit Grund-Text, Lernbericht zählt Gründe; Bot fragt im Thread, Grund + Freitext gespeichert; Entwurf an den Lieferanten, nichts gesendet vor „Senden“, danach Beleg am Deal und im Einkauf, Sendungsnummer + Rechnung zugeordnet; deal_gekauft legt nur Entwurf an | ○ im letzten Lauf nicht gelaufen | `deal-b28.spec.ts` |
 | B28.6 Abnahme 6: Testpfanne ab 84 Stück, Mindest-ROI p. a. in den Einstellungen | Spalten „Umschlag“ (Spanne, geschätzt) und „ROI p. a.“ je Land, Hinweis „Umschlag … · ROI p. a. … (Ziel ≥ 100 %)“, Reichweiten-Warnung mit Menge für 45 Tage; deal_wert/deal_eingang_detail mit roi_pa_prozent und umschlag | ○ im letzten Lauf nicht gelaufen | `b28-umschlag.spec.ts` |
+| B34.4/5 Abnahme: Ankaufspreis 26 € (Testartikel EK 20 €, Rückvergütung 2 %, Zahlungsziel 7 T), Menge teilweise angemeldet, „Gekauft“, Ausgang „Verlust“ | Amazon und Ankauf nebeneinander (Gewinn je Stück/gesamt, Marge, ROI, Geld nach, ROI p. a., Fazit); Wissenseintrag „Ankaufserver“ insider; Warnung vor dem Kauf ohne Stopp, Meldung mit offenen Punkten, Aufgabe „Ankauf bestätigen“ mit Frist; Ausgang erledigt die Aufgabe und legt eine Frage in der Lernschleife an; nur Inhaber | ○ im letzten Lauf nicht gelaufen | `b34-ankauf.spec.ts` |
 | Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei | Einstellungen gespeichert, Budget/Ziel-ROI unverändert; Link + 4 Skizzen; Rot mit Fallnummer; Rot „selektiver Vertrieb“ + Gelb Gefahrgut als 2. Grund; Chart mit Ø/Tief/Stand; Bild 200 image/png, Datei über anderen Eingang 404 | ○ im letzten Lauf nicht gelaufen | `deal-eingang-luecken.spec.ts` |
 
 - – Offen: B28: Bestellmail an echte Lieferanten (Zustellung, Message-ID-Erhalt je Postfach) und Discord-Rückfrage nach 👍 im echten ProfitPath-Kanal (Bot braucht dort „Nachrichten senden“, „Threads erstellen“, „Reaktionen hinzufügen“) – nur live
@@ -206,6 +209,18 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert | Live-Post im Deal-Eingang mit Ampel (Push nur Grün/Gelb), History mit Reaktionen, Statistik aktualisiert, „Lugru Deals“ in deal_quellen, keine Namen gespeichert | ○ im letzten Lauf nicht gelaufen | `lugru-deals.spec.ts` |
+
+### Einkauf & Deals › Scanner (`/scan`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B34.1 Abnahme 1+2: EAN + Regalpreis über das Ziffernfeld (Laden, brutto), Rückvergütung 2 %, Einkaufsliste und Deal | Ampel, bestes Land, Gewinn/Stück, ROI, ROI p. a. in unter 3 s wie scan_pruefen; Rückvergütung senkt den effektiven EK und hebt den ROI; „Heute gescannt“ mit Summe und Kapital-Ampel; Deal im Deal-Eingang | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
+| B34.1 Abnahme 3: Amazon-Link aus der Shop-App teilen (Web Share Target), Modus Online, „Kauf vorbereiten“ | Ergebnis öffnet sich, Kauf-Link auf den Shop des geteilten Links (nichts automatisch gekauft) | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
+| B34.1 Abnahme 4: Scan ohne Netz | zwischengespeichert, bei Netz nachgeprüft, Push mit Ergebnis | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
+| B34.1 Abnahme 5: Kassenbon- und Preisschild-Foto | Kassenbon als Beleg in der Rechnungsstation, Preisschild in der Ablage des Scans | ○ im letzten Lauf nicht gelaufen | `b34-scan.spec.ts` |
+
+- – Offen: Kamera-Scan (BarcodeDetector/ZXing) und Vorlesen auf dem echten iPhone/Android – nur live
+- – Offen: Teilen-Menü der Amazon-App (Android: Web Share Target nach „Zum Startbildschirm“; iPhone: Kurzbefehl) – nur live
 
 ### Einkauf & Deals › Lieferanten › Kontakt-Board (`/board`)
 
@@ -456,6 +471,15 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen | nur rote/gelbe Belege mit Bild; Weitergabe meldet „An Stotax übertragen: 47“ und bleibt im Stapel; nach Speichern geprüft und weitergegeben, verworfenes Duplikat „kein Beleg“; Liste danach leer | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
 | „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel | Meldung „1 PDF aus dem Scanner-Ordner: 20 Belege“, Stapel mit 20 Belegen | ○ im letzten Lauf nicht gelaufen | `rechnungsstation.spec.ts` |
 
+### Finanzen › Rechnungen › Download-Ordner (Belege) (`/rechnungsstation/ablage`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B34.2 Abnahme: Testordner mit 5 Rechnungen + 2 Dubletten, echtes Agent-Programm, Kontoauszug, Löschen einer Dublette | umbenannt JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr, Ordner Monat/Lieferant, Dubletten in „Dubletten“, nichts gelöscht; Kontoauszug nicht als Rechnung; Löschen erst nach Freigabe | ○ im letzten Lauf nicht gelaufen | `b34-ablage.spec.ts` |
+
+- – Offen: Agent 1.1.0 auf dem Arbeits-PC mit dem echten Download-Ordner (Windows-Pfade, Rechte) – nur live
+- – Offen: Echter Kontoauszug (MT940/CAMT/PDF) und PayPal-Export – Zuordnung „Zahlung ohne Beleg“/„Beleg ohne Zahlung“ live prüfen
+
 ### B2B › Deals (`/b2b`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -472,6 +496,16 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Discord-Webhook im echten B2B-Kanal
 - – Offen: PrepTool (preptool.de): API-Anbindung folgt, sobald Instanz-Adresse und OpenAPI-Datei vorliegen – bis dahin Export neutral (CSV/XLSX/PDF)
 - – Offen: Steuer: Reverse Charge nur, wenn die Ware Deutschland verlässt – bei FBA-Versand in DE mit dem Steuerberater klären
+
+### B2B › Abverkauf an Händler (Ladenhüter) (`/b2b/abverkauf`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an | Preisliste ohne EK/Break-even/interne Gründe, Preis über Break-even; 10 Leads (E-Mail nur mit Quelle Impressum, verschlüsselt); E-Mail gesperrt, keine Mail raus; Brief mit Anschrift und Datenschutzhinweis Art. 14 DSGVO (Quelle, Rechtsgrundlage, Löschfrist, Widerspruch, Abmelden); Antwort → Aufgabe, Abmeldung → Sperrliste, Import blockiert; Erfolg je Charge (Rücklauf, Umsatz, Marge) auch in der B2B-Bilanz; E-Mail erst mit Einwilligung + „Rechtlich geprüft“, mit Datenschutzhinweis | ○ im letzten Lauf nicht gelaufen | `b34-abverkauf.spec.ts` |
+
+- – Offen: Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)
+- – Offen: Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
+- – Offen: Briefe drucken und frankieren – außerhalb des Systems
 
 ### Marken & Content › Uhren: Buy & Flip (`/marken/uhren`)
 
@@ -670,7 +704,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (160 Abläufe + Oberfläche auf 117 Seiten): 0 bestanden, 0 fehlgeschlagen, 160 nicht gelaufen.
+**Automatisch** (167 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 167 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -691,8 +725,13 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Deal-Eingang: Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Nachtrag B28: Deal-Quelle mit Lieferant anlegen, Testpfanne (Buy Box 79 €, früher 57,99 €, IT 1 Angebot), Ziel-VK DE 56 €, 👍 mit Grund „In einem Land kein Angebot“ + ähnlicher Deal neu prüfen, 👍 in Discord mit Rückfrage (Zahl-Reaktion + Text), Gekauft 84 × 25 € mit Bestellmail, Antwort mit Sendungsnummer als .eml, Claude-Werkzeuge – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: B28.6 Abnahme 6: Testpfanne ab 84 Stück, Mindest-ROI p. a. in den Einstellungen – im letzten Lauf nicht gelaufen
+- ○ Deal-Eingang: B34.4/5 Abnahme: Ankaufspreis 26 € (Testartikel EK 20 €, Rückvergütung 2 %, Zahlungsziel 7 T), Menge teilweise angemeldet, „Gekauft“, Ausgang „Verlust“ – im letzten Lauf nicht gelaufen
 - ○ Deal-Eingang: Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei – im letzten Lauf nicht gelaufen
 - ○ Lugru Deals: Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert – im letzten Lauf nicht gelaufen
+- ○ Scanner: B34.1 Abnahme 1+2: EAN + Regalpreis über das Ziffernfeld (Laden, brutto), Rückvergütung 2 %, Einkaufsliste und Deal – im letzten Lauf nicht gelaufen
+- ○ Scanner: B34.1 Abnahme 3: Amazon-Link aus der Shop-App teilen (Web Share Target), Modus Online, „Kauf vorbereiten“ – im letzten Lauf nicht gelaufen
+- ○ Scanner: B34.1 Abnahme 4: Scan ohne Netz – im letzten Lauf nicht gelaufen
+- ○ Scanner: B34.1 Abnahme 5: Kassenbon- und Preisschild-Foto – im letzten Lauf nicht gelaufen
 - ○ Kontakt-Board: Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: Amazon-Mails einordnen: Freischaltung abgelehnt, Fall „Antwort nötig“ (2 Mails, gleiche Fall-ID), Freischaltung entzogen, unsichere Mail – im letzten Lauf nicht gelaufen
 - ○ Fall-Zentrale: 20 erfundene Amazon-Mails in 8 Sprachen einordnen (Unit-Test) – im letzten Lauf nicht gelaufen
@@ -763,12 +802,14 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Rechnungsstation (Kamera): PDF-Stapel (22 Seiten, 20 Rechnungen) im Scanner-Ordner, „Scanner-Ordner jetzt prüfen“; Lager ohne Zugriff – im letzten Lauf nicht gelaufen
 - ○ Rechnungsstation: Prüfliste: Prüfliste nach dem Stapel: Bild je Beleg, Duplikat-Hinweis, „Ausstehende jetzt an Stotax“, fehlenden Betrag nachtragen, Duplikat verwerfen – im letzten Lauf nicht gelaufen
 - ○ Rechnungsstation: Prüfliste: „Scanner-Ordner jetzt prüfen“ mit PDF-Stapel – im letzten Lauf nicht gelaufen
+- ○ Download-Ordner (Belege): B34.2 Abnahme: Testordner mit 5 Rechnungen + 2 Dubletten, echtes Agent-Programm, Kontoauszug, Löschen einer Dublette – im letzten Lauf nicht gelaufen
 - ○ Deals: B25.10 Wo Deal-Blatt, Sammelbestellung und Prep-Export erscheinen – im letzten Lauf nicht gelaufen
 - ○ Deals: B15.12 SKU-Kürzel in der Lieferantenliste – im letzten Lauf nicht gelaufen
 - ○ Deals: Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord – im letzten Lauf nicht gelaufen
 - ○ Deals: Abnahme: 1 Deal, 3 Kunden, 1 Fehlmenge – im letzten Lauf nicht gelaufen
 - ○ Deals: Kundenportal getrennt – im letzten Lauf nicht gelaufen
 - ○ Deals: Preislisten je Land, Lieferanten-Mail, Claude-Werkzeuge, Erfolgskontrolle – im letzten Lauf nicht gelaufen
+- ○ Abverkauf an Händler (Ladenhüter): B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Übungs-Deal – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Pflichtfeld-Fehler → Eingaben bleiben → speichern → neu laden → Status ändern → nochmals speichern – im letzten Lauf nicht gelaufen
@@ -840,9 +881,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 61 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 60 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Scanner (`/scan`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Repricer (BQool) › Listing-Check (`/repricer/listing-check`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Drucker (`/einstellungen/drucker`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
+Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Repricer (BQool) › Listing-Check (`/repricer/listing-check`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Drucker (`/einstellungen/drucker`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
 
 **Bekannte offene Punkte:**
 
@@ -859,6 +900,8 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Deal-Eingang: ProfitPath mit echtem Discord-Bot (Message Content Intent, Rechte „Kanal ansehen“ + „Nachrichtenverlauf lesen“) – nur live
 - Deal-Eingang: Lugru Deals live: Programm auf den neuen Stand bringen, Seller-Adresse + Verbindungsschlüssel eintragen – die History kommt dann von selbst
 - Deal-Eingang: Echte Bestellbestätigungen anderer Shops (Betreff/Format je Shop) – nur live
+- Scanner: Kamera-Scan (BarcodeDetector/ZXing) und Vorlesen auf dem echten iPhone/Android – nur live
+- Scanner: Teilen-Menü der Amazon-App (Android: Web Share Target nach „Zum Startbildschirm“; iPhone: Kurzbefehl) – nur live
 - Fall-Zentrale: Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)
 - Fall-Zentrale: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
@@ -882,11 +925,16 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Rechnungsstation (Kamera): Kamera an der Werkbank: Auslöser (Blatt still, Ränder erkannt) und Entzerren mit echtem Papier – Logik im Unit-Test, Gerät nur live
 - Rechnungsstation (Kamera): Einzugsscanner: Netzwerkfreigabe auf ./scan-eingang einrichten, echte PDF mit Kassenzetteln/Rechnungen – nur live
 - Rechnungsstation (Kamera): Drive-Belegordner: Dienstkonto mit Schreibrecht, Ordner-ID in der Prüfliste (Inhaber) – nur live
+- Download-Ordner (Belege): Agent 1.1.0 auf dem Arbeits-PC mit dem echten Download-Ordner (Windows-Pfade, Rechte) – nur live
+- Download-Ordner (Belege): Echter Kontoauszug (MT940/CAMT/PDF) und PayPal-Export – Zuordnung „Zahlung ohne Beleg“/„Beleg ohne Zahlung“ live prüfen
 - Deals: Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)
 - Deals: Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)
 - Deals: Discord-Webhook im echten B2B-Kanal
 - Deals: PrepTool (preptool.de): API-Anbindung folgt, sobald Instanz-Adresse und OpenAPI-Datei vorliegen – bis dahin Export neutral (CSV/XLSX/PDF)
 - Deals: Steuer: Reverse Charge nur, wenn die Ware Deutschland verlässt – bei FBA-Versand in DE mit dem Steuerberater klären
+- Abverkauf an Händler (Ladenhüter): Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)
+- Abverkauf an Händler (Ladenhüter): Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
+- Abverkauf an Händler (Ladenhüter): Briefe drucken und frankieren – außerhalb des Systems
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - Calls (Consultant & Gruppe): Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)

@@ -201,7 +201,7 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
     await db.insert(A).values({ tenantId: s.tenantId, leadId: l.id, preislisteId: liste?.id ?? null, kanal: l.kontaktweg, code, betreff: v.betreff, text: text.slice(0, 6000), ki });
     neu++;
   }
-  return { neu, text: `${neu} Entwurf${neu === 1 ? "" : "e"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.` };
+  return { neu, text: `${neu} ${neu === 1 ? "Entwurf" : "Entwürfe"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.` };
 }
 
 export async function anschreibenListe(tenantId: string, limit = 200) {

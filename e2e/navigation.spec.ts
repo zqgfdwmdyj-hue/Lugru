@@ -228,8 +228,8 @@ test.describe("Navigation links", () => {
       await page.goto("/");
       for (const k of ["privat", "einstellungen", "b2b", "marken"]) await expect(leiste.locator(`[data-section="${k}"]`), k).toHaveCount(0);
       for (const h of ["/gewinn", "/cashflow", "/kapital", "/buchhaltung", "/einstellungen", "/anbindungen"]) await expect(leiste.locator(`a[href="${h}"]`), h).toHaveCount(0);
-      // Finanzen nur mit der Rechnungsstation (Untergruppe Rechnungen), Amazon mit beiden Untergruppen
-      await expect(leiste.locator('[data-section="finanzen"] .nav-link')).toHaveCount(2);
+      // Finanzen nur mit der Rechnungsstation (Untergruppe Rechnungen: Kamera, Prüfliste, B34.2 Download-Ordner), Amazon mit beiden Untergruppen
+      await expect(leiste.locator('[data-section="finanzen"] .nav-link')).toHaveCount(3);
       await expect(leiste.locator('[data-section="amazon"] .nav-unter')).toHaveCount(2);
       await expect(page.getByTestId("nav-chip")).toHaveText([/Aufgaben/, /Ansprüche/]);
     } finally {

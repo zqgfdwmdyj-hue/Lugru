@@ -280,6 +280,8 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   }
   // Regel „Aufgabe“/„weiterleiten“: immer als Aufgabe (weiterleiten = mit Zuständigkeit), auch bei „Info“.
   const erzwingen = regel?.aktion === "aufgabe" || regel?.aktion === "weiterleiten";
+  // B34.3: Antwort auf ein Restposten-Anschreiben hat schon ihre eigene Aufgabe – keine zweite, allgemeine.
+  if (abverkauf && !erzwingen) return "new";
   await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, erzwingen && r.category !== "critical" ? { ...r, category: "action" } : r, {
     erzwingen,
     zustaendigId: regel?.aktion === "weiterleiten" ? (regelZeile?.zustaendigId ?? null) : null,

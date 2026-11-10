@@ -259,10 +259,37 @@ export const dealEingaenge = pgTable(
     kaufVorbereitetMenge: integer("kauf_vorbereitet_menge"),
     /** Nach 24 Std. ohne erkannten Kauf: Erinnerung „Deal 17 noch offen?“ (einmal). */
     kaufErinnertAm: timestamp("kauf_erinnert_am", { withTimezone: true }),
+    /** B34.4: Ankauf als Ausstiegsweg (Ankaufspreis, Risikofelder, Ausgang) – nur intern, nie nach außen. */
+    ankauf: jsonb("ankauf").$type<DealAnkauf | null>(),
     createdAt: createdAt(),
   },
   (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef), index("deal_eingaenge_kauf_nr_idx").on(t.tenantId, t.kaufNr)],
 );
+
+/**
+ * B34.4 Ankauf statt Amazon: fester Ankaufspreis (netto je Stück) bei einem Ankäufer. Risikofelder: wer kauft an,
+ * Rang/Legit-Check des Ankäufers, angemeldete Menge, Annahmefrist; Zahlungsziel für den Vergleich. B34.5: Ausgang
+ * (angekauft / liegt / Verlust) fließt in die Lernschleife.
+ */
+export type DealAnkauf = {
+  /** Angebotszeile (nr), auf die sich der Ankauf bezieht. */
+  zeile: number | null;
+  preis: number | null;
+  ankaeufer: string | null;
+  legitCheck: "offen" | "bestanden" | "nicht_bestanden";
+  legitNotiz: string | null;
+  mengeAngemeldet: number | null;
+  /** JJJJ-MM-TT – bis wann der Ankäufer die Ware annimmt. */
+  annahmefrist: string | null;
+  /** Tage vom Kauf bis zum Geld vom Ankäufer. */
+  zahlungszielTage: number | null;
+  /** Rückvergütung (Cashback, Payback, Kreditkarte) in % vom EK – gilt für beide Wege. */
+  rueckverguetungProzent: number;
+  ausgang: "angekauft" | "liegt" | "verlust" | null;
+  ausgangAm: string | null;
+  ausgangNotiz: string | null;
+  geaendertAm: string;
+};
 
 /** Vorbereiteter Kauf (Push „In den Warenkorb (4)“ bzw. „Produktseite öffnen“). */
 export type DealKauf = {

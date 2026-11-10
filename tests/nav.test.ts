@@ -36,13 +36,13 @@ const ALT: [string, string][] = [
 const ENTFALLEN = ["/?ansicht=liste", "/kalender/tagesplan?anrufe=1", "/ebay?ansicht=artikel", "/ebay?ansicht=verlauf", "/ebay?ansicht=rechnungen", "/ebay?ansicht=einstellungen", "/listings/temu#rechner", "/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile"];
 
 describe("Zielstruktur (Abschnitt 4)", () => {
-  it("11 Gruppen in der Reihenfolge des Auftrags, 85 Einträge (82 + Privat › Nachrichten + Drucken/Scannen), 37 in Untergruppen, direkt 48", () => {
+  it("11 Gruppen in der Reihenfolge des Auftrags, 87 Einträge (82 + Privat › Nachrichten + Drucken/Scannen + B34 Download-Ordner/Abverkauf), 38 in Untergruppen, direkt 49", () => {
     expect(NAV.map((s) => s.label)).toEqual(["Heute", "Einkauf & Deals", "Amazon", "eBay & Temu", "Lager & Versand", "Finanzen", "B2B", "Marken & Content", "Team & Verwaltung", "Privat", "Einstellungen"]);
     const alle = NAV.flatMap((s) => s.items);
-    expect(alle).toHaveLength(85);
-    expect(alle.filter((i) => i.unter)).toHaveLength(37);
-    expect(alle.filter((i) => !i.unter)).toHaveLength(48);
-    expect(new Set(alle.map((i) => i.href)).size).toBe(85);
+    expect(alle).toHaveLength(87);
+    expect(alle.filter((i) => i.unter)).toHaveLength(38);
+    expect(alle.filter((i) => !i.unter)).toHaveLength(49);
+    expect(new Set(alle.map((i) => i.href)).size).toBe(87);
     // Druckagent (08.11.): Lager › Drucken und Scannen
     expect(NAV.find((s) => s.key === "lager")!.items.filter((i) => i.unter === "lager").map((i) => i.href)).toEqual(expect.arrayContaining(["/drucken", "/lager/scannen"]));
     expect(NAV.find((s) => s.key === "privat")!.items.map((i) => i.href)).toContain("/privat/nachrichten");
@@ -134,14 +134,14 @@ describe("Sichtbarkeit nach Rollen (wie vorher)", () => {
     expect(va.some((s) => s.key === "privat" || s.key === "einstellungen")).toBe(false);
     for (const h of ["/gewinn", "/cashflow", "/kapital", "/hebel", "/verlust", "/buchhaltung", "/amazon-faelle", "/amazon-todos", "/delegation", "/rechtsfaelle"]) expect(hrefs).not.toContain(h);
     const fin = va.find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Download-Ordner (Belege)"]);
     expect(fin.untergruppen?.map((u) => u.key)).toEqual(["rechnungen"]);
     expect(navBloecke(fin).map((b) => b.unter?.key ?? "direkt")).toEqual(["rechnungen"]);
     expect(sichtbareNebenseiten((p) => canAccess({ role: "staff", areas: [...VA_BEREICHE] }, areaForPath(p)), false).some((n) => n.href.startsWith("/einstellungen") || n.href === "/anbindungen")).toBe(false);
   });
   it("nur „Geld“: Finanzen direkt + Rechnungsstation, keine Inhaber-Punkte", () => {
     const fin = sicht(false, ["geld"]).find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Kapital-Ampel", "Hebel: Umsatz & Marge", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Kapital-Ampel", "Hebel: Umsatz & Marge", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)", "Rechnungsstation (Kamera)", "Rechnungsstation: Prüfliste", "Download-Ordner (Belege)"]);
     expect(sicht(false, ["geld"]).some((s) => s.key === "lager" || s.key === "einstellungen")).toBe(false);
   });
   it("Druckagent: Drucken/Scannen für VA, Lager und Amazon – nicht für reine Geld-Konten", () => {

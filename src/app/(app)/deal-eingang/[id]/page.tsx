@@ -18,6 +18,8 @@ import { kaufNrGueltig } from "@/lib/deal-eingang/shop-logic";
 import { CopyButton } from "@/components/copy-button";
 import { umschlagErklaerung, umschlagSchaetzen } from "@/lib/deal-eingang/umschlag-logic";
 import { vorlaufFuer } from "@/lib/money/durchlauf";
+import { AnkaufAbschnitt, AnkaufKaufWarnung, type AmazonAusstieg } from "./ankauf";
+import { ankaufWissenId } from "@/lib/deal-eingang/ankauf";
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : formatEuro(n));
 const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${String(Math.round(n * 10) / 10).replace(".", ",")} %`);
@@ -75,6 +77,17 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         </select>
       </label>
     ) : null;
+  // B34.4: Ausstieg Amazon vs. Ankauf – nur der Inhaber (Insider-Wissen). Amazon-Zahlen je Zeile: bestes Land.
+  const inhaber = session.role === "owner";
+  const ausstiegAmazon = new Map<number, AmazonAusstieg>(
+    e.zeilen.map((z) => {
+      const l = z.laender.find((x) => x.land === z.bestesLand);
+      const u = l ? (l.umschlag !== undefined ? l.umschlag : umschlagSchaetzen({ verkaeufeMonat: l.verkaeufeMonat ?? l.verkaeufeGeschaetzt ?? null, angebote: l.angebote, amazonProzent: l.amazonProzent, menge: e.gekauftMenge ?? z.angebot.menge ?? z.angebot.moq ?? z.empfohlen, roi: l.roi, vorlauf })) : null;
+      return [z.nr, { land: z.bestesLand, gewinnStk: z.gewinn, vkBrutto: l ? (l.vk90Eur ?? l.vkEur) : null, tage: u?.tage.mitte ?? null, ekPruefung: z.ekNetto }];
+    }),
+  );
+  const wissenId = inhaber && e.ankauf ? await ankaufWissenId(session.tenantId).catch(() => null) : null;
+  const gekauftInfo = { menge: e.gekauftMenge, preis: e.gekauftPreis, am: e.gekauftAm };
   const datum = (d: Date | null) => (d ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–");
   return (
     <>
@@ -263,6 +276,7 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               </div>
             )}
             {e.kaufVorbereitetAm && !e.gekauftAm && <div className="small" data-testid="de-kauf-vorbereitet">Kauf vorbereitet ({e.kaufVorbereitetMenge ?? "?"} Stk) am {e.kaufVorbereitetAm.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })} – nach 24 Std. prüft das System die sellerboard-SKUs; gekauft? Dann unten eintragen.</div>}
+            {inhaber && <AnkaufKaufWarnung zeilen={e.zeilen} ankauf={e.ankauf} amazon={ausstiegAmazon} gekauft={gekauftInfo} heute={heute} />}
             <div className="small muted">Gekauft wird nie automatisch (Kauf-Bots verstoßen gegen die Shop-Bedingungen). {link && <a href={link} target="_blank" rel="noreferrer" data-testid="de-angebot-link">Zum Angebot →</a>}{z.maxEk[0] ? ` · max. EK ${eur(z.maxEk[0].ek)}` : ""}{z.angebot.gueltigBis ? ` · gültig bis ${z.angebot.gueltigBis}` : ""}</div>
             <form action={gekauftAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="de-gekauft-form">
               <input type="hidden" name="id" value={e.id} />
@@ -297,6 +311,8 @@ export default async function DealEingangDetail({ params, searchParams }: { para
           </section>
         );
       })()}
+
+      {inhaber && e.pruefung === "fertig" && e.zeilen.length > 0 && <AnkaufAbschnitt id={e.id} zeilen={e.zeilen} ankauf={e.ankauf} amazon={ausstiegAmazon} gekauft={gekauftInfo} schreiben={schreiben} wissenId={wissenId} heute={heute} />}
 
       {(bestellmails.length > 0 || (schreiben && e.status === "gekauft" && mitMail.length > 0)) && (
         <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="bestellmail" data-testid="de-bestellmail">

@@ -306,7 +306,7 @@ export type Gekauft = { menge: number; preis: number | null; nr?: number | null;
  * den Entwurf aus „In Bestellvorschläge“ auf bestellt): Wareneingang wird als Aufgabe erwartet, die Rechnung über die
  * Shop-Bestellnummer automatisch zugeordnet. Zweites „gekauft“ ändert nur Menge/Preis.
  */
-export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userId: string | null = null): Promise<{ bestellungId: string | null; zeile: number | null }> {
+export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userId: string | null = null): Promise<{ bestellungId: string | null; zeile: number | null; ankauf?: string | null }> {
   if (!(g.menge > 0) || g.menge > 100_000) throw new DealEingangFehler("Bitte eine Menge angeben.");
   if (g.preis !== null && !(g.preis > 0 && g.preis < 100_000)) throw new DealEingangFehler("Preis unplausibel.");
   const [e] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
@@ -318,7 +318,12 @@ export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userI
     .update(E)
     .set({ status: "gekauft", gekauftMenge: g.menge, gekauftPreis: preis, gekauftAm: e.gekauftAm ?? new Date(), gekauftWeg: e.gekauftWeg ?? g.weg, gekauftRef: g.ref ?? e.gekauftRef, entschiedenAm: e.entschiedenAm ?? new Date() })
     .where(eq(E.id, e.id));
-  if (schonGekauft || !zeile?.asin || !preis) return { bestellungId: e.bestellungId, zeile: zeile?.nr ?? null };
+  // B34.5: Ankauf-Deal → Checkliste als Warnung (kein Stopp) und Aufgabe „Ankauf bestätigen“ mit Frist.
+  const ankauf = schonGekauft ? null : await import("./ankauf").then((a) => a.ankaufNachKauf(tenantId, e.id, g.menge)).catch((x) => {
+    console.error("[Ankauf] nach Kauf:", x instanceof Error ? x.message : x);
+    return null;
+  });
+  if (schonGekauft || !zeile?.asin || !preis) return { bestellungId: e.bestellungId, zeile: zeile?.nr ?? null, ankauf };
 
   // Bestellung: Entwurf weiterverwenden, sonst neu – Status „bestellt“, erwartet in 7 Tagen (bzw. Lieferzeit).
   const P = await import("@/lib/purchasing/service");
@@ -334,7 +339,7 @@ export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userI
   if (alt?.status === "draft" && altItems.length && altItems.every((i) => i.asin === zeile.asin)) {
     poId = e.bestellungId;
   } else {
-    if (!person) return { bestellungId: null, zeile: zeile.nr };
+    if (!person) return { bestellungId: null, zeile: zeile.nr, ankauf };
     // B28.5: Lieferant aus Einstellungen → Deal-Quellen (z. B. Quelle „Konrad“ → Lieferant mit Mailadresse)
     const dl = g.shop || g.lieferant ? null : await import("./bestellmail").then((b) => b.lieferantFuerDeal(tenantId, e.quelle, e.weg, e.rohtext)).catch(() => null);
     poId = await P.createPurchaseOrder(tenantId, person, { supplier: g.shop ?? g.lieferant ?? dl?.name ?? e.quelle ?? "Deal-Eingang", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage), notes: `Aus dem Deal-Eingang (${g.weg === "mail" ? "Bestellbestätigung" : "gekauft"}).` });
@@ -343,7 +348,7 @@ export async function alsGekauft(tenantId: string, id: string, g: Gekauft, userI
   }
   await P.updatePurchaseOrder(tenantId, poId!, { status: "ordered", supplierOrderNo: g.bestellnr ?? undefined, expectedDate: addDaysIso(todayIso(), tage) });
   await db.update(E).set({ bestellungId: poId }).where(eq(E.id, e.id));
-  return { bestellungId: poId, zeile: zeile.nr };
+  return { bestellungId: poId, zeile: zeile.nr, ankauf };
 }
 
 /**

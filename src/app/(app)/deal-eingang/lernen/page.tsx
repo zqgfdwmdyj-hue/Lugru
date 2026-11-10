@@ -204,6 +204,9 @@ export default async function DealLernenPage({ searchParams }: { searchParams: P
               {ls.offen} offen, {ls.beantwortet} beantwortet. Bisher insgesamt: {ls.antworten.nie_wieder}× „Nie wieder“, {ls.antworten.pech}× „Pech“, {ls.antworten.unklar}× „Weiß nicht warum“
               {ls.gruende.length ? ` · Gründe: ${ls.gruende.slice(0, 6).map((g) => `${g.grund} ${g.anzahl}×`).join(", ")}` : ""}.
             </p>
+            {ls.ankauf.angekauft + ls.ankauf.liegt + ls.ankauf.verlust + ls.ankauf.offen > 0 && (
+              <p className="small muted" data-testid="dl-ls-ankauf">Ankauf-Deals: {ls.ankauf.angekauft} angekauft · {ls.ankauf.liegt} liegen noch · {ls.ankauf.verlust} Verlust · {ls.ankauf.offen} ohne Ausgang</p>
+            )}
             <ul className="stack" style={{ listStyle: "none", padding: 0, gap: 8 }} data-testid="dl-ls-liste">
               {lsAktuell.map((f) => <LernFrageZeile key={f.id} f={f} inhaber={inhaber} />)}
             </ul>

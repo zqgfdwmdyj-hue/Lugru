@@ -1,0 +1,1 @@
+ALTER TABLE "deal_eingaenge" ADD COLUMN "ankauf" jsonb;

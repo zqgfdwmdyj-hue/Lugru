@@ -181,7 +181,13 @@ export async function trefferMorgenZeile(tenantId: string, heute = todayIso()) {
 
 /** Für Lernbericht und Werkzeug: Stand der Lernschleife (Monat, offen/beantwortet, Antworten, Trefferquote). */
 export async function lernschleifeBericht(tenantId: string, heute = todayIso()) {
-  const [fragen, t] = await Promise.all([lernschleifeFragen(tenantId), trefferquote(tenantId, heute)]);
+  const [fragen, t, ankaufRows] = await Promise.all([
+    lernschleifeFragen(tenantId),
+    trefferquote(tenantId, heute),
+    // B34.5: Ausgang der Ankauf-Deals (angekauft / liegt / Verlust); „liegt“ und „Verlust“ stehen zusätzlich als Frage oben.
+    db.select({ ausgang: sql<string | null>`${E.ankauf}->>'ausgang'`, n: sql<number>`count(*)::int` }).from(E).where(and(eq(E.tenantId, tenantId), isNotNull(E.ankauf), sql`(${E.ankauf}->>'preis') is not null`)).groupBy(sql`${E.ankauf}->>'ausgang'`),
+  ]);
+  const ankaufZahl = (a: string | null) => ankaufRows.find((r) => r.ausgang === a)?.n ?? 0;
   const letzterMonat = fragen[0]?.monat ?? null;
   const imMonat = fragen.filter((f) => f.monat === letzterMonat);
   const zaehl = (a: LernAntwort) => fragen.filter((f) => f.antwort === a).length;
@@ -196,6 +202,7 @@ export async function lernschleifeBericht(tenantId: string, heute = todayIso()) 
     trefferquote: t.monate,
     trefferZiel: 80,
     zielMarge: t.zielMarge,
+    ankauf: { offen: ankaufZahl(null), angekauft: ankaufZahl("angekauft"), liegt: ankaufZahl("liegt"), verlust: ankaufZahl("verlust") },
     fragen,
   };
 }

@@ -154,7 +154,7 @@ export async function gekauftAction(fd: FormData) {
     const gewaehlt = supplierId ? await B.lieferantWaehlen(s.tenantId, id, supplierId) : null;
     const r = await alsGekauft(s.tenantId, id, { menge, preis, nr, weg: "knopf", lieferant: gewaehlt?.name ?? null }, s.userId);
     await wareSpeichern(s.tenantId, id, fd);
-    let text = `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.`;
+    let text = `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.${r.ankauf ? ` ${r.ankauf}` : ""}`;
     // B28.5: Bestellmail an den Lieferanten – nur Entwurf; gesendet wird erst mit „Senden“.
     if (fd.get("bestellmail") === "1") {
       const { bestellmailEntwurf } = B;
@@ -471,4 +471,64 @@ export async function lernschleifeErstellenAction() {
   const r = await lernschleifeErstellen(s.tenantId, undefined, { push: false });
   revalidatePath(LERNEN);
   redirect(zurLernschleife(`Lernschleife ${r.monat}: ${r.produkte} Verlustprodukt${r.produkte === 1 ? "" : "e"}, ${r.neu} neu.`));
+}
+
+/** B34.4: Ankauf als Ausstiegsweg – Ankaufspreis und Risikofelder am Deal (nur intern). */
+export async function ankaufAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  if (s.role !== "owner") redirect(mit(`${PFAD}/${id}`, "Ankauf ist nur für den Inhaber (Insider-Wissen)."));
+  const zahl = (k: string) => {
+    const v = String(fd.get(k) ?? "").trim();
+    if (!v) return null;
+    const n = Number(v.replace(",", "."));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const text = (k: string) => String(fd.get(k) ?? "").trim().slice(0, 200) || null;
+  let meldung: string;
+  try {
+    const { ankaufSpeichern } = await import("@/lib/deal-eingang/ankauf");
+    const { istLegitCheck } = await import("@/lib/deal-eingang/ankauf-logic");
+    const legit = String(fd.get("legit") ?? "offen");
+    const preis = zahl("preis") ?? null;
+    const menge = zahl("menge_angemeldet");
+    const ziel = zahl("zahlungsziel");
+    const rueck = zahl("rueckverguetung");
+    if ([preis, menge, ziel, rueck].some((n) => Number.isNaN(n))) throw new DealEingangFehler("Bitte Zahlen eingeben.");
+    const a = await ankaufSpeichern(s.tenantId, id, {
+      zeile: Number(fd.get("zeile")) || null,
+      preis: preis !== null ? Math.round(preis * 100) / 100 : null,
+      ankaeufer: text("ankaeufer"),
+      legitCheck: istLegitCheck(legit) ? legit : "offen",
+      legitNotiz: text("legit_notiz"),
+      mengeAngemeldet: menge === null ? null : Math.round(menge),
+      annahmefrist: /^\d{4}-\d{2}-\d{2}$/.test(String(fd.get("annahmefrist") ?? "")) ? String(fd.get("annahmefrist")) : null,
+      zahlungszielTage: ziel === null ? null : Math.max(0, Math.round(ziel)),
+      rueckverguetungProzent: rueck === null ? 0 : Math.min(20, Math.max(0, rueck)),
+    });
+    meldung = a.preis ? "Ankauf gespeichert – Vergleich Amazon / Ankauf unten." : "Ankauf gespeichert (ohne Ankaufspreis kein Vergleich).";
+  } catch (e) {
+    meldung = e instanceof DealEingangFehler ? e.message : `Nicht gespeichert – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(`${PFAD}/${id}`);
+  redirect(`${mit(`${PFAD}/${id}`, meldung)}#ankauf`);
+}
+
+/** B34.5: Ausgang des Ankaufs (angekauft / liegt / Verlust) → Aufgabe erledigt, Lernschleife. */
+export async function ankaufAusgangAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  if (s.role !== "owner") redirect(mit(`${PFAD}/${id}`, "Ankauf ist nur für den Inhaber (Insider-Wissen)."));
+  let meldung: string;
+  try {
+    const { ankaufAusgangSetzen } = await import("@/lib/deal-eingang/ankauf");
+    const { istAnkaufAusgang } = await import("@/lib/deal-eingang/ankauf-logic");
+    const ausgang = String(fd.get("ausgang") ?? "");
+    if (!istAnkaufAusgang(ausgang)) throw new DealEingangFehler("Bitte den Ausgang wählen.");
+    meldung = await ankaufAusgangSetzen(s.tenantId, id, ausgang, String(fd.get("notiz") ?? "") || null);
+  } catch (e) {
+    meldung = e instanceof DealEingangFehler ? e.message : `Nicht gespeichert – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(`${PFAD}/${id}`);
+  redirect(`${mit(`${PFAD}/${id}`, meldung)}#ankauf`);
 }

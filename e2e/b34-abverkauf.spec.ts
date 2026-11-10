@@ -199,11 +199,16 @@ test.describe("B34.3 Abverkauf an Händler", () => {
     for (const z of await page.locator('[data-testid="av-anschreiben-zeile"][data-status="entwurf"]').all()) if (!(await z.innerText()).includes(firma(1))) await z.locator('input[name="anschreiben"]').uncheck();
     await Promise.all([aktion(page), page.getByTestId("av-freigeben").click()]);
     await expect(page.getByTestId("av-meldung")).toContainText("1 E-Mails verschickt");
-    const [gesendet] = await sql<{ subject: string; text: string }>(`select subject, text from test_mails where tenant_id = $1 and "to" = $2`, [T, mail(1)]);
-    expect(gesendet.subject).toBe(`Restposten-Angebot für ${firma(1)} (${codes[firma(1)]})`);
-    expect(gesendet.text).toContain("Art. 14 DSGVO");
-    expect(gesendet.text).toContain("Abmelden");
-    expect(gesendet.text).not.toMatch(INTERN);
     await expect(page.locator(`[data-testid="av-anschreiben-zeile"][data-code="${codes[firma(1)]}"]`)).toHaveAttribute("data-status", "versendet");
+    const [gesendet] = await sql<{ subject: string }>(`select subject from test_mails where tenant_id = $1 and "to" = $2`, [T, mail(1)]);
+    expect(gesendet.subject).toBe(`Restposten-Angebot für ${firma(1)} (${codes[firma(1)]})`);
+    // Text liegt verschlüsselt in der Datenbank – lesbar unter Einstellungen → Testumgebung (abgefangene Mails)
+    await page.goto("/einstellungen/testumgebung");
+    const testmail = page.locator('[data-testid="testenv-mail"]', { hasText: codes[firma(1)] }).first();
+    await testmail.locator("summary").click();
+    const text = (await testmail.textContent()) ?? "";
+    expect(text).toContain("Art. 14 DSGVO");
+    expect(text).toContain("Abmelden");
+    expect(text).not.toMatch(INTERN);
   });
 });

@@ -1399,6 +1399,80 @@ Schnelldreher, Nachkontrolle, Processing Report, BQool-Zeit), angepasst `tests/b
 `min_reset` und `gebuehren` (FBA, Provision, Quelle, geschätzt, Preisstufen); Beschreibung erweitert →
 `notifications/tools/list_changed` geht beim Verbinden raus.
 
+## B34 Ideen aus dem Wochen-Call vom 04.11.2026 (Stand 10.11.)
+
+Insider-Wissen nur für Ludwig: nichts davon in Texten nach außen. Preisliste, Brief und Anschreiben enthalten keinen
+EK, keinen Break-even und keine internen Gründe (geprüft im Unit- und Ablauftest); der Ankauf-Abschnitt ist nur für
+den Inhaber sichtbar. Keine Käufe, Mails oder Briefe automatisch, keine Bots, kein Scrapen, nichts gelöscht ohne
+Freigabe.
+
+Prüfung vorher: `scan_pruefen` (EAN + Preis → Ampel, bestes Land, Gewinn, ROI, Menge, Bestand) und eine einfache
+`/scan`-Seite (B13) waren da – ohne Ziffernfeld, Rückvergütung, ROI p. a., Modus Laden/Online, Teilen-Ziel,
+Einkaufsliste und Offline-Nachprüfung. Rechnungsstation (Kamera-Stapel, Scanner-Ordner, Stotax), Sparkasse-CSV/PDF und
+der Bank-Abgleich waren da – ohne Agent am Arbeits-PC, Umbenennen, Monats-/Lieferantenordner, Dubletten-Ordner,
+MT940/PayPal und „Beleg ohne Zahlung“. B2B-Bereich, Hebel „Ladenhüter“ und Kapital-Ampel waren da – ohne Preisliste,
+Leads, Briefe. Deal-Eingang mit „Gekauft“, Preis-Szenario, Umschlag/ROI p. a. und Lernschleife war da – ohne Ankauf.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B34.1 `/scan`: Kamera (BarcodeDetector, Ausweich ZXing), Ziffernfeld, brutto/netto gemerkt, Menge, Rückvergütung % | 🟡 | ✅ Hochformat-Seite mit großem Ziffernfeld; Rückvergütung senkt den effektiven EK | `src/app/(app)/scan/scanner.tsx`, `ekMitRueckverguetung` (`src/lib/scan/logic.ts`) |
+| B34.1 Ergebnis < 3 s: Ampel, bestes Land, Gewinn, ROI, ROI p. a., Menge, Bestand + Kapital-Ampel, Satz | 🟡 | ✅ wie `scan_pruefen` (Keepa aus dem Zwischenspeicher), dazu ROI p. a., Umschlag, Kapital-Ampel, Begründung; Vorlesen per Schalter | `scanAusfuehren` (`src/lib/scan/service.ts`), `scanPruefen`, `kapitalStand` (`src/lib/mobil/service.ts`) |
+| B34.1 Modus Laden/Online, Teilen-Menü (Web Share Target), „Kauf vorbereiten“ über den Warenkorb-Link | ❌ | ✅ `manifest.ts` mit Teilen-Ziel → `/api/deal-eingang` leitet einen geteilten Amazon-Link auf `/scan` um; Kauf-Link auf den Shop des Links | `src/app/manifest.ts`, `teilenZiel`, `src/app/api/deal-eingang/route.ts` |
+| B34.1 Einkaufsliste, Als Deal, Verwerfen; „Heute gescannt“ mit Summe und Kapital | ❌ | ✅ Tabelle `scan_eintraege`, Aktionen je Scan, Tagesliste mit Summe und Restbudget | `src/db/tables/scan.ts`, `aktionSetzen`, `heuteSumme` |
+| B34.1 Schlechtes Netz: zwischenspeichern, nachprüfen, Push | ❌ | ✅ Warteschlange im Browser, Nachprüfung bei Netz, Push mit Ergebnis | `offlineMelden`, `offeneNachpruefen` |
+| B34.1 Foto Preisschild/Kassenbon → Rechnungsstation | ❌ | ✅ Kassenbon als Beleg im Kamera-Stapel, Preisschild in der Ablage | `belegZumScan` |
+| B34.2 Agent am Arbeits-PC überwacht den Download-Ordner | ❌ | ✅ Druckagent 1.1.0 `belegePruefen()` (aus, bis Pfad eingetragen), Einstellungen → Drucker „Belege-Ordner“/„Ablage“ | `druckagent/lugru-druckagent.mjs`, `src/app/api/druckagent/beleg/route.ts` |
+| B34.2 Kontoauszug erkennen, nicht als Rechnung | 🟡 | ✅ Kontoauszug (auch MT940/PayPal) wird zur Bank, nicht zur Rechnung | `istKontoauszugText` (`src/lib/uploads/erkennen.ts`), `belegAusOrdner` |
+| B34.2 Umbenennen `JJJJ-MM-TT_Lieferant_Betrag_Rechnungsnr`, Ordner Monat/Lieferant | ❌ | ✅ Agent verschiebt nach Rückmeldung des Servers | `zielName`, `zielOrdner` (`src/lib/belege/ablage-logic.ts`) |
+| B34.2 Dubletten (Hash, Nr + Betrag) in „Dubletten“, Löschen nur nach Freigabe | 🟡 | ✅ Seite Rechnungsstation → Download-Ordner, Freigabe je Datei, Agent löscht erst dann | `dubletteVon`, `loeschenFreigeben`, `src/app/(app)/rechnungsstation/ablage/page.tsx` |
+| B34.2 Zahlungsabgleich CSV/CAMT/MT940/PDF + PayPal, „Zahlung ohne Beleg“/„Beleg ohne Zahlung“, Export Stotax | 🟡 | ✅ MT940- und PayPal-Leser, beide Listen, Export „Abgleich (CSV)“ | `leseMt940`, `lesePaypal` (`src/lib/bank/logic.ts`), `abgleichCsv`, `buchhaltung/export/route.ts` |
+| B34.2 Entgeltabschluss als eigener Beleg | ❌ | ✅ aus dem Kontoauszug als Beleg erfasst | `entgeltBelegAusAuszug` (`src/lib/belege/entgelt.ts`) |
+| B34.3 Preisliste aus Ladenhütern (Reichweite > 90 T oder Lager > 60 T, Kapital > 300 €), Preis = Break-even + Aufschlag, Staffeln, PDF/Excel, ohne Insider | ❌ | ✅ Kandidaten aus der Kapital-Ampel, Staffeln nie unter Break-even, PDF und Excel nur mit Artikel/ASIN/Menge/Preis/Staffel | `istKandidat`, `preisPosition` (`src/lib/abverkauf/logic.ts`), `preislistePdf` (`pdf.ts`), `preislisteDatei` |
+| B34.3 Lead-Liste per CSV (Firma, Anschrift, Kategorie, E-Mail nur aus Impressum, Quelle, Datum, Status, Rechtsgrundlage), kein Scrapen | ❌ | ✅ Import mit Pflicht-Quelle und Datum, Anschrift und E-Mail verschlüsselt, Dubletten über Schlüssel (Rechtsform egal) | `leadsAusTabelle`, `leadsImportieren`, Tabelle `abverkauf_leads` |
+| B34.3 Brief als Standard: Serienbrief-PDF mit Absender, Anschrift, Datenschutzhinweis Art. 14 DSGVO, Abmeldung | ❌ | ✅ je Händler eine Seite; Hinweis mit Verantwortlichem, Quelle + Datum, Zweck, Art. 6 Abs. 1 lit. f, Speicherdauer, Widerspruch, Abmelden/Sperrliste | `serienbriefPdf`, `datenschutzHinweis` |
+| B34.3 E-Mail an Fremdkontakte gesperrt, solange „Rechtlich geprüft“ aus; nur Bestandskunde oder dokumentierte Einwilligung | ❌ | ✅ Sperre beim Freigeben (Fehler am Anschreiben, keine Mail), Schalter nur für den Inhaber; Hinweis „keine Rechtsberatung“ | `mailErlaubt`, `freigeben` |
+| B34.3 Sperrliste, Löschfrist, Quelle und Zweck dokumentiert | ❌ | ✅ Sperrliste aus Prüfsummen (Firma+PLZ, E-Mail), Löschfrist je Lead (Standard 180 T) mit Liste „Löschfrist abgelaufen“ | `leadSperren`, `loeschfaellig`, `abverkauf_sperrliste` |
+| B34.3 KI-Entwurf je Händler, nie automatisch; Freigabe einzeln/Charge ≤ 20, Tageslimit | ❌ | ✅ Entwurf (KI, sonst Vorlage) ohne EK/Gründe, Freigabe nur Inhaber, Charge höchstens 20, Tageslimit | `entwuerfeErstellen`, `kiAuftrag`, `tagesRest` |
+| B34.3 Antworten in den Posteingang + Aufgabe | ❌ | ✅ Bezug „AV-…“ oder Lead-E-Mail → Anschreiben „beantwortet“, Aufgabe; „keine Angebote“ → Sperrliste; Mail immer im geschäftlichen Posteingang (eigene Mails zählen nicht) | `antwortAusMail`, Haken in `ingestMail` (`src/lib/inbox/service.ts`) |
+| B34.3 Erfolg je Charge (Rücklauf, Umsatz, Marge) in der B2B-Erfolgskontrolle | ❌ | ✅ Tabelle je Charge, Summe in der B2B-Bilanz | `erfolgJeCharge`, `AbverkaufErfolg` (`b2b/bilanz/page.tsx`) |
+| B34.4 Ankaufspreis am Deal, Szenario Amazon vs. Ankauf (Gewinn = Ankaufspreis − EK + Rückvergütung, Marge, ROI, Zahlungsziel) | ❌ | ✅ Abschnitt „Ausstieg: Amazon oder Ankauf“ (nur Inhaber): beide Wege nebeneinander mit Gewinn je Stück/gesamt, Marge, ROI, Geld nach, ROI p. a. und Fazit | `ausstiegVergleich` (`src/lib/deal-eingang/ankauf-logic.ts`), `deal-eingang/[id]/ankauf.tsx`, Spalte `deal_eingaenge.ankauf` |
+| B34.4 Risikofelder Ankäufer, Rang/Legit-Check, Menge angemeldet, Annahmefrist | ❌ | ✅ im selben Formular | `ankaufSpeichern` (`src/lib/deal-eingang/ankauf.ts`) |
+| B34.4 Keine Bot-Käufe, kein Mitlesen fremder Discord-Server | – | ✅ nichts dergleichen gebaut; Hinweis im Abschnitt | – |
+| B34.4 Wissenseintrag „Ankaufserver“ (Einzelmeinung) | ❌ | ✅ beim ersten Ankauf angelegt: insider, Herkunft Call, Datum 04.11.2026, „Gruppe – Einzelmeinung“ (Name nicht im Code) | `ankaufWissenSicherstellen`, `ANKAUF_WISSEN` |
+| B34.5 Warnung „Menge beim Ankäufer anmelden“ bei „Gekauft“ (Checkliste, kein Stopp) | ❌ | ✅ Warnkasten im Kaufen-Abschnitt und offene Punkte in der Meldung nach „Gekauft“ (Knopf, Bestellmail, Claude, Sprache) | `AnkaufKaufWarnung`, `ankaufNachKauf` (Aufruf in `alsGekauft`) |
+| B34.5 Aufgabe „Ankauf bestätigen“ mit Frist | ❌ | ✅ Frist = Annahmefrist, sonst in 2 Tagen; dringend, solange die Menge nicht angemeldet ist | `ankaufFrist`, `aufgabeAnlegen` |
+| B34.5 Ausgang angekauft / liegt / Verlust → Lernschleife (B28.8) | ❌ | ✅ Ausgang erledigt die Aufgabe; „liegt“/„Verlust“ legen eine Frage in der Lernschleife an (fließt über die Antwort als ähnlicher Fehlkauf in den Deal-Wert); Zähler im Lernbericht | `ankaufAusgangSetzen`, `lernschleifeBericht().ankauf` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| B34.1 (1) Scan mit bekannter EAN < 3 s wie `scan_pruefen` | ✅ automatisch (`b34-scan.spec.ts`) |
+| B34.1 (2) Rückvergütung 2 % ändert den ROI | ✅ automatisch |
+| B34.1 (3) Amazon-Link teilen öffnet das Ergebnis | ✅ automatisch (Teilen-Ziel); echtes Teilen-Menü am Handy live |
+| B34.1 (4) Offline-Scan wird später nachgeprüft | ✅ automatisch (mit Push) |
+| B34.1 (5) Kassenbon-Foto landet in der Rechnungsstation | ✅ automatisch |
+| B34.2 Testordner mit 5 Rechnungen + 2 Dubletten: sortiert, umbenannt, Dubletten verschoben, nichts gelöscht | ✅ automatisch mit dem echten Agent-Programm (`b34-ablage.spec.ts`), dazu Kontoauszug und Löschen nach Freigabe |
+| B34.3 Preisliste generiert (PDF + Excel ohne Insider) | ✅ automatisch (`b34-abverkauf.spec.ts`) |
+| B34.3 10 Test-Leads per CSV | ✅ automatisch (E-Mail nur mit Quelle Impressum, 1 verworfen) |
+| B34.3 E-Mail ohne „Rechtlich geprüft“ gesperrt | ✅ automatisch (keine Mail raus, Fehler am Anschreiben); mit Schalter + Einwilligung geht sie mit Datenschutzhinweis raus |
+| B34.3 Brief-PDF mit Datenschutzhinweis | ✅ automatisch (Art. 14 DSGVO, Quelle, Rechtsgrundlage, Widerspruch, Abmelden) |
+| B34.4 Beide Szenarien nebeneinander | ✅ automatisch (`b34-ankauf.spec.ts`: 26 € − 20 € + 2 % = 6,40 €/Stk, 7 Tage, ROI p. a. 1669 %) |
+| B34.5 Warnung beim Kauf, Aufgabe, Ausgang → Lernschleife | ✅ automatisch |
+
+Unit-Tests: `tests/b34-scan.test.ts`, `tests/b34-ablage.test.ts`, `tests/b34-abverkauf.test.ts`, `tests/b34-ankauf.test.ts`.
+Ablauftests: `e2e/b34-scan.spec.ts`, `e2e/b34-ablage.spec.ts`, `e2e/b34-abverkauf.spec.ts`, `e2e/b34-ankauf.spec.ts`.
+Migrationen: `0143_b34_scan_ablage`, `0144_b34_abverkauf`, `0145_b34_ankauf`.
+
+**Werkzeuge B34:** keine neuen Werkzeuge, keine neuen ändernden Werkzeuge. Geändert: `scan_pruefen` – neue Eingabe
+`rueckverguetung` (%), Ausgabe zusätzlich `rueckverguetung`, `ek_effektiv`, `roi_pa`, `umschlag`, `kapital_ampel`,
+`begruendung_kurz` → `notifications/tools/list_changed` geht beim Verbinden raus. `deal_lernen_bericht` liefert in
+`lernschleife` zusätzlich `ankauf` (angekauft/liegt/Verlust/offen, nur Ausgabe).
+
+**Offene Fragen an Ludwig** (bis zur Antwort mit diesen Annahmen gebaut):
+1. Wie nutzt du `scan_pruefen` heute, und wie oft kaufst du im Laden? – Annahme: beide Modi, Laden = Regalpreis brutto.
+2. Briefe als Standard in Ordnung? Welche Ladenhüter zuerst? – Annahme: Brief; alle Kandidaten vorausgewählt, Auswahl per Haken.
+3. Läuft die Ordnerüberwachung auf dem Druckagent-PC? – Annahme: ja, im selben Agent (1.1.0), aus, bis ein Pfad eingetragen ist.
+4. Der „B34.2-Prüfauftrag zum Kontoauszug vom 09.11.“ ist nicht angekommen – Kontoauszug-Erkennung nach eigener Regel; bitte nachreichen.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2350,3 +2424,20 @@ nie in Chats oder Mails.
      nächsten BQool-Lauf prüfen, ob der Datei-Min stehen bleibt; Ergebnis kurz melden.
 138. **AI+CR-Kontingent** vor großen Wechseln auf Liquidation prüfen (Liquidation ist AI und zählt dort mit).
 139. **Margen je Altersstufe** ändert nur Ludwig in BQool (Edit Rule) – danach den Katalog im Seller-System gleichziehen.
+140. **Scan-Modus aufs Handy**: `/scan` im Handy-Browser öffnen → „Zum Home-Bildschirm“. Android zeigt das Seller-System
+     danach im Teilen-Menü der Amazon-App; am iPhone den Kurzbefehl „Deal prüfen“ zum Teilen nutzen. Kamera-Zugriff erlauben.
+141. **Druckagent 1.1.0** auf dem Arbeits-PC einspielen; Einstellungen → Drucker → „Belege-Ordner“ (Downloads) und
+     „Ablage-Ordner“ eintragen. Erst dann sortiert der Agent; gelöscht wird nur, was du unter Rechnungsstation →
+     Download-Ordner freigibst.
+142. **Kontoauszug** bevorzugt als MT940/CAMT/CSV hochladen, PayPal-Export (CSV) monatlich dazu; für Stotax
+     Buchhaltung → „Abgleich (CSV)“. Den fehlenden Prüfauftrag zum Kontoauszug vom 09.11. bitte nachreichen.
+143. **Absender für Preisliste und Brief**: Einstellungen → „B2B-Deals“ → Firma (Name, Anschrift, E-Mail, Telefon) prüfen.
+144. **Vor E-Mails an Fremdkontakte rechtlich prüfen lassen** (das System ist keine Rechtsberatung); erst danach unter
+     B2B → Abverkauf „Rechtlich geprüft“ einschalten. Bis dahin nur Briefe bzw. Bestandskunden.
+145. **Leads**: CSV (z. B. aus Apify, eigenverantwortlich, Nutzungsbedingungen der Quelle beachten) mit Spalte
+     „E-Mail-Quelle“ = Impressum; beim Import Quelle und Datum angeben. Beim ersten echten Import die erkannten Spalten prüfen.
+146. **Serienbrief**: Charge freigeben → „Serienbrief-PDF“ drucken, frankieren, dann „als verschickt markieren“.
+     Antworten mit Bezug „AV-…“ kommen über den Posteingang (Aufgabe); Umsatz und Marge je Antwort eintragen.
+147. **Wissenseintrag „Ankaufserver“**: im Wissen den Sprecher ergänzen, falls gewünscht (der Name steht bewusst nicht im Code).
+148. **Ankauf-Deals**: Menge vor dem Kauf beim Ankäufer anmelden und im Deal eintragen; nach dem Abschluss den Ausgang
+     (angekauft / liegt / Verlust) setzen – „liegt“/„Verlust“ beantwortest du dann in der Lernschleife.

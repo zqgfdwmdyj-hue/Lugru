@@ -1016,6 +1016,13 @@
       "when": 1794342816430,
       "tag": "0144_b34_abverkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1794343663110,
+      "tag": "0145_b34_ankauf",
+      "breakpoints": true
     }
   ]
 }
