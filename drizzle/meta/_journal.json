@@ -1009,6 +1009,13 @@
       "when": 1794341786327,
       "tag": "0143_b34_scan_ablage",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1794342816430,
+      "tag": "0144_b34_abverkauf",
+      "breakpoints": true
     }
   ]
 }

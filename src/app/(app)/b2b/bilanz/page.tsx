@@ -50,7 +50,21 @@ export default async function B2bBilanzPage({ searchParams }: { searchParams: Pr
           </tbody>
         </table>
       </section>
+      <AbverkaufErfolg tenantId={session.tenantId} />
       <div className="small muted">Gewinn = Umsatz netto (gelieferte Menge × Kundenpreis) − EK laut Staffel − Versandanteil. Gutschriften für Fehlmengen sind im Umsatz bereits abgezogen. Kontrolle: Ø Buy Box der letzten 30 Tage, ±10 % gilt als „wie prognostiziert“.</div>
     </>
+  );
+}
+
+/** B34.3: Abverkauf an Händler (Ladenhüter) – Erfolg je Charge in der B2B-Erfolgskontrolle. */
+async function AbverkaufErfolg({ tenantId }: { tenantId: string }) {
+  const { erfolgJeCharge } = await import("@/lib/abverkauf/service");
+  const e = await erfolgJeCharge(tenantId).catch(() => []);
+  if (!e.length) return null;
+  const sum = e.reduce((n, c) => ({ versendet: n.versendet + c.versendet, beantwortet: n.beantwortet + c.beantwortet, umsatz: n.umsatz + c.umsatz, marge: n.marge + c.marge }), { versendet: 0, beantwortet: 0, umsatz: 0, marge: 0 });
+  return (
+    <section className="card card-pad small" data-testid="bilanz-abverkauf">
+      <strong>Abverkauf an Händler (Ladenhüter)</strong>: {e.length} Chargen · {sum.versendet} verschickt · Rücklauf {sum.versendet ? Math.round((sum.beantwortet / sum.versendet) * 100) : 0} % · Umsatz {formatEuro(sum.umsatz)} · Marge {formatEuro(sum.marge)} · <a href="/b2b/abverkauf#erfolg">je Charge</a>
+    </section>
   );
 }

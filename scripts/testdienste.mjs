@@ -318,6 +318,12 @@ function kiAnswer(req, b) {
     }
     return [200, reply(b, [{ type: "text", text: `Ergebnis von ${name}: ${r.is_error ? "FEHLER " : ""}${content.slice(0, 300)}` }], "end_turn")];
   }
+  // B34.3 Restposten-Anschreiben an einen Händler (erfundener Brieftext aus Empfänger und Artikeln)
+  if (/^Schreibe ein kurzes, sachliches Geschäftsanschreiben/.test(text)) {
+    const empf = /Empfänger: ([^.(\n]+)/.exec(text)?.[1]?.trim() ?? "Ihr Geschäft";
+    const art = /Artikel: (.+)\.\s*$/m.exec(text)?.[1] ?? "einige Artikel";
+    return [200, reply(b, [{ type: "text", text: `Sehr geehrte Damen und Herren,\n\nfür ${empf} haben wir ein Restposten-Angebot zusammengestellt: ${art}. Alle Artikel sind Neuware und originalverpackt. Bei Interesse senden wir Ihnen gern weitere Informationen oder ein Muster.` }], "end_turn")];
+  }
   const cmd = /werkzeug:([a-z_]+)\s*(\{.*\})?/i.exec(text);
   if (cmd) return [200, reply(b, [{ type: "text", text: `Ich rufe ${cmd[1]} auf.` }, use(cmd[1], cmd[2] ? JSON.parse(cmd[2]) : {})], "tool_use")];
   if (/prep/i.test(text)) return [200, reply(b, [use("prep_center", { monate: 3 })], "tool_use")];

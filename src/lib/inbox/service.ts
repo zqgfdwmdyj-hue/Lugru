@@ -159,6 +159,16 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     });
     return r === "bekannt" ? "duplicate" : "new";
   }
+  // B34.3: Antwort eines Händlers auf ein Restposten-Anschreiben (Bezug „AV-…“) → Aufgabe/Sperrliste; die Mail
+  // landet immer im geschäftlichen Posteingang (nie privat, nie „unwichtig“). Eigene Mails zählen nicht als Antwort.
+  const abverkauf = vonMir
+    ? false
+    : await import("@/lib/abverkauf/service")
+        .then((a) => a.antwortAusMail(tenantId, { messageKey: m.messageKey, fromAddress: m.fromAddress, subject: m.subject, text: m.text }))
+        .catch((e) => {
+          console.error("[Abverkauf] Antwort:", e instanceof Error ? e.message : e);
+          return false;
+        });
   // Rechtsfälle (B14): Mails vom Anwalt bzw. mit bekanntem Aktenzeichen → in den Verlauf des Falls, nicht hierher.
   if (!quelle) {
     const { rechtsMailZuordnen } = await import("@/lib/recht/service");
@@ -177,7 +187,7 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   const kontakt = quelle ? null : await P.kontaktLesen(tenantId, m.fromAddress).catch(() => null);
   // Termin-Mails (Arzt, Handwerker, Amt, Schule) sind privat: nur in den Privatkalender des Inhabers, nie hier.
   // (Absender, die ausdrücklich als „persönlich“ festgelegt sind, bekommen stattdessen Nachricht + Entwurf.)
-  if (!quelle && cfg.terminMails && kontakt?.art !== "persoenlich") {
+  if (!quelle && !abverkauf && cfg.terminMails && kontakt?.art !== "persoenlich") {
     const { terminMailUebernehmen, terminMelden } = await import("@/lib/private/termin-mail-service");
     const t = await terminMailUebernehmen(tenantId, { messageKey: m.messageKey, from: fromLine, subject: m.subject, body: m.text, receivedAt: m.receivedAt }, todayIso()).catch((e) => {
       console.error("[Termin-Mail]", e instanceof Error ? e.message : e);
@@ -195,7 +205,7 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   // B32 Persönliche Mails (Personen, Praxen, Dienstleister) → nur Privatbereich des Inhabers, nie hierher. Vorrang
   // haben: Marktplätze, Rechtsfälle, Lieferanten, Behörden, Antworten auf eigene Mails, eigene Regeln und alles, was
   // die Einstufung schon als geschäftlich erkennt (außer der Absender ist ausdrücklich „persönlich“).
-  if (!quelle && !vonMir && !lieferant && !behoerde && !ausgang && !regel && (!c.relevant || kontakt?.art === "persoenlich") && cfg.persoenlich.aktiv !== false) {
+  if (!quelle && !vonMir && !lieferant && !behoerde && !ausgang && !abverkauf && !regel && (!c.relevant || kontakt?.art === "persoenlich") && cfg.persoenlich.aktiv !== false) {
     const kunden = await db.select({ email: schema.b2bKunden.email }).from(schema.b2bKunden).where(eq(schema.b2bKunden.tenantId, tenantId));
     const istKunde = kunden.some((k) => (k.email ?? "").trim().toLowerCase() === m.fromAddress.trim().toLowerCase());
     if (!istKunde) {
@@ -217,7 +227,7 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     }
   }
   // Absender als „geschäftlich“ festgelegt bzw. Antwort auf eigene ausgehende Mail: wichtig, auch wenn unbekannt.
-  const erzwungen = !c.relevant && (Boolean(ausgang) || kontakt?.art === "geschaeftlich") ? (ausgang ? "Antwort auf ausgehende Mail" : "Kontakt: geschäftlich") : null;
+  const erzwungen = !c.relevant && (Boolean(ausgang) || abverkauf || kontakt?.art === "geschaeftlich") ? (ausgang ? "Antwort auf ausgehende Mail" : abverkauf ? "Antwort auf Restposten-Angebot" : "Kontakt: geschäftlich") : null;
   if (!c.relevant && !behoerde && !erzwungen && (!regel || regel.aktion === "archivieren")) return "ignored";
   const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: behoerde && !regel ? "Gericht/Behörde" : erzwungen && !regel ? erzwungen : "eigene Regel", dueInDays: behoerde && !regel ? 1 : 2 };
   const regelZeile = regel ? regeln.find((x) => x.id === regel.id)! : null;

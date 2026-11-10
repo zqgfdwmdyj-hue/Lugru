@@ -52,3 +52,4 @@ export * from "./tables/versand-label";
 export * from "./tables/abholung";
 export * from "./tables/scan";
 export * from "./tables/beleg-ablage";
+export * from "./tables/abverkauf";
