@@ -43,8 +43,14 @@ export async function agentEinstellungenAction(fd: FormData) {
   const pfad = String(fd.get("ordner") ?? "").trim().slice(0, 300);
   const intervall = Math.min(3600, Math.max(15, Number(fd.get("intervall")) || 60));
   const leerlauf = Math.min(240, Math.max(1, Number(fd.get("leerlauf")) || 10));
+  // B34.2 Download-Ordner → Ablage (beides nötig; Ablage nicht im Download-Ordner selbst)
+  const belegPfad = String(fd.get("belege_pfad") ?? "").trim().slice(0, 300);
+  const belegAblage = String(fd.get("belege_ablage") ?? "").trim().slice(0, 300);
+  if ((belegPfad && !belegAblage) || (!belegPfad && belegAblage)) redirect(`${PFAD}?meldung=${encodeURIComponent("Download-Ordner und Ablage-Ordner bitte beide angeben.")}`);
+  const norm = (x: string) => x.replace(/[\\/]+$/, "").toLowerCase();
+  if (belegPfad && norm(belegPfad) === norm(belegAblage)) redirect(`${PFAD}?meldung=${encodeURIComponent("Die Ablage muss ein anderer Ordner als der Download-Ordner sein.")}`);
   const { agentEinstellungenSetzen } = await import("@/lib/druck/service");
-  await agentEinstellungenSetzen(s.tenantId, id, { shelly, ordner: pfad ? { pfad, intervallSek: intervall } : null, leerlaufAusMin: leerlauf });
+  await agentEinstellungenSetzen(s.tenantId, id, { shelly, ordner: pfad ? { pfad, intervallSek: intervall } : null, leerlaufAusMin: leerlauf, belege: belegPfad ? { pfad: belegPfad, ablage: belegAblage } : null });
   revalidatePath(PFAD);
   redirect(`${PFAD}?meldung=${encodeURIComponent("Gespeichert – der Agent übernimmt es beim nächsten Heartbeat (≤ 30 s).")}`);
 }

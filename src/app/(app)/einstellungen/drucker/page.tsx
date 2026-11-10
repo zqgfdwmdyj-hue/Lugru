@@ -75,6 +75,11 @@ export default async function DruckerEinstellungen({ searchParams }: { searchPar
               <label>alle <input className="input" name="intervall" type="number" min={15} max={3600} defaultValue={a.einstellungen.ordner?.intervallSek ?? 60} style={{ width: 70 }} /> s</label>
               <label>Steckdose aus nach <input className="input" name="leerlauf" type="number" min={1} max={240} defaultValue={a.einstellungen.leerlaufAusMin ?? 10} style={{ width: 60 }} /> Min. ohne Auftrag</label>
             </div>
+            <div className="row small" style={{ gap: 10, flexWrap: "wrap" }} data-testid="agent-belege">
+              <label>Download-Ordner (Belege, PDFs/Fotos) <input className="input" name="belege_pfad" defaultValue={a.einstellungen.belege?.pfad ?? ""} placeholder="C:\Users\…\Downloads" style={{ width: 240 }} /></label>
+              <label>Ablage (Monat/Lieferant, Dubletten, Kontoauszüge) <input className="input" name="belege_ablage" defaultValue={a.einstellungen.belege?.ablage ?? ""} placeholder="D:\Belege" style={{ width: 240 }} /></label>
+              <span className="muted">Rechnungen werden umbenannt (JJJJ-MM-TT_Lieferant_Betrag_Nr) und nach Monat/Lieferant abgelegt, Kontoauszüge importiert, Dubletten in „Dubletten“ verschoben – gelöscht wird nichts ohne Freigabe (Rechnungsstation → Download-Ordner).</span>
+            </div>
             <div><button className="btn btn-sm" type="submit">Speichern</button></div>
           </form>
         </section>

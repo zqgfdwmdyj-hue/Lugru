@@ -23,7 +23,7 @@ export type Umsatz = {
   mandat: string | null;
   saldoDanach: number | null;
 };
-export type Auszug = { format: "csv" | "camt" | "pdf"; konto: string | null; umsaetze: Umsatz[]; salden: { datum: string; saldo: number }[] };
+export type Auszug = { format: "csv" | "camt" | "pdf" | "mt940" | "paypal"; konto: string | null; umsaetze: Umsatz[]; salden: { datum: string; saldo: number }[] };
 
 const norm = (h: string) =>
   h
@@ -153,9 +153,140 @@ export function leseCamt(text: string): Auszug {
   return { format: "camt", konto, umsaetze: mitSchluessel(roh), salden };
 }
 
+/** MT940 (SWIFT-Kontoauszug, Datei .sta/.mt940/.txt): erkennt „:20:“ + „:61:“. */
+export const istMt940 = (text: string) => /(^|\n):20:/.test(text) && /(^|\n):61:/.test(text);
+
+const mtDatum = (yymmdd: string) => `20${yymmdd.slice(0, 2)}-${yymmdd.slice(2, 4)}-${yymmdd.slice(4, 6)}`;
+const mtBetrag = (s: string) => Number(s.replace(",", "."));
+
+/**
+ * MT940 lesen: :25: Konto, :61: Umsatz (Valuta JJMMTT, Buchung MMTT, C/D bzw. RC/RD, Betrag), :86: Details
+ * (?00 Buchungstext, ?20–?29/?60–?63 Verwendungszweck, ?31 IBAN, ?32/?33 Name), :62F: Schlusssaldo.
+ */
+export function leseMt940(text: string): Auszug {
+  // Fortsetzungszeilen an das vorige Feld hängen.
+  const felder: { tag: string; wert: string }[] = [];
+  for (const zeile of text.replace(/\r/g, "").split("\n")) {
+    const m = /^:(\d{2}[A-Z]?):(.*)$/.exec(zeile);
+    if (m) felder.push({ tag: m[1], wert: m[2] });
+    else if (felder.length && zeile.trim() && !/^-\}?$/.test(zeile.trim())) felder[felder.length - 1].wert += `\n${zeile}`;
+  }
+  let konto: string | null = null;
+  const roh: Omit<Umsatz, "schluessel">[] = [];
+  const salden: { datum: string; saldo: number }[] = [];
+  for (let i = 0; i < felder.length; i++) {
+    const f = felder[i];
+    if (f.tag === "25") konto ??= f.wert.trim().replace(/\s/g, "") || null;
+    if (f.tag === "62F" || f.tag === "62M") {
+      const m = /^([CD])(\d{6})[A-Z]{3}([\d,]+)/.exec(f.wert.trim());
+      if (m) salden.push({ datum: mtDatum(m[2]), saldo: (m[1] === "D" ? -1 : 1) * mtBetrag(m[3]) });
+    }
+    if (f.tag !== "61") continue;
+    const m = /^(\d{6})(\d{4})?(R?[CD])[A-Z]?([\d,]+)/.exec(f.wert.trim());
+    if (!m) continue;
+    const valuta = mtDatum(m[1]);
+    let buchung = valuta;
+    if (m[2]) {
+      // Buchungstag ohne Jahr: Jahr der Valuta, beim Jahreswechsel eins davor/danach
+      let jahr = Number(valuta.slice(0, 4));
+      const mm = Number(m[2].slice(0, 2));
+      const vm = Number(valuta.slice(5, 7));
+      if (mm === 12 && vm === 1) jahr--;
+      if (mm === 1 && vm === 12) jahr++;
+      buchung = `${jahr}-${m[2].slice(0, 2)}-${m[2].slice(2, 4)}`;
+    }
+    const soll = m[3] === "D" || m[3] === "RC";
+    const betrag = (soll ? -1 : 1) * mtBetrag(m[4]);
+    const d = felder[i + 1]?.tag === "86" ? felder[i + 1].wert.replace(/\n/g, "") : "";
+    const sub = new Map<string, string>();
+    for (const t of d.split("?").slice(1)) sub.set(t.slice(0, 2), (sub.get(t.slice(0, 2)) ?? "") + t.slice(2));
+    const zweck = ["20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "60", "61", "62", "63"].map((k) => sub.get(k) ?? "").join("").replace(/^(EREF|KREF|MREF|CRED|SVWZ|ABWA)\+/g, "").trim();
+    const svwz = /SVWZ\+(.*?)(?=(?:EREF|KREF|MREF|CRED|ABWA|ABWE|IBAN|BIC)\+|$)/.exec(zweck)?.[1]?.trim();
+    roh.push({
+      konto,
+      buchungstag: buchung,
+      valuta,
+      betrag: Math.round(betrag * 100) / 100,
+      waehrung: "EUR",
+      gegenpartei: `${sub.get("32") ?? ""}${sub.get("33") ?? ""}`.trim(),
+      iban: (sub.get("31") ?? "").trim() || null,
+      zweck: svwz || zweck || (d.includes("?") ? "" : d.trim()),
+      buchungstext: (sub.get("00") ?? "").trim() || null,
+      glaeubigerId: /CRED\+(\S+)/.exec(zweck)?.[1] ?? null,
+      mandat: /MREF\+(\S+)/.exec(zweck)?.[1] ?? null,
+      saldoDanach: null,
+    });
+  }
+  if (!roh.length && !salden.length) throw new Error("Keine MT940-Umsätze in der Datei gefunden.");
+  return { format: "mt940", konto, umsaetze: mitSchluessel(roh), salden };
+}
+
+const PAYPAL: Record<string, RegExp> = {
+  datum: /^(datum|date)$/,
+  name: /^(name)$/,
+  typ: /^(typ|type)$/,
+  status: /^(status)$/,
+  waehrung: /^(waehrung|wahrung|currency)$/,
+  brutto: /^(brutto|gross)$/,
+  gebuehr: /^(gebuehr|gebuhr|fee)$/,
+  code: /^(transaktionscode|transaction id)$/,
+  artikel: /^(artikelbezeichnung|item title)$/,
+  rechnung: /^(rechnungsnummer|invoice number)$/,
+  betreff: /^(betreff|subject)$/,
+  guthaben: /^(guthaben|balance)$/,
+  mail: /^(empfaenger e mail adresse|empfanger e mail adresse|to email address)$/,
+};
+
+/** PayPal-Kontoauszug als CSV (Aktivitäten-Export, Deutsch oder Englisch)? */
+export const istPaypalKopf = (headers: string[]) => {
+  const h = headers.map(norm);
+  return h.some((x) => PAYPAL.code.test(x)) && h.some((x) => PAYPAL.brutto.test(x));
+};
+
+/**
+ * PayPal-Export: je abgeschlossener Zahlung ein Umsatz (Brutto, Gegenpartei = Name, Zweck = Artikel/Rechnungsnr./
+ * Betreff), Gebühren als eigener Umsatz. Bankgutschriften/-abbuchungen und Währungsumrechnungen zählen nicht –
+ * die stehen schon auf dem Bankkonto bzw. sind keine Zahlung.
+ */
+export function lesePaypal(bytes: Uint8Array): Auszug {
+  const t = readTable(bytes);
+  const kopf = t.headers.map(norm);
+  const c = Object.fromEntries(Object.keys(PAYPAL).map((k) => [k, kopf.findIndex((h) => PAYPAL[k].test(h))])) as Record<keyof typeof PAYPAL, number>;
+  if (c.datum < 0 || c.brutto < 0) throw new Error("PayPal-Export: Spalten „Datum“ und „Brutto“ nicht gefunden.");
+  const z = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
+  const roh: Omit<Umsatz, "schluessel">[] = [];
+  const salden = new Map<string, number>();
+  for (const r of t.rows) {
+    const status = z(r, c.status);
+    if (status && !/abgeschlossen|completed|erstattet|refunded/i.test(status)) continue;
+    const typ = z(r, c.typ);
+    if (/bankgutschrift|abbuchung|bankkonto|auszahlung auf|w(ä|ae)hrungsumrechnung|currency conversion|withdrawal|transfer to bank|bank deposit|reservierung|hold/i.test(typ)) continue;
+    const tag = datumIso(z(r, c.datum));
+    const brutto = parseAmount(z(r, c.brutto));
+    if (!tag || brutto === null) continue;
+    const code = z(r, c.code);
+    const zweck = [z(r, c.artikel), z(r, c.rechnung) ? `Rechnung ${z(r, c.rechnung)}` : "", z(r, c.betreff), code ? `PayPal ${code}` : ""].filter(Boolean).join(" · ");
+    const name = z(r, c.name) || z(r, c.mail);
+    roh.push({ konto: "PayPal", buchungstag: tag, valuta: null, betrag: brutto, waehrung: z(r, c.waehrung) || "EUR", gegenpartei: name, iban: null, zweck, buchungstext: typ || null, glaeubigerId: null, mandat: code || null, saldoDanach: c.guthaben >= 0 ? parseAmount(z(r, c.guthaben)) : null });
+    const gebuehr = parseAmount(z(r, c.gebuehr));
+    if (gebuehr) roh.push({ konto: "PayPal", buchungstag: tag, valuta: null, betrag: gebuehr, waehrung: z(r, c.waehrung) || "EUR", gegenpartei: "PayPal Gebühr", iban: null, zweck: `Gebühr zu ${code || name}`, buchungstext: "Gebühr", glaeubigerId: null, mandat: code ? `${code}-gebuehr` : null, saldoDanach: null });
+    const saldo = c.guthaben >= 0 ? parseAmount(z(r, c.guthaben)) : null;
+    if (saldo !== null) salden.set(tag, saldo);
+  }
+  return { format: "paypal", konto: "PayPal", umsaetze: mitSchluessel(roh), salden: [...salden].map(([datum, saldo]) => ({ datum, saldo })) };
+}
+
 export function leseKontoauszug(bytes: Uint8Array): Auszug {
   const anfang = new TextDecoder("utf-8").decode(bytes.slice(0, 600));
   if (/^\s*(﻿)?<\?xml|<Document/.test(anfang)) return leseCamt(new TextDecoder("utf-8").decode(bytes));
+  const text = new TextDecoder("latin1").decode(bytes.slice(0, 200_000));
+  if (istMt940(text)) return leseMt940(new TextDecoder(/[\u00c3][\u0080-\u00bf]/.test(text) ? "utf-8" : "latin1").decode(bytes));
+  try {
+    const t = readTable(bytes);
+    if (istPaypalKopf(t.headers)) return lesePaypal(bytes);
+  } catch {
+    // weiter mit der normalen CSV
+  }
   return leseCsv(bytes);
 }
 

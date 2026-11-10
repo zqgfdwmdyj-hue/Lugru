@@ -13,6 +13,13 @@ export async function GET(request: Request) {
   if (!monatOk(monat)) return new Response("Monat fehlt", { status: 400 });
   const wer = { tenantId: session.tenantId, userId: session.userId, name: session.name, email: session.email };
   try {
+    if (url.searchParams.get("art") === "abgleich") {
+      // B34.2: Zahlung ohne Beleg / Beleg ohne Zahlung als CSV (für Stotax bzw. den Steuerberater)
+      const { buchhaltungStatus } = await import("@/lib/buchhaltung/service");
+      const { abgleichCsv } = await import("@/lib/buchhaltung/abgleich");
+      const st = await buchhaltungStatus(session.tenantId, monat, firma);
+      return new Response(abgleichCsv(st.listen), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="Abgleich_offen_${st.firma}_${monat}.csv"` } });
+    }
     if (url.searchParams.get("art") === "zip") {
       const z = await belegeZip(wer, firma, monat);
       return new Response(new Uint8Array(z.bytes), { headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${z.name}"` } });

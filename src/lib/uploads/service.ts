@@ -88,6 +88,11 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
       // kein ArbitrageOne-Format – weiter unten erkennen
     }
   }
+  // B34.2: MT940 (.sta/.mt940/.940/.txt) → Kontoauszug
+  if ([".sta", ".mt940", ".940", ".txt", ".mt9"].includes(endung(name)) || !endung(name)) {
+    const { istMt940 } = await import("@/lib/bank/logic");
+    if (istMt940(new TextDecoder("latin1").decode(bytes.subarray(0, 50_000)))) return "kontoauszug";
+  }
   if (endung(name) === ".json") {
     try {
       return jsonArt(JSON.parse(new TextDecoder().decode(bytes))) ?? "tabelle";
@@ -108,7 +113,7 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
   switch (art) {
     case "kontoauszug": {
       const r = await sparkasseImportieren(wer, o.firma, { name, bytes }, o.saldo);
-      return { ok: true, text: `${r.firma}: ${importMeldung(r.bank)}`, hinweise: [], details: { konto: { firma: r.firma, buchungen_neu: r.neu, schon_vorhanden: r.doppelt, von: r.von, bis: r.bis, kontostand: r.endsaldo, kontostand_datum: r.bank.endsaldo?.datum ?? r.bis } } };
+      return { ok: true, text: `${r.firma}: ${importMeldung(r.bank)}${r.entgelt ? ` · Entgeltabschluss (Seite ${r.entgelt.seite}, ${r.entgelt.betrag.toFixed(2).replace(".", ",")} €) als eigener Beleg` : ""}`, hinweise: [], details: { konto: { firma: r.firma, buchungen_neu: r.neu, schon_vorhanden: r.doppelt, von: r.von, bis: r.bis, kontostand: r.endsaldo, kontostand_datum: r.bank.endsaldo?.datum ?? r.bis } } };
     }
     case "amex": {
       const r = await amexImportieren(wer, o.firma, { name, bytes });

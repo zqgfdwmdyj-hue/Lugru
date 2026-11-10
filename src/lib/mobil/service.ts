@@ -198,27 +198,80 @@ export async function fahrtBriefing(session: Session, o: { ziel?: string | null;
 
 // ---- Scan --------------------------------------------------------------------------------------------------
 
-export async function scanPruefen(tenantId: string, e: { ean: string; preis: number; menge?: number | null; netto?: boolean }) {
+// Kapital-Ampel kostet (ganzer Bestand) – je Mandant 5 Min. merken, damit der Scan unter 3 s bleibt.
+type KapitalAsin = { ampel: string; reichweite: number | null; kapital: number | null };
+type KapitalStand = { jeAsin: Map<string, KapitalAsin>; summe: { gruen: number; gelb: number; rot: number; gesamt: number } | null };
+const kapitalCache = new Map<string, { am: number; p: Promise<KapitalStand> }>();
+/** Kapital-Ampel je ASIN plus Summen (gemerkt 5 Min.) – für Scan-Ergebnis und „Heute gescannt“. */
+export function kapitalStand(tenantId: string): Promise<KapitalStand> {
+  const c = kapitalCache.get(tenantId);
+  if (c && Date.now() - c.am < 5 * 60_000) return c.p;
+  const p = (async (): Promise<KapitalStand> => {
+    const { kapitalAmpel } = await import("@/lib/money/kapital-service");
+    const { zeilen, summe } = await kapitalAmpel(tenantId, todayIso());
+    const m = new Map<string, KapitalAsin>();
+    const rang = { rot: 0, gelb: 1, gruen: 2 } as Record<string, number>;
+    for (const z of zeilen) {
+      if (!z.asin) continue;
+      const alt = m.get(z.asin);
+      // Mehrere SKUs je ASIN: schlechteste Ampel, Kapital zusammen, längste Reichweite.
+      if (!alt) m.set(z.asin, { ampel: z.ampel, reichweite: z.reichweite, kapital: z.kapital });
+      else m.set(z.asin, { ampel: rang[z.ampel] < rang[alt.ampel] ? z.ampel : alt.ampel, reichweite: Math.max(alt.reichweite ?? 0, z.reichweite ?? 0), kapital: (alt.kapital ?? 0) + (z.kapital ?? 0) });
+    }
+    return { jeAsin: m, summe: zeilen.length ? summe : null };
+  })().catch((): KapitalStand => ({ jeAsin: new Map(), summe: null }));
+  kapitalCache.set(tenantId, { am: Date.now(), p });
+  return p;
+}
+
+/**
+ * Scan prüfen (B13, erweitert B34.1): wie deal_pruefen mit Satz zum Vorlesen. Rückvergütung (Cashback, Kartenpunkte)
+ * senkt den effektiven EK; dazu ROI p. a. aus der geschätzten Umschlagszeit und – bei eigenem Bestand – die
+ * Kapital-Ampel. Keepa kommt aus dem 6-Stunden-Cache der Deal-Ampel.
+ */
+export async function scanPruefen(tenantId: string, e: { ean: string; preis: number; menge?: number | null; netto?: boolean; rueckverguetung?: number | null }) {
   const { dealPruefen } = await import("@/lib/deal-ampel/service");
-  const r = await dealPruefen(tenantId, { code: e.ean, ek: e.preis, ekIstNetto: Boolean(e.netto), menge: e.menge ?? null });
+  const { ekMitRueckverguetung, kapitalSatz } = await import("@/lib/scan/logic");
+  const rv = Math.min(50, Math.max(0, Number(e.rueckverguetung) || 0));
+  const ek = ekMitRueckverguetung(e.preis, rv);
+  const kapitalP = kapitalStand(tenantId);
+  const r = await dealPruefen(tenantId, { code: e.ean, ek, ekIstNetto: Boolean(e.netto), menge: e.menge ?? null });
   const b = r.bestes;
   const g = b?.aktuell ?? b?.schnitt90 ?? null;
   const menge = r.abverkauf.empfohlen ? r.abverkauf.empfohlen.bis : null;
   const grund = r.ampel === "rot" ? (r.rot[0] ?? r.begruendung) : null;
+  // ROI p. a. wie deal_pruefen (B28.6): Umschlag aus Verkäufen, Angeboten, Menge und eigenem Vorlauf.
+  let umschlag: { roiPa: number | null; text: string; warnung: string | null } | null = null;
+  if (b) {
+    const { vorlaufFuer } = await import("@/lib/money/durchlauf");
+    const { umschlagSchaetzen } = await import("@/lib/deal-eingang/umschlag-logic");
+    const vorlauf = await vorlaufFuer(tenantId, null).catch(() => undefined);
+    umschlag = umschlagSchaetzen({ verkaeufeMonat: b.verkaeufeMonat ?? b.verkaeufeGeschaetzt ?? r.verkaeufeGeschaetzt?.wert ?? null, angebote: b.angebote, amazonProzent: b.amazonProzent, menge: e.menge ?? menge, roi: g?.roi ?? null, vorlauf });
+  }
+  const kapital = r.eigen ? ((await Promise.race([kapitalP, new Promise<null>((ok) => setTimeout(() => ok(null), 800))]))?.jeAsin.get(r.asin) ?? null) : null;
+  const vorlesen = scanAnsage({ ampel: r.ampel, land: b?.land ?? null, gewinnStueck: g?.gewinn ?? null, roi: g?.roi ?? null, angebote: b?.angebote ?? null, menge, grund });
   return {
     asin: r.asin,
     titel: r.titel,
     ampel: r.ampel,
     land: b?.land ?? null,
+    ek_netto: r.ekNetto,
+    ek_effektiv: ek,
+    rueckverguetung: rv,
     gewinn_stueck: g?.gewinn ?? null,
     roi: g?.roi ?? null,
+    roi_pa: umschlag?.roiPa ?? null,
+    umschlag: umschlag ? `${umschlag.text} (geschätzt)` : null,
     angebote: b?.angebote ?? null,
     amazon_anteil: b?.amazonProzent ?? null,
     empfohlene_menge: menge,
     eigener_bestand: r.eigen,
+    kapital_ampel: kapital ? { ...kapital, text: kapitalSatz(kapital) } : null,
     begruendung: r.begruendung,
-    hinweise: r.hinweise.slice(0, 5),
-    vorlesen: scanAnsage({ ampel: r.ampel, land: b?.land ?? null, gewinnStueck: g?.gewinn ?? null, roi: g?.roi ?? null, angebote: b?.angebote ?? null, menge, grund }),
+    /** Ein Satz für die Handy-Anzeige: erster Grund dagegen bzw. Achtung, sonst der erste Satz der Begründung. */
+    begruendung_kurz: r.rot[0] ?? r.gelb[0] ?? (r.begruendung.split(/(?<=\.)\s+(?=[A-ZÄÖÜ])/)[0] || r.begruendung),
+    hinweise: [...(umschlag?.warnung ? [umschlag.warnung] : []), ...r.hinweise].slice(0, 5),
+    vorlesen: kapital?.ampel === "rot" ? `${vorlesen} Achtung: eigener Bestand mit Kapital-Ampel Rot.` : vorlesen,
   };
 }
 

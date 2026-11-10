@@ -24,7 +24,7 @@ export type UploadArt =
   | "tabelle";
 
 export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; link: string }> = {
-  kontoauszug: { text: "Kontoauszug (Sparkasse)", bereich: "geld", link: "/buchhaltung" },
+  kontoauszug: { text: "Kontoauszug (Bank, MT940, PayPal)", bereich: "geld", link: "/buchhaltung" },
   amex: { text: "American Express", bereich: "geld", link: "/buchhaltung" },
   ust_bericht: { text: "Amazon-Umsatzsteuerbericht", bereich: "geld", link: "/buchhaltung" },
   bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
@@ -63,6 +63,8 @@ export function tabellenArt(headers: string[], dateiname: string): UploadArt | n
   const roh = headers.map((x) => x.trim().toUpperCase());
   if (roh.includes("TRANSACTION_TYPE") && (roh.includes("TOTAL_ACTIVITY_VALUE_AMT_VAT_EXCL") || roh.includes("PRICE_OF_ITEMS_AMT_VAT_EXCL"))) return "ust_bericht";
   if (hat("buchungstag", "buchungsdatum") && hat("betrag", "umsatz", "betrag eur") && hat("auftragskonto", "verwendungszweck", "beguenstigter zahlungspflichtiger", "name zahlungsbeteiligter", "buchungstext", "iban auftragskonto")) return "kontoauszug";
+  // B34.2: PayPal-Aktivitäten-Export (Transaktionscode + Brutto) → wie ein Kontoauszug (Konto „PayPal“)
+  if (hat("transaktionscode", "transaction id") && hat("brutto", "gross")) return "kontoauszug";
   if (hat("datum", "date") && hat("beschreibung", "description") && hat("betrag", "amount") && (hat("karteninhaber", "konto #", "card member", "erscheint auf ihrer abrechnung als") || /amex|american.?express/i.test(dateiname) || h.length <= 4)) return "amex";
   // B31.5: BQool-Berichte vor „Manage Listings“ prüfen (beide haben Min-/Max-Spalten im Namen)
   const bericht = berichtArt(headers);
@@ -83,11 +85,26 @@ export function jsonArt(daten: unknown): UploadArt | null {
 /** Text eines PDFs grob einordnen: Kontoauszug, Call-Transkript oder Beleg (Standard). */
 export function pdfArt(text: string): UploadArt {
   const t = text.slice(0, 20_000);
-  const buchungen = (t.match(/^\d{2}\.\d{2}\.(\d{2,4})?\s.*\d,\d{2}\s*[-+SH]?$/gm) ?? []).length;
-  if (/(kontoauszug|kontostand am|alter kontostand|neuer kontostand)/i.test(t) && buchungen >= 1) return "kontoauszug";
+  if (istKontoauszugText(t)) return "kontoauszug";
   const sprecher = (t.match(/^(\[?\d{1,2}:\d{2}(:\d{2})?\]?\s+)?[A-ZÄÖÜ][\wäöüß.-]+(\s[A-ZÄÖÜ][\wäöüß.-]+)?:\s/gm) ?? []).length;
   if (sprecher >= 15 && !/(rechnung|invoice|ust-?id|mwst|umsatzsteuer)/i.test(t)) return "call";
   return "beleg";
+}
+
+/**
+ * Kontoauszug statt Rechnung (B34.2): Schlüsselwörter des Auszugs (Kontoauszug, Kontostand/Saldo alt/neu,
+ * Rechnungs-/Entgeltabschluss, „Buchungstag … Wert“) plus Buchungszeilen oder eigene IBAN mit Saldo. Eine Rechnung
+ * mit Bankverbindung im Fuß reicht dafür nicht – sie hat keine Salden und keine Buchungszeilen.
+ */
+export function istKontoauszugText(text: string): boolean {
+  const t = text.slice(0, 40_000);
+  const buchungen = (t.match(/^\d{2}\.\d{2}\.(\d{2,4})?\s.*\d,\d{2}\s*[-+SH]?$/gm) ?? []).length;
+  const stark = /(kontoauszug|kontostand am|alter kontostand|neuer kontostand|saldo (alt|neu)|alter saldo|neuer saldo|auszug nr\.?|rechnungsabschluss|entgeltabschluss|umsatz(ü|ue)bersicht)/i.test(t);
+  const spalten = /buchungs(tag|datum)\b[\s\S]{0,80}\b(wert|valuta|wertstellung)/i.test(t);
+  const rechnung = /(rechnungsnummer|rechnungs-nr|invoice (no|number)|ust-?id(nr)?\.?:)/i.test(t);
+  if (stark && (buchungen >= 1 || spalten)) return true;
+  if (spalten && buchungen >= 2 && !rechnung) return true;
+  return false;
 }
 
 /** Grobe Einordnung ohne Inhalt (für Endungen, die eindeutig sind). */

@@ -8,7 +8,7 @@ export const AGENT_ONLINE_SEK = 90; // Heartbeat alle 30 s – nach drei verpass
 export const WARTESCHLANGE_TAGE = 7;
 export const PROTOKOLL_TAGE = 90;
 export const PUSH_NACH_MIN = 15;
-export const AGENT_VERSION_AKTUELL = "1.0.0";
+export const AGENT_VERSION_AKTUELL = "1.1.0";
 
 export type Rolle = "owner" | "staff" | "va" | string;
 

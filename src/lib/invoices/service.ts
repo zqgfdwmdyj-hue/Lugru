@@ -23,7 +23,7 @@ export async function pdfText(bytes: Uint8Array): Promise<string> {
 }
 
 /** Nimmt eine Rechnung auf, liest sie aus, ordnet sie ein und verknüpft sie wenn möglich. */
-export async function ingestInvoice(opts: { tenantId: string; source: "drive" | "upload"; externalId: string; fileName: string; bytes: Buffer; storeBytes: boolean }) {
+export async function ingestInvoice(opts: { tenantId: string; source: "drive" | "upload" | "ordner"; externalId: string; fileName: string; bytes: Buffer; storeBytes: boolean; vendor?: string | null }) {
   const { tenantId } = opts;
   const [existing] = await db.select({ id: schema.invoices.id }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.source, opts.source), eq(schema.invoices.externalId, opts.externalId)));
   if (existing) return { id: existing.id, created: false };
@@ -47,6 +47,7 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
       fileName: opts.fileName,
       fileId,
       sourceKey: name.sourceKey,
+      vendor: opts.vendor ?? null,
       supplierId: rule?.supplierId ?? null,
       kind,
       status: kind === "expense" ? "matched" : "new",

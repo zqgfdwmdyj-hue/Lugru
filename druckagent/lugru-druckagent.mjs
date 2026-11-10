@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const VERSION = "1.0.0";
+export const VERSION = "1.1.0";
 const HEARTBEAT_MS = 30_000;
 const FALLBACK_MS = 10_000;
 const LANGPOLL_S = 25;
@@ -315,6 +315,90 @@ export class Agent {
       this.log(`hochgeladen: ${n}`);
     }
   }
+  /**
+   * B34.2 Belege aus dem Download-Ordner: PDFs und Fotos ans Seller-System (Rechnung/Beleg/Kontoauszug erkennen,
+   * Dubletten prüfen) und nach dessen Antwort in die Ablage verschieben – Monat/Lieferant/JJJJ-MM-TT_Lieferant_Betrag_Nr,
+   * Kontoauszüge nach „Kontoauszüge/JJJJ-MM“, Dubletten nach „Dubletten“. Gelöscht wird nichts – außer Dubletten, die im
+   * Seller-System zum Löschen freigegeben wurden (Prüfsumme muss stimmen). Andere Dateien bleiben liegen.
+   */
+  async belegePruefen() {
+    const b = this.einstellungen?.belege ?? this.cfg.belege;
+    if (!b?.pfad || !b?.ablage) return { verschoben: 0, geloescht: 0 };
+    const standDatei = path.join(b.ablage, ".lugru-belege.json");
+    const stand = await fsp.readFile(standDatei, "utf8").then(JSON.parse).catch(() => ({ offen: {}, liegen: {} }));
+    stand.offen ??= {};
+    stand.liegen ??= {};
+    let verschoben = 0;
+    const dateien = await fsp.readdir(b.pfad).catch(() => []);
+    for (const n of dateien.filter((x) => BELEG_ENDUNG.test(x) && !x.startsWith("."))) {
+      const p = path.join(b.pfad, n);
+      const st = await fsp.stat(p).catch(() => null);
+      if (!st?.isFile() || Date.now() - st.mtimeMs < 5000 || st.size > 25 * 1024 * 1024) continue; // Download läuft noch
+      const daten = await fsp.readFile(p);
+      const hash = createHash("sha256").update(daten).digest("hex");
+      if (stand.liegen[hash]) continue;
+      let r;
+      try {
+        const res = stand.offen[hash]
+          ? await this.anfrage(`/api/druckagent/beleg?id=${encodeURIComponent(stand.offen[hash])}`)
+          : await this.anfrage("/api/druckagent/beleg", { method: "POST", headers: { "content-type": "application/octet-stream", "x-dateiname": encodeURIComponent(n), "x-sha256": hash }, body: daten });
+        r = await res.json();
+        if (!res.ok) throw new Error(r?.fehler ?? `HTTP ${res.status}`);
+      } catch (e) {
+        this.log(`Beleg ${n}: ${e.message}`);
+        continue;
+      }
+      if (r.aktion === "warten") {
+        stand.offen[hash] = r.id;
+        continue;
+      }
+      delete stand.offen[hash];
+      if (r.aktion === "liegen_lassen" || !r.ordner) {
+        stand.liegen[hash] = { id: r.id, name: n };
+        continue;
+      }
+      const zielOrdner = path.join(b.ablage, ...String(r.ordner).split("/").filter((x) => x && x !== ".." && x !== "."));
+      await fsp.mkdir(zielOrdner, { recursive: true });
+      const ziel = await freierName(zielOrdner, String(r.name || n).replace(/[\\/:*?"<>|]/g, "-"));
+      try {
+        await fsp.rename(p, ziel);
+      } catch {
+        // anderes Laufwerk: kopieren, Kopie prüfen, dann erst das Original aus dem Download-Ordner nehmen
+        await fsp.copyFile(p, ziel);
+        const kopie = createHash("sha256").update(await fsp.readFile(ziel)).digest("hex");
+        if (kopie !== hash) throw new Error(`Kopie von ${n} fehlerhaft – Original bleibt liegen`);
+        await fsp.unlink(p);
+      }
+      verschoben++;
+      const rel = path.relative(b.ablage, ziel).split(path.sep).join("/");
+      await this.anfrage("/api/druckagent/beleg/rueckmeldung", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: r.id, verschoben: rel }) }).catch((e) => this.log(`Rückmeldung ${n}: ${e.message}`));
+      this.log(`Beleg ${n} → ${rel}`);
+    }
+    // Löschen nur nach Freigabe im Seller-System – und nur, wenn die Datei noch dieselbe ist (Prüfsumme).
+    let geloescht = 0;
+    const lr = await this.anfrage("/api/druckagent/beleg?loeschen=1").catch(() => null);
+    const liste = lr?.ok ? ((await lr.json()).loeschen ?? []) : [];
+    for (const x of liste) {
+      const voll = path.join(b.ablage, ...String(x.pfad ?? "").split("/").filter((t) => t && t !== ".." && t !== "."));
+      let ok = false;
+      let meldung = null;
+      if (!String(x.pfad ?? "").startsWith("Dubletten/")) meldung = "nur Dateien im Ordner Dubletten";
+      else {
+        const daten = await fsp.readFile(voll).catch(() => null);
+        if (!daten) meldung = "Datei nicht mehr da";
+        else if (createHash("sha256").update(daten).digest("hex") !== x.hash) meldung = "Datei geändert – nicht gelöscht";
+        else {
+          await fsp.unlink(voll);
+          ok = true;
+          geloescht++;
+        }
+      }
+      await this.anfrage("/api/druckagent/beleg/rueckmeldung", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: x.id, geloescht: ok, meldung }) }).catch(() => undefined);
+    }
+    await fsp.mkdir(b.ablage, { recursive: true });
+    await fsp.writeFile(standDatei, JSON.stringify(stand));
+    return { verschoben, geloescht };
+  }
   async updatePruefen() {
     const r = await this.anfrage("/api/druckagent/version").catch(() => null);
     const j = r?.ok ? await r.json() : null;
@@ -359,6 +443,7 @@ export class Agent {
       }
       if (Date.now() >= naechsterOrdner) {
         await this.ordnerPruefen().catch((e) => this.log(`Ordner: ${e.message}`));
+        await this.belegePruefen().catch((e) => this.log(`Belege: ${e.message}`));
         naechsterOrdner = Date.now() + Number(this.einstellungen?.ordner?.intervallSek ?? this.cfg.ordner?.intervallSek ?? 60) * 1000;
       }
       if (Date.now() >= naechstesUpdate) {
@@ -375,6 +460,19 @@ export class Agent {
       }
     }
   }
+}
+
+const BELEG_ENDUNG = /\.(pdf|jpe?g|png|heic|heif|webp)$/i;
+
+/** Freien Dateinamen im Ordner finden: „name.pdf“, sonst „name (2).pdf“ … – nie überschreiben. */
+export async function freierName(ordner, name) {
+  const ext = path.extname(name);
+  const basis = name.slice(0, name.length - ext.length);
+  for (let i = 1; i < 1000; i++) {
+    const p = path.join(ordner, i === 1 ? name : `${basis} (${i})${ext}`);
+    if (!(await fsp.stat(p).catch(() => null))) return p;
+  }
+  throw new Error(`Kein freier Name für ${name}`);
 }
 
 export function neuer(a, b) {

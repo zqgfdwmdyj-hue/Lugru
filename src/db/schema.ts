@@ -50,3 +50,5 @@ export * from "./tables/apple-watch";
 export * from "./tables/amazon-konto";
 export * from "./tables/versand-label";
 export * from "./tables/abholung";
+export * from "./tables/scan";
+export * from "./tables/beleg-ablage";

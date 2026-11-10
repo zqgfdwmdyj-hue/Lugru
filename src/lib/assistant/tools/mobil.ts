@@ -79,14 +79,14 @@ const autoNaviTool = defineTool({
 const scanPruefenTool = defineTool({
   name: "scan_pruefen",
   title: "Scan prüfen (Deal-Ampel)",
-  description: "EAN/ASIN + Einkaufspreis (brutto Standard) → Ampel, bestes Land, Gewinn/Stück, ROI, Angebote, empfohlene Menge, eigener Bestand/Kapital-Ampel. Wie deal_pruefen, mit Satz `vorlesen` („Grün. Frankreich. 4 Euro 20 pro Stück …“).",
+  description: "EAN/ASIN + Einkaufspreis (brutto Standard, optional Rückvergütung % für Cashback/Kartenpunkte – senkt den effektiven EK) → Ampel, bestes Land, Gewinn/Stück, ROI, ROI p. a. (geschätzte Umschlagszeit), Angebote, empfohlene Menge, eigener Bestand mit Kapital-Ampel, Begründung in einem Satz. Wie deal_pruefen, mit Satz `vorlesen` („Grün. Frankreich. 4 Euro 20 pro Stück …“). Speichert nichts (die Seite /scan führt „Heute gescannt“).",
   area: ["lieferanten", "dealeingang", "wawi"],
   write: false,
-  input: z.object({ ean: z.string().trim().min(8).max(40), preis: z.number().positive().max(100000), menge: z.number().int().positive().max(100000).optional(), netto: z.boolean().default(false) }),
+  input: z.object({ ean: z.string().trim().min(8).max(40), preis: z.number().positive().max(100000), menge: z.number().int().positive().max(100000).optional(), netto: z.boolean().default(false), rueckverguetung: z.number().min(0).max(50).optional().describe("Rückvergütung in % (Cashback, Kartenpunkte)") }),
   run: async (ctx, i) => {
     const { scanPruefen } = await import("@/lib/mobil/service");
     try {
-      return json({ ...(await scanPruefen(ctx.session.tenantId, { ean: i.ean, preis: i.preis, menge: i.menge ?? null, netto: i.netto })), link: abs(ctx, "/scan") });
+      return json({ ...(await scanPruefen(ctx.session.tenantId, { ean: i.ean, preis: i.preis, menge: i.menge ?? null, netto: i.netto, rueckverguetung: i.rueckverguetung ?? null })), link: abs(ctx, "/scan") });
     } catch (e) {
       return { text: JSON.stringify({ fehler: e instanceof Error ? e.message : String(e), vorlesen: "Das konnte ich nicht prüfen." }), isError: true };
     }

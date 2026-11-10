@@ -66,7 +66,10 @@ export async function sparkasseImportieren(wer: Wer, firma: string | null, datei
     .values({ tenantId: wer.tenantId, firma: f.firma, art: "sparkasse", dateiname: datei.name.slice(0, 200), von: r.von, bis: r.bis, neu: r.neu, doppelt: r.doppelt, summe: r.summe, anfangssaldo, endsaldo, userId: wer.userId })
     .returning({ id: schema.buchhaltungImporte.id });
   await protokoll(db, wer, "import", imp.id, "sparkasse", null, { datei: datei.name, von: r.von, bis: r.bis, neu: r.neu, doppelt: r.doppelt, summe: r.summe, anfangssaldo, endsaldo });
-  return { bank: r, neu: r.neu, doppelt: r.doppelt, von: r.von, bis: r.bis, anfangssaldo, endsaldo, firma: f.firma };
+  // B34.2: Entgeltabschluss im PDF-Auszug → eigener Beleg (Seite herausgelöst)
+  const { entgeltBelegAusAuszug } = await import("@/lib/belege/entgelt");
+  const entgelt = await entgeltBelegAusAuszug(wer.tenantId, f.firma, datei).catch(() => null);
+  return { bank: r, neu: r.neu, doppelt: r.doppelt, von: r.von, bis: r.bis, anfangssaldo, endsaldo, firma: f.firma, entgelt };
 }
 
 export async function amexImportieren(wer: Wer, firma: string | null, datei: { name: string; bytes: Uint8Array }) {
@@ -139,10 +142,10 @@ export async function ustPerioden(tenantId: string, firma: string | null, monate
 
 // ---- Abgleich --------------------------------------------------------------------------------------------
 
-type UmsatzZeile = { id: string; buchungstag: string; betrag: number; gegenpartei: string | null; zweck: string | null; gegenIban: string | null; bereich: string };
-const alsZahlung = (u: UmsatzZeile): Zahlung => ({ id: u.id, datum: u.buchungstag, betrag: u.betrag, gegenpartei: u.gegenpartei ?? "", zweck: u.zweck ?? "", iban: u.gegenIban, quelle: u.bereich === "kreditkarte" ? "kreditkarte" : "bank" });
+type UmsatzZeile = { id: string; buchungstag: string; betrag: number; gegenpartei: string | null; zweck: string | null; gegenIban: string | null; bereich: string; konto: string | null };
+const alsZahlung = (u: UmsatzZeile): Zahlung => ({ id: u.id, datum: u.buchungstag, betrag: u.betrag, gegenpartei: u.gegenpartei ?? "", zweck: u.zweck ?? "", iban: u.gegenIban, quelle: u.bereich === "kreditkarte" ? "kreditkarte" : "bank", konto: u.konto });
 
-const umsatzFelder = { id: U.id, buchungstag: U.buchungstag, betrag: U.betrag, gegenpartei: U.gegenpartei, zweck: U.zweck, gegenIban: U.gegenIban, bereich: U.bereich };
+const umsatzFelder = { id: U.id, buchungstag: U.buchungstag, betrag: U.betrag, gegenpartei: U.gegenpartei, zweck: U.zweck, gegenIban: U.gegenIban, bereich: U.bereich, konto: U.konto };
 
 async function belegeOffen(tenantId: string, f: { firma: string; haupt: boolean }, von: string, bis: string) {
   const rows = await db

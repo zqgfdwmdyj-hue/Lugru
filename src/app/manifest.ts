@@ -30,6 +30,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { name: "Start & Aufgaben", url: "/" },
       { name: "Posteingang", url: "/posteingang" },
       { name: "Deal-Eingang", url: "/deal-eingang" },
+      { name: "Scan-Modus", url: "/scan" },
       { name: "Aufträge", url: "/auftraege" },
       { name: "Ideen & Saison", url: "/marken" },
     ],

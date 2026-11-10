@@ -290,6 +290,7 @@ export default async function BuchhaltungPage({ searchParams }: { searchParams: 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <a className="btn btn-primary" href={`/buchhaltung/export?${q}&art=datev`} data-testid="bh-datev">DATEV-Buchungsstapel (CSV)</a>
           <a className="btn" href={`/buchhaltung/export?${q}&art=zip`} data-testid="bh-zip">CSV + Belege (ZIP)</a>
+          <a className="btn" href={`/buchhaltung/export?${q}&art=abgleich`} data-testid="bh-abgleich-csv">Offene Liste (ohne Beleg / ohne Zahlung, CSV)</a>
           <Link className="btn" href="/buchhaltung/verfahren">Verfahrensdokumentation</Link>
           <Link className="btn" href="/buchhaltung/protokoll">Protokoll</Link>
         </div>

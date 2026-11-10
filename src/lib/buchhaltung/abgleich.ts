@@ -8,7 +8,7 @@ import { istKartenausgleich } from "./amex";
 export type Sicherheit = "hoch" | "mittel" | "niedrig";
 export type ZuordnungArt = "beleg" | "amex_sammel" | "marktplatz" | "ohne_beleg";
 
-export type Zahlung = { id: string; datum: string; betrag: number; gegenpartei: string; zweck: string; iban?: string | null; quelle: "bank" | "kreditkarte" };
+export type Zahlung = { id: string; datum: string; betrag: number; gegenpartei: string; zweck: string; iban?: string | null; quelle: "bank" | "kreditkarte"; /** Konto (IBAN, „PayPal“, „AMEX“) – PayPal-Lastschriften nicht doppelt zählen. */ konto?: string | null };
 export type Beleg = { id: string; datum: string | null; brutto: number | null; nummer: string | null; lieferant: string | null; iban?: string | null; gutschrift: boolean };
 export type Abrechnung = { id: string; auszahlung: string | null; betrag: number | null; markt: "amazon" | "ebay" };
 
@@ -64,6 +64,8 @@ const ist = {
   amazon: (z: Zahlung) => z.betrag > 0 && /amazon (payments|eu|services|europe)|amzn|amazon\.de/i.test(`${z.gegenpartei} ${z.zweck}`),
   ebay: (z: Zahlung) => z.betrag > 0 && /\bebay\b/i.test(`${z.gegenpartei} ${z.zweck}`),
   bankentgelt: (z: Zahlung) => z.quelle === "bank" && /^(entgelt|entgeltabschluss|abschluss|rechnungsabschluss|kontofuehrung|kontoführung|zinsen)/i.test(z.zweck.trim()) && Math.abs(z.betrag) < 500,
+  paypalKonto: (z: Zahlung) => /^paypal$/i.test(z.konto ?? ""),
+  paypalLastschrift: (z: Zahlung) => z.quelle === "bank" && !/^paypal$/i.test(z.konto ?? "") && z.betrag < 0 && /paypal/i.test(`${z.gegenpartei} ${z.zweck}`),
   steuer: (z: Zahlung) => z.betrag < 0 && /finanzamt|finanzkasse|steuerverwaltung|bundeszentralamt/i.test(`${z.gegenpartei} ${z.zweck}`),
 };
 
@@ -119,8 +121,15 @@ export function abgleichen(zahlungen: Zahlung[], belege: Beleg[], o: { karte?: Z
       nimm(a
         ? { zahlungId: z.id, belegId: null, art: "marktplatz", betrag: z.betrag, sicherheit: "hoch", regel: `${markt === "amazon" ? "Amazon" : "eBay"}-Auszahlung = Abrechnung ${a.id}`, abrechnungId: a.id }
         : { zahlungId: z.id, belegId: null, art: "marktplatz", betrag: z.betrag, sicherheit: "mittel", regel: `${markt === "amazon" ? "Amazon" : "eBay"}-Auszahlung – passende Abrechnung fehlt (Abrechnungsbericht abrufen/hochladen)` });
+    } else if (ist.paypalLastschrift(z)) {
+      // B34.2: PayPal zieht vom Bankkonto ein, was über PayPal bezahlt wurde – der Beleg hängt an der PayPal-Zahlung.
+      const pp = zahlungen.find((p) => ist.paypalKonto(p) && gleich(p.betrag, z.betrag) && Math.abs(tage(z.datum, p.datum)) <= 5);
+      if (pp) nimm({ zahlungId: z.id, belegId: null, art: "ohne_beleg", betrag: Math.abs(z.betrag), sicherheit: "hoch", regel: `PayPal-Lastschrift = PayPal-Zahlung vom ${dm(pp.datum)} (${pp.gegenpartei || "PayPal"}) – Beleg hängt dort` });
     } else if (ist.bankentgelt(z)) {
-      nimm({ zahlungId: z.id, belegId: null, art: "ohne_beleg", betrag: Math.abs(z.betrag), sicherheit: "hoch", regel: "Bankentgelt/Zinsen – der Kontoauszug ist der Beleg" });
+      // B34.2: Entgeltabschluss als eigener Beleg (aus dem PDF-Auszug herausgelöst) – dann diesem zuordnen
+      const eb = belege.find((b) => frei(b) && richtungPasst(z, b) && /^entgelt/i.test(b.nummer ?? "") && gleich(belegBetrag(b), Math.abs(z.betrag)) && (!b.datum || Math.abs(tage(z.datum, b.datum)) <= 10));
+      if (eb) nimm({ zahlungId: z.id, belegId: eb.id, art: "beleg", betrag: Math.abs(z.betrag), sicherheit: "hoch", regel: "Entgeltabschluss der Bank – eigener Beleg aus dem Kontoauszug" });
+      else nimm({ zahlungId: z.id, belegId: null, art: "ohne_beleg", betrag: Math.abs(z.betrag), sicherheit: "hoch", regel: "Bankentgelt/Zinsen – der Kontoauszug ist der Beleg" });
     }
   }
 
@@ -179,3 +188,17 @@ export function abgleichen(zahlungen: Zahlung[], belege: Beleg[], o: { karte?: Z
 
 /** Abstimmungsgrad in %: Zahlungen mit (bestätigter oder automatischer) Zuordnung ÷ alle Zahlungen. */
 export const abstimmungsgrad = (zugeordnet: number, gesamt: number) => (gesamt === 0 ? null : Math.round((zugeordnet / gesamt) * 100));
+
+/**
+ * B34.2 Liste für den Steuerberater/Stotax als CSV (Semikolon, deutsches Zahlenformat): Zahlungen ohne Beleg und
+ * Belege ohne Zahlung eines Monats. Keine Steuerberatung – nur die offene Liste.
+ */
+export function abgleichCsv(l: { ohneBeleg: { datum: string; betrag: number; gegenpartei: string; zweck: string; karte?: boolean }[]; belegeOhneZahlung: { datum: string | null; brutto: number | null; rest: number; nummer: string | null; lieferant: string | null }[] }): string {
+  const f = (s: string | null | undefined) => `"${String(s ?? "").replace(/"/g, '""').replace(/[\r\n]+/g, " ")}"`;
+  const z = (n: number | null) => (n === null ? "" : n.toFixed(2).replace(".", ","));
+  const d = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : "");
+  const zeilen = ["Liste;Datum;Betrag;Gegenpartei/Lieferant;Verwendungszweck/Rechnungsnr.;Konto"];
+  for (const x of l.ohneBeleg) zeilen.push(["Zahlung ohne Beleg", d(x.datum), z(x.betrag), f(x.gegenpartei), f(x.zweck), x.karte ? "Karte" : "Bank"].join(";"));
+  for (const b of l.belegeOhneZahlung) zeilen.push(["Beleg ohne Zahlung", d(b.datum), z(b.rest), f(b.lieferant), f(b.nummer), ""].join(";"));
+  return `\uFEFF${zeilen.join("\r\n")}\r\n`;
+}

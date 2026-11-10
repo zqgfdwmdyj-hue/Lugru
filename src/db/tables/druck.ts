@@ -30,7 +30,7 @@ export const druckAgenten = pgTable(
     /** Weitere Medien aus der Agent-Konfiguration. */
     medien: jsonb("medien").$type<unknown[]>().notNull().default([]),
     /** Shelly-Steckdose je Drucker (nur Inhaber sieht/ändert sie), überwachter Ordner, Leerlauf bis Steckdose aus. */
-    einstellungen: jsonb("einstellungen").$type<{ shelly?: Record<string, { typ: "gen1" | "gen2"; ip: string }>; ordner?: { pfad: string; intervallSek: number } | null; leerlaufAusMin?: number }>().notNull().default({}),
+    einstellungen: jsonb("einstellungen").$type<{ shelly?: Record<string, { typ: "gen1" | "gen2"; ip: string }>; ordner?: { pfad: string; intervallSek: number } | null; leerlaufAusMin?: number; /** B34.2 Download-Ordner → Beleg-Ablage */ belege?: { pfad: string; ablage: string } | null }>().notNull().default({}),
     /** Update-Protokoll des Agenten (letzte 20). */
     updates: jsonb("updates").$type<{ am: string; von: string; nach: string; ergebnis: string }[]>().notNull().default([]),
     /** Push „wartet seit 15 Minuten“ bzw. „offline“ bereits gemeldet. */

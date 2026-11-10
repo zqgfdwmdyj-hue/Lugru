@@ -34,6 +34,19 @@ export async function POST(request: Request) {
     text = [fd.get("text"), fd.get("title"), fd.get("url")].filter((x): x is string => typeof x === "string" && !!x.trim()).join("\n");
     quelle = typeof fd.get("quelle") === "string" ? (fd.get("quelle") as string) : null;
     for (const [, v] of fd.entries()) if (v instanceof File && v.size) dateien.push({ name: v.name || "datei", mime: v.type || "application/octet-stream", bytes: new Uint8Array(await v.arrayBuffer()) });
+    // B34.1: aus der Amazon- bzw. Shop-App geteilt (kurzer Text mit Link) → Scan-Modus „Online“ statt Deal-Eingang.
+    if (wer.weg === "teilen" && !quelle) {
+      const str = (k: string) => (typeof fd.get(k) === "string" ? (fd.get(k) as string) : null);
+      const { teilenZiel, teilenUrl } = await import("@/lib/scan/logic");
+      const { shopProfileLaden } = await import("@/lib/deal-eingang/kauf");
+      const { istAmazon, profilFuer } = await import("@/lib/deal-eingang/shop-logic");
+      const profile = await shopProfileLaden(wer.tenantId).catch(() => []);
+      const ziel = teilenZiel({ title: str("title"), text: str("text"), url: str("url"), dateien: dateien.length }, (u) => {
+        const p = profilFuer(u, profile);
+        return !!p && !istAmazon(p);
+      });
+      if (ziel) return Response.redirect(`${linkBasis(request)}${teilenUrl(ziel)}`, 303);
+    }
   } else if (typ.includes("application/json")) {
     const b = (await request.json().catch(() => ({}))) as { text?: unknown; quelle?: unknown };
     text = typeof b.text === "string" ? b.text : "";
