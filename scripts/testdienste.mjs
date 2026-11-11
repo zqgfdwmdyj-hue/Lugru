@@ -1901,8 +1901,9 @@ const SATZ = ["Viele Paare kennen diese Situation besser, als sie zugeben möcht
 function fuelltext(n, start) {
   const w = [];
   for (let i = start; w.length < n; i++) w.push(...SATZ[i % SATZ.length].split(" ").map((x, j, a) => (j === a.length - 1 ? `${x}.` : x)));
-  const t = w.slice(0, n);
-  t[t.length - 1] = t[t.length - 1].replace(/[.,]?$/, ".");
+  // Je Szene eindeutig (sonst nutzt der Worker die bezahlte Sprache gleicher Texte zu Recht wieder): „… Szene 7.“
+  const t = [...w.slice(0, n - 2), "Szene", `${start}.`];
+  t[t.length - 3] = t[t.length - 3].replace(/[.,]?$/, ".");
   return t.join(" ");
 }
 
