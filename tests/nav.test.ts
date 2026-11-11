@@ -36,13 +36,13 @@ const ALT: [string, string][] = [
 const ENTFALLEN = ["/?ansicht=liste", "/kalender/tagesplan?anrufe=1", "/ebay?ansicht=artikel", "/ebay?ansicht=verlauf", "/ebay?ansicht=rechnungen", "/ebay?ansicht=einstellungen", "/listings/temu#rechner", "/anbindungen", "/einstellungen/claude", "/einstellungen/handy", "/einstellungen/watch", "/einstellungen/benachrichtigungen", "/einstellungen/shop-profile"];
 
 describe("Zielstruktur (Abschnitt 4)", () => {
-  it("11 Gruppen in der Reihenfolge des Auftrags, 87 Einträge (82 + Privat › Nachrichten + Drucken/Scannen + B34 Download-Ordner/Abverkauf), 38 in Untergruppen, direkt 49", () => {
+  it("11 Gruppen in der Reihenfolge des Auftrags, 88 Einträge (82 + Privat › Nachrichten + Drucken/Scannen + B34 Download-Ordner/Abverkauf + B35 Leads), 38 in Untergruppen, direkt 50", () => {
     expect(NAV.map((s) => s.label)).toEqual(["Heute", "Einkauf & Deals", "Amazon", "eBay & Temu", "Lager & Versand", "Finanzen", "B2B", "Marken & Content", "Team & Verwaltung", "Privat", "Einstellungen"]);
     const alle = NAV.flatMap((s) => s.items);
-    expect(alle).toHaveLength(87);
+    expect(alle).toHaveLength(88);
     expect(alle.filter((i) => i.unter)).toHaveLength(38);
-    expect(alle.filter((i) => !i.unter)).toHaveLength(49);
-    expect(new Set(alle.map((i) => i.href)).size).toBe(87);
+    expect(alle.filter((i) => !i.unter)).toHaveLength(50);
+    expect(new Set(alle.map((i) => i.href)).size).toBe(88);
     // Druckagent (08.11.): Lager › Drucken und Scannen
     expect(NAV.find((s) => s.key === "lager")!.items.filter((i) => i.unter === "lager").map((i) => i.href)).toEqual(expect.arrayContaining(["/drucken", "/lager/scannen"]));
     expect(NAV.find((s) => s.key === "privat")!.items.map((i) => i.href)).toContain("/privat/nachrichten");

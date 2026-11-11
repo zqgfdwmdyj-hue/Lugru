@@ -40,6 +40,11 @@ export const E2E_ENV: Record<string, string> = {
   // B34.3a Briefversand-Anbieter gegen den Nachbau (Testmodus = Sandbox)
   LETTERXPRESS_BASE_URL: `${TD}/letterxpress/v3`,
   EBRIEF_BASE_URL: `${TD}/ebrief`,
+  APIFY_BASE_URL: `${TD}/apify`,
+  GOOGLE_PLACES_BASE_URL: `${TD}/places`,
+  LEAD_WEB_BASE_URL: `${TD}/leadweb`,
+  LEAD_PAUSE_MS: "300",
+  APIFY_POLL_MS: "100",
   DISCORD_API_BASE_URL: `${TD}/discord-api`,
   TESLA_BASE_URL: `${TD}/tesla`,
   TWILIO_BASE_URL: `${TD}/twilio`,

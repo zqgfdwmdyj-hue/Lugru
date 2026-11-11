@@ -264,6 +264,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Im LetterXpress-Konto den API-Schlüssel anzeigen und hier mit dem Benutzernamen eintragen → „Verbindung testen“.", "AV-Vertrag abschließen und unter Abverkauf → Einstellungen bestätigen – sonst nur Testmodus."],
   },
   {
+    provider: "apify",
+    name: "Apify (Lead-Quellen, Stufe 2)",
+    purpose: "B35 automatische Firmensuche über Apify-Läufe (z. B. Branchen-Einträge, Marktplatz-Verkäufer) mit Budget je Lauf/Monat – erst nach rechtlicher Prüfung, nie Versand. Nutzungsbedingungen der Quelle beachten.",
+    fields: [{ key: "token", label: "API-Token", secret: true, help: "Apify Console → Settings → Integrations → API token." }],
+    setup: ["API-Token in der Apify Console erzeugen und hier eintragen → „Verbindung testen“.", "In Apify selbst ein Monatslimit setzen; im Seller-System unter B2B → Leads → Quellen Budget je Lauf und Monat eintragen."],
+  },
+  {
+    provider: "google_places",
+    name: "Google Places (Lead-Quellen, Stufe 2)",
+    purpose: "B35 Firmen nach Branche und Umkreis über die Places-Text-Suche (kein Auslesen der Google-Ergebnisseite) – erst nach rechtlicher Prüfung, mit Budget. Speicherregeln der Google-Nutzungsbedingungen bei der Prüfung klären.",
+    fields: [{ key: "apiKey", label: "API-Schlüssel", secret: true, help: "Google Cloud Console → APIs & Dienste → Anmeldedaten (Places API (New) aktivieren, Schlüssel einschränken)." }],
+    setup: ["Places API (New) aktivieren, API-Schlüssel anlegen und auf diese API beschränken, hier eintragen.", "Preis je Abruf und Budget unter B2B → Leads → Quellen eintragen."],
+  },
+  {
     provider: "epost",
     name: "Deutsche Post E-POST (Briefversand, vorbereitet)",
     purpose: "B34.3a dritter Anbieter – Schnittstelle vorbereitet, noch nicht angebunden. Bis dahin Sammel-PDF oder eBrief/LetterXpress.",

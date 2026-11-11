@@ -44,9 +44,9 @@ describe("B34.3c Apify-Import: E-Mail gespeichert (Quelle Impressum), Mail-Weg g
   it("gefundene Adresse nie für Werbe-E-Mail – auch nicht mit „Rechtlich geprüft“; Antwort, wenn der Händler sich meldet", () => {
     const l = { bestandskunde: false, einwilligung: null, email: "info1@example.invalid" };
     expect(mailErlaubt({ ...l, status: "neu" }, false).erlaubt).toBe(false);
-    expect(mailErlaubt({ ...l, status: "neu" }, true)).toEqual({ erlaubt: false, grund: "Adresse aus dem Impressum – nur für Antworten, keine Werbe-E-Mail (UWG § 7); bitte per Brief" });
+    expect(mailErlaubt({ ...l, status: "neu" }, true)).toEqual({ erlaubt: false, grund: "Werbe-E-Mails an Leads sind abgeschaltet (UWG § 7) – E-Mail nur als Antwort auf eine Anfrage; bitte per Brief" });
     expect(mailErlaubt({ ...l, status: "angeschrieben" }, true).erlaubt).toBe(false);
-    expect(mailErlaubt({ ...l, status: "geantwortet" }, false)).toEqual({ erlaubt: true, grund: "Händler hat sich gemeldet – Antwort erlaubt (keine Werbe-E-Mail)" });
+    expect(mailErlaubt({ ...l, status: "geantwortet" }, false)).toEqual({ erlaubt: true, grund: "Antwort auf eine Anfrage des Händlers (keine Werbe-E-Mail)" });
   });
 });
 
@@ -65,9 +65,9 @@ describe("B34.3c Vorschlag „Zielgruppe AdelPrep“ und LUCID-Sperre", () => {
     expect(leadsAusTabelle(["Seller Name", "Postal Code", "City", "Units"], [["Testseller GmbH", "12345", "Musterstadt", "150"]]).leads[0]).toMatchObject({ firma: "Testseller GmbH", stueckJeArtikel: 150 });
   });
   it("LUCID gesperrt, bis die Nutzung geklärt ist", () => {
-    expect(quelleSperre({ quelleTyp: "lucid" }, { lucidGeklaert: false, adelprepAbStueck: 80 })).toContain("LUCID");
-    expect(quelleSperre({ quelleTyp: "lucid" }, { lucidGeklaert: true, adelprepAbStueck: 80 })).toBeNull();
-    expect(quelleSperre({ quelleTyp: "apify" }, { lucidGeklaert: false, adelprepAbStueck: 80 })).toBeNull();
-    expect(quelleSperre({ quelleTyp: null }, { lucidGeklaert: false, adelprepAbStueck: 80 })).toBeNull();
+    expect(quelleSperre({ quelleTyp: "lucid" }, { lucidGeklaert: false })).toContain("LUCID");
+    expect(quelleSperre({ quelleTyp: "lucid" }, { lucidGeklaert: true })).toBeNull();
+    expect(quelleSperre({ quelleTyp: "apify" }, { lucidGeklaert: false })).toBeNull();
+    expect(quelleSperre({ quelleTyp: null }, { lucidGeklaert: false })).toBeNull();
   });
 });

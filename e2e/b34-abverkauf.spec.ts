@@ -1,7 +1,7 @@
 // Bauauftrag B34.3 B2B-Abverkauf von Ladenhütern – Abnahme: Preisliste (PDF + Excel, ohne EK/Break-even/interne
 // Gründe) aus einem Ladenhüter, 10 Test-Leads per CSV, E-Mail an Fremdkontakte ohne „Rechtlich geprüft“ gesperrt
 // (keine Mail raus), Serienbrief-PDF mit Datenschutzhinweis nach Art. 14 DSGVO. Dazu: Antwort im Posteingang →
-// Aufgabe, Abmeldung → Sperrliste (erneuter Import blockiert), Erfolg je Charge, E-Mail erst mit „Rechtlich geprüft“.
+// Aufgabe, Abmeldung → Sperrliste (erneuter Import blockiert), Erfolg je Charge; B35: keine Werbe-E-Mail an Leads, auch nicht mit „Rechtlich geprüft“.
 // Alle Firmen, Adressen und Artikel erfunden (Testspielwaren …, example.invalid).
 import type { Page } from "@playwright/test";
 import { extractText } from "unpdf";
@@ -108,13 +108,13 @@ test.describe("B34.3 Abverkauf an Händler", () => {
     expect(roh.email_quelle).toBe("Impressum");
     expect((await sql<{ n: number }>("select count(*)::int n from abverkauf_leads where tenant_id = $1 and firma = $2 and email is null", [T, firma(4)]))[0].n).toBe(1);
 
-    // 3. E-Mail an Fremdkontakt: auch mit Einwilligung gesperrt, solange „Rechtlich geprüft“ aus ist
+    // 3. E-Mail an Fremdkontakt: auch mit Einwilligung gesperrt (B35: Werbe-E-Mails an Leads abgeschaltet, UWG § 7)
     await lead(1).locator('select[name="kontaktweg"]').selectOption("email");
     await lead(1).locator('input[name="einwilligung"]').fill("Messe-Gespräch 2026, Visitenkarte (Test)");
     await Promise.all([aktion(page), lead(1).getByRole("button", { name: "✓" }).click()]);
     await expect(page.getByTestId("av-meldung")).toContainText("Lead gespeichert");
     await expect(lead(1).getByTestId("av-mail-status")).toContainText("E-Mail gesperrt");
-    await expect(lead(1).getByTestId("av-mail-status")).toContainText("Rechtlich geprüft");
+    await expect(lead(1).getByTestId("av-mail-status")).toContainText("UWG § 7");
 
     // 4. Entwürfe (KI oder Vorlage) für 3 Händler – nichts verschickt
     for (const i of [1, 2, 3]) await lead(i).locator('input[name="lead"]').check();
@@ -133,10 +133,10 @@ test.describe("B34.3 Abverkauf an Händler", () => {
     // Freigabe als Charge: Briefe frei, E-Mail gesperrt – keine Mail raus
     await Promise.all([aktion(page), page.getByTestId("av-freigeben").click()]);
     await expect(page.getByTestId("av-meldung")).toContainText("2 freigegeben");
-    await expect(page.getByTestId("av-meldung")).toContainText(`gesperrt: ${firma(1)}: E-Mail an Fremdkontakte gesperrt`);
+    await expect(page.getByTestId("av-meldung")).toContainText(`gesperrt: ${firma(1)}: Werbe-E-Mails an Leads sind abgeschaltet`);
     const mailZeile = unsere.and(page.locator('[data-kanal="email"]'));
     await expect(mailZeile).toHaveAttribute("data-status", "entwurf");
-    await expect(mailZeile.getByTestId("av-fehler")).toContainText("Rechtlich geprüft");
+    await expect(mailZeile.getByTestId("av-fehler")).toContainText("UWG § 7");
     await expect(unsere.and(page.locator('[data-kanal="brief"][data-status="freigegeben"]'))).toHaveCount(2);
     expect((await sql<{ n: number }>(`select count(*)::int n from test_mails where tenant_id = $1 and "to" like $2`, [T, `%-${m.toLowerCase()}@example.invalid`]))[0].n).toBe(0);
 
@@ -191,24 +191,16 @@ test.describe("B34.3 Abverkauf an Händler", () => {
     await Promise.all([aktion(page), page.getByTestId("av-import-los").click()]);
     await expect(page.getByTestId("av-meldung")).toContainText("0 Leads neu, 9 schon vorhanden, 1 auf der Sperrliste");
 
-    // „Rechtlich geprüft“ an (Inhaber): E-Mail mit dokumentierter Einwilligung geht raus – mit Datenschutzhinweis
+    // B35: Auch mit „Rechtlich geprüft“ und dokumentierter Einwilligung keine Werbe-E-Mail an einen Lead (UWG § 7) –
+    // kein Weg verschickt eine Mail; Kontakt per Brief, E-Mail nur als Antwort auf eine Anfrage.
     await page.getByTestId("av-rechtlich").check();
     await Promise.all([aktion(page), page.getByTestId("av-einstellungen").getByRole("button", { name: "Speichern" }).click()]);
     await expect(page.getByTestId("av-meldung")).toContainText("Einstellungen gespeichert");
-    await expect(lead(1).getByTestId("av-mail-status")).toContainText("E-Mail erlaubt: Einwilligung");
+    await expect(lead(1).getByTestId("av-mail-status")).toContainText("E-Mail gesperrt: Werbe-E-Mails an Leads sind abgeschaltet (UWG § 7)");
     for (const z of await page.locator('[data-testid="av-anschreiben-zeile"][data-status="entwurf"]').all()) if (!(await z.innerText()).includes(firma(1))) await z.locator('input[name="anschreiben"]').uncheck();
     await Promise.all([aktion(page), page.getByTestId("av-freigeben").click()]);
-    await expect(page.getByTestId("av-meldung")).toContainText("1 E-Mails verschickt");
-    await expect(page.locator(`[data-testid="av-anschreiben-zeile"][data-code="${codes[firma(1)]}"]`)).toHaveAttribute("data-status", "versendet");
-    const [gesendet] = await sql<{ subject: string }>(`select subject from test_mails where tenant_id = $1 and "to" = $2`, [T, mail(1)]);
-    expect(gesendet.subject).toBe(`Restposten-Angebot für ${firma(1)} (${codes[firma(1)]})`);
-    // Text liegt verschlüsselt in der Datenbank – lesbar unter Einstellungen → Testumgebung (abgefangene Mails)
-    await page.goto("/einstellungen/testumgebung");
-    const testmail = page.locator('[data-testid="testenv-mail"]', { hasText: codes[firma(1)] }).first();
-    await testmail.locator("summary").click();
-    const text = (await testmail.textContent()) ?? "";
-    expect(text).toContain("Art. 14 DSGVO");
-    expect(text).toContain("Abmelden");
-    expect(text).not.toMatch(INTERN);
+    await expect(page.getByTestId("av-meldung")).toContainText("Nichts freigegeben");
+    await expect(page.locator(`[data-testid="av-anschreiben-zeile"][data-code="${codes[firma(1)]}"]`)).toHaveAttribute("data-status", "entwurf");
+    expect((await sql<{ n: number }>(`select count(*)::int n from test_mails where tenant_id = $1 and "to" = $2`, [T, mail(1)]))[0].n).toBe(0);
   });
 });

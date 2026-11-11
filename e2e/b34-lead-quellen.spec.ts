@@ -69,7 +69,7 @@ test.describe("B34.3c Lead-Beschaffung Stufe 1", () => {
     await lead(salon(1)).locator('select[name="kontaktweg"]').selectOption("email");
     await Promise.all([aktion(page), lead(salon(1)).getByRole("button", { name: "✓" }).click()]);
     await expect(meldung).toContainText("Lead gespeichert");
-    await expect(lead(salon(1)).getByTestId("av-mail-status")).toContainText("E-Mail gesperrt: Adresse aus dem Impressum – nur für Antworten");
+    await expect(lead(salon(1)).getByTestId("av-mail-status")).toContainText("E-Mail gesperrt: Werbe-E-Mails an Leads sind abgeschaltet (UWG § 7)");
 
     // 3. Entwürfe (Salon 1 per Mail, Salon 2 per Brief) – vorher nichts in Charge oder Brief
     for (const i of [1, 2]) await lead(salon(i)).locator('input[name="lead"]').check();
@@ -85,7 +85,7 @@ test.describe("B34.3c Lead-Beschaffung Stufe 1", () => {
     for (const z of await page.locator('[data-testid="av-anschreiben-zeile"][data-status="entwurf"]').all()) if (!(await z.innerText()).includes(`Testsalon ${m} `)) await z.locator('input[name="anschreiben"]').uncheck();
     await Promise.all([aktion(page), page.getByTestId("av-freigeben").click()]);
     await expect(meldung).toContainText("1 freigegeben");
-    await expect(meldung).toContainText(`${salon(1)}: Adresse aus dem Impressum – nur für Antworten`);
+    await expect(meldung).toContainText(`${salon(1)}: Werbe-E-Mails an Leads sind abgeschaltet`);
     await expect(unsere.and(page.locator('[data-kanal="email"]'))).toHaveAttribute("data-status", "entwurf");
     await expect(unsere.and(page.locator('[data-kanal="brief"]'))).toHaveAttribute("data-status", "freigegeben");
     expect((await sql<{ n: number }>(`select count(*)::int n from test_mails where tenant_id = $1 and "to" like $2`, [T, `%-${m.toLowerCase()}@example.invalid`]))[0].n).toBe(0);
@@ -94,7 +94,7 @@ test.describe("B34.3c Lead-Beschaffung Stufe 1", () => {
     await sql("update abverkauf_leads set status = 'geantwortet' where tenant_id = $1 and firma = $2", [T, salon(1)]);
     await page.goto("/b2b/abverkauf");
     await expect(lead(salon(1)).getByTestId("av-lead-email")).toHaveAttribute("data-mail", "erlaubt");
-    await expect(lead(salon(1)).getByTestId("av-lead-email")).toContainText("Antwort erlaubt");
+    await expect(lead(salon(1)).getByTestId("av-lead-email")).toContainText("Antwort auf eine Anfrage");
 
     // 4. Keepa-Export mit Stückzahl → Vorschlag „Zielgruppe AdelPrep“ (ab 80), Übernahme nur von Hand
     await importieren(`Keepa_Seller_${m}.csv`, csv(["Seller Name", "Business Address", "Units"], [[gross, "Lagerweg 1, 12345 Musterstadt", "150"], [klein, "Lagerweg 2, 12345 Musterstadt", "20"]]));

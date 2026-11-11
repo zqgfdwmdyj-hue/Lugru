@@ -199,7 +199,11 @@ export async function anfrageAnlegen(e: AnfrageEingabe): Promise<{ ok: true } | 
     .insert(schema.emails)
     .values({ tenantId: k.tenantId, messageKey: `anfrage:${an.id}`, fromAddress: e.email.trim() || null, fromName: `${e.name.trim() || e.firma.trim()} (Anfrageseite)`.slice(0, 200), subject: `Anfrage ${k.name}: ${e.firma.trim()}`.slice(0, 300), receivedAt: new Date(), snippet: wunsch.slice(0, 200), bodyText: [`Firma: ${e.firma.trim()}`, `USt-ID: ${ust.norm}`, `Kontakt: ${kontakt}`, `Wunschartikel: ${wunsch || "–"}`, `Menge: ${e.menge.trim() || "–"}`, code ? `Bezug: ${code}` : "", `Kampagne: ${k.name} (${k.code})`].filter(Boolean).join("\n"), ordner: "Anfrageseite", category: "action", topic: "Restposten-Anfrage", taskId: t?.id ?? null })
     .onConflictDoNothing();
-  if (code) await db.update(A).set({ status: "beantwortet", antwortAm: new Date() }).where(and(eq(A.tenantId, k.tenantId), eq(A.code, code), inArray(A.status, ["freigegeben", "versendet"])));
+  if (code) {
+    const beantw = await db.update(A).set({ status: "beantwortet", antwortAm: new Date() }).where(and(eq(A.tenantId, k.tenantId), eq(A.code, code), inArray(A.status, ["freigegeben", "versendet"]))).returning({ lead: A.leadId });
+    // B35: Anfrage über QR-Code/Kampagnen-ID dem Lead zuordnen (Verlauf, Löschfrist neu)
+    if (beantw.length) await import("./lead-maschine").then((x) => x.kontaktMerken(k.tenantId, beantw.map((b) => b.lead), `Anfrage über Kampagne „${k.name}“ (QR-Code/Link)`, false)).catch(() => undefined);
+  }
   return { ok: true };
 }
 

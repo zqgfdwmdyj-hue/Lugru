@@ -36,8 +36,30 @@ export type AbverkaufEinstellungen = {
   leadQuellen: LeadQuellenEinstellungen;
 };
 
-/** B34.3c Lead-Quellen: LUCID erst nach rechtlicher Klärung; Schwelle für Vorschläge „Zielgruppe AdelPrep“. */
-export type LeadQuellenEinstellungen = { lucidGeklaert: boolean; adelprepAbStueck: number };
+/** B35 Quelle für automatische Läufe (Stufe 2): an/aus, Budget je Lauf und Monat (ohne Budget kein Lauf). */
+export type LaufQuelle = { aktiv: boolean; budgetLauf: number | null; budgetMonat: number | null };
+
+/**
+ * B34.3c/B35 Lead-Quellen und Schutzregeln. LUCID erst nach rechtlicher Klärung; automatische Läufe (Stufe 2) erst,
+ * wenn die rechtliche Prüfung eingetragen ist. Listen (Konfliktbranchen, Großmarken, Sperrnamen) trägt der Inhaber ein.
+ */
+export type LeadQuellenEinstellungen = {
+  lucidGeklaert: boolean;
+  adelprepAbStueck: number;
+  rechtlichGeprueftAm: string | null;
+  rechtlichGeprueftVon: string;
+  mindestabstandMonate: number;
+  umkreisLokalKm: number;
+  umkreisLagerKm: number;
+  konfliktbranchen: string[];
+  grossmarken: string[];
+  sperrNamen: string[];
+  lagerbedingungen: string[];
+  wochenCharge: { aktiv: boolean; anzahl: number };
+  apify: LaufQuelle & { actorId: string; eingabe: string; maxItems: number };
+  places: LaufQuelle & { suchen: string; preisJeAbruf: number | null };
+  impressum: LaufQuelle & { maxJeLauf: number };
+};
 
 const OHNE_PREIS: BriefPreis = { grund: null, jeWeitereSeite: null };
 
@@ -50,13 +72,30 @@ export const ABVERKAUF_STANDARD: AbverkaufEinstellungen = {
     { ab: 50, rabattProzent: 6 },
   ],
   kriterien: { reichweiteTage: 90, lagerTage: 60, kapital: 300 },
-  loeschfristTage: 180,
+  // B35: Löschfrist 12 Monate ohne Kontakt (jeder Brief/jede Antwort verlängert)
+  loeschfristTage: 365,
   // Firmendaten der Logistik-Firma trägt der Inhaber ein – nichts davon im Code.
   adelprep: { firma: "", strasse: "", plz: "", ort: "", email: "", telefon: "", web: "", impressum: "", datenschutz: "", text: "", standardBeilegen: false, bestaetigt: { flaeche: false, nda: false, gefahrgut: false, eanFba: false } },
   // Preise je Anbieter trägt der Inhaber ein (laut Preisseite) – ohne Preis keine Kostenvorschau und kein Versand.
   briefversand: { anbieter: "ebrief", live: false, avVertrag: false, avDatum: null, tageslimit: 20, budget: null, farbe: false, duplex: false, preise: { ebrief: OHNE_PREIS, letterxpress: OHNE_PREIS, epost: OHNE_PREIS } },
   lager: { name: "", lat: null, lng: null, preisJePaletteMonat: null },
-  leadQuellen: { lucidGeklaert: false, adelprepAbStueck: 80 },
+  leadQuellen: {
+    lucidGeklaert: false,
+    adelprepAbStueck: 80,
+    rechtlichGeprueftAm: null,
+    rechtlichGeprueftVon: "",
+    mindestabstandMonate: 12,
+    umkreisLokalKm: 50,
+    umkreisLagerKm: 100,
+    konfliktbranchen: [],
+    grossmarken: [],
+    sperrNamen: [],
+    lagerbedingungen: ["lebensmittel", "feinkost", "wein", "spirituosen", "getränke", "kosmetik", "parfum", "nahrungsergänzung"],
+    wochenCharge: { aktiv: false, anzahl: 20 },
+    apify: { aktiv: false, budgetLauf: null, budgetMonat: null, actorId: "", eingabe: "", maxItems: 200 },
+    places: { aktiv: false, budgetLauf: null, budgetMonat: null, suchen: "", preisJeAbruf: null },
+    impressum: { aktiv: false, budgetLauf: 0, budgetMonat: 0, maxJeLauf: 20 },
+  },
 };
 
 export const CHARGE_MAX = 20;
@@ -85,7 +124,7 @@ export function preisPosition(breakEven: number, aufschlagProzent: number, staff
   return { preis, staffel };
 }
 
-const norm = (s: string) =>
+export const norm = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFKD")
@@ -96,14 +135,14 @@ const norm = (s: string) =>
     .replace(/ß/g, "ss")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-const firmaNorm = (f: string) => norm(f).replace(/\b(gmbh|ug|ag|kg|ohg|e k|ek|gbr|co|haftungsbeschraenkt|inh)\b/g, "").replace(/\s+/g, " ").trim();
+export const firmaNorm = (f: string) => norm(f).replace(/\b(gmbh|ug|ag|kg|ohg|e k|ek|gbr|co|haftungsbeschraenkt|inh)\b/g, "").replace(/\s+/g, " ").trim();
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 40);
 
 /** Schlüssel für Dubletten und Sperrliste (nur Prüfsummen, keine Klartextdaten). */
 export const leadSchluessel = (firma: string, plz: string | null) => sha(`firma|${firmaNorm(firma)}|${(plz ?? "").replace(/\s/g, "")}`);
 export const mailSchluessel = (email: string) => sha(`mail|${email.trim().toLowerCase()}`);
 
-export type LeadEingabe = { firma: string; strasse: string | null; plz: string | null; ort: string | null; land: string; kategorie: string | null; email: string | null; emailQuelle: string | null; website: string | null; adelprep: boolean; lat: number | null; lng: number | null; groesse: string | null; stueckJeArtikel: number | null };
+export type LeadEingabe = { firma: string; strasse: string | null; plz: string | null; ort: string | null; land: string; kategorie: string | null; email: string | null; emailQuelle: string | null; website: string | null; adelprep: boolean; lat: number | null; lng: number | null; groesse: string | null; stueckJeArtikel: number | null; ustId: string | null; registerNr: string | null; marken: string | null; mitarbeiter: number | null; anzahlAsins: number | null; letzteAktivitaet: string | null; impressumUrl: string | null };
 
 /** B34.3c Herkunft einer Lead-Datei (aus Spalten bzw. Dateiname erkannt). Das Seller-System scrapt nicht selbst. */
 export type LeadQuelleTyp = "apify" | "lucid" | "keepa" | "helium10" | "csv" | "manuell";
@@ -144,6 +183,13 @@ export function quelleDatumAus(headers: string[], rows: string[][]): string | nu
   return max;
 }
 
+/** Datum „2026-11-08…“ oder „08.11.2026“ → ISO, sonst null. */
+export function datumIso(v: string): string | null {
+  const t = v.trim();
+  const iso = /^(\d{4}-\d{2}-\d{2})/.exec(t)?.[1] ?? (/^(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(t) ? t.replace(/^(\d{1,2})\.(\d{1,2})\.(\d{4}).*$/, (_, d, m, y) => `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`) : null);
+  return iso && !Number.isNaN(Date.parse(iso)) ? iso : null;
+}
+
 /** Stückzahl aus „1.200“, „1,200“, „85“, „85,5“ → ganze Zahl; sonst null. */
 export function stueckZahl(v: string): number | null {
   const t = v.trim().replace(/\s/g, "");
@@ -167,6 +213,14 @@ const SPALTE: Record<keyof LeadEingabe | "adresse", RegExp> = {
   lat: /^(lat|latitude|breitengrad|location lat)$/,
   lng: /^(lng|lon|long|longitude|lae?ngengrad|location lng)$/,
   groesse: /^(groe?sse|size|betriebsgroe?sse|unternehmensgroe?sse)$/,
+  // B35: USt-IdNr., Handelsregister (nicht die LUCID-Registrierungsnummer), Marken, Größe/Aktivität, Impressum
+  ustId: /^(ust ?id( ?nr)?|ust idnr|ustidnr|ust id nr|vat( id| no| number)?|umsatzsteuer ?id(entifikationsnummer)?)$/,
+  registerNr: /^(hrb|hra|handelsregister( ?nummer| ?nr)?|registernummer|register ?nr|hr ?nummer|registergericht)$/,
+  marken: /^(marken?|brands?|brand names?|eigenmarken?)$/,
+  mitarbeiter: /^(mitarbeiter(zahl)?|anzahl mitarbeiter|employees|employee count|besch(ae|a)ftigte)$/,
+  anzahlAsins: /^(anzahl asins|asins|anzahl artikel|anzahl produkte|products|product count|anzahl angebote|angebote|offers|listings|anzahl listings)$/,
+  letzteAktivitaet: /^(neuester artikel|letzte aktivit(ae|a)t|zuletzt aktiv|newest listing|last active|latest listing)$/,
+  impressumUrl: /^(impressum( url| link)?|imprint( url| link)?)$/,
   stueckJeArtikel: /^(stu(e)?ck je artikel|stu(e)?ck pro artikel|stu(e)?ckzahl( je artikel)?|menge je artikel|einheiten je artikel|units per (product|sku|asin|item)|avg units|average units|units|monthly units|units sold|est monthly units|estimated monthly units|bestand je artikel|stock per (sku|item|asin)|durchschnittlicher bestand)$/,
 };
 const janein = (v: string) => /^(ja|j|yes|y|x|1|true|wahr)$/i.test(v.trim());
@@ -204,30 +258,30 @@ export function leadsAusTabelle(headers: string[], rows: string[][], o: { typ?: 
       }
     }
     if (!firma) return void verworfen.push(`Zeile ${n + 2}: ohne Firma`);
-    if (!plz && !ort) return void verworfen.push(`Zeile ${n + 2} (${firma}): ohne Anschrift`);
+    // B35: ohne Anschrift nur behalten, wenn Website oder USt-IdNr. die Firma eindeutig macht (dann nicht im Versand)
+    if (!plz && !ort && !z(r, idx.website) && !z(r, idx.ustId)) return void verworfen.push(`Zeile ${n + 2} (${firma}): ohne Anschrift`);
     const mailRoh = z(r, idx.email).split(/[,;\s]+/).find((x) => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(x)) ?? null;
     const quelle = z(r, idx.emailQuelle) || null;
     const mailQuelle = quelle && /impressum|imprint/i.test(quelle) ? quelle : o.typ === "apify" ? EMAIL_QUELLE_APIFY : null;
     const email = mailRoh && mailQuelle ? mailRoh.toLowerCase() : null;
     if (mailRoh && !email) ohneMail++;
-    leads.push({ firma, strasse: strasse?.slice(0, 200) ?? null, plz: plz?.slice(0, 10) ?? null, ort: ort?.slice(0, 100) ?? null, land: (z(r, idx.land) || "DE").slice(0, 2).toUpperCase(), kategorie: z(r, idx.kategorie).slice(0, 120) || null, email, emailQuelle: email ? mailQuelle!.slice(0, 200) : null, website: z(r, idx.website).slice(0, 300) || null, adelprep: janein(z(r, idx.adelprep)), lat: koordinate(z(r, idx.lat), 90), lng: koordinate(z(r, idx.lng), 180), groesse: z(r, idx.groesse).toLowerCase().slice(0, 20) || null, stueckJeArtikel: stueckZahl(z(r, idx.stueckJeArtikel)) });
+    leads.push({ firma, strasse: strasse?.slice(0, 200) ?? null, plz: plz?.slice(0, 10) ?? null, ort: ort?.slice(0, 100) ?? null, land: (z(r, idx.land) || "DE").slice(0, 2).toUpperCase(), kategorie: z(r, idx.kategorie).slice(0, 120) || null, email, emailQuelle: email ? mailQuelle!.slice(0, 200) : null, website: z(r, idx.website).slice(0, 300) || null, adelprep: janein(z(r, idx.adelprep)), lat: koordinate(z(r, idx.lat), 90), lng: koordinate(z(r, idx.lng), 180), groesse: z(r, idx.groesse).toLowerCase().slice(0, 20) || null, stueckJeArtikel: stueckZahl(z(r, idx.stueckJeArtikel)), ustId: z(r, idx.ustId).slice(0, 30) || null, registerNr: z(r, idx.registerNr).slice(0, 120) || null, marken: z(r, idx.marken).slice(0, 300) || null, mitarbeiter: stueckZahl(z(r, idx.mitarbeiter)), anzahlAsins: stueckZahl(z(r, idx.anzahlAsins)), letzteAktivitaet: datumIso(z(r, idx.letzteAktivitaet)), impressumUrl: z(r, idx.impressumUrl).slice(0, 300) || null });
   });
   return { leads, verworfen, ohneMail };
 }
 
+/** Grund, warum eine E-Mail an einen Lead nicht geht (B35: keine Werbe-E-Mails an Leads). */
+export const WERBEMAIL_GESPERRT = "Werbe-E-Mails an Leads sind abgeschaltet (UWG § 7) – E-Mail nur als Antwort auf eine Anfrage; bitte per Brief";
+
 /**
- * E-Mail erlaubt? Bestandskunden ja. Hat sich der Händler gemeldet (Status geantwortet/Kunde), ist eine Antwort
- * erlaubt. Sonst Fremdkontakte nur, wenn „Rechtlich geprüft“ an ist UND eine Einwilligung dokumentiert ist – eine
- * gefundene Adresse (Impressum/Apify) allein reicht nie für Werbung (UWG § 7). Standard ist der Brief. Keine
- * Rechtsberatung.
+ * E-Mail an einen Lead erlaubt? B35: nie als Werbe-E-Mail – auch nicht mit „Rechtlich geprüft“, Einwilligung oder als
+ * Bestandskunde. Erlaubt ist nur die Antwort, wenn sich der Händler gemeldet hat (Status geantwortet/Kunde).
+ * Gespeicherte Adressen (Impressum) dienen nur Antworten. Standard ist der Brief. Keine Rechtsberatung.
  */
-export function mailErlaubt(l: { bestandskunde: boolean; einwilligung: string | null; email: string | null; status?: string }, rechtlichGeprueft: boolean): { erlaubt: boolean; grund: string } {
-  if (!l.email) return { erlaubt: false, grund: "keine E-Mail-Adresse (aus dem Impressum) hinterlegt" };
-  if (l.bestandskunde) return { erlaubt: true, grund: "Bestandskunde" };
-  if (l.status === "geantwortet" || l.status === "kunde") return { erlaubt: true, grund: "Händler hat sich gemeldet – Antwort erlaubt (keine Werbe-E-Mail)" };
-  if (!rechtlichGeprueft) return { erlaubt: false, grund: "E-Mail an Fremdkontakte gesperrt – „Rechtlich geprüft“ ist aus (Einstellungen)" };
-  if (!l.einwilligung?.trim()) return { erlaubt: false, grund: "Adresse aus dem Impressum – nur für Antworten, keine Werbe-E-Mail (UWG § 7); bitte per Brief" };
-  return { erlaubt: true, grund: `Einwilligung: ${l.einwilligung.trim()}` };
+export function mailErlaubt(l: { bestandskunde: boolean; einwilligung: string | null; email: string | null; status?: string }, _rechtlichGeprueft?: boolean): { erlaubt: boolean; grund: string } {
+  if (!l.email) return { erlaubt: false, grund: "keine E-Mail-Adresse hinterlegt" };
+  if (l.status === "geantwortet" || l.status === "kunde") return { erlaubt: true, grund: "Antwort auf eine Anfrage des Händlers (keine Werbe-E-Mail)" };
+  return { erlaubt: false, grund: WERBEMAIL_GESPERRT };
 }
 
 /** B34.3c Vorschlag „Zielgruppe AdelPrep“: große Stückzahlen je Artikel (ab Schwelle). Übernahme nur von Hand. */
@@ -237,7 +291,7 @@ export function adelprepVorschlag(l: { adelprep: boolean; status: string; stueck
 }
 
 /** B34.3c Quelle gesperrt? LUCID-Daten erst nach rechtlicher Klärung für Werbung nutzen. */
-export function quelleSperre(l: { quelleTyp: string | null }, q: LeadQuellenEinstellungen): string | null {
+export function quelleSperre(l: { quelleTyp: string | null }, q: Pick<LeadQuellenEinstellungen, "lucidGeklaert">): string | null {
   return l.quelleTyp === "lucid" && !q.lucidGeklaert ? "Quelle LUCID: Nutzung für Werbung noch nicht geklärt (Einstellungen → Lead-Quellen)" : null;
 }
 

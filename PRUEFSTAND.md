@@ -88,6 +88,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | B2B | Deals `/b2b` | ○ 0/6 Abläufe | – | 5 |
 | B2B | Preislisten je Land `/b2b/preislisten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/4 Abläufe | – | 3 |
+| B2B | Leads (Lead-Maschine) `/b2b/leads` | ○ 0/3 Abläufe | – | 3 |
 | B2B | B2B-Kunden `/b2b/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Lieferanten-Freigaben `/b2b/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Bilanz `/b2b/bilanz` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -512,6 +513,18 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
 - – Offen: Briefe drucken und frankieren – außerhalb des Systems
 
+### B2B › Leads (Lead-Maschine) (`/b2b/leads`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B35.8 Abnahme: 50-Zeilen-CSV mit Dubletten (Name+PLZ, Website, USt-IdNr.), eigener Testlieferant, Konfliktbranche, Wein, Frischware, ohne Anschrift; Nachtrag nur mit gleicher USt-IdNr.; Sperre per Klick, Brief vor 30 Tagen; Charge vorbereiten (20); Beilage abwählen; Freigabe; Versand-Vorschau | 47 neu + 3 Dubletten zusammengeführt, Nachtrag als „schon vorhanden“ zusammengeführt (Verlauf); Priorität und empfohlene Kampagne sichtbar; Lieferant/Konflikt/Frischware ausgeschlossen, Wein „Lagerbedingungen klären“, ohne Anschrift/gesperrt/Mindestabstand nie in der Charge; genau 20 Entwürfe, keine Charge, kein Brief beim Anbieter; Beilage nur bei Zielgruppe AdelPrep und je Brief abwählbar; nach Freigabe Vorschau mit 20 Briefen, weiter nichts verschickt; Auskunft als JSON | ○ im letzten Lauf nicht gelaufen | `b35-lead-maschine.spec.ts` |
+| B35.7/B35.9 Stufe 2: Quellen ohne Datum der rechtlichen Prüfung, dann mit Datum; Apify-Lauf (Nachbau mit steigenden Kosten, Budget 0,10 $); Google Places (2. Seite über Budget); Impressum-Abruf mit Captcha-Seite und normaler Seite; zweiter Lauf | ohne Prüfdatum kein Lauf-Knopf; Apify bricht bei Überschreitung ab (Abbruch beim Anbieter, Teilergebnis gespeichert, Lauf „abgebrochen“); Places stoppt vor dem 2. Abruf; Impressum: robots.txt, eigener User-Agent, ≥ Pause zwischen Abrufen, USt-IdNr./E-Mail ergänzt (Mail nur für Antworten); Captcha-Seite einmal abgerufen, übersprungen, im Wochenbericht gemeldet, nicht erneut versucht | ○ im letzten Lauf nicht gelaufen | `b35-lead-maschine.spec.ts` |
+| Keine Werbe-E-Mail an Leads (UWG § 7), auch nicht mit „Rechtlich geprüft“ und Einwilligung | Mail-Weg gesperrt, Freigabe ergibt „Nichts freigegeben“, keine Mail im Testpostfach | ○ im letzten Lauf nicht gelaufen | `b34-abverkauf.spec.ts`, `b34-lead-quellen.spec.ts` |
+
+- – Offen: Rechtliche Prüfung (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – erst danach Datum eintragen
+- – Offen: Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen
+- – Offen: Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet
+
 ### Marken & Content › Uhren: Buy & Flip (`/marken/uhren`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -709,7 +722,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (172 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 172 nicht gelaufen.
+**Automatisch** (175 Abläufe + Oberfläche auf 120 Seiten): 0 bestanden, 0 fehlgeschlagen, 175 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -820,6 +833,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Abverkauf an Händler (Ladenhüter): B34.3a/3.6 Abnahme: Beilage der Logistik-Firma (Textprüfung), 3 Test-Leads, Charge, Briefversand über den LetterXpress-Nachbau im Testmodus, Testbrief, Status, AV-Haken, live – im letzten Lauf nicht gelaufen
 - ○ Abverkauf an Händler (Ladenhüter): B34.3b Abnahme: Kampagne „Friseure“ mit 2 Testprodukten (MHD 06/2028 und 01/2027), Leads mit Koordinaten, Brief-PDF, Anfrageseite ohne Anmeldung – im letzten Lauf nicht gelaufen
 - ○ Abverkauf an Händler (Ladenhüter): B34.3c Abnahme Stufe 1: Apify-Export (Google Maps) per CSV ohne Angabe von Quelle/Datum, „Rechtlich geprüft“ an, Entwurf per Mail und per Brief, Freigabe; Keepa-Export mit Stückzahl; Impressum-Mail von Hand; LUCID-Export – im letzten Lauf nicht gelaufen
+- ○ Leads (Lead-Maschine): B35.8 Abnahme: 50-Zeilen-CSV mit Dubletten (Name+PLZ, Website, USt-IdNr.), eigener Testlieferant, Konfliktbranche, Wein, Frischware, ohne Anschrift; Nachtrag nur mit gleicher USt-IdNr.; Sperre per Klick, Brief vor 30 Tagen; Charge vorbereiten (20); Beilage abwählen; Freigabe; Versand-Vorschau – im letzten Lauf nicht gelaufen
+- ○ Leads (Lead-Maschine): B35.7/B35.9 Stufe 2: Quellen ohne Datum der rechtlichen Prüfung, dann mit Datum; Apify-Lauf (Nachbau mit steigenden Kosten, Budget 0,10 $); Google Places (2. Seite über Budget); Impressum-Abruf mit Captcha-Seite und normaler Seite; zweiter Lauf – im letzten Lauf nicht gelaufen
+- ○ Leads (Lead-Maschine): Keine Werbe-E-Mail an Leads (UWG § 7), auch nicht mit „Rechtlich geprüft“ und Einwilligung – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Übungs-Deal – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Pflichtfeld-Fehler → Eingaben bleiben → speichern → neu laden → Status ändern → nochmals speichern – im letzten Lauf nicht gelaufen
@@ -945,6 +961,9 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Abverkauf an Händler (Ladenhüter): Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)
 - Abverkauf an Händler (Ladenhüter): Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
 - Abverkauf an Händler (Ladenhüter): Briefe drucken und frankieren – außerhalb des Systems
+- Leads (Lead-Maschine): Rechtliche Prüfung (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – erst danach Datum eintragen
+- Leads (Lead-Maschine): Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen
+- Leads (Lead-Maschine): Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - Calls (Consultant & Gruppe): Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)

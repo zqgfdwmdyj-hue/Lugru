@@ -50,6 +50,9 @@ services:
       DRIVE_API_BASE_URL: http://testdienste:4010/drive/v3
       LETTERXPRESS_BASE_URL: http://testdienste:4010/letterxpress/v3
       EBRIEF_BASE_URL: http://testdienste:4010/ebrief
+      APIFY_BASE_URL: http://testdienste:4010/apify
+      GOOGLE_PLACES_BASE_URL: http://testdienste:4010/places
+      LEAD_WEB_BASE_URL: http://testdienste:4010/leadweb
       DISCORD_API_BASE_URL: http://testdienste:4010/discord-api
       MEDIA_DIR: /medien
     volumes:

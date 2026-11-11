@@ -34,7 +34,14 @@ export async function einstellungen(tenantId: string): Promise<AbverkaufEinstell
     adelprep: { ...d.adelprep, ...(roh.adelprep ?? {}), bestaetigt: { ...d.adelprep.bestaetigt, ...(roh.adelprep?.bestaetigt ?? {}) } },
     briefversand: { ...d.briefversand, ...(bv ?? {}), preise: { ebrief: { ...d.briefversand.preise.ebrief, ...(bv?.preise?.ebrief ?? {}) }, letterxpress: { ...d.briefversand.preise.letterxpress, ...(bv?.preise?.letterxpress ?? {}) }, epost: { ...d.briefversand.preise.epost, ...(bv?.preise?.epost ?? {}) } } },
     lager: { ...d.lager, ...(roh.lager ?? {}) },
-    leadQuellen: { ...d.leadQuellen, ...(roh.leadQuellen ?? {}) },
+    leadQuellen: {
+      ...d.leadQuellen,
+      ...(roh.leadQuellen ?? {}),
+      wochenCharge: { ...d.leadQuellen.wochenCharge, ...(roh.leadQuellen?.wochenCharge ?? {}) },
+      apify: { ...d.leadQuellen.apify, ...(roh.leadQuellen?.apify ?? {}) },
+      places: { ...d.leadQuellen.places, ...(roh.leadQuellen?.places ?? {}) },
+      impressum: { ...d.leadQuellen.impressum, ...(roh.leadQuellen?.impressum ?? {}) },
+    },
   };
 }
 
@@ -122,28 +129,12 @@ export async function leadsImportieren(s: Session, o: { name: string; bytes: Uin
   const quelle = o.quelle.trim() || erkannt.name;
   const quelleDatum = o.quelleDatum.trim() || quelleDatumAus(t.headers, t.rows) || heute();
   const r = leadsAusTabelle(t.headers, t.rows, { typ: erkannt.typ });
-  const cfg = await einstellungen(s.tenantId);
-  const gesperrt = new Set((await db.select({ k: SP.schluessel }).from(SP).where(eq(SP.tenantId, s.tenantId))).map((x) => x.k));
-  let neu = 0;
-  let doppelt = 0;
-  let sperre = 0;
-  const loeschenAm = plusTage(heute(), cfg.loeschfristTage);
-  for (const l of r.leads) {
-    const key = leadSchluessel(l.firma, l.plz);
-    if (gesperrt.has(key) || (l.email && gesperrt.has(mailSchluessel(l.email)))) {
-      sperre++;
-      continue;
-    }
-    const ins = await db
-      .insert(L)
-      .values({ tenantId: s.tenantId, firma: l.firma, strasse: l.strasse ? sealPii(l.strasse) : null, plz: l.plz, ort: l.ort, land: l.land, kategorie: l.kategorie, email: l.email ? sealPii(l.email) : null, emailQuelle: l.emailQuelle, website: l.website, quelle: quelle.slice(0, 200), quelleDatum, quelleTyp: erkannt.typ, stueckJeArtikel: l.stueckJeArtikel, kontaktweg: "brief", rechtsgrundlage: RECHTSGRUNDLAGE_BRIEF, zweck: ZWECK, loeschenAm, schluessel: key, importName: o.name.slice(0, 200), adelprep: l.adelprep, lat: l.lat, lng: l.lng, groesse: l.groesse })
-      .onConflictDoNothing()
-      .returning({ id: L.id });
-    if (ins.length) neu++;
-    else doppelt++;
-  }
+  // B35: Speichern mit Zusammenführen (Name+PLZ, Website, USt-IdNr., Register), Sperrliste, Bestandsabgleich, Bewertung
+  const { leadsSpeichern, laufProtokoll } = await import("./lead-maschine");
+  const e = await leadsSpeichern(s.tenantId, r.leads, { quelle, quelleDatum, quelleTyp: erkannt.typ, importName: o.name });
+  await laufProtokoll(s.tenantId, { quelle: "datei", status: "fertig", neu: e.neu, zusammengefuehrt: e.doppelt + e.zusammengefuehrt, verworfen: r.verworfen.length, meldung: `${quelle}: ${e.neu} neu, ${e.doppelt} schon vorhanden, ${e.zusammengefuehrt} Dubletten in der Datei, ${e.gesperrt} Sperrliste` });
   const mitMail = r.leads.filter((l) => l.email).length;
-  return { neu, doppelt, gesperrt: sperre, verworfen: r.verworfen, ohneMail: r.ohneMail, quelle, quelleDatum, typ: erkannt.typ, mitMail };
+  return { neu: e.neu, doppelt: e.doppelt, zusammengefuehrt: e.zusammengefuehrt, gesperrt: e.gesperrt, verworfen: r.verworfen, ohneMail: r.ohneMail, quelle, quelleDatum, typ: erkannt.typ, mitMail };
 }
 
 export type LeadZeile = Omit<typeof L.$inferSelect, "strasse" | "email"> & { strasse: string | null; email: string | null };
@@ -230,11 +221,22 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
   const ai = await getIntegration(s.tenantId, "anthropic");
   let neu = 0;
   const quelleGesperrt: string[] = [];
+  // B35 Schutzregeln auch für Entwürfe von Hand: Ausschluss (Bestand, Konfliktbranche …), Adresse, Mindestabstand
+  const { chargeSperre } = await import("./lead-maschine-logic");
+  const versendet = leads.length ? await db.select({ lead: A.leadId, am: sql<string>`max((${A.versendetAm} at time zone 'Europe/Berlin')::date)::text` }).from(A).where(and(eq(A.tenantId, s.tenantId), inArray(A.leadId, leads.map((l) => l.id)), inArray(A.status, ["versendet", "beantwortet"]), sql`${A.versendetAm} is not null`)).groupBy(A.leadId) : [];
+  const schutz: string[] = [];
   for (const l of leads) {
     if (l.status === "gesperrt") continue;
     const qs = quelleSperre(l, cfg.leadQuellen);
     if (qs) {
       quelleGesperrt.push(l.firma);
+      continue;
+    }
+    const strasse = l.strasse ? openPii(l.strasse) : null;
+    const letzter = [l.letzterBriefAm, versendet.find((v) => v.lead === l.id)?.am ?? null].filter(Boolean).sort().pop() ?? null;
+    const sperre = chargeSperre({ status: l.status, rechtsgrundlage: l.rechtsgrundlage, ausschluss: l.ausschluss, markierungen: l.markierungen, erreichbar: !!(strasse?.trim() && l.plz?.trim() && l.ort?.trim()), letzterBriefAm: letzter, prioritaet: l.prioritaet, quelleGesperrt: null, offenerEntwurf: false }, { heute: heute(), mindestabstandMonate: cfg.leadQuellen.mindestabstandMonate, standard: false });
+    if (sperre) {
+      schutz.push(`${l.firma}: ${sperre}`);
       continue;
     }
     const [schon] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, s.tenantId), eq(A.leadId, l.id), eq(A.status, "entwurf"))).limit(1);
@@ -259,7 +261,7 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
     await db.insert(A).values({ tenantId: s.tenantId, leadId: l.id, preislisteId: liste?.id ?? null, kanal: kampagne ? "brief" : l.kontaktweg, code, betreff: v.betreff, text: text.slice(0, 6000), ki, kampagneId: kampagne?.id ?? null, adelprepBeilage: l.adelprep && cfg.adelprep.standardBeilegen && !kampagne?.absender });
     neu++;
   }
-  const lucid = quelleGesperrt.length ? ` · ${quelleGesperrt.length} ohne Entwurf (Quelle LUCID – Nutzung für Werbung noch nicht geklärt)` : "";
+  const lucid = `${quelleGesperrt.length ? ` · ${quelleGesperrt.length} ohne Entwurf (Quelle LUCID – Nutzung für Werbung noch nicht geklärt)` : ""}${schutz.length ? ` · ${schutz.length} ohne Entwurf (Schutzregeln: ${schutz.slice(0, 5).join("; ")}${schutz.length > 5 ? " …" : ""})` : ""}`;
   return { neu, text: `${neu} ${neu === 1 ? "Entwurf" : "Entwürfe"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.${lucid}` };
 }
 
@@ -337,8 +339,11 @@ export async function freigeben(s: Session, ids: string[]): Promise<{ chargeId: 
 /** Briefe der Charge als verschickt markieren (nach dem Druck). */
 export async function chargeVerschickt(s: Session, chargeId: string) {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
-  await db.update(A).set({ status: "versendet", versendetAm: new Date() }).where(and(eq(A.tenantId, s.tenantId), eq(A.chargeId, chargeId), eq(A.status, "freigegeben"), eq(A.kanal, "brief")));
+  const verschickt = await db.update(A).set({ status: "versendet", versendetAm: new Date() }).where(and(eq(A.tenantId, s.tenantId), eq(A.chargeId, chargeId), eq(A.status, "freigegeben"), eq(A.kanal, "brief"))).returning({ lead: A.leadId });
   await db.update(C).set({ versendetAm: new Date() }).where(and(eq(C.tenantId, s.tenantId), eq(C.id, chargeId)));
+  // B35: Mindestabstand und Löschfrist ab heute, DSGVO-Nachweis im Verlauf
+  const { kontaktMerken } = await import("./lead-maschine");
+  await kontaktMerken(s.tenantId, verschickt.map((v) => v.lead), "Brief versendet (selbst gedruckt)", true);
 }
 
 /** Serienbrief der Charge: je Händler eine Seite mit Anschrift, Text, Datenschutzhinweis (Art. 14 DSGVO). */
@@ -374,6 +379,8 @@ export async function antwortAusMail(tenantId: string, m: { messageKey: string; 
   await db.update(A).set({ status: "beantwortet", antwortAm: new Date() }).where(eq(A.id, treffer.a.id));
   if (abmeldung) await leadSperren(tenantId, treffer.l.id, "Abmeldung per Antwort");
   else await db.update(L).set({ status: "geantwortet" }).where(eq(L.id, treffer.l.id));
+  const antwortLead = treffer.l.id;
+  await import("./lead-maschine").then((x) => x.kontaktMerken(tenantId, [antwortLead], abmeldung ? "Abmeldung per Antwort (Sperrliste)" : "Antwort im Posteingang", false)).catch(() => undefined);
   await db
     .insert(schema.tasks)
     .values({ tenantId, title: abmeldung ? `Abmeldung: ${treffer.l.firma} (Restposten) – auf Sperrliste` : `Antwort auf Restposten-Angebot: ${treffer.l.firma}`, notes: `Bezug ${treffer.a.code}. Mail im Posteingang: „${m.subject.slice(0, 120)}“.`, dueDate: heute(), priority: "normal", category: "einkauf", systemKey: `abverkauf-antwort:${m.messageKey}`.slice(0, 200), link: "/b2b/abverkauf#anschreiben" })

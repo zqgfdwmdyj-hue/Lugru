@@ -691,6 +691,83 @@ async function ebrief(req, p, b) {
 }
 const ebSicht = (j) => ({ Id: j.id, JobStatus: j.status, PriceNetto: j.amount, Documents: [{ DocumentStatus: j.status, LastEvent: j.tracking_status ?? j.status, PriceNetto: j.amount }] });
 
+// B35 Lead-Quellen (Nachbau): Apify-Läufe mit steigenden Kosten, Google-Places-Textsuche, Firmenwebsites mit
+// Impressum / robots.txt / Captcha. Nur erfundene Firmen (example.invalid).
+const leadNb = { runs: new Map(), n: 0, abbrueche: [], places: [], abrufe: [], cfg: { usdSchritt: 0.05, endUsd: 0.2, items: null } };
+const APIFY_STANDARD = () => [
+  { title: "Testsalon Apify 1 GmbH", categoryName: "Friseur", street: "Testweg 1", city: "Musterstadt", postalCode: "12345", countryCode: "DE", website: "https://testsalon-apify1.example.invalid", location: { lat: 48.1, lng: 11.5 } },
+  { title: "Testsalon Apify 2 UG", categoryName: "Friseur", street: "Testweg 2", city: "Musterstadt", postalCode: "12345", countryCode: "DE", website: "https://testsalon-apify2.example.invalid", location: { lat: 48.11, lng: 11.51 } },
+  { title: "Testspielwaren Apify KG", categoryName: "Spielwarengeschäft", street: "Testweg 3", city: "Musterstadt", postalCode: "12345", countryCode: "DE", website: "https://testspielwaren-apify.example.invalid", location: { lat: 48.12, lng: 11.52 } },
+];
+const apifySicht = (r) => ({ data: { id: r.id, status: r.status, defaultDatasetId: `ds-${r.id}`, usageTotalUsd: Math.round(r.usd * 100) / 100 } });
+function apifyNb(req, p, b) {
+  const pfad = p.slice("/apify/v2".length);
+  if (!String(req.headers.authorization ?? "").startsWith("Bearer ")) return [401, { error: { type: "token-not-provided", message: "Token fehlt" } }];
+  if (pfad === "/users/me") return [200, { data: { username: "test-apify" } }];
+  const start = /^\/acts\/([^/]+)\/runs$/.exec(pfad);
+  if (start && req.method === "POST") {
+    const id = `run${++leadNb.n}`;
+    const r = { id, status: "RUNNING", usd: 0, actor: decodeURIComponent(start[1]), eingabe: b, items: leadNb.cfg.items ?? APIFY_STANDARD() };
+    leadNb.runs.set(id, r);
+    return [201, apifySicht(r)];
+  }
+  const ab = /^\/actor-runs\/([^/]+)\/abort$/.exec(pfad);
+  if (ab && req.method === "POST") {
+    const r = leadNb.runs.get(ab[1]);
+    if (!r) return [404, { error: { type: "record-not-found" } }];
+    if (r.status === "RUNNING") r.status = "ABORTED";
+    leadNb.abbrueche.push({ id: r.id, usd: r.usd, at: new Date().toISOString() });
+    return [200, apifySicht(r)];
+  }
+  const st = /^\/actor-runs\/([^/]+)$/.exec(pfad);
+  if (st) {
+    const r = leadNb.runs.get(st[1]);
+    if (!r) return [404, { error: { type: "record-not-found" } }];
+    if (r.status === "RUNNING") {
+      r.usd += leadNb.cfg.usdSchritt;
+      if (r.usd >= leadNb.cfg.endUsd - 1e-9) r.status = "SUCCEEDED";
+    }
+    return [200, apifySicht(r)];
+  }
+  const ds = /^\/datasets\/ds-([^/]+)\/items$/.exec(pfad);
+  if (ds) {
+    const r = leadNb.runs.get(ds[1]);
+    // Bis zum Abbruch geliefert: ein Teil der Ergebnisse
+    return [200, r ? (r.status === "ABORTED" ? r.items.slice(0, 1) : r.items) : []];
+  }
+  return [404, { error: { type: "page-not-found" } }];
+}
+function placesNb(req, b) {
+  if (!req.headers["x-goog-api-key"]) return [403, { error: { code: 403, message: "API key fehlt", status: "PERMISSION_DENIED" } }];
+  leadNb.places.push({ text: b.textQuery, pageToken: b.pageToken ?? null, bias: b.locationBias ?? null, feldmaske: req.headers["x-goog-fieldmask"] ?? null });
+  const ort = (k) => [
+    { longText: `Testweg ${k}`.replace(/ \d+$/, ""), types: ["route"] },
+    { longText: String(k), types: ["street_number"] },
+    { longText: "12345", types: ["postal_code"] },
+    { longText: "Musterstadt", types: ["locality"] },
+    { longText: "Deutschland", shortText: "DE", types: ["country"] },
+  ];
+  const seite2 = b.pageToken === "seite2";
+  const basis = seite2 ? 20 : 10;
+  const places = [1, 2].map((i) => ({ id: `place-test-${basis + i}`, displayName: { text: `Testfriseur Places ${basis + i} GmbH` }, addressComponents: ort(basis + i), location: { latitude: 48.1 + i / 100, longitude: 11.5 }, websiteUri: `https://testfriseur-places${basis + i}.example.invalid`, primaryTypeDisplayName: { text: "Friseursalon" } }));
+  return [200, { places, ...(!seite2 && /mehr/i.test(String(b.textQuery ?? "")) ? { nextPageToken: "seite2" } : {}) }];
+}
+const IMPRESSUM = (firma, ust, mail) => `<!doctype html><html><body><h1>Impressum</h1><p>Angaben gemäß § 5 TMG</p><p>${firma}<br>Testweg 9<br>12345 Musterstadt</p><p>Handelsregister: HRB 99999, Amtsgericht Musterstadt</p><p>Umsatzsteuer-Identifikationsnummer: ${ust}</p><p>E-Mail: ${mail}</p></body></html>`;
+function leadWebNb(req, p) {
+  const [, , host, ...rest] = p.split("/");
+  const pfad = `/${rest.join("/")}`;
+  leadNb.abrufe.push({ at: Date.now(), host, pfad, ua: String(req.headers["user-agent"] ?? "") });
+  const html = (code, text) => [code, text, "text/html; charset=utf-8"];
+  const txt = (text) => [200, text, "text/plain; charset=utf-8"];
+  if (host.startsWith("captcha")) return html(403, "<html><body><div class='g-recaptcha'>Bitte bestätigen: Sind Sie ein Mensch? (captcha)</div></body></html>");
+  if (pfad === "/robots.txt") return host.startsWith("verboten") ? txt("User-agent: *\nDisallow: /") : txt("User-agent: *\nAllow: /");
+  if (pfad === "/impressum" && host.endsWith(".example.invalid")) {
+    const name = host.split(".")[0];
+    return html(200, IMPRESSUM(`${name} GmbH`, host.includes("doppelt") ? "DE000000077" : "DE000000099", `info@${host}`));
+  }
+  return html(404, "<html><body>Nicht gefunden</body></html>");
+}
+
 async function route(req, url, body) {
   const p = url.pathname;
   const json = (o) => [200, o];
@@ -701,6 +778,9 @@ async function route(req, url, body) {
       return {};
     }
   };
+  if (p.startsWith("/apify/v2/")) return apifyNb(req, p, parsed());
+  if (p === "/places/v1/places:searchText" && req.method === "POST") return placesNb(req, parsed());
+  if (p.startsWith("/leadweb/")) return leadWebNb(req, p);
   if (p.startsWith("/drive/v3/") || p === "/drive/v3/files" || p === "/google-oauth/token") return driveRoute(req, url, p, parsed());
   if (p.startsWith("/letterxpress/v3/")) return letterxpress(req, p, parsed());
   if (p.startsWith("/ebrief/")) return ebrief(req, p, parsed());
@@ -1380,7 +1460,7 @@ ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
   return true;
 }
 
-const dienstOf = (p) => (p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
+const dienstOf = (p) => (p.startsWith("/apify") ? "Apify" : p.startsWith("/places") ? "Google Places" : p.startsWith("/leadweb") ? "Firmenwebsite (Impressum)" : p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -1423,6 +1503,14 @@ http
       return send(200, { ok: true });
     }
     if (url.pathname === "/__ao") return send(200, { downloads: ao.downloads, ohne: [...ao.ohne] });
+    // B35: Lead-Quellen einstellen (Kosten je Abfrage, Ende) und ablesen (Abbrüche, Places-Abrufe, Website-Abrufe mit User-Agent)
+    if (url.pathname === "/__leads" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) Object.assign(leadNb, { runs: new Map(), abbrueche: [], places: [], abrufe: [], cfg: { usdSchritt: 0.05, endUsd: 0.2, items: null } });
+      Object.assign(leadNb.cfg, b.cfg ?? {});
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__leads") return send(200, { runs: [...leadNb.runs.values()].map((r) => ({ id: r.id, status: r.status, usd: r.usd, actor: r.actor })), abbrueche: leadNb.abbrueche, places: leadNb.places, abrufe: leadNb.abrufe });
     if (url.pathname.startsWith("/web-arbitrageone/") && aoNachbau(req, res, url, body)) return;
     if (url.pathname.startsWith("/web-")) return webNachbau(req, res, url, body);
     if (url.pathname === "/__ki") return send(200, ki);

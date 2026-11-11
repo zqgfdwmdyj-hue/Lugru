@@ -176,6 +176,14 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)", "Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen", "Briefe drucken und frankieren – außerhalb des Systems"],
   },
+  "/b2b/leads": {
+    abläufe: [
+      { ablauf: "B35.8 Abnahme: 50-Zeilen-CSV mit Dubletten (Name+PLZ, Website, USt-IdNr.), eigener Testlieferant, Konfliktbranche, Wein, Frischware, ohne Anschrift; Nachtrag nur mit gleicher USt-IdNr.; Sperre per Klick, Brief vor 30 Tagen; Charge vorbereiten (20); Beilage abwählen; Freigabe; Versand-Vorschau", erwartet: "47 neu + 3 Dubletten zusammengeführt, Nachtrag als „schon vorhanden“ zusammengeführt (Verlauf); Priorität und empfohlene Kampagne sichtbar; Lieferant/Konflikt/Frischware ausgeschlossen, Wein „Lagerbedingungen klären“, ohne Anschrift/gesperrt/Mindestabstand nie in der Charge; genau 20 Entwürfe, keine Charge, kein Brief beim Anbieter; Beilage nur bei Zielgruppe AdelPrep und je Brief abwählbar; nach Freigabe Vorschau mit 20 Briefen, weiter nichts verschickt; Auskunft als JSON", tests: ["b35-lead-maschine.spec.ts › Abnahme B35.8/B35.9"] },
+      { ablauf: "B35.7/B35.9 Stufe 2: Quellen ohne Datum der rechtlichen Prüfung, dann mit Datum; Apify-Lauf (Nachbau mit steigenden Kosten, Budget 0,10 $); Google Places (2. Seite über Budget); Impressum-Abruf mit Captcha-Seite und normaler Seite; zweiter Lauf", erwartet: "ohne Prüfdatum kein Lauf-Knopf; Apify bricht bei Überschreitung ab (Abbruch beim Anbieter, Teilergebnis gespeichert, Lauf „abgebrochen“); Places stoppt vor dem 2. Abruf; Impressum: robots.txt, eigener User-Agent, ≥ Pause zwischen Abrufen, USt-IdNr./E-Mail ergänzt (Mail nur für Antworten); Captcha-Seite einmal abgerufen, übersprungen, im Wochenbericht gemeldet, nicht erneut versucht", tests: ["b35-lead-maschine.spec.ts › Abnahme B35.8/B35.9"] },
+      { ablauf: "Keine Werbe-E-Mail an Leads (UWG § 7), auch nicht mit „Rechtlich geprüft“ und Einwilligung", erwartet: "Mail-Weg gesperrt, Freigabe ergibt „Nichts freigegeben“, keine Mail im Testpostfach", tests: ["b34-abverkauf.spec.ts › Abnahme", "b34-lead-quellen.spec.ts › Abnahme Stufe 1"] },
+    ],
+    offen: ["Rechtliche Prüfung (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – erst danach Datum eintragen", "Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen", "Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet"],
+  },
   "/repricer": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },

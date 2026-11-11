@@ -61,7 +61,7 @@ export async function leadsImportAction(fd: FormData) {
   const datei = f as File;
   await mitFehler(async () => {
     const r = await leadsImportieren(s, { name: datei.name, bytes: new Uint8Array(await datei.arrayBuffer()), quelle: String(fd.get("quelle") ?? ""), quelleDatum: String(fd.get("datum") ?? "") });
-    return `${r.neu} Leads neu, ${r.doppelt} schon vorhanden, ${r.gesperrt} auf der Sperrliste${r.ohneMail ? `, ${r.ohneMail} E-Mail(s) verworfen (Quelle nicht Impressum)` : ""} · Quelle: ${r.quelle}, Stand ${r.quelleDatum.split("-").reverse().join(".")}${r.mitMail ? ` · ${r.mitMail} E-Mail(s) gespeichert – nur für Antworten, keine Werbe-E-Mail` : ""}${r.verworfen.length ? ` · ${r.verworfen.length} Zeilen verworfen: ${r.verworfen.slice(0, 3).join("; ")}` : ""}.`;
+    return `${r.neu} Leads neu, ${r.doppelt} schon vorhanden, ${r.gesperrt} auf der Sperrliste${r.ohneMail ? `, ${r.ohneMail} E-Mail(s) verworfen (Quelle nicht Impressum)` : ""} · Quelle: ${r.quelle}, Stand ${r.quelleDatum.split("-").reverse().join(".")}${r.mitMail ? ` · ${r.mitMail} E-Mail(s) gespeichert – nur für Antworten, keine Werbe-E-Mail` : ""}${r.verworfen.length ? ` · ${r.verworfen.length} Zeilen verworfen: ${r.verworfen.slice(0, 3).join("; ")}` : ""}${r.zusammengefuehrt ? ` · ${r.zusammengefuehrt} Dubletten in der Datei zusammengeführt` : ""}.`;
   }, "#leads");
 }
 
@@ -213,7 +213,9 @@ export async function leadQuellenAction(fd: FormData) {
   const s = await requireArea("b2b");
   await mitFehler(async () => {
     const ab = Math.round(zahl(fd.get("ab")));
-    await einstellungenSpeichern(s, { leadQuellen: { lucidGeklaert: fd.get("lucid") === "on", adelprepAbStueck: Number.isFinite(ab) && ab > 0 ? Math.min(ab, 1_000_000) : 80 } });
+    const { einstellungen } = await import("@/lib/abverkauf/service");
+    const alt = (await einstellungen(s.tenantId)).leadQuellen;
+    await einstellungenSpeichern(s, { leadQuellen: { ...alt, lucidGeklaert: fd.get("lucid") === "on", adelprepAbStueck: Number.isFinite(ab) && ab > 0 ? Math.min(ab, 1_000_000) : 80 } });
     return "Lead-Quellen gespeichert.";
   }, "#lead-quellen");
 }

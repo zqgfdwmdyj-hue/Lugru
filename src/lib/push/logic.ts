@@ -64,13 +64,14 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null; /** B31.6: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“ (nur Inhaber). */ liquidation?: string | null; /** B31.6b/B31.7/B31.8/B32: Leiter-Stufen, überfällige Liquidation, Schnelldreher, Gebrauchte, Listing-Check (nur Inhaber). */ leiter?: string[] | null }): string {
+export function morgenText(o: { /** B35: „Leads: …“ */ leads?: string | null; ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null; /** B31.6: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“ (nur Inhaber). */ liquidation?: string | null; /** B31.6b/B31.7/B31.8/B32: Leiter-Stufen, überfällige Liquidation, Schnelldreher, Gebrauchte, Listing-Check (nur Inhaber). */ leiter?: string[] | null }): string {
   const teile = [
     o.bqool || null,
     o.liquidation || null,
     ...(o.leiter ?? []),
     o.buybox || null,
     o.treffer || null,
+    o.leads || null,
     o.persoenlich ? `${o.persoenlich} persönliche Nachricht${o.persoenlich === 1 ? " wartet" : "en warten"}` : null,
     o.fristen ? `${o.fristen} Frist${o.fristen === 1 ? "" : "en"} heute` : null,
     o.wichtig ? `${o.wichtig} wichtige Aufgabe${o.wichtig === 1 ? "" : "n"}` : null,

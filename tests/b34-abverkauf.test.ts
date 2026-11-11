@@ -43,11 +43,12 @@ describe("B34.3 Leads aus CSV", () => {
 });
 
 describe("B34.3 Kontaktweg und Rechtslage", () => {
-  it("E-Mail an Fremdkontakte gesperrt, solange „Rechtlich geprüft“ aus ist", () => {
-    expect(mailErlaubt({ bestandskunde: false, einwilligung: "Messe 2026, Visitenkarte", email: "a@example.invalid" }, false)).toEqual({ erlaubt: false, grund: "E-Mail an Fremdkontakte gesperrt – „Rechtlich geprüft“ ist aus (Einstellungen)" });
-    expect(mailErlaubt({ bestandskunde: false, einwilligung: null, email: "a@example.invalid" }, true).erlaubt).toBe(false);
-    expect(mailErlaubt({ bestandskunde: false, einwilligung: "Messe 2026", email: "a@example.invalid" }, true).erlaubt).toBe(true);
-    expect(mailErlaubt({ bestandskunde: true, einwilligung: null, email: "a@example.invalid" }, false)).toEqual({ erlaubt: true, grund: "Bestandskunde" });
+  it("B35: keine Werbe-E-Mail an Leads – auch nicht mit „Rechtlich geprüft“, Einwilligung oder als Bestandskunde; nur Antwort", () => {
+    const gesperrt = { erlaubt: false, grund: "Werbe-E-Mails an Leads sind abgeschaltet (UWG § 7) – E-Mail nur als Antwort auf eine Anfrage; bitte per Brief" };
+    expect(mailErlaubt({ bestandskunde: false, einwilligung: "Messe 2026, Visitenkarte", email: "a@example.invalid" }, false)).toEqual(gesperrt);
+    expect(mailErlaubt({ bestandskunde: false, einwilligung: "Messe 2026", email: "a@example.invalid" }, true)).toEqual(gesperrt);
+    expect(mailErlaubt({ bestandskunde: true, einwilligung: null, email: "a@example.invalid" }, true)).toEqual(gesperrt);
+    expect(mailErlaubt({ bestandskunde: false, einwilligung: null, email: "a@example.invalid", status: "geantwortet" }, false).erlaubt).toBe(true);
     expect(mailErlaubt({ bestandskunde: true, einwilligung: null, email: null }, true).erlaubt).toBe(false);
   });
   it("Datenschutzhinweis nach Art. 14 DSGVO mit Quelle, Zweck, Rechtsgrundlage, Speicherdauer, Widerspruch, Abmelden", () => {

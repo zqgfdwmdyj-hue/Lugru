@@ -162,6 +162,7 @@ export const NAV: NavSection[] = [
       { href: "/b2b", label: "Deals" },
       { href: "/b2b/preislisten", label: "Preislisten je Land" },
       { href: "/b2b/abverkauf", label: "Abverkauf an Händler (Ladenhüter)" },
+      { href: "/b2b/leads", label: "Leads (Lead-Maschine)" },
       { href: "/b2b/kunden", label: "B2B-Kunden" },
       { href: "/b2b/lieferanten", label: "Lieferanten-Freigaben" },
       { href: "/b2b/bilanz", label: "Bilanz" },

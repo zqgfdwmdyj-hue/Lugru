@@ -6,7 +6,10 @@ import { ANBIETER_NAME, briefAnbieter, type BriefAnbieterName } from "@/lib/inte
 import { getIntegration } from "@/lib/integrations/store";
 import { briefeBauen, type BriefZeile } from "./briefe";
 import { adressePruefen, anschriftSchluessel, briefKosten, kostenVorschau, limitPruefen } from "./kampagne-logic";
+import { plusMonateIso } from "./lead-maschine-logic";
 import { CHARGE_MAX, quelleSperre } from "./logic";
+
+const heuteIso = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
 import { absender, AbverkaufFehler, einstellungen } from "./service";
 
 // B34.3a Briefversand über einen Anbieter: PDF je Lead → Vorschau (Adressprüfung, Seiten) → Kostenvorschau →
@@ -68,6 +71,9 @@ export async function versandVorschau(tenantId: string, chargeId: string): Promi
     const pr = adressePruefen({ firma: z.l.firma, strasse: g.adresse.strasse, plz: z.l.plz, ort: z.l.ort, land: z.l.land, status: z.l.status, rechtsgrundlage: z.l.rechtsgrundlage }, { gesperrt: gesperrt.has(z.l.schluessel), dublette: gesehen.has(key) });
     const qs = quelleSperre(z.l, cfg.leadQuellen);
     if (qs) pr.fehler.push(qs), (pr.ok = false);
+    // B35: Schutzregeln vor jedem Versand erneut prüfen (Ausschluss/Bestand, Mindestabstand)
+    if (z.l.ausschluss) pr.fehler.push(z.l.ausschluss), (pr.ok = false);
+    if (z.l.letzterBriefAm && z.a.status === "freigegeben" && cfg.leadQuellen.mindestabstandMonate > 0 && plusMonateIso(z.l.letzterBriefAm, cfg.leadQuellen.mindestabstandMonate) > heuteIso()) pr.fehler.push(`Mindestabstand: letzter Brief am ${z.l.letzterBriefAm.split("-").reverse().join(".")}`), (pr.ok = false);
     gesehen.add(key);
     const u = schon.find((x) => x.id === z.a.id && (x.modus === modus || x.modus === "live"));
     return { anschreibenId: z.a.id, firma: z.l.firma, ort: [z.l.plz, z.l.ort].filter(Boolean).join(" "), seiten, kosten: briefKosten(seiten, preis), ok: pr.ok && !u, fehler: pr.fehler, hinweis: g.hinweis, uebergeben: u ? `${u.modus === "test" ? "Testmodus" : "live"}: ${u.status}` : null };
@@ -152,7 +158,11 @@ export async function chargeVersenden(s: Session, chargeId: string, bestaetigteS
       const r = await a.senden(pdf, g.adresse, { modus, farbe: bv.farbe, duplex: bv.duplex, dateiname: `${g.brief.code}.pdf`, seiten });
       const kosten = r.kostenNetto ?? briefKosten(seiten, bv.preise[bv.anbieter]);
       await db.insert(B).values({ tenantId: s.tenantId, anschreibenId: g.anschreibenId, chargeId, anbieter: bv.anbieter, modus, externeId: r.id, status: r.status, statusText: r.text, seiten, kostenNetto: kosten, freigegebenVon: s.userId, statusAm: new Date() });
-      if (modus === "live") await db.update(A).set({ status: "versendet", versendetAm: new Date() }).where(and(eq(A.id, g.anschreibenId), eq(A.status, "freigegeben")));
+      if (modus === "live") {
+        await db.update(A).set({ status: "versendet", versendetAm: new Date() }).where(and(eq(A.id, g.anschreibenId), eq(A.status, "freigegeben")));
+        const z = zeilen.find((x) => x.a.id === g.anschreibenId);
+        if (z) await import("./lead-maschine").then((x) => x.kontaktMerken(s.tenantId, [z.l.id], `Brief versendet (${bv.anbieter}, Auftrag ${g.anschreibenId.slice(0, 8)})`, true));
+      }
       ok++;
       summe += kosten ?? 0;
     } catch (e) {

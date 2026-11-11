@@ -1563,6 +1563,64 @@ was kostet ein Brief? (3) Stufe 2 (automatischer Apify-Lauf) erst nach rechtlich
 freigegeben. (4) Widerspruch auf der Website (Zählung „Pflicht“ vs. „dazubuchbar“, FAQ „Komplettpreis“) vor dem
 Brief klären.
 
+## B35 Lead-Maschine (11.11.) – nur als Pull Request
+
+Umsetzung auf dem Branch `b35-lead-maschine` (aufbauend auf `b34-3c-lead-stufen`) mit Pull Request – kein Push nach
+main. Grundsatz eingehalten: nichts wird automatisch verschickt, jede Charge braucht die Freigabe; keine Werbe-E-Mails
+an Leads (UWG § 7). Stufe 2 ist gebaut, aber **gesperrt**, bis das Datum der rechtlichen Prüfung eingetragen ist.
+Zugangsdaten (Apify, Google Places) nur über Anbindungen. Keine echten Firmennamen im Code – Konfliktbranchen,
+Großmarken und Sperrnamen trägt der Inhaber unter Leads → Schutzregeln ein (leer vorbelegt).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B35.1 Quellen je einzeln schaltbar, Budget je Lauf/Monat, Abbruch, Laufprotokoll | 🟡 nur Datei-Import (B34.3c) | ✅ Datei, Lieferantensuche (Übernahme), Apify, Google Places, Impressum; je Quelle an/aus, Budget je Lauf und Monat (ohne Budget kein Lauf), Abbruch bei Überschreitung, Protokoll je Lauf (Kosten, neu, zusammengeführt, Meldung) | `lead-quellen.ts`, Tabelle `abverkauf_lead_laeufe`, `laufBudget` |
+| B35.1 LUCID | 🟡 Datei-Import, gesperrt bis „geklärt“ | 🟡 unverändert – kein automatischer Lauf (LUCID hat keine Suche nach Branche); Datei-Import bleibt bis zur Klärung gesperrt | `quelleSperre` |
+| B35.1 Amazon/eBay-Verkäufer | ❌ | ✅ über Apify (Actor + Eingabe einstellbar) oder „Aus Lieferantensuche übernehmen“; nie über das Verkäuferkonto | `apifyLauf`, `ausLieferantensuche` |
+| B35.1 Google Maps/Branchen nach Branche + Umkreis | ❌ | ✅ Google Places Text-Suche („Branche \| Ort/PLZ \| Radius“), Kosten je Abruf mit Budget; kein Auslesen der Google-Suchseite | `placesLauf`, `placesSuche` |
+| B35.1 GPSR/Impressum | ❌ | ✅ Impressum der Firmenwebsite: robots.txt, ≥ 6 s Pause, eigener User-Agent, nie parallel, nur öffentliche Adressen; liest USt-IdNr., Register, Anschrift, E-Mail (nur leere Felder) | `impressumLauf`, `impressumFakten` |
+| B35.1 Eigene Daten (Posteingang, QR-Anfragen, Kunden/Lieferanten) | 🟡 Antworten im Posteingang | ✅ Abgleich mit Lieferanten, Lieferantensuche, B2B-Kunden, Palettenkunden, Rechnungskunden, Sperrnamen; Antworten/QR-Anfragen merken den Kontakt am Lead | `bestandLaden`, `kontaktMerken` |
+| B35.2 Anreichern (Rechtsform, Domain, USt-IdNr., Register, Größe, Entfernung; Quelle/Abrufdatum/Rechtsgrundlage/Löschdatum automatisch) | 🟡 Quelle/Datum/Löschfrist | ✅ Rechtsform aus dem Namen, Domain, USt-IdNr./Handelsregister normalisiert, Mitarbeiter/Artikel/Stückzahl/letzte Aktivität aus der Datei, Entfernung zum Lager; Verlauf je Lead („Gefunden: …“, „Zusammengeführt mit …“) | `rechtsformAus`, `ustNorm`, `registerAus`, Spalten `abverkauf_leads` |
+| B35.2 E-Mail-Finder „Impressum“, nur für Antworten | 🟡 aus der Datei/von Hand | ✅ zusätzlich automatisch aus dem Impressum („Impressum (Website, automatischer Abruf)“) – Versandweg Mail bleibt gesperrt | `impressumAbrufen`, `mailErlaubt` |
+| B35.3 Bewerten: Abverkauf, Friseure/Spielwaren lokal, AdelPrep FBA-Prep (≥ 80 Stück), AdelPrep Lager; Erreichbarkeit; Priorität = Fit × Erreichbarkeit × Nutzen; empfohlene Kampagne + Beilage | ❌ | ✅ Punkte je Zielgruppe, ohne Postadresse Priorität 0 (nicht im Versand), Empfehlung + Beilage je Lead, sichtbar in Liste und Einzelansicht | `leadBewerten`, `leadsBewerten` |
+| B35.4 Dubletten (Name+Adresse, Website, Steuer-/Registernummer) | 🟡 Name+PLZ | ✅ in der Datei und gegen den Bestand: Name+PLZ, Website-Domain, USt-IdNr., Handelsregister (mit Gericht); leere Felder werden ergänzt, nichts überschrieben | `dublettenGruppen`, `leadsSpeichern` |
+| B35.4 Abgleich Lieferanten/Kunden/Mitbewerber/Personen | ❌ | ✅ Ausschluss mit Grund (z. B. „Bestand: eigener Lieferant“); Mitbewerber (Prep/Logistik) markiert; vermutliche Privatperson und unklare Zuordnung nicht aufgenommen | `bestandTreffer`, `leadBewerten` |
+| B35.4 Sperrliste, Löschfrist 12 Monate ohne Kontakt, Auskunft/Löschen mit einem Klick | 🟡 Sperrliste, Löschfrist 180 T | ✅ Löschfrist 365 Tage, jeder Brief/jede Antwort verlängert; Auskunft als JSON-Datei; „Alle Daten löschen“ (offene Entwürfe/Briefe weg, versendete Texte geleert, Sperrliste bleibt als Prüfsumme) | `kontaktMerken`, `leadAuskunft`, `leadLoeschenKomplett`, `/b2b/leads/[id]/auskunft` |
+| B35.4 Art.-14-Hinweis, eigener Absender je Firma | ✅ (B34.3/B34.3.6) | ✅ unverändert; Hinweis bleibt Platzhalter bis zur rechtlichen Prüfung | `datenschutzHinweis`, AdelPrep-Absender |
+| B35.4 Ohne Rechtsgrundlage oder mit Sperre kein Versand; Mail nur als Antwort | 🟡 Mail „nach rechtlicher Prüfung“ | ✅ Charge und Versand prüfen Sperre, Ausschluss, Rechtsgrundlage, Postadresse, Mindestabstand; Werbe-E-Mail an Leads gibt es nicht mehr (auch nicht mit „Rechtlich geprüft“ + Einwilligung) – nur Antwort an Händler, die sich gemeldet haben | `chargeSperre`, `versandVorschau`, `mailErlaubt` |
+| B35.5 Wöchentlich Charge vorbereiten (z. B. 20), eine Freigabe je Charge, Tageslimit/Budget/Testbrief | 🟡 Freigabe/Versand (B34.3a) | ✅ „Charge vorbereiten (Top N)“ und wöchentlicher Lauf (nur nach rechtlicher Prüfung, Haken „wöchentlich“): beste Leads ohne Sperre, gruppiert nach Kampagne, nur Entwürfe – Freigabe, Kostenvorschau, Testbrief und Versand wie bisher | `chargeVorbereiten`, `wochenLauf`, Zeitplan „Leads: Wochenlauf“ |
+| B35.5 Nachfass nach 3 Wochen, Antworten über Kampagnen-ID/QR | ✅ (B34.3b) | ✅ unverändert; Antwort/QR-Anfrage setzt zusätzlich den Kontakt am Lead | `nachfassPruefen`, `anfrageAnlegen` |
+| B35.6 Seite „Leads“ (Filter, Karte/Umkreis, Einzelansicht mit Quelle/Verlauf), Wochenbericht, Morgenbericht, KPIs | ❌ | ✅ B2B → Leads: Filter Kampagne/Quelle/Status/Priorität/Umkreis/Suche, Karte (Lager + Leads + Umkreis), Einzelansicht (Stammdaten, Herkunft, Bewertung, Anschreiben, Verlauf); Wochenbericht mit gemeldeten Läufen (Captcha/Abbruch); Kosten je Lead, Kosten je Rücklauf, Umsatz je Kampagne; Morgenbericht-Zeile „Leads: …“ | `src/app/(app)/b2b/leads`, `leadsWoche`, `leadKennzahlen`, `leadsMorgen` |
+| B35.7 Stufen | 🟡 Stufe 1 teilweise | ✅ Stufe 1 komplett; Stufe 2 gebaut, gesperrt bis Datum der rechtlichen Prüfung; Stufe 3 teilweise (Nachfass und Auswertung je Kampagne vorhanden, Auto-Priorität = Bewertung) | `stufe2Sperre` |
+| B35.9 Kein Auslesen der Google-Suche; Places-API mit Schlüssel/Budget; robots.txt/Captcha überspringen und melden; ≥ 6 s, eigener User-Agent, nie parallel | ❌ | ✅ wie oben; Captcha/Sperre → Seite übersprungen, am Lead vermerkt, im Wochenbericht gemeldet, nicht erneut versucht | `istCaptcha`, `robotsErlaubt`, `LEAD_USER_AGENT` |
+| B35.9 Dedup über HRB/USt-IdNr. | ❌ | ✅ siehe B35.4 | `dublettenSchluessel` |
+| B35.9 Sperrliste vor jeder Charge, Mindestabstand 1 Brief je 6–12 Monate | ❌ | ✅ Mindestabstand einstellbar (Standard 12 Monate), letzter Brief aus Versand/„als verschickt markiert“ | `chargeSperre`, `letzteBriefe` |
+| B35.9 Größenfilter (Großmarken, Kleinst-Arbitrage, Aktivität > 2 Jahre) | ❌ | ✅ Abwertung mit Markierung (Liste „Großmarken“, ≥ 250 Mitarbeiter, < 20 Stück bzw. ≤ 2 Artikel, letzte Aktivität > 2 Jahre) | `leadBewerten` |
+| B35.9 Lebensmittel/Wein/Kosmetik „Lagerbedingungen klären“, nicht in der Standard-Charge; Frischware/Insolvenz/unklare Zuordnung nicht aufnehmen | ❌ | ✅ Liste einstellbar (vorbelegt nur mit Branchenwörtern); Frischware/Insolvenz/unklar ausgeschlossen | `chargeSperre`, `RE.frisch`, `RE.insolvenz` |
+| B35.9 Konfliktbranche (eigene Marke) standardmäßig aus, Ausnahme per Freigabe | ❌ | ✅ Liste „Konfliktbranchen“ (leer vorbelegt), Freigabe je Lead in der Einzelansicht | `konfliktFreigeben` |
+| B35.9 Protokoll je Lead (Quelle, Abrufdatum, Impressum-URL, Versanddatum); Läufe erzeugen nur Entwürfe | ❌ | ✅ Verlauf + Felder je Lead; alle Läufe legen nur Leads bzw. Entwürfe an | `verlauf`, `impressumUrl`, `letzterBriefAm` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. 50-Zeilen-CSV: Dubletten zusammengeführt, Lieferant ausgeschlossen, Bewertung und Empfehlung sichtbar | ✅ automatisch (`b35-lead-maschine.spec.ts`): 47 neu + 3 Dubletten (Name+PLZ, USt-IdNr., Website), Nachtrag mit gleicher USt-IdNr. zusammengeführt |
+| 2. Ohne Anschrift oder mit Sperre nie in einer Charge | ✅ automatisch (ohne Anschrift, Widerspruch per Klick, Mindestabstand, Lieferant, Konflikt, Wein, Frischware) |
+| 3. Charge mit 20: Vorschau, Kostenvorschau, Freigabe nötig, ohne Freigabe nichts verschickt | ✅ automatisch: 20 Entwürfe, keine Charge, kein Brief beim Anbieter; nach Freigabe Versand-Vorschau mit 20 Briefen, weiterhin nichts beim Anbieter |
+| 4. AdelPrep-Beilage nur bei „Zielgruppe AdelPrep“, je Brief abwählbar | ✅ automatisch |
+| 5. Kein Weg schickt eine Werbe-E-Mail an einen Lead | ✅ automatisch (`b34-abverkauf.spec.ts`, `b34-lead-quellen.spec.ts`): auch mit „Rechtlich geprüft“ und Einwilligung gesperrt, keine Mail im Testpostfach |
+| 6. Apify-Budget: Lauf bricht bei Überschreitung ab | ✅ automatisch (Nachbau mit steigenden Kosten, Abbruch beim Anbieter, Lauf „abgebrochen“); Places stoppt vor dem 2. Abruf |
+| B35.9 Sperrliste/Mindestabstand → nicht in der Charge; Dedup über USt-IdNr.; Captcha → Quelle übersprungen und gemeldet | ✅ automatisch (Captcha-Seite einmal abgerufen, übersprungen, im Wochenbericht, zweiter Lauf: 0 Websites) |
+
+Unit-Tests: `tests/b35-lead-maschine.test.ts` (neu, 18 Tests), `tests/b34-abverkauf.test.ts` und
+`tests/b34-lead-quellen.test.ts` (Mail-Regel strikt), `tests/nav.test.ts` (88 Einträge). Migration: `0148_b35_lead_maschine`.
+Testdienste: Apify-, Places- und Website-Nachbau (`/apify`, `/places`, `/leadweb`).
+
+**Werkzeuge:** keine neuen und keine geänderten Claude-Werkzeuge → kein `notifications/tools/list_changed` nötig.
+
+**Offene Fragen an Ludwig:** (1) Welche Zielgruppen zuerst (Vorschlag: AdelPrep FBA-Prep + Spielwaren lokal)?
+(2) Briefe je Woche und Budgets (Briefe, Apify, Places)? (3) Wer prüft rechtlich und bis wann (Stufe 2, Art.-14-Text,
+Google-Places-Speicherregeln, LUCID)? (4) Welcher Briefanbieter, welcher Preis? (5) Kinderprodukte-Mitbewerber
+ausschließen (Vorschlag ja – unter Schutzregeln eintragen)? (6) Lebensmittel/Wein/Kosmetik für AdelPrep überhaupt
+anbieten?
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2558,3 +2616,12 @@ nie in Chats oder Mails.
      anhaken (am 11.11. bestätigt); „EAN-Prüfung bei direktem FBA-Versand inklusive“ erst, wenn geklärt.
 160. **Website angleichen**: Mengenzählung auf „optional zubuchbar“ ändern (statt „Pflicht bei Einlagerung“), damit
      Brief und Seite dasselbe sagen.
+161. **B35 Pull Request prüfen** (Branch `b35-lead-maschine`, baut auf B34.3c auf – erst B34.3c, dann B35 mergen).
+162. **Schutzregeln eintragen** unter B2B → Leads: Konfliktbranchen (eigene Marke), Mitbewerber/Firmen, die nie
+     angeschrieben werden (Sperrnamen), Großmarken mit eigener Logistik; Mindestabstand prüfen (Standard 12 Monate).
+163. **Rechtliche Prüfung** (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – danach Datum und Prüfer
+     unter Leads → Quellen eintragen; vorher laufen keine automatischen Quellen.
+164. **Zugänge nur bei Bedarf**: Apify-Token bzw. Google-Places-Schlüssel unter Anbindungen; in Apify zusätzlich ein
+     Monatslimit setzen; Budget je Lauf/Monat und Places-Preis je Abruf unter Leads → Quellen.
+165. **Lager-Standort** (Breite/Länge) unter Abverkauf eintragen – sonst keine Entfernung, kein Umkreis, keine Karte.
+166. **Erste Charge**: „Charge vorbereiten“ mit kleiner Zahl, Entwürfe lesen, Testbrief, dann Freigabe.

@@ -60,9 +60,35 @@ export const abverkaufLeads = pgTable(
     quelleTyp: text("quelle_typ"),
     /** B34.3c Stückzahl je Artikel (aus der CSV) – Vorschlag „Zielgruppe AdelPrep“ ab Schwelle. */
     stueckJeArtikel: integer("stueck_je_artikel"),
+    // ---- B35 Lead-Maschine: Anreichern, Bewerten, Schutzregeln, Verlauf (DSGVO-Nachweis) ----
+    rechtsform: text("rechtsform"),
+    /** Website-Domain (Dubletten). */
+    domain: text("domain"),
+    ustId: text("ust_id"),
+    registerNr: text("register_nr"),
+    marken: text("marken"),
+    mitarbeiter: integer("mitarbeiter"),
+    anzahlAsins: integer("anzahl_asins"),
+    /** Datum des neuesten Artikels/der letzten Aktivität (z. B. Amazon) – älter als 2 Jahre = niedrige Priorität. */
+    letzteAktivitaet: text("letzte_aktivitaet"),
+    impressumUrl: text("impressum_url"),
+    /** Impressum abgerufen bzw. übersprungen (Captcha/robots.txt) – nicht bei jedem Lauf erneut. */
+    impressumAm: timestamp("impressum_am", { withTimezone: true }),
+    impressumHinweis: text("impressum_hinweis"),
+    punkte: jsonb("punkte").$type<Record<string, number>>().notNull().default({}),
+    prioritaet: integer("prioritaet").notNull().default(0),
+    empfZiel: text("empf_ziel"),
+    empfBeilage: boolean("empf_beilage").notNull().default(false),
+    markierungen: jsonb("markierungen").$type<string[]>().notNull().default([]),
+    ausschluss: text("ausschluss"),
+    /** Konfliktbranche ausnahmsweise freigegeben (nur von Hand). */
+    konfliktFreigabe: boolean("konflikt_freigabe").notNull().default(false),
+    bewertetAm: timestamp("bewertet_am", { withTimezone: true }),
+    letzterBriefAm: text("letzter_brief_am"),
+    verlauf: jsonb("verlauf").$type<{ am: string; was: string }[]>().notNull().default([]),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("abverkauf_leads_schluessel").on(t.tenantId, t.schluessel), index("abverkauf_leads_status").on(t.tenantId, t.status)],
+  (t) => [uniqueIndex("abverkauf_leads_schluessel").on(t.tenantId, t.schluessel), index("abverkauf_leads_status").on(t.tenantId, t.status), index("abverkauf_leads_prio").on(t.tenantId, t.prioritaet)],
 );
 
 /** Sperrliste: nur Prüfsummen (Firma+PLZ bzw. E-Mail) – auch nach dem Löschen des Leads kein erneuter Import. */
@@ -200,4 +226,28 @@ export const abverkaufBriefe = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("abverkauf_briefe_idx").on(t.tenantId, t.createdAt), index("abverkauf_briefe_anschreiben").on(t.tenantId, t.anschreibenId)],
+);
+
+/**
+ * B35 Läufe der Lead-Quellen (Datei-Import, Apify, Google Places, Impressum-Abruf): Anzahl neue/zusammengeführte
+ * Leads, Kosten, Abbruch bei Budget, übersprungene Quellen (Captcha/robots.txt). Nie Versand.
+ */
+export const abverkaufLeadLaeufe = pgTable(
+  "abverkauf_lead_laeufe",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    quelle: text("quelle", { enum: ["datei", "apify", "places", "impressum", "lieferantensuche", "charge"] }).notNull(),
+    status: text("status", { enum: ["laeuft", "fertig", "abgebrochen", "uebersprungen", "fehler"] }).notNull().default("laeuft"),
+    neu: integer("neu").notNull().default(0),
+    zusammengefuehrt: integer("zusammengefuehrt").notNull().default(0),
+    verworfen: integer("verworfen").notNull().default(0),
+    kosten: numeric("kosten", { precision: 10, scale: 2, mode: "number" }).notNull().default(0),
+    waehrung: text("waehrung").notNull().default("EUR"),
+    budget: numeric("budget", { precision: 10, scale: 2, mode: "number" }),
+    meldung: text("meldung"),
+    gestartetAm: createdAt(),
+    beendetAm: timestamp("beendet_am", { withTimezone: true }),
+  },
+  (t) => [index("abverkauf_lead_laeufe_idx").on(t.tenantId, t.gestartetAm)],
 );

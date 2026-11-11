@@ -12,8 +12,8 @@ export const metadata: Metadata = { title: "Abverkauf an Händler – Seller-Sys
 export const dynamic = "force-dynamic";
 
 // B34.3 Ladenhüter an Händler: Preisliste → Leads (CSV) → Anschreiben (KI-Entwurf, Freigabe in Chargen bis 20) →
-// Antworten und Erfolg je Charge. Brief ist der Standard; E-Mail an Fremdkontakte gesperrt, solange „Rechtlich
-// geprüft“ aus ist. Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen.
+// Antworten und Erfolg je Charge. Brief ist der Standard; Werbe-E-Mails an Leads gibt es nicht (B35, UWG § 7) –
+// E-Mail nur als Antwort. Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen.
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const datum = (iso: string) => iso.split("-").reverse().join(".");
@@ -48,12 +48,12 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
     <div className="stack" style={{ maxWidth: 1200 }} data-testid="abverkauf">
       <div className="page-head"><div><div className="crumb">B2B</div><h1>Abverkauf an Händler (Ladenhüter)</h1></div><div className="row" style={{ gap: 6 }}><Link href="/b2b/abverkauf/kampagnen" className="btn btn-primary" data-testid="av-kampagnen-link">Kampagnen</Link><Link href="/b2b/bilanz" className="btn">B2B-Bilanz</Link></div></div>
       {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="av-meldung">{sp.meldung}</div>}
-      <div className="notice notice-warn small">Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen. Standard ist der Brief mit Datenschutzhinweis (Art. 14 DSGVO). E-Mails an Fremdkontakte nur mit dokumentierter Einwilligung und erst, wenn „Rechtlich geprüft“ an ist. Nichts wird automatisch verschickt. Das Seller-System sammelt keine Adressen – Leads kommen per CSV (z. B. Apify).</div>
+      <div className="notice notice-warn small">Keine Rechtsberatung – vor Massenversand rechtlich prüfen lassen. Standard ist der Brief mit Datenschutzhinweis (Art. 14 DSGVO). Keine Werbe-E-Mails an Leads (UWG § 7) – E-Mail nur als Antwort auf eine Anfrage. Nichts wird automatisch verschickt. Leads per Datei oder unter <Link href="/b2b/leads">Leads</Link> (Bewertung, Schutzregeln, automatische Quellen erst nach rechtlicher Prüfung).</div>
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="einstellungen">
         <h2 style={{ margin: 0 }}>Einstellungen</h2>
         <form action={einstellungenAction} className="row small" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }} data-testid="av-einstellungen">
-          <label><input type="checkbox" name="rechtlichGeprueft" defaultChecked={cfg.rechtlichGeprueft} disabled={!inhaber} data-testid="av-rechtlich" /> Rechtlich geprüft (E-Mail an Fremdkontakte mit Einwilligung)</label>
+          <label><input type="checkbox" name="rechtlichGeprueft" defaultChecked={cfg.rechtlichGeprueft} disabled={!inhaber} data-testid="av-rechtlich" /> Rechtlich geprüft (Briefe; Werbe-E-Mails an Leads bleiben abgeschaltet)</label>
           <label>Tageslimit <input className="input" name="tageslimit" type="number" min={1} max={200} defaultValue={cfg.tageslimit} style={{ width: 70 }} disabled={!inhaber} /></label>
           <label>Aufschlag % <input className="input" name="aufschlag" defaultValue={cfg.aufschlagProzent} style={{ width: 60 }} disabled={!inhaber} /></label>
           <label>Ladenhüter: Reichweite &gt; <input className="input" name="reichweite" defaultValue={cfg.kriterien.reichweiteTage} style={{ width: 55 }} disabled={!inhaber} /> T oder Lager &gt; <input className="input" name="lagertage" defaultValue={cfg.kriterien.lagerTage} style={{ width: 55 }} disabled={!inhaber} /> T, Kapital &gt; <input className="input" name="kapital" defaultValue={cfg.kriterien.kapital} style={{ width: 65 }} disabled={!inhaber} /> €</label>
@@ -177,7 +177,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
           <label className="stack" style={{ gap: 2 }}>Datum der Quelle (leer = aus der Datei, sonst heute)<input className="input" type="date" name="datum" max={heute} data-testid="av-import-datum" /></label>
           <button className="btn btn-sm" type="submit" disabled={s.readOnly} data-testid="av-import-los">Importieren</button>
         </form>
-        <p className="small muted" style={{ margin: 0 }}>Apify-, LUCID-, Keepa- und Helium-10-Exporte werden erkannt; Quelle und Datum trägt das System ein. Das Seller-System scrapt nicht selbst. E-Mails nur aus dem Impressum (Spalte „E-Mail-Quelle“ oder Apify-Export) – gespeichert nur für Antworten, nie für Werbe-E-Mails (UWG § 7). Je Lead: Quelle, Datum, Zweck, Rechtsgrundlage, Löschfrist. Sperrliste verhindert erneuten Import.</p>
+        <p className="small muted" style={{ margin: 0 }}>Apify-, LUCID-, Keepa- und Helium-10-Exporte werden erkannt; Quelle und Datum trägt das System ein. Automatische Quellen (Apify, Google Places, Impressum) unter Leads – erst nach rechtlicher Prüfung. E-Mails nur aus dem Impressum (Spalte „E-Mail-Quelle“ oder Apify-Export) – gespeichert nur für Antworten, nie für Werbe-E-Mails (UWG § 7). Je Lead: Quelle, Datum, Zweck, Rechtsgrundlage, Löschfrist. Sperrliste verhindert erneuten Import.</p>
         {leads.length > 0 && (
           <>
             <form id="entwurf-form" action={entwuerfeAction} className="row small" style={{ gap: 8, alignItems: "center" }}>
@@ -256,7 +256,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="lead-quellen" data-testid="av-lead-quellen">
         <h2 style={{ margin: 0 }}>Lead-Quellen (Stufe 1)</h2>
-        <p className="small muted" style={{ margin: 0 }}>Leads nur per Datei-Import (Apify, LUCID, Keepa, Helium 10, eigene CSV). Briefe werden vorbereitet, verschickt wird nur nach Freigabe (Tageslimit, Budget). Stufe 2 (automatischer Apify-Lauf mit Monatslimit) ist nicht eingerichtet – erst nach rechtlicher Prüfung.</p>
+        <p className="small muted" style={{ margin: 0 }}>Leads nur per Datei-Import (Apify, LUCID, Keepa, Helium 10, eigene CSV). Briefe werden vorbereitet, verschickt wird nur nach Freigabe (Tageslimit, Budget). Stufe 2 (automatische Läufe mit Budget) steht unter <Link href="/b2b/leads#quellen">Leads → Quellen</Link> und bleibt gesperrt, bis die rechtliche Prüfung eingetragen ist.</p>
         <form action={leadQuellenAction} className="row small" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <label><input type="checkbox" name="lucid" defaultChecked={cfg.leadQuellen.lucidGeklaert} disabled={!inhaber} data-testid="av-lucid" /> LUCID-Daten für Werbung rechtlich geklärt</label>
           <label>AdelPrep-Vorschlag ab <input className="input" name="ab" defaultValue={cfg.leadQuellen.adelprepAbStueck} style={{ width: 70 }} disabled={!inhaber} data-testid="av-ap-ab" /> Stück je Artikel</label>
