@@ -52,7 +52,7 @@ export const ABVERKAUF_STANDARD: AbverkaufEinstellungen = {
   kriterien: { reichweiteTage: 90, lagerTage: 60, kapital: 300 },
   loeschfristTage: 180,
   // Firmendaten der Logistik-Firma trägt der Inhaber ein – nichts davon im Code.
-  adelprep: { firma: "", strasse: "", plz: "", ort: "", email: "", telefon: "", web: "", impressum: "", datenschutz: "", text: "", standardBeilegen: false, bestaetigt: { flaeche: false, nda: false, gefahrgut: false } },
+  adelprep: { firma: "", strasse: "", plz: "", ort: "", email: "", telefon: "", web: "", impressum: "", datenschutz: "", text: "", standardBeilegen: false, bestaetigt: { flaeche: false, nda: false, gefahrgut: false, eanFba: false } },
   // Preise je Anbieter trägt der Inhaber ein (laut Preisseite) – ohne Preis keine Kostenvorschau und kein Versand.
   briefversand: { anbieter: "ebrief", live: false, avVertrag: false, avDatum: null, tageslimit: 20, budget: null, farbe: false, duplex: false, preise: { ebrief: OHNE_PREIS, letterxpress: OHNE_PREIS, epost: OHNE_PREIS } },
   lager: { name: "", lat: null, lng: null, preisJePaletteMonat: null },

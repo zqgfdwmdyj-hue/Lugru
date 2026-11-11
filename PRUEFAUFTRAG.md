@@ -1544,12 +1544,15 @@ im Chat; Stufe 2 (automatischer Apify-Lauf) ist **nicht** gebaut – erst nach r
 | B34.3c.3 Vorschläge „Zielgruppe AdelPrep“ (ab 80 Stück je Artikel) aus LUCID/Keepa/Helium 10; LUCID vorher klären | ❌ | ✅ Spalte „Stück je Artikel“/„Units“ aus der Datei; Liste „Vorschläge“ mit Übernahme von Hand (Schwelle einstellbar); LUCID-Leads ohne Entwurf/Brief und aus Kampagnen-Filtern raus, bis „LUCID geklärt“ gesetzt ist | `adelprepVorschlag`, `adelprepVorschlaege`, `quelleSperre` |
 | B34.3c.4 Briefe automatisch vorbereitet, Versand nur nach Freigabe, Tageslimit/Budget | ✅ | ✅ unverändert (B34.3/B34.3a) | `entwuerfeErstellen`, `chargeVersenden` |
 | B34.3c.5 Stufe 2: automatischer Apify-Lauf mit Monatslimit | ❌ | ⏸ nicht gebaut – erst nach rechtlicher Prüfung (Hinweis auf der Seite) | – |
+| B34.3.6 Regeln 11.11. (2. Fassung): „all-in“ nur mit Aufzählung der enthaltenen Leistungen, nie „Komplettpreis“; Karton getrennt nennen | 🟡 „all-in“ immer gesperrt | ✅ „all-in“ erlaubt, wenn „Enthalten: …“ im Text steht; „Komplettpreis“/„alles inklusive“ gesperrt; Hinweis „Karton gesondert nennen“, wenn FBA-Preis ohne Karton | `beilageLint` |
+| B34.3.6 Mengenzählung: bei direktem FBA-Versand durch das Verpacken erfasst, bei Einlagerung optional zubuchbar – nie „kostenlos“/„inklusive“, nie „Pflicht“ | 🟡 nur „kostenlos“ gesperrt | ✅ „kostenlos/inklusive/im Preis enthalten“ und „Pflicht“ werden abgelehnt (mit der empfohlenen Formulierung als Hinweis); „Mengenzählung inkl. EAN-Prüfung + Preis“ bleibt erlaubt; Regeln stehen unter dem Textbaustein | `ZAEHLUNG_GRATIS`, `ZAEHLUNG_INKL`, `ZAEHLUNG_PFLICHT`, `av-ap-regeln` |
+| B34.3.6 Fläche/Paletten, NDA, LQ-Gefahrgut bestätigt (11.11.); EAN-Prüfung bei direktem FBA-Versand noch offen | 🟡 Haken für Fläche/NDA/Gefahrgut | ✅ Haken bleiben (Inhaber setzt sie – keine Firmendaten im Code); neuer Haken „EAN-Prüfung bei direktem FBA-Versand inklusive“, ohne Haken wird die Aussage abgelehnt | `UNBELEGT.eanFba`, `av-ap-ean` |
 | Briefanbieter: welcher angebunden, was kostet ein Brief | 🟡 Einstellungen ohne Übersicht | ✅ Zeile „Aktuell: Anbieter · Zugang hinterlegt/fehlt · Preis · Testmodus/live“ | `av-bv-stand` |
 
 | Abnahme | Ergebnis |
 |---|---|
 | Stufe 1: CSV-Import eines Apify-Exports → Leads mit Quelle/Datum, E-Mail gespeichert aber im Versandweg „Mail“ gesperrt, Brief nur nach Freigabe | ✅ automatisch (`b34-lead-quellen.spec.ts`), dazu Antwort erlaubt nach Rückmeldung, Impressum-Mail von Hand, AdelPrep-Vorschlag, LUCID-Sperre |
-| „Kostenlose Zählung“ immer abgelehnt | ✅ Unit-Tests (`tests/b34-kampagnen.test.ts`) |
+| Textregeln Beilage (all-in mit Aufzählung, Zählung nie kostenlos/Pflicht, EAN-Prüfung nur bestätigt, Karton-Hinweis) | ✅ Unit-Tests (`tests/b34-kampagnen.test.ts`) und Ablauf (`b34-briefversand.spec.ts`) |
 
 Unit-Tests: `tests/b34-lead-quellen.test.ts` (neu), `tests/b34-kampagnen.test.ts` (erweitert). Migration: `0147_b34_3c_lead_quellen`.
 
@@ -2551,3 +2554,7 @@ nie in Chats oder Mails.
      Lead-Quellen „LUCID geklärt“ setzen (vorher kein Entwurf, kein Brief für LUCID-Leads).
 158. **Briefanbieter festlegen**: welcher Anbieter angebunden wird (eBrief oder LetterXpress), Preis je Brief unter
      Abverkauf → Briefversand eintragen; die Zeile „Aktuell: …“ zeigt Anbieter, Zugang, Preis und Modus.
+159. **Beilage-Haken setzen**: unter Abverkauf → AdelPrep-Beilage „Fläche/Stellplätze“, „NDA“ und „Gefahrgut/LQ“
+     anhaken (am 11.11. bestätigt); „EAN-Prüfung bei direktem FBA-Versand inklusive“ erst, wenn geklärt.
+160. **Website angleichen**: Mengenzählung auf „optional zubuchbar“ ändern (statt „Pflicht bei Einlagerung“), damit
+     Brief und Seite dasselbe sagen.

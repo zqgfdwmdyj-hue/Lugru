@@ -127,7 +127,7 @@ export async function adelprepAction(fd: FormData) {
       adelprep: {
         firma: txt(fd, "firma", 120), strasse: txt(fd, "strasse", 120), plz: txt(fd, "plz", 10), ort: txt(fd, "ort", 80), email: txt(fd, "email", 120), telefon: txt(fd, "telefon", 40), web: txt(fd, "web", 120),
         impressum: txt(fd, "impressum", 1500), datenschutz: txt(fd, "datenschutz", 3000), text: txt(fd, "text", 3000), standardBeilegen: fd.get("standard") === "on",
-        bestaetigt: { flaeche: fd.get("b_flaeche") === "on", nda: fd.get("b_nda") === "on", gefahrgut: fd.get("b_gefahrgut") === "on" },
+        bestaetigt: { flaeche: fd.get("b_flaeche") === "on", nda: fd.get("b_nda") === "on", gefahrgut: fd.get("b_gefahrgut") === "on", eanFba: fd.get("b_ean") === "on" },
       },
     });
     return "Beilage (AdelPrep) gespeichert.";

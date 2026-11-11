@@ -80,12 +80,13 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
           <label className="stack" style={{ gap: 2 }}>Textbaustein<textarea className="input" name="text" defaultValue={ap.text} rows={4} disabled={!inhaber} data-testid="av-ap-text" /></label>
           <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
             <label><input type="checkbox" name="standard" defaultChecked={ap.standardBeilegen} disabled={!inhaber} /> bei Zielgruppe AdelPrep standardmäßig beilegen</label>
-            <span className="muted">Nach Rückfrage belegt:</span>
+            <span className="muted">Bestätigt (nach Rückfrage):</span>
             <label><input type="checkbox" name="b_flaeche" defaultChecked={ap.bestaetigt.flaeche} disabled={!inhaber} /> Fläche/Stellplätze</label>
-            <span className="muted" data-testid="av-ap-zaehlung">„Kostenlose Zählung“ gibt es nicht – wird immer abgelehnt.</span>
             <label><input type="checkbox" name="b_nda" defaultChecked={ap.bestaetigt.nda} disabled={!inhaber} /> NDA</label>
             <label><input type="checkbox" name="b_gefahrgut" defaultChecked={ap.bestaetigt.gefahrgut} disabled={!inhaber} /> Gefahrgut/LQ</label>
+            <label><input type="checkbox" name="b_ean" defaultChecked={!!ap.bestaetigt.eanFba} disabled={!inhaber} data-testid="av-ap-ean" /> EAN-Prüfung bei direktem FBA-Versand inklusive</label>
           </div>
+          <p className="small muted" style={{ margin: 0 }} data-testid="av-ap-regeln">Textregeln: Preis netto je Artikel; „all-in“ nur mit Aufzählung („Enthalten: …“), nie „Komplettpreis“; Karton gesondert nennen. Zählung nie „kostenlos“ oder „Pflicht“ – beim direkten FBA-Versand ist die Stückzahl durch das Verpacken erfasst, bei Einlagerung ist die Mengenzählung optional zubuchbar.</p>
           {inhaber && <div><button className="btn btn-sm" type="submit" data-testid="av-ap-speichern">Beilage speichern</button></div>}
         </form>
         <div className={`notice small ${beilageFehler.length ? "notice-warn" : "notice-ok"}`} data-testid="av-ap-pruefung">

@@ -226,32 +226,46 @@ export function lagerkosten(o: { paletten: number; preisJePaletteMonat: number |
 // ---- AdelPrep-Beilage: Textprüfung -------------------------------------------------------------------------------------
 
 /** `zaehlung` ist veraltet (11.11.: kostenlose Zählung gibt es nicht) und wird nicht mehr ausgewertet. */
-export type BeilageBestaetigt = { flaeche: boolean; nda: boolean; gefahrgut: boolean; zaehlung?: boolean };
+export type BeilageBestaetigt = { flaeche: boolean; nda: boolean; gefahrgut: boolean; eanFba?: boolean; zaehlung?: boolean };
 
-/** „Zählung/EAN-Prüfung kostenlos“ in allen Varianten (auch mit Wörtern dazwischen, z. B. „… bei direktem FBA-Versand kostenlos“). */
-const KOSTENLOSE_ZAEHLUNG = /(kostenlos|kostenfrei|gratis|umsonst|ohne\s+aufpreis|inklusive|inkl\.)[^.!?\n]{0,60}z(ä|ae)hl|z(ä|ae)hl\w*[^.!?\n]{0,80}(kostenlos|kostenfrei|gratis|umsonst|ohne\s+aufpreis|inklusive|inkl\.)/i;
+const GRATIS = String.raw`(?:kostenlos|kostenfrei|gratis|umsonst|ohne\s+(?:auf|zusatz|extra)(?:preis|kosten))`;
+/**
+ * „Zählung kostenlos/inklusive“ in allen Varianten („… bei direktem FBA-Versand kostenlos“, „kostenfreie
+ * Mengenzählung“, „inklusive Zählung“, „Zählung im Preis enthalten“). Nicht betroffen: „Mengenzählung inkl.
+ * EAN-Prüfung … €“ (Preis folgt) oder „Karton inkl. Füllmaterial …, Mengenzählung zubuchbar“.
+ */
+const ZAEHLUNG_GRATIS = new RegExp(`${GRATIS}[^.!?\\n]{0,60}z(?:ä|ae)hl|z(?:ä|ae)hl[a-zäöüß]*[^.!?\\n]{0,80}${GRATIS}`, "i");
+const ZAEHLUNG_INKL = /(?:inklusive|inkl\.)\s+(?:der\s+|einer\s+)?[a-zäöüß]*z(?:ä|ae)hlung|z(?:ä|ae)hlung[a-zäöüß]*\s+(?:ist\s+)?(?:im\s+(?:\S+\s+)?preis\s+)?(?:inklusive|inkl\.|enthalten)(?!\s+(?:ean|\d))/i;
+/** Mengenzählung als „Pflicht“ – nach der Regel vom 11.11. ist sie optional zubuchbar. */
+const ZAEHLUNG_PFLICHT = /z(?:ä|ae)hl[a-zäöüß]*[^.!?\n]{0,40}\bpflicht|\bpflicht[a-zäöüß]*[^.!?\n]{0,40}z(?:ä|ae)hl/i;
 
-const UNBELEGT: { key: "flaeche" | "nda" | "gefahrgut"; re: RegExp; text: string }[] = [
+const UNBELEGT: { key: "flaeche" | "nda" | "gefahrgut" | "eanFba"; re: RegExp; text: string }[] = [
   { key: "flaeche", re: /\b\d[\d.]*\s?(?:m²|qm\b|m2\b|quadratmeter)|\b\d[\d.]*\s?(?:paletten(?:stell)?pl(?:ä|ae)tze|paletten\b)/i, text: "Fläche/Palettenplätze" },
   { key: "nda", re: /\bNDA\b|geheimhaltungsvereinbarung|verschwiegenheitsvereinbarung/i, text: "NDA" },
   { key: "gefahrgut", re: /gefahrgut|\bLQ\b|limited\s+quantit/i, text: "Gefahrgut/LQ" },
+  // Ob die EAN-Prüfung beim direkten FBA-Versand inklusive ist, ist noch nicht bestätigt (11.11.).
+  { key: "eanFba", re: /ean[- ]?pr(?:ü|ue)fung[^.!?\n\d€]{0,60}(?:kostenlos|kostenfrei|gratis|inklusive|enthalten)|(?:kostenlos|kostenfrei|gratis|inklusive|inkl\.)\s+(?:der\s+)?ean[- ]?pr(?:ü|ue)fung(?![^.!?\n]{0,15}\d)/i, text: "EAN-Prüfung inklusive" },
 ];
 
 /**
- * Prüft den Beilagen-Text: keine „all-in“-/„Komplettpreis“-Formulierung, Preise netto und je Artikel; unbelegte
- * Angaben (Fläche, NDA, Gefahrgut) nur, wenn sie nach Rückfrage bestätigt sind; „kostenlose Zählung“ nie (gibt es
- * nicht, Ludwig 11.11.). Fehler = die Beilage wird nicht beigelegt.
+ * Prüft den Beilagen-Text der Logistik-Firma (Regeln vom 11.11.): „all-in“ nur zusammen mit der Aufzählung der
+ * enthaltenen Leistungen („Enthalten: …“), nie „Komplettpreis“; Preise netto und je Artikel; Karton gesondert nennen;
+ * Zählung nie „kostenlos/inklusive“ und nie „Pflicht“ (bei direktem FBA-Versand durch das Verpacken erfasst, bei
+ * Einlagerung optional zubuchbar); unbelegte Angaben (Fläche, NDA, Gefahrgut, EAN-Prüfung inklusive) nur, wenn sie
+ * bestätigt sind. Fehler = die Beilage wird nicht beigelegt. Keine Preise im Code – der Text kommt aus den Einstellungen.
  */
 export function beilageLint(text: string, bestaetigt: BeilageBestaetigt): { fehler: string[]; hinweise: string[] } {
   const fehler: string[] = [];
   const hinweise: string[] = [];
-  if (/all[\s-]?in(clusive)?\b/i.test(text)) fehler.push("„all-in“ vermeiden – stattdessen „ab … € netto je Artikel“");
+  if (/all[\s-]?in(clusive)?\b/i.test(text) && !/enthalten(?:\s+sind)?\s*:|enthält\s*:|leistungen\s*:/i.test(text)) fehler.push("„all-in“ nur zusammen mit der Aufzählung der enthaltenen Leistungen („Enthalten: …“) – nie allein als Komplettpreis");
   if (/komplettpreis|pauschalpreis|alles\s+inklusive/i.test(text)) fehler.push("„Komplettpreis“/„alles inklusive“ vermeiden – Leistungen und Preis je Artikel nennen");
   const preis = /\d+([.,]\d{1,2})?\s?(€|eur\b|euro\b)/i.test(text);
   if (preis && !/netto/i.test(text)) fehler.push("Preise als netto kennzeichnen (zzgl. USt.)");
   if (preis && !/je\s+artikel|pro\s+artikel|je\s+stück|pro\s+stück/i.test(text)) hinweise.push("Preis „je Artikel“ angeben");
+  if (preis && /fba/i.test(text) && !/karton/i.test(text)) hinweise.push("Karton gesondert nennen (wird extra berechnet), getrennt vom Preis je Artikel");
   for (const u of UNBELEGT) if (u.re.test(text) && !bestaetigt[u.key]) fehler.push(`Angabe „${u.text}“ nicht belegt – erst nach Rückfrage verwenden (in den Einstellungen bestätigen)`);
-  if (KOSTENLOSE_ZAEHLUNG.test(text)) fehler.push("„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen");
+  if (ZAEHLUNG_GRATIS.test(text) || ZAEHLUNG_INKL.test(text)) fehler.push("„kostenlose/inklusive Zählung“ nicht schreiben – stattdessen: beim direkten FBA-Versand ist die Stückzahl durch das Verpacken erfasst, bei Einlagerung ist die Mengenzählung optional zubuchbar");
+  if (ZAEHLUNG_PFLICHT.test(text)) fehler.push("Mengenzählung ist optional zubuchbar, nicht Pflicht (Regel vom 11.11.)");
   return { fehler, hinweise };
 }
 

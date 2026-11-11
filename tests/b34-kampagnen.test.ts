@@ -6,32 +6,45 @@ import { kampagneAnschreiben, leadsAusTabelle } from "@/lib/abverkauf/logic";
 
 const ohne = { flaeche: false, nda: false, gefahrgut: false };
 
-describe("B34.3.6 AdelPrep-Beilage: Textprüfung", () => {
-  it("„all-in“/„Komplettpreis“ sperren, Preise netto, Hinweis „je Artikel“", () => {
-    expect(beilageLint("FBA-Prep all-in für 1 € pro Artikel", ohne).fehler).toEqual(["„all-in“ vermeiden – stattdessen „ab … € netto je Artikel“", "Preise als netto kennzeichnen (zzgl. USt.)"]);
+describe("B34.3.6 AdelPrep-Beilage: Textprüfung (Regeln 11.11.; Preise erfunden)", () => {
+  const ZAEHLUNG = "„kostenlose/inklusive Zählung“ nicht schreiben – stattdessen: beim direkten FBA-Versand ist die Stückzahl durch das Verpacken erfasst, bei Einlagerung ist die Mengenzählung optional zubuchbar";
+  const KARTON = "Karton gesondert nennen (wird extra berechnet), getrennt vom Preis je Artikel";
+  it("„all-in“ nur mit Aufzählung, „Komplettpreis“ gesperrt, Preise netto, Hinweise „je Artikel“ und Karton", () => {
+    expect(beilageLint("FBA-Prep all-in für 1 € pro Artikel", ohne).fehler).toEqual(["„all-in“ nur zusammen mit der Aufzählung der enthaltenen Leistungen („Enthalten: …“) – nie allein als Komplettpreis", "Preise als netto kennzeichnen (zzgl. USt.)"]);
     expect(beilageLint("Komplettpreis auf Anfrage", ohne).fehler[0]).toContain("Komplettpreis");
-    expect(beilageLint("FBA-Prep ab 0,40 € netto", ohne)).toEqual({ fehler: [], hinweise: ["Preis „je Artikel“ angeben"] });
-    expect(beilageLint("FBA-Prep ab 0,40 € netto je Artikel", ohne)).toEqual({ fehler: [], hinweise: [] });
+    expect(beilageLint("FBA-Prep ab 0,40 € netto", ohne)).toEqual({ fehler: [], hinweise: ["Preis „je Artikel“ angeben", KARTON] });
+    expect(beilageLint("FBA-Prep ab 0,40 € netto je Artikel", ohne)).toEqual({ fehler: [], hinweise: [KARTON] });
+    // Wortlaut nach dem Muster der Website: all-in mit Aufzählung, Karton getrennt → keine Fehler, keine Hinweise
+    const muster = "FNSKU-Etikett inkl. FBA-Prep: 0,40 € netto pro Artikel (all-in). Enthalten: Etikett drucken und anbringen, in den FBA-Karton packen, Versandlabel drucken und übergeben. Karton inkl. Füllmaterial 2,90 € netto, von uns gestellt.";
+    expect(beilageLint(muster, ohne)).toEqual({ fehler: [], hinweise: [] });
   });
-  it("unbelegte Angaben nur nach Rückfrage (bestätigt)", () => {
+  it("unbelegte Angaben nur nach Rückfrage (bestätigt) – Fläche, NDA, Gefahrgut, EAN-Prüfung inklusive", () => {
     const t = "Lager mit 500 m² und 120 Palettenstellplätzen, kostenlose Zählung, NDA möglich, Gefahrgut (LQ) auf Anfrage.";
     const f = beilageLint(t, ohne).fehler;
     expect(f).toHaveLength(4);
     expect(f[0]).toContain("Fläche/Palettenplätze");
-    // Fläche/NDA/Gefahrgut nach Rückfrage erlaubt – „kostenlose Zählung“ bleibt immer gesperrt (gibt es nicht, 11.11.)
-    expect(beilageLint(t, { flaeche: true, zaehlung: true, nda: true, gefahrgut: true }).fehler).toEqual(["„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen"]);
+    // Fläche/NDA/Gefahrgut nach Rückfrage erlaubt – „kostenlose Zählung“ bleibt immer gesperrt
+    expect(beilageLint(t, { flaeche: true, zaehlung: true, nda: true, gefahrgut: true }).fehler).toEqual([ZAEHLUNG]);
     expect(beilageLint("Lager mit 500 m², NDA möglich, Gefahrgut (LQ) auf Anfrage.", { flaeche: true, nda: true, gefahrgut: true }).fehler).toEqual([]);
-    // „m²“ allein (ohne Palettenplätze) wird erkannt
     expect(beilageLint("FBA-Prep, 500 m² Lagerfläche.", ohne).fehler).toEqual(["Angabe „Fläche/Palettenplätze“ nicht belegt – erst nach Rückfrage verwenden (in den Einstellungen bestätigen)"]);
+    // EAN-Prüfung inklusive (noch nicht bestätigt) – mit Preis ist sie eine Zusatzleistung und erlaubt
+    expect(beilageLint("Beim direkten FBA-Versand ist die EAN-Prüfung inklusive.", ohne).fehler).toEqual(["Angabe „EAN-Prüfung inklusive“ nicht belegt – erst nach Rückfrage verwenden (in den Einstellungen bestätigen)"]);
+    expect(beilageLint("Beim direkten FBA-Versand ist die EAN-Prüfung inklusive.", { ...ohne, eanFba: true }).fehler).toEqual([]);
+    expect(beilageLint("Mengenzählung 0,15 € netto pro Artikel, inkl. EAN-Prüfung 0,25 € netto pro Artikel.", ohne).fehler).toEqual([]);
   });
-  it("„kostenlose Zählung“ in allen Varianten gesperrt, normale Zählung erlaubt", () => {
+  it("Zählung nie „kostenlos/inklusive“, nie „Pflicht“ – empfohlene Formulierung erlaubt", () => {
     for (const t of [
       "Zählung und EAN-Prüfung bei direktem FBA-Versand kostenlos.",
       "Kostenfreie Mengenzählung bei Einlagerung.",
       "Inklusive Zählung der Ware.",
       "Die Zählung ist gratis.",
-    ]) expect(beilageLint(t, ohne).fehler, t).toContain("„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen");
-    expect(beilageLint("Mengenzählung bei Einlagerung (Pflicht), Preis auf Anfrage.", ohne).fehler).toEqual([]);
+      "Die Mengenzählung ist im Preis enthalten.",
+    ]) expect(beilageLint(t, ohne).fehler, t).toContain(ZAEHLUNG);
+    expect(beilageLint("Mengenzählung bei Einlagerung (Pflicht), Preis auf Anfrage.", ohne).fehler).toEqual(["Mengenzählung ist optional zubuchbar, nicht Pflicht (Regel vom 11.11.)"]);
+    const empfohlen = "Beim direkten FBA-Versand ist die Stückzahl durch das Verpacken erfasst, bei Einlagerung ist die Mengenzählung optional zubuchbar (0,15 €, mit EAN-Prüfung 0,25 € netto pro Artikel).";
+    expect(beilageLint(empfohlen, ohne).fehler).toEqual([]);
+    expect(beilageLint("Karton inkl. Füllmaterial 2,90 € netto, von uns gestellt. Mengenzählung zubuchbar.", ohne).fehler).toEqual([]);
+    expect(beilageLint("Mengenzählung inkl. EAN-Prüfung 0,25 € netto pro Artikel.", ohne).fehler).toEqual([]);
     expect(beilageLint("Keine Mindestlaufzeit, kostenlose Beratung.", ohne).fehler).toEqual([]);
   });
   it("eigener Brief braucht Firma, Anschrift, Kontakt, Impressum, Text", () => {

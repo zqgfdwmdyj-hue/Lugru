@@ -1,7 +1,7 @@
 // Bauauftrag B34.3a Briefversand per Anbieter-API + B34.3.6 AdelPrep-Beilage – Abnahme: Testanbieter im Testmodus
 // (LetterXpress-Nachbau), 3 Test-Leads, Kostenvorschau stimmt, Testbrief an den Absender, Status kommt zurück, ohne
 // AV-Haken kein Live-Versand, ohne Freigabe nichts verschickt. Beilage als eigener Brief mit eigenem Impressum; Text
-// mit „all-in“ bzw. unbelegter Fläche wird nicht beigelegt. Alle Firmen, Adressen und Preise erfunden.
+// mit „all-in“ ohne Aufzählung bzw. unbelegter Fläche wird nicht beigelegt. Alle Firmen, Adressen und Preise erfunden.
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import type { Page } from "@playwright/test";
 import { extractText } from "unpdf";
@@ -59,8 +59,21 @@ test.describe.serial("B34.3a Briefversand + B34.3.6 Beilage", () => {
     await page.getByTestId("av-ap-impressum").fill("Amtsgericht Musterstadt HRB 00000 · USt-ID DE000000000 · Geschäftsführung: Testperson");
     await page.getByTestId("av-ap-text").fill("FBA-Prep all-in, 500 m² Lagerfläche.");
     await Promise.all([aktion(page), page.getByTestId("av-ap-speichern").click()]);
-    await expect(page.getByTestId("av-ap-pruefung")).toContainText("„all-in“ vermeiden");
+    await expect(page.getByTestId("av-ap-pruefung")).toContainText("„all-in“ nur zusammen mit der Aufzählung der enthaltenen Leistungen");
     await expect(page.getByTestId("av-ap-pruefung")).toContainText("Angabe „Fläche/Palettenplätze“ nicht belegt");
+    // Regeln 11.11.: Zählung nie „Pflicht“/„kostenlos“; „EAN-Prüfung inklusive“ erst nach Bestätigung
+    await page.getByTestId("av-ap-text").fill("Mengenzählung bei Einlagerung ist Pflicht. Beim direkten FBA-Versand ist die EAN-Prüfung inklusive.");
+    await Promise.all([aktion(page), page.getByTestId("av-ap-speichern").click()]);
+    await expect(page.getByTestId("av-ap-pruefung")).toContainText("Mengenzählung ist optional zubuchbar, nicht Pflicht");
+    await expect(page.getByTestId("av-ap-pruefung")).toContainText("Angabe „EAN-Prüfung inklusive“ nicht belegt");
+    // mit Haken ist die EAN-Aussage erlaubt; die unbelegte Fläche bleibt ein Fehler (Beilage weiter nicht bereit)
+    await page.getByTestId("av-ap-text").fill("Beim direkten FBA-Versand ist die EAN-Prüfung inklusive. Lager mit 500 m².");
+    await page.getByTestId("av-ap-ean").check();
+    await Promise.all([aktion(page), page.getByTestId("av-ap-speichern").click()]);
+    await expect(page.getByTestId("av-ap-pruefung")).toContainText("Angabe „Fläche/Palettenplätze“ nicht belegt");
+    await expect(page.getByTestId("av-ap-pruefung")).not.toContainText("EAN-Prüfung inklusive");
+    await expect(page.getByTestId("av-beilage")).toHaveAttribute("data-bereit", "0");
+    await expect(page.getByTestId("av-ap-regeln")).toContainText("bei Einlagerung ist die Mengenzählung optional zubuchbar");
     await page.getByTestId("av-ap-text").fill("Wir übernehmen Wareneingang, Lagerung und FBA-Prep ab 0,40 € netto je Artikel (Testpreis).");
     await Promise.all([aktion(page), page.getByTestId("av-ap-speichern").click()]);
     await expect(page.getByTestId("av-beilage")).toHaveAttribute("data-bereit", "1");
