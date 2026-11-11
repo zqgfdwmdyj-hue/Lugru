@@ -1654,11 +1654,14 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | B36.3 „Privat hochladen“ je Video, öffentlich nicht einstellbar | ❌ | ✅ Schalter je Auftrag (Standard aus); Sichtbarkeit fest `private`; Seller-System prüft nach dem Upload „private“ – sonst Fehler mit Hinweis | `hochladenSchalten`, `PRIVAT`, `youtubeBestaetigen` |
 | B36.3 Zugangsdaten nur über das sichere Formular | ❌ | ✅ Anbindungen „ElevenLabs“ und „OpenAI (Bilder)“ neu, Claude wie bisher, Google-App mit YouTube-Bereichen; YouTube je Kanal per Anmeldung (Refresh-Token verschlüsselt); Worker-Token nur einmal angezeigt (nur Prüfsumme gespeichert) | `registry.ts`, `api/oauth/youtube/*`, `workerAnlegen` |
 | B36.4 Kanalprofil (Name, Handle, Sprache, Themenbereich, Stimme, Bildstil, Sicherheitsstufe, Musik, YouTube) | ❌ | ✅ im Seller-System editierbar; der Worker legt je Kanal `kanal.json` ab (zum Nachsehen) | Tabelle `video_kanaele`, `Lauf.__init__` |
+| Zielgruppe je Kanal (Nachtrag 11.11.: „Männer 55+, nicht allgemein“) | – | ✅ Feld „Zielgruppe“ im Kanalprofil (Wert nur in der Oberfläche, nicht im Code); steht in jedem Prompt (Recherche, Skript, Paket): Ansprache, Beispiele und Sorgen auf diese Gruppe, Studien mit dieser Altersgruppe bevorzugen | `video_kanaele.zielgruppe`, `Lauf.kopf` |
+| Videolänge 16–20 Min. (Nachtrag 11.11., wie die englischen Vorbilder) | – | ✅ Länge je Kanal (Standard 16–20 Min., einstellbar 3–60); daraus eine Quelle für alle Ziele: 2.300–2.900 Wörter (145 Wörter/Min.), 27–45 Szenen à 50–100 Wörter, 3–6 Szenen je Punkt, Render-Prüfung 16–20 Min., Kostenschätzung (≈ 17.200 Zeichen, ≈ 40 Bilder); Zielzeile über „Neues Video“ | `laengeZiel`, `typischFuer`, `auftragFuerWorker.laenge`, `skript_pruefen(ziel)` |
+| Englische Vorlage oder eigenes Skript je Auftrag (Nachtrag 11.11.) | – | ✅ optionales Feld beim Anlegen (bis 40.000 Zeichen). „Vorlage“: nur Muster für Hook, Aufbau, Spannungsbogen – nicht übersetzen, keine Sätze/Zahlen ungeprüft übernehmen, alles neu belegen. „Mein Skript“: wird möglichst wörtlich übernommen, in Szenen geteilt, Quellen werden gesucht; Länge/Sicherheitsstufe gelten trotzdem | `video_auftraege.vorlage/vorlage_art`, `Lauf.vorlage_text` |
 | B36.5 research: Gliederung + Quellen (Websuche) | ❌ | ✅ Claude mit Websuche (`web_search_20260209`), „pause_turn“ wird fortgesetzt; vidIQ-Keywords und Anmerkung fließen ein | `research()` |
-| B36.5 script: Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA, 1.500–1.700 Wörter, JSON je Szene | ❌ | ✅ strukturierte Ausgabe (JSON-Schema) je Szene {abschnitt, text, bildidee, einblendung, quelle_ids}; Prüfung Wörter/Punkte/Quellen | `script()`, `SKRIPT_SCHEMA` |
+| B36.5 script: Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA, 1.500–1.700 Wörter, JSON je Szene | ❌ | ✅ strukturierte Ausgabe (JSON-Schema) je Szene {abschnitt, text, bildidee, einblendung, quelle_ids}; Prüfung Wörter/Punkte/Quellen. Wortzahl seit Nachtrag 11.11. aus der Kanallänge (Standard 16–20 Min. = 2.300–2.900 Wörter) | `script()`, `SKRIPT_SCHEMA` |
 | B36.5 voice: ElevenLabs je Szene | ❌ | ✅ je Szene über die Brücke (Stimme aus dem Kanalprofil, eleven_multilingual_v2, MP3) | `voice()` |
 | B36.5 visuals: Symbolbilder, OpenAI gpt-image-1, 1536×1024, medium, Anbieter austauschbar | ❌ | ✅ wie gefordert; Anbieter-Aufruf an einer Stelle (`_bild_holen`) | `visuals()` |
-| B36.5 render: ffmpeg + Pillow, Untertitel, Musik | ❌ | ✅ Szenenbild 1920×1080 mit Einblendung (Pillow), Clip je Szene mit eingebrannten Untertiteln, Zusammenfügen, Musik leise unterlegt (optional); Prüfung 1920×1080 und 10–12 Min. | `render()`, `udd/medien.py` |
+| B36.5 render: ffmpeg + Pillow, Untertitel, Musik | ❌ | ✅ Szenenbild 1920×1080 mit Einblendung (Pillow), Clip je Szene mit eingebrannten Untertiteln, Zusammenfügen, Musik leise unterlegt (optional); Prüfung 1920×1080 und Länge laut Kanal (Standard 16–20 Min., vorher 10–12) | `render()`, `udd/medien.py` |
 | B36.5 package: Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln, Tags | ❌ | ✅ Kapitel aus den Szenenlängen (YouTube-Regeln: 0:00, ≥ 3, ≥ 10 s), Quellen in der Beschreibung, Tags ≤ 480 Zeichen | `package()`, `medien.kapitel` |
 | B36.5 upload: YouTube Data API, privat | ❌ | ✅ resumable Upload (Fortsetzen nach Abbruch), Thumbnail setzen, danach Sichtbarkeits-Prüfung durchs Seller-System | `upload()` |
 | B36.5 Jeder Schritt einzeln startbar/wiederaufnehmbar, bezahlte Dateien nie doppelt | ❌ | ✅ `state.json` je Projekt; Sprache/Bilder mit Inhalts-Hash (nur Geändertes kostet), atomar geschrieben; Schritt wiederholen setzt nur diesen und spätere zurück | `udd/projekt.py`, `ausfuehren()` |
@@ -1675,34 +1678,37 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | Abnahme | Ergebnis |
 |---|---|
 | 1. Kanal wählen, Thema „Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht“ → Gliederung mit Quellen zur Freigabe | ✅ automatisch (`b36-video.spec.ts`, echter Python-Worker gegen die Nachbauten): 5 Punkte, 6 Quellen, Websuche angefragt, vidIQ-Keywords in der Recherche |
-| 2. Skript 5–7 Punkte, 1.500–1.700 Wörter, alle Studien in der Quellenliste | ✅ automatisch: 1.600 Wörter, 5 Punkte, jede Punkt-Szene mit Quelle, alle IDs in der Liste |
-| 3. Nach den Freigaben MP4 (10–12 Min., 1920×1080) mit Untertiteln; Thumbnail, 5 Titel, Beschreibung mit Kapiteln, Tags | ✅ automatisch: ffprobe 1920×1080 und 10–12 Min., Untertitel-Datei, Thumbnail 1280×720, 5 Titel, „Kapitel: 0:00 Intro …“, Quellen, Tags; Video im Player (Range-Abruf 206) |
+| 2. Skript 5–7 Punkte, 1.500–1.700 Wörter (seit 11.11.: 16–20 Min. = 2.300–2.900 Wörter), alle Studien in der Quellenliste | ✅ automatisch: 2.600 Wörter (Prompt verlangt 2.300–2.900, Zielgruppe „Männer ab 55“ und „16–20 Minuten“ stehen in der Recherche), 5 Punkte, jede Punkt-Szene mit Quelle, alle IDs in der Liste |
+| 3. Nach den Freigaben MP4 (seit 11.11.: 16–20 Min., 1920×1080) mit Untertiteln; Thumbnail, 5 Titel, Beschreibung mit Kapiteln, Tags | ✅ automatisch: ffprobe 1920×1080 und 16–20 Min., Untertitel-Datei, Thumbnail 1280×720, 5 Titel, „Kapitel: 0:00 Intro …“, Quellen, Tags; Video im Player (Range-Abruf 206) |
 | 4. Abbruch mitten im Lauf → Neustart setzt fort, ohne Sprache/Bilder neu zu bezahlen | ✅ automatisch: Worker während „Sprache“ hart beendet, neu gestartet: jede Szene genau einmal bei ElevenLabs (höchstens die beim Abbruch laufende doppelt), Bilder je Szene einmal |
 | 5. Upload erzeugt ein privates Video | ✅ automatisch: YouTube-Anmeldung (Nachbau), „Privat hochladen“ an, Vorschau freigegeben → Nachbau meldet `private`, gewählter Titel, Thumbnail gesetzt; Seller-System prüft „privat“ |
 | 6. Kosten pro Video in der Liste | ✅ automatisch: Ist > 0 mit Posten Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick |
 | 7. Worker auf dem Arbeits-PC; Seller-System unbelastet; Worker aus → „wartet“ + Warnung | ✅ automatisch: vor dem Start „wartet“ + Warnung; nach 11 Min. ohne Meldung „wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Render nur im Worker (kein ffmpeg im Seller-System); < 3 GB frei → kein Auftrag |
 | 8. OpenAI gpt-image-1 erzeugt die Bilder; bei Ablehnung greift ein Ersatzbild | ✅ automatisch: alle Bilder gpt-image-1/1536×1024/medium; abgelehnte Bildidee → Ersatzmotiv; „Bett“ (Sicherheitsstufe streng) erreicht den Anbieter gar nicht |
-| B36.6 Ablage Google Drive (Nachtrag 11.11.) | ✅ automatisch (zweiter Test): Drive verbinden (Nachbau), Kanal ohne Freigaben → MP4 nur in Drive im Ordner „Seller-System Videos/<Kanal>/<Datum Thema>“ (gleiche Größe), kleine Dateien zusätzlich im Seller-System, kein MP4 auf dem Server; Vorschau/Download leiten nach Drive; nach dem Aufräumen am PC holt „Privat hochladen“ das Video aus Drive → privat auf YouTube; Claude lief mit Opus 5.5 |
+| B36.6 Ablage Google Drive (Nachtrag 11.11.) | ✅ automatisch (zweiter Test): Drive verbinden (Nachbau), Kanal ohne Freigaben → MP4 nur in Drive im Ordner „Seller-System Videos/<Kanal>/<Datum Thema>“ (gleiche Größe), kleine Dateien zusätzlich im Seller-System, kein MP4 auf dem Server; Vorschau/Download leiten nach Drive; nach dem Aufräumen am PC holt „Privat hochladen“ das Video aus Drive → privat auf YouTube; Claude lief mit Opus 5.5. Dabei Thema des ersten echten Durchlaufs („Mit 60, 70 oder 80: …“), Kanallänge 12–14 Min. (Prompt verlangt 1.750–2.050 Wörter, Skript in der Spanne) und eine englische Vorlage (erfundener Text) – Recherche-Prompt enthält Vorlage + „Nicht übersetzen“ |
 
-Unit-Tests: `tests/b36-video.test.ts` (neu, 11 Tests: Schrittfolge/Freigaben, Worker-Stand, „heute Nacht“, Kosten aus
-JSON und Stream je Modell, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (12 Tests: Filter, state.json, Aufräumen, Untertitel,
-Kapitel, Skript-Prüfung, Bilder, ffmpeg-Clip), `tests/nav.test.ts` (89 Einträge). Migration: `0149_b36_video`.
+Unit-Tests: `tests/b36-video.test.ts` (neu, 12 Tests: Schrittfolge/Freigaben, Worker-Stand, „heute Nacht“, Kosten aus
+JSON und Stream je Modell, Länge je Kanal, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (13 Tests: Filter, state.json, Aufräumen, Untertitel,
+Kapitel, Skript-Prüfung je Länge, Zielgruppe/Vorlage im Prompt, Bilder, ffmpeg-Clip), `tests/nav.test.ts` (89 Einträge). Migrationen: `0149_b36_video`, `0150_b36_zielgruppe_laenge`.
 Testdienste: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG, Ablehnung), YouTube (Anmeldung,
 resumable Upload, Sichtbarkeit, Thumbnail), Claude-Antworten für Recherche/Skript/Paket (auch als Stream). GitHub-Prüfung
 installiert dafür Python 3.12 + ffmpeg und führt die Worker-Tests aus.
 
 **Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand,
-Claude-Modell, Ablage)
+Claude-Modell, Ablage, je Kanal Zielgruppe und Länge, je Auftrag Vorlage/eigenes Skript)
 und `video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage). `notifications/tools/list_changed` nötig – geht
 beim Verbinden raus.
 
 **Geklärt (11.11.):** Ablage in **Google Drive** (gebaut, s. o.); Claude-Modell **Opus 5.5** (Standard, umschaltbar);
-Zeitlux-Kanal auf YouTube ist Ludwig bekannt – angelegt wird er auf der Seite Video (nicht im Code).
+Zeitlux-Kanal auf YouTube ist Ludwig bekannt – angelegt wird er auf der Seite Video (nicht im Code). Zielgruppe
+„Männer 55+“ und Länge 16–20 Min. (Nachtrag 11.11.) – Zielgruppe wird im Kanalprofil eingetragen, 16–20 Min. ist Standard.
+Erstes echtes Video: Thema „Mit 60, 70 oder 80: Warum manche Männer lange können und andere nicht“.
 
 **Offene Fragen an Ludwig:** (1) Zeitlux: Themenbereich, Stimme (ElevenLabs-Voice-ID), Bildstil. (2) vidIQ: reichen
 170 Credits/Monat, gibt es eine API für den Tarif (sonst bleibt es bei Stufe 1)? (3) Docker Desktop auf dem Arbeits-PC
 vorhanden, oder lieber Python direkt? (4) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
-Kostenanzeige).
+Kostenanzeige). (5) Neues Video aus dem claude.ai-Chat anlegen (Thema, englische Vorlage, eigenes Skript) – dafür
+wäre ein ändernder Werkzeug-Aufruf nötig (`video_auftrag_anlegen`); bisher nur über die Seite (Text einfügen).
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
@@ -2721,7 +2727,8 @@ nie in Chats oder Mails.
      youtube.upload + youtube.readonly + drive.file, „Google Drive API“ aktivieren, Weiterleitungs-URI
      `<Adresse>/api/oauth/youtube/callback` (gilt für YouTube und Drive).
 170. **Kanäle anlegen** unter Marken & Content → Video (Unter der Decke: Sicherheitsstufe streng; Zeitlux nach Klärung),
-     Stimme (ElevenLabs-Voice-ID), Bildstil, Freigaben; dann je Kanal „Mit YouTube verbinden“.
+     Stimme (ElevenLabs-Voice-ID), Bildstil, **Zielgruppe** (z. B. „Männer ab 55“), Länge (Standard 16–20 Min.),
+     Freigaben; dann je Kanal „Mit YouTube verbinden“.
 171. **Preise eintragen** auf der Seite Video unter „Kosten“ (ElevenLabs je 1.000 Zeichen, OpenAI je Bild). Unter
      „Modell und Ablage“ einmal **„Google Drive verbinden“** – danach landen die Videos im Ordner „Seller-System Videos“.
 172. **Worker am Arbeits-PC einrichten**: auf der Seite Video „Worker anlegen“ (Token nur einmal sichtbar), dann
@@ -2729,5 +2736,6 @@ nie in Chats oder Mails.
 173. **Musik** (lizenzfrei bzw. mit YouTube-Lizenz) in den Musikordner des Workers legen und den Dateinamen im Kanal
      eintragen – sonst ohne Musik.
 174. **Zeitlux in vidIQ verbinden**; vidIQ-Daten bei Bedarf über Claude eintragen lassen („video_vidiq_eintragen“).
-175. **Erstes Video**: Thema anlegen, Gliederung/Skript lesen und freigeben, Vorschau ansehen, dann „Privat hochladen“
-     – öffentlich stellst du es selbst in YouTube Studio.
+175. **Erstes Video**: Thema „Mit 60, 70 oder 80: Warum manche Männer lange können und andere nicht“ anlegen (optional
+     englische Vorlage oder eigenes Skript ins Feld einfügen), Gliederung/Skript lesen und freigeben, Vorschau ansehen,
+     dann „Privat hochladen“ – öffentlich stellst du es selbst in YouTube Studio.

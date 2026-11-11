@@ -1924,13 +1924,21 @@ function videoAntwort(text) {
     return { text: "Hier ist die Gliederung:\n```json\n" + JSON.stringify(json) + "\n```", usage: { input_tokens: 9000, output_tokens: 2500, server_tool_use: { web_search_requests: 4 } }, suche: quellen.map((q) => ({ url: q.url, title: q.titel })) };
   }
   if (text.startsWith("[video:script]")) {
-    const plan = [["hook", 2], ["angst", 2], ["punkt-1", 4], ["punkt-2", 4], ["punkt-3", 4], ["punkt-4", 4], ["punkt-5", 4], ["zusammenfassung", 2], ["cta", 1]];
+    // Länge wie verlangt: „insgesamt 2.300–2.900 Wörter …, 27–45 Szenen“ → Mitte der Spanne, ~70 Wörter je Szene
+    const zahl = (x) => Number(String(x).replace(/\./g, ""));
+    const wm = /insgesamt ([\d.]+)–([\d.]+) Wörter/.exec(text);
+    const sm = /(\d+)–(\d+) Szenen mit/.exec(text);
+    const ziel = wm ? Math.round((zahl(wm[1]) + zahl(wm[2])) / 2) : 1600;
+    const anzahlSzenen = Math.min(sm ? Number(sm[2]) : 99, Math.max(sm ? Number(sm[1]) : 12, Math.round(ziel / 70)));
+    const jePunkt = Math.max(2, Math.floor((anzahlSzenen - 7) / 5));
+    const plan = [["hook", 2], ["angst", 2], ...[1, 2, 3, 4, 5].map((p, i) => [`punkt-${p}`, jePunkt + (i < anzahlSzenen - 7 - jePunkt * 5 ? 1 : 0)]), ["zusammenfassung", 2], ["cta", 1]];
+    const gesamt = plan.reduce((a, [, x]) => a + x, 0);
     const szenen = [];
     let nr = 0;
     for (const [abschnitt, anzahl] of plan) {
       for (let k = 0; k < anzahl; k++) {
         nr++;
-        const n = nr <= 7 ? 60 : 59; // 27 Szenen = 1.600 Wörter
+        const n = Math.floor(ziel / gesamt) + (nr <= ziel % gesamt ? 1 : 0);
         const punkt = /punkt-(\d)/.exec(abschnitt)?.[1];
         const bildidee = nr === 5 ? "Leeres Bett im Morgenlicht, Symbolbild" : nr === 9 ? "TESTABLEHNUNG Kalender an der Wand, Symbolbild" : `Symbolbild ${nr}: zwei Kaffeetassen, Pflanze und Licht`;
         szenen.push({ abschnitt, text: fuelltext(n, nr), bildidee, einblendung: punkt && k === 0 ? `Studie Q${punkt} (${2013 + Number(punkt)})` : "", quelle_ids: punkt ? [`Q${punkt}`] : [] });

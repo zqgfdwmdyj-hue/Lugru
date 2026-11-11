@@ -1,6 +1,6 @@
 # Video-Worker „unter-der-decke“ (B36)
 
-Der Worker macht aus einem Thema ein fertiges YouTube-Video (10–12 Min., 1920×1080) mit Untertiteln, Thumbnail,
+Der Worker macht aus einem Thema ein fertiges YouTube-Video (Länge je Kanal, Standard 16–20 Min., 1920×1080) mit Untertiteln, Thumbnail,
 5 Titeln, Beschreibung mit Kapiteln und Tags. Er läuft **auf dem Arbeits-PC**, nicht auf dem Seller-Server.
 
 - Er **holt sich die Aufträge selbst** beim Seller-System ab (alle ~30 s, mit Token). Keine offenen Ports am PC,
@@ -16,12 +16,17 @@ Der Worker macht aus einem Thema ein fertiges YouTube-Video (10–12 Min., 1920�
 | Schritt | Was passiert | Kosten |
 |---|---|---|
 | research | Websuche, Gliederung + Quellen | Claude + Websuche |
-| script | Skript (Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA), 1.500–1.700 Wörter, JSON je Szene | Claude |
+| script | Skript (Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA), Wortzahl aus der Kanallänge (16–20 Min. = 2.300–2.900 Wörter, 27–45 Szenen), JSON je Szene | Claude |
 | voice | Sprache je Szene (ElevenLabs) | ElevenLabs |
 | visuals | Symbolbild je Szene (OpenAI gpt-image-1, 1536×1024, medium); bei Ablehnung Ersatzbild | OpenAI |
 | render | ffmpeg + Pillow: Clips mit eingebrannten Untertiteln, optional Musik | – |
 | package | Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln + Quellen, Tags; Dateien ins Seller-System | Claude |
 | upload | YouTube, **privat** (nur mit Schalter „Privat hochladen“ und freigegebener Vorschau) | – |
+
+Zielgruppe und Länge stehen im Kanalprofil (Seller-System); beides fließt in jeden Prompt. Beim Anlegen eines Videos
+kann eine **Vorlage** eingefügt werden (z. B. englisches Transkript eines erfolgreichen Videos – Claude übernimmt nur
+Aufbau, Hook und Spannungsbogen, schreibt eigenen Text und belegt alles neu) oder ein **eigenes Skript** (wird
+möglichst wörtlich übernommen und in Szenen geteilt).
 
 Freigaben (je Kanal einstellbar) gibt es nach research (Gliederung + Quellen), script (Skript) und package
 (Vorschau-Video + Thumbnail + Titel). Weiter geht es erst nach der Freigabe auf der Seite **Video**.

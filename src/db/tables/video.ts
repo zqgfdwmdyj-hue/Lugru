@@ -30,6 +30,11 @@ export const videoKanaele = pgTable(
     handle: text("handle"),
     sprache: text("sprache").notNull().default("de"),
     themenbereich: text("themenbereich"),
+    /** Zielgruppe (z. B. Altersgruppe) – Ansprache, Beispiele und Studien werden darauf ausgerichtet. */
+    zielgruppe: text("zielgruppe"),
+    /** Ziel-Videolänge in Minuten (von–bis); daraus Wörter, Szenen und Render-Prüfung. */
+    laengeMin: integer("laenge_min").notNull().default(16),
+    laengeMax: integer("laenge_max").notNull().default(20),
     /** ElevenLabs-Voice-ID. */
     stimmeId: text("stimme_id"),
     bildstil: text("bildstil"),
@@ -58,6 +63,10 @@ export const videoAuftraege = pgTable(
     /** vidIQ Stufe 1: von Claude/von Hand eingetragen, genutzt in Gliederung, Titeln, Tags, Kapiteln. */
     vidiqKeywords: text("vidiq_keywords"),
     vidiqTitel: text("vidiq_titel"),
+    /** Optional: englische Vorlage (Transkript/Gliederung eines erfolgreichen Videos – nur Muster für Aufbau, nicht
+     *  übersetzen) oder eigenes Skript (wird möglichst wörtlich übernommen). */
+    vorlage: text("vorlage"),
+    vorlageArt: text("vorlage_art", { enum: ["vorlage", "skript"] }),
     /** Anmerkung zur Gliederung/zum Skript (bei Freigabe oder „neu“). */
     hinweis: text("hinweis"),
     /** Frühester Start (z. B. „heute Nacht“). */

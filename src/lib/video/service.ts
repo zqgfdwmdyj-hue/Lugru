@@ -11,7 +11,7 @@ import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, 
 import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
-import { FREIGABE_VOR, istVideoModell, kostenSchaetzung, kostenSumme, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, TYPISCH, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
+import { FREIGABE_VOR, istVideoModell, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -56,7 +56,7 @@ export async function videoEinstellungenSpeichern(s: Session, patch: Partial<Vid
 
 // ---- Kanäle ------------------------------------------------------------------------------------------------------
 
-export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Record<VideoFreigabe, boolean>; aktiv: boolean };
+export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; laengeMin?: number | null; laengeMax?: number | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Record<VideoFreigabe, boolean>; aktiv: boolean };
 
 export const kanaele = (tenantId: string) => db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(asc(K.createdAt));
 
@@ -64,7 +64,8 @@ export async function kanalSpeichern(s: Session, id: string | null, e: KanalEing
   if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
   const name = e.name.trim().slice(0, 80);
   if (!name) throw new VideoFehler("Bitte einen Kanalnamen angeben.");
-  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: e.freigaben, aktiv: e.aktiv };
+  const laenge = laengeZiel(e.laengeMin, e.laengeMax).minuten;
+  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, laengeMin: laenge[0], laengeMax: laenge[1], stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: e.freigaben, aktiv: e.aktiv };
   if (id) {
     const [r] = await db.update(K).set(werte).where(and(eq(K.tenantId, s.tenantId), eq(K.id, id))).returning({ id: K.id });
     if (!r) throw new VideoFehler("Kanal nicht gefunden.");
@@ -84,7 +85,10 @@ export async function kanalYoutubeSetzen(tenantId: string, kanalId: string, refr
 
 // ---- Aufträge ----------------------------------------------------------------------------------------------------
 
-export type AuftragEingabe = { kanalId: string; thema: string; startWahl: string; zeitpunkt: string | null; vidiqKeywords: string | null; vidiqTitel: string | null };
+/** vorlageArt „vorlage“: englisches Transkript/Gliederung eines erfolgreichen Videos (nur Muster für Aufbau, Hook und
+ *  Spannungsbogen – nicht übersetzen); „skript“: eigenes Skript, wird möglichst wörtlich übernommen. */
+export type AuftragEingabe = { kanalId: string; thema: string; startWahl: string; zeitpunkt: string | null; vidiqKeywords: string | null; vidiqTitel: string | null; vorlage?: string | null; vorlageArt?: "vorlage" | "skript" | null };
+export const VORLAGE_MAX = 40_000;
 
 export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<string> {
   if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
@@ -93,10 +97,13 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise, TYPISCH, cfg.modell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.laengeMin, kanal.laengeMax), cfg.modell);
+  const vorlage = e.vorlage?.trim() || null;
+  if (vorlage && vorlage.length > VORLAGE_MAX) throw new VideoFehler(`Vorlage/Skript ist zu lang (${vorlage.length.toLocaleString("de-DE")} Zeichen, höchstens ${VORLAGE_MAX.toLocaleString("de-DE")}).`);
+  if (vorlage && vorlage.length < 200) throw new VideoFehler("Vorlage/Skript ist sehr kurz – bitte den ganzen Text einfügen (oder das Feld leer lassen).");
   const [r] = await db
     .insert(A)
-    .values({ tenantId: s.tenantId, kanalId: kanal.id, thema, vidiqKeywords: e.vidiqKeywords?.trim().slice(0, 2000) || null, vidiqTitel: e.vidiqTitel?.trim().slice(0, 2000) || null, startAb: startAbAus(e.startWahl, e.zeitpunkt), kostenSchaetzung: schaetzung.summe, erstelltVon: s.userId, schritte: Object.fromEntries(SCHRITTE.map((x) => [x, { status: "offen" }])) as Partial<Record<VideoSchritt, SchrittStand>> })
+    .values({ tenantId: s.tenantId, kanalId: kanal.id, thema, vidiqKeywords: e.vidiqKeywords?.trim().slice(0, 2000) || null, vidiqTitel: e.vidiqTitel?.trim().slice(0, 2000) || null, vorlage, vorlageArt: vorlage ? (e.vorlageArt === "skript" ? "skript" : "vorlage") : null, startAb: startAbAus(e.startWahl, e.zeitpunkt), kostenSchaetzung: schaetzung.summe, erstelltVon: s.userId, schritte: Object.fromEntries(SCHRITTE.map((x) => [x, { status: "offen" }])) as Partial<Record<VideoSchritt, SchrittStand>> })
     .returning({ id: A.id });
   return r.id;
 }
@@ -275,7 +282,9 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
     hinweis: a.hinweis,
     hochladen: a.hochladen,
     vidiq: { keywords: a.vidiqKeywords, titel: a.vidiqTitel },
-    kanal: { slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
+    vorlage: a.vorlage ? { art: a.vorlageArt ?? "vorlage", text: a.vorlage } : null,
+    laenge: laengeZiel(k.laengeMin, k.laengeMax),
+    kanal: { slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
     daten: { gliederung: a.gliederung, quellen: a.quellen, skript: a.skript, paket: a.paket },
   };
 }

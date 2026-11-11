@@ -26,6 +26,12 @@ MODELL_STANDARD = "claude-opus-5-5"
 PAUSE_S = 0.4  # kurze Pause nach jeder Szene
 PRIVAT = "private"  # Sichtbarkeit beim Upload – fest, im System nicht änderbar
 ABSCHNITTE = ["hook", "angst"] + [f"punkt-{i}" for i in range(1, 8)] + ["zusammenfassung", "cta"]
+# Ziel-Länge kommt vom Seller-System (Kanalprofil, Standard 16–20 Min.); nur falls es fehlt (ältere Version), diese Werte
+LAENGE_STANDARD = {"minuten": [16, 20], "sekunden": [960, 1200], "woerter": [2300, 2900], "szenen": [27, 45], "szenenJePunkt": [3, 6]}
+
+
+def zahl(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
 
 
 class Abgebrochen(Exception):
@@ -45,6 +51,8 @@ class Lauf:
         self.kanal: dict[str, Any] = auftrag["kanal"]
         self.daten: dict[str, Any] = dict(auftrag.get("daten") or {})
         self.streng = self.kanal.get("sicherheitsstufe") == "streng"
+        self.laenge: dict[str, list[int]] = {**LAENGE_STANDARD, **(auftrag.get("laenge") or {})}
+        self.vorlage: dict[str, str] | None = auftrag.get("vorlage") if (auftrag.get("vorlage") or {}).get("text") else None
         # Modell: CLAUDE_MODELL am PC (falls gesetzt) vor der Einstellung im Seller-System
         self.modell: str = k.claude_modell or auftrag.get("modell") or MODELL_STANDARD
         self.p = Projekt(k.arbeitsordner, self.kanal["slug"], self.id)
@@ -68,6 +76,11 @@ class Lauf:
         teile = [f"Kanal: „{k['name']}“" + (f" ({k['handle']})" if k.get("handle") else ""), f"Sprache: {k.get('sprache') or 'de'}"]
         if k.get("themenbereich"):
             teile.append(f"Themenbereich: {k['themenbereich']}")
+        if k.get("zielgruppe"):
+            teile.append(
+                f"Zielgruppe: {k['zielgruppe']} – Ansprache, Beispiele, Sorgen und Nutzen genau auf diese Gruppe ausrichten, nicht allgemein. "
+                "Studien bevorzugen, die diese Gruppe (z. B. Altersgruppe) untersucht haben, und das im Text sagen."
+            )
         if self.streng:
             teile.append("Sicherheitsstufe STRENG: sachlich und respektvoll, keine expliziten Begriffe, keine Beschreibung sexueller Handlungen, keine Nacktheit, nichts Reißerisches.")
         return "\n".join(teile)
@@ -80,6 +93,34 @@ class Lauf:
         if v.get("titel"):
             teile.append(f"Titelvorschläge aus vidIQ (als Anregung):\n{v['titel']}")
         return "\n\n".join(teile)
+
+    def minuten(self) -> str:
+        m = self.laenge["minuten"]
+        return f"{m[0]}–{m[1]} Minuten"
+
+    def vorlage_text(self, schritt: str) -> str:
+        """Optionale Vorlage: englisches Erfolgsvideo (nur Muster) oder eigenes Skript (möglichst wörtlich)."""
+        if not self.vorlage:
+            return ""
+        text = self.vorlage["text"]
+        if self.vorlage.get("art") == "skript":
+            if schritt == "research":
+                regel = (
+                    "Eigenes Skript von Ludwig (Grundlage des Videos): Leite die Gliederung aus diesem Skript ab und suche für seine Aussagen "
+                    "belastbare Quellen. Findest du für eine Aussage keine Quelle, schreibe das in „kern“ des Punktes („ohne Quelle: …“)."
+                )
+            else:
+                regel = (
+                    "Eigenes Skript von Ludwig: Übernimm es möglichst wörtlich (Deutsch), teile es in Szenen und ergänze bildidee, einblendung "
+                    "und quelle_ids. Ändere nur, was Länge, Quellenpflicht oder Sicherheitsstufe verlangen."
+                )
+        else:
+            regel = (
+                "Vorlage (z. B. englisches Transkript eines erfolgreichen Videos): Nutze sie NUR als Muster für Hook, Fear Activation, Aufbau, "
+                "Spannungsbogen und Tempo. Nicht übersetzen, keine Sätze übernehmen, keine Zahlen oder Studien ungeprüft übernehmen – jede "
+                "Aussage selbst mit gefundener Quelle belegen. Alles auf Zielgruppe und deutschsprachiges Publikum zuschneiden."
+            )
+        return f"{regel}\n<vorlage>\n{text}\n</vorlage>"
 
     def anmerkung(self) -> str:
         h = (self.a.get("hinweis") or "").strip()
@@ -97,9 +138,10 @@ def research(l: Lauf) -> tuple[dict, list[str]]:
         x
         for x in [
             "[video:research]",
-            "Du recherchierst für ein YouTube-Video (10–12 Minuten) mit konkretem Nutzen für die Zuschauer.",
+            f"Du recherchierst für ein YouTube-Video ({l.minuten()}) mit konkretem Nutzen für die Zuschauer.",
             l.kopf(),
             f"Thema: {l.a['thema']}",
+            l.vorlage_text("research"),
             l.vidiq(),
             l.anmerkung(),
             "Aufgabe: Suche im Web nach belastbaren Quellen (Studien, Fachartikel, Statistiken; bevorzugt begutachtete Studien mit Jahr) "
@@ -160,12 +202,13 @@ SKRIPT_SCHEMA = {
 }
 
 
-def skript_pruefen(szenen: list[dict], quellen: list[dict]) -> list[str]:
+def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | None = None) -> list[str]:
     ids = {q["id"] for q in quellen}
     probleme: list[str] = []
     n = sum(woerter(s["text"]) for s in szenen)
-    if not 1500 <= n <= 1700:
-        probleme.append(f"Das Skript hat {n} Wörter – nötig sind 1.500–1.700.")
+    lo, hi = ziel or LAENGE_STANDARD["woerter"]
+    if not lo <= n <= hi:
+        probleme.append(f"Das Skript hat {zahl(n)} Wörter – nötig sind {zahl(lo)}–{zahl(hi)}.")
     punkte = sorted({s["abschnitt"] for s in szenen if s["abschnitt"].startswith("punkt-")})
     if not 5 <= len(punkte) <= 7:
         probleme.append(f"Das Skript hat {len(punkte)} Punkte – nötig sind 5–7.")
@@ -183,19 +226,21 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
         e = l.p.state["schritte"]["script"]
         return {"skript": e["skript"], "woerter": e["woerter"]}, e.get("hinweise", [])
     quellen = l.daten.get("quellen") or []
+    w, sz, jp = l.laenge["woerter"], l.laenge["szenen"], l.laenge["szenenJePunkt"]
     basis = "\n\n".join(
         x
         for x in [
             "[video:script]",
-            "Schreibe das Sprechskript für ein YouTube-Video (10–12 Minuten Sprechzeit).",
+            f"Schreibe das Sprechskript für ein YouTube-Video ({l.minuten()} Sprechzeit).",
             l.kopf(),
             f"Thema: {l.a['thema']}",
+            l.vorlage_text("script"),
             f"Freigegebene Gliederung:\n{json.dumps(l.daten.get('gliederung'), ensure_ascii=False)}",
             f"Quellenliste (nur diese IDs verwenden):\n{json.dumps(quellen, ensure_ascii=False)}",
             l.vidiq(),
             l.anmerkung(),
-            "Aufbau: hook → angst (Fear Activation) → punkt-1 … punkt-N (5–7 Punkte, je 2–4 Szenen) → zusammenfassung → cta.",
-            "Länge: insgesamt 1.500–1.700 Wörter (zähle mit), 20–32 Szenen mit je 40–90 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
+            f"Aufbau: hook → angst (Fear Activation) → punkt-1 … punkt-N (5–7 Punkte, je {jp[0]}–{jp[1]} Szenen) → zusammenfassung → cta.",
+            f"Länge: insgesamt {zahl(w[0])}–{zahl(w[1])} Wörter (zähle mit), {sz[0]}–{sz[1]} Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
             "Jede Behauptung braucht eine Quelle: in den Punkt-Szenen die Studie im Text nennen (z. B. „Eine Studie aus 2016 mit 2.400 Paaren zeigt …“) und die ID in quelle_ids eintragen.",
             "bildidee: ruhiges Symbolbild, Illustration oder Infografik – keine erkennbaren realen Personen, keine Nacktheit, nichts Intimes"
             + (", kein Bett, kein Kuss, keine Berührung" if l.streng else "")
@@ -209,7 +254,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
     for versuch in range(2):
         text, _ = ki.fragen(l.claude, l.modell, prompt, schema=SKRIPT_SCHEMA, max_tokens=24000)
         szenen = [s for s in ki.json_aus(text).get("szenen", []) if s.get("text", "").strip()]
-        probleme = skript_pruefen(szenen, quellen)
+        probleme = skript_pruefen(szenen, quellen, w)
         if not probleme:
             break
         prompt = basis + "\n\nKorrektur zum ersten Entwurf: " + " ".join(probleme) + " Bitte das ganze Skript neu und korrekt liefern."
@@ -353,8 +398,9 @@ def render(l: Lauf) -> tuple[dict, list[str]]:
     if (info["breite"], info["hoehe"]) != (1920, 1080):
         raise RuntimeError(f"Video hat {info['breite']}×{info['hoehe']} statt 1920×1080.")
     dauer = round(info["dauer"])
-    if not 600 <= dauer <= 720:
-        hinweise.append(f"Video ist {dauer // 60}:{dauer % 60:02d} lang (Ziel 10–12 Min.).")
+    lo, hi = l.laenge["sekunden"]
+    if not lo <= dauer <= hi:
+        hinweise.append(f"Video ist {dauer // 60}:{dauer % 60:02d} lang (Ziel {l.minuten().replace('Minuten', 'Min.')}).")
     l.p.zwischendateien_loeschen()
     l.fortschritt("render", len(szenen) + 1, len(szenen) + 1)
     l.p.markieren("render", dauer=dauer, hinweise=hinweise)

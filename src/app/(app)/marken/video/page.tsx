@@ -5,7 +5,7 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, SCHRITT_TEXT, SCHRITTE, TYPISCH, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, laengeZiel, LAENGE_STANDARD, SCHRITT_TEXT, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, neuAction, preiseAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -66,8 +66,10 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
   const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
   const ws = worker?.stand ?? workerStand(null);
   const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
-  const schaetzung = kostenSchaetzung(cfg.preise, TYPISCH, cfg.modell);
-  const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, TYPISCH, m).summe }));
+  const typisch = typischFuer(kanal?.laengeMin, kanal?.laengeMax);
+  const ziel = laengeZiel(kanal?.laengeMin, kanal?.laengeMax);
+  const schaetzung = kostenSchaetzung(cfg.preise, typisch, cfg.modell);
+  const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, typisch, m).summe }));
   const fehlend = [!claude?.apiKey && "Claude (KI)", !eleven?.apiKey && "ElevenLabs", !openai?.apiKey && "OpenAI (Bilder)"].filter(Boolean) as string[];
 
   return (
@@ -103,6 +105,9 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
       {kanal && (
         <section className="card card-pad stack" style={{ gap: 8 }} id="neu" data-testid="vd-neu">
           <h2 style={{ margin: 0 }}>Neues Video · {kanal.name}</h2>
+          <p className="small muted" style={{ margin: 0 }} data-testid="vd-ziel">
+            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {ziel.szenen[0]}–{ziel.szenen[1]} Szenen/Bilder{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
+          </p>
           <form action={auftragAction} className="stack small" style={{ gap: 8 }}>
             <input type="hidden" name="kanalId" value={kanal.id} />
             <label className="stack" style={{ gap: 2 }}>Thema<input className="input" name="thema" required minLength={5} maxLength={300} placeholder="z. B. 5 Gründe, warum …" data-testid="vd-thema" /></label>
@@ -111,6 +116,17 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
               <label><input type="radio" name="start" value="nacht" data-testid="vd-start-nacht" /> heute Nacht (23 Uhr)</label>
               <label className="row" style={{ gap: 4 }}><input type="radio" name="start" value="zeitpunkt" /> ab <input className="input" type="datetime-local" name="zeitpunkt" style={{ width: 200 }} /></label>
             </div>
+            <details data-testid="vd-vorlage-bereich">
+              <summary>Englische Vorlage oder eigenes Skript (optional)</summary>
+              <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+                <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+                  <label><input type="radio" name="vorlageArt" value="vorlage" defaultChecked data-testid="vd-vorlage-art-vorlage" /> Vorlage (z. B. englisches Transkript eines erfolgreichen Videos)</label>
+                  <label><input type="radio" name="vorlageArt" value="skript" data-testid="vd-vorlage-art-skript" /> Mein Skript (wird möglichst wörtlich übernommen)</label>
+                </div>
+                <textarea className="input" name="vorlage" rows={6} maxLength={40_000} placeholder="Text hier einfügen (höchstens 40.000 Zeichen)" data-testid="vd-vorlage" />
+                <span className="muted">Vorlage: Claude übernimmt nur Hook, Aufbau und Spannungsbogen, schreibt eigenen deutschen Text und belegt alle Aussagen mit eigenen Quellen – keine Übersetzung. Mein Skript: wird in Szenen geteilt, Quellen werden gesucht; Länge und Sicherheitsstufe gelten trotzdem.</span>
+              </div>
+            </details>
             <details>
               <summary>vidIQ (optional)</summary>
               <div className="stack" style={{ gap: 6, marginTop: 6 }}>
@@ -145,7 +161,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                   </span>
                 </div>
                 <div className="small muted">
-                  angelegt {zeit(a.createdAt)}{a.startAb && a.status === "wartet" ? ` · Start ab ${zeit(a.startAb)}` : ""}{a.woerter ? ` · ${a.woerter} Wörter` : ""}{a.dauerSek ? ` · ${dauerText(a.dauerSek)} Min.` : ""}
+                  angelegt {zeit(a.createdAt)}{a.startAb && a.status === "wartet" ? ` · Start ab ${zeit(a.startAb)}` : ""}{a.woerter ? ` · ${a.woerter} Wörter` : ""}{a.dauerSek ? ` · ${dauerText(a.dauerSek)} Min.` : ""}{a.vorlage ? ` · ${a.vorlageArt === "skript" ? "eigenes Skript" : "mit Vorlage"} (${a.vorlage.length.toLocaleString("de-DE")} Zeichen)` : ""}
                 </div>
                 <SchrittChips schritte={a.schritte} aktuell={a.schritt} mitUpload={a.hochladen || !!a.youtubeId} />
                 <div style={{ height: 6, background: "var(--surface-2, #eee)", borderRadius: 3 }} aria-label="Fortschritt"><div style={{ width: `${fortschrittProzent(a.schritte, a.hochladen)}%`, height: 6, background: "var(--accent, #2563eb)", borderRadius: 3 }} /></div>
@@ -329,6 +345,11 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             <label className="stack" style={{ gap: 2, width: 80 }}>Sprache<input className="input" name="sprache" defaultValue={kanal?.sprache ?? "de"} /></label>
           </div>
           <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label className="stack" style={{ gap: 2, flex: 1, minWidth: 220 }}>Zielgruppe<input className="input" name="zielgruppe" maxLength={300} defaultValue={kanal?.zielgruppe ?? ""} placeholder="z. B. Männer ab 55" data-testid="vd-k-zielgruppe" /></label>
+            <label className="stack" style={{ gap: 2, width: 90 }}>Länge von<input className="input" type="number" name="laengeMin" min={3} max={60} defaultValue={kanal?.laengeMin ?? LAENGE_STANDARD.von} data-testid="vd-k-laenge-min" /></label>
+            <label className="stack" style={{ gap: 2, width: 90 }}>bis (Min.)<input className="input" type="number" name="laengeMax" min={3} max={60} defaultValue={kanal?.laengeMax ?? LAENGE_STANDARD.bis} data-testid="vd-k-laenge-max" /></label>
+          </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Stimme (ElevenLabs-Voice-ID)<input className="input" name="stimmeId" defaultValue={kanal?.stimmeId ?? ""} data-testid="vd-k-stimme" /></label>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Musik (Dateiname im Musikordner des Workers)<input className="input" name="musik" defaultValue={kanal?.musik ?? ""} placeholder="leer = ohne Musik" /></label>

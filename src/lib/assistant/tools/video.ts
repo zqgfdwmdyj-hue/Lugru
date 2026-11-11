@@ -31,7 +31,7 @@ export const videoAuftraegeTool = defineTool({
     return json({
       worker: worker ? { text: worker.stand.text, online, frei_gb: worker.freiGb } : { text: "Noch kein Worker angelegt" },
       einstellungen: { claude_modell: VIDEO_MODELLE[cfg.modell].name, ablage: cfg.ablage === "drive" ? "Google Drive (Ordner „Seller-System Videos“)" : "Seller-Server" },
-      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken })),
+      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken, zielgruppe: k.zielgruppe ?? undefined, laenge_min: `${k.laengeMin}–${k.laengeMax}` })),
       auftraege: gefiltert.map(({ a, kanal }) => ({
         id: a.id,
         kanal,
@@ -46,6 +46,7 @@ export const videoAuftraegeTool = defineTool({
         quellen: a.quellen.length || undefined,
         kosten_schaetzung_usd: a.kostenSchaetzung,
         kosten_ist_usd: a.kostenIst,
+        vorlage: a.vorlage ? (a.vorlageArt === "skript" ? "eigenes Skript" : "Vorlage (Aufbau übernehmen)") : undefined,
         vidiq: a.vidiqKeywords || a.vidiqTitel ? { keywords: a.vidiqKeywords ?? undefined, titel: a.vidiqTitel ?? undefined } : undefined,
         privat_hochladen: a.hochladen,
         youtube: a.youtubeId ? { status: a.youtubeStatus, studio: `https://studio.youtube.com/video/${a.youtubeId}/edit` } : undefined,

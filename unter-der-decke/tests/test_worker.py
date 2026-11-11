@@ -18,7 +18,7 @@ from udd import medien  # noqa: E402
 from udd.filter import ERSATZ_BILDIDEE, bild_treffer, titel_treffer  # noqa: E402
 from udd.ki import json_aus  # noqa: E402
 from udd.projekt import Projekt, aufraeumen, kurz_hash  # noqa: E402
-from udd.schritte import skript_pruefen, woerter  # noqa: E402
+from udd.schritte import LAENGE_STANDARD, Lauf, skript_pruefen, woerter  # noqa: E402
 
 
 def test_filter_titel_erlaubt_thema_sperrt_explizit():
@@ -97,12 +97,38 @@ def test_skript_pruefen():
     text = " ".join(["Wort"] * 64)
     szenen = [{"abschnitt": "hook", "text": text, "quelle_ids": []}] + [{"abschnitt": f"punkt-{i % 5 + 1}", "text": text, "quelle_ids": ["Q1"]} for i in range(23)]
     assert woerter(text) == 64
-    assert skript_pruefen(szenen, quellen) == []
+    ziel_kurz = [1450, 1750]  # Kanal mit 10–12 Min.
+    assert skript_pruefen(szenen, quellen, ziel_kurz) == []
+    # Standard 16–20 Min. (2.300–2.900 Wörter): 1.536 Wörter sind zu wenig
+    assert any("2.300–2.900" in p for p in skript_pruefen(szenen, quellen))
     szenen[3]["quelle_ids"] = ["Q9"]
-    assert any("Q9" in p for p in skript_pruefen(szenen, quellen))
+    assert any("Q9" in p for p in skript_pruefen(szenen, quellen, ziel_kurz))
     kurz = szenen[:5]
-    probleme = skript_pruefen(kurz, quellen)
+    probleme = skript_pruefen(kurz, quellen, ziel_kurz)
     assert any("Wörter" in p for p in probleme)
+
+
+def _lauf(kanal: dict, vorlage: dict | None = None, laenge: dict | None = None) -> Lauf:
+    l = Lauf.__new__(Lauf)
+    l.kanal, l.streng = kanal, kanal.get("sicherheitsstufe") == "streng"
+    l.laenge = {**LAENGE_STANDARD, **(laenge or {})}
+    l.vorlage = vorlage
+    return l
+
+
+def test_zielgruppe_laenge_vorlage_im_prompt():
+    l = _lauf({"name": "Testkanal", "sprache": "de", "zielgruppe": "Männer ab 55"})
+    assert "Zielgruppe: Männer ab 55" in l.kopf()
+    assert l.minuten() == "16–20 Minuten"
+    assert l.vorlage_text("research") == ""
+    assert "Zielgruppe" not in _lauf({"name": "Testkanal"}).kopf()
+    v = _lauf({"name": "Testkanal"}, {"art": "vorlage", "text": "Hook. Then five reasons ..."})
+    t = v.vorlage_text("script")
+    assert "Nicht übersetzen" in t and "<vorlage>" in t and "five reasons" in t
+    s = _lauf({"name": "Testkanal"}, {"art": "skript", "text": "Mein Skript ..."})
+    assert "möglichst wörtlich" in s.vorlage_text("script")
+    assert "Quellen" in s.vorlage_text("research")
+    assert _lauf({"name": "K"}, laenge={"minuten": [10, 12]}).minuten() == "10–12 Minuten"
 
 
 def test_json_aus_text_mit_codeblock():

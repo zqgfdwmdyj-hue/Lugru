@@ -41,6 +41,9 @@ export async function kanalSpeichernAction(fd: FormData) {
       handle: txt(fd, "handle", 80) || null,
       sprache: txt(fd, "sprache", 10) || "de",
       themenbereich: txt(fd, "themenbereich") || null,
+      zielgruppe: txt(fd, "zielgruppe", 300) || null,
+      laengeMin: Number(txt(fd, "laengeMin", 3)) || null,
+      laengeMax: Number(txt(fd, "laengeMax", 3)) || null,
       stimmeId: txt(fd, "stimmeId", 80) || null,
       bildstil: txt(fd, "bildstil") || null,
       sicherheitsstufe: fd.get("sicherheitsstufe") === "streng" ? "streng" : "normal",
@@ -84,7 +87,7 @@ export async function auftragAction(fd: FormData) {
   const kanalId = id(fd, "kanalId");
   await mitFehler(async () => {
     const { auftragAnlegen } = await import("@/lib/video/service");
-    await auftragAnlegen(s, { kanalId, thema: txt(fd, "thema", 300), startWahl: txt(fd, "start", 20), zeitpunkt: txt(fd, "zeitpunkt", 30) || null, vidiqKeywords: txt(fd, "vidiqKeywords", 2000) || null, vidiqTitel: txt(fd, "vidiqTitel", 2000) || null });
+    await auftragAnlegen(s, { kanalId, thema: txt(fd, "thema", 300), startWahl: txt(fd, "start", 20), zeitpunkt: txt(fd, "zeitpunkt", 30) || null, vidiqKeywords: txt(fd, "vidiqKeywords", 2000) || null, vidiqTitel: txt(fd, "vidiqTitel", 2000) || null, vorlage: txt(fd, "vorlage", 40_001) || null, vorlageArt: fd.get("vorlageArt") === "skript" ? "skript" : "vorlage" });
     return fd.get("start") === "sofort" || !fd.get("start") ? "Video angelegt – der Worker holt den Auftrag ab." : "Video angelegt – Start zum gewählten Zeitpunkt.";
   }, kanalId, "#auftraege");
 }

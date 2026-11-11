@@ -93,6 +93,9 @@ test.describe("B36 Video-Pipeline", () => {
     await page.goto("/marken/video?neu=1");
     await page.getByTestId("vd-k-name").fill(KANAL);
     await page.getByTestId("vd-k-thema").fill("Beziehung, Nähe, Alltag (Testkanal)");
+    await page.getByTestId("vd-k-zielgruppe").fill("Männer ab 55");
+    await expect(page.getByTestId("vd-k-laenge-min")).toHaveValue("16"); // Standard 16–20 Min.
+    await expect(page.getByTestId("vd-k-laenge-max")).toHaveValue("20");
     await page.getByTestId("vd-k-stimme").fill("testStimme01");
     await page.getByTestId("vd-k-stufe").selectOption("streng");
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
@@ -109,6 +112,8 @@ test.describe("B36 Video-Pipeline", () => {
     // Neues Video (mit vidIQ-Keywords) – Worker noch aus → „wartet“ + Warnung (Abnahme 7)
     await page.goto("/marken/video");
     await page.getByRole("link", { name: KANAL }).click();
+    await expect(page.getByTestId("vd-ziel")).toContainText("16–20 Min. · 2.300–2.900 Wörter");
+    await expect(page.getByTestId("vd-ziel")).toContainText("Zielgruppe: Männer ab 55");
     await page.getByTestId("vd-thema").fill(THEMA);
     await page.getByTestId("vd-neu").locator("summary", { hasText: "vidIQ" }).click();
     await page.getByTestId("vd-vidiq-keywords").fill("beziehung ohne nähe, paar alltag stress");
@@ -132,12 +137,16 @@ test.describe("B36 Video-Pipeline", () => {
     const recherche = ki.filter((k) => k.text.startsWith("[video:research]")).at(-1)!;
     expect(recherche.tools).toContain("web_search");
     expect(recherche.text).toContain("beziehung ohne nähe"); // vidIQ fließt in die Recherche
+    expect(recherche.text).toContain("Zielgruppe: Männer ab 55"); // Zielgruppe aus dem Kanalprofil
+    expect(recherche.text).toContain("(16–20 Minuten)");
     await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
 
-    // Abnahme 2: Skript mit 5–7 Punkten, 1.500–1.700 Wörtern, alle Studien in der Quellenliste
+    // Abnahme 2: Skript mit 5–7 Punkten, Länge passend zu 16–20 Min. (2.300–2.900 Wörter), alle Studien in der Quellenliste
     let a = await warteAuf("Freigabe Skript", (x) => x.freigabe_offen === "skript");
-    expect(a.woerter).toBeGreaterThanOrEqual(1500);
-    expect(a.woerter).toBeLessThanOrEqual(1700);
+    expect(a.woerter).toBeGreaterThanOrEqual(2300);
+    expect(a.woerter).toBeLessThanOrEqual(2900);
+    const skriptPrompt = ((await (await fetch(`${TD}/__ki`)).json()) as { text: string }[]).filter((k) => k.text.startsWith("[video:script]")).at(-1)!;
+    expect(skriptPrompt.text).toContain("insgesamt 2.300–2.900 Wörter");
     const punkte = new Set(a.skript!.filter((s) => s.abschnitt.startsWith("punkt-")).map((s) => s.abschnitt));
     expect(punkte.size).toBeGreaterThanOrEqual(5);
     expect(punkte.size).toBeLessThanOrEqual(7);
@@ -176,13 +185,13 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.bilder.some((b) => /\bbett\b/i.test(b.prompt))).toBe(false);
     expect(a.skript!.filter((s) => s.ersatzbild).length).toBeGreaterThanOrEqual(2); // abgelehnt + Filter „Bett“
 
-    // Abnahme 3: MP4 10–12 Min., 1920×1080, Untertitel; Thumbnail 1280×720; 5 Titel, Beschreibung mit Kapiteln, Tags
+    // Abnahme 3: MP4 16–20 Min., 1920×1080, Untertitel; Thumbnail 1280×720; 5 Titel, Beschreibung mit Kapiteln, Tags
     for (const art of ["mp4", "thumbnail", "skript", "quellen", "untertitel"]) expect(a.dateien[art]?.groesse, art).toBeGreaterThan(0);
     const ordner = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id);
     const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", path.join(ordner, "video.mp4")]).toString()) as { streams: { width: number; height: number }[]; format: { duration: string } };
     expect([probe.streams[0].width, probe.streams[0].height]).toEqual([1920, 1080]);
-    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(600);
-    expect(Number(probe.format.duration)).toBeLessThanOrEqual(720);
+    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(960);
+    expect(Number(probe.format.duration)).toBeLessThanOrEqual(1200);
     const thumb = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path.join(ordner, "thumbnail.png")]).toString()) as { streams: { width: number; height: number }[] };
     expect([thumb.streams[0].width, thumb.streams[0].height]).toEqual([1280, 720]);
     const srt = readFileSync(path.join(ordner, "untertitel.srt"), "utf8");
@@ -255,6 +264,8 @@ test.describe("B36 Video-Pipeline", () => {
     test.setTimeout(300_000);
     if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
     const KANAL2 = `Testkanal Drive ${m}`;
+    const THEMA2 = "Mit 60, 70 oder 80: Warum manche Männer lange können und andere nicht";
+    const VORLAGE = "HOOK: What if I told you that age is not the main reason? (Test template, invented.) Today we look at five reasons why some men stay fit into their eighties and others do not. " + "Reason one: sleep and recovery matter more than most people think. ".repeat(6);
     await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0 }) });
     await anmelden(page, "inhaber");
     await page.goto("/marken/video");
@@ -269,6 +280,9 @@ test.describe("B36 Video-Pipeline", () => {
     await page.goto("/marken/video?neu=1");
     await page.getByTestId("vd-k-name").fill(KANAL2);
     await page.getByTestId("vd-k-stimme").fill("testStimme02");
+    await page.getByTestId("vd-k-zielgruppe").fill("Männer ab 55");
+    await page.getByTestId("vd-k-laenge-min").fill("12");
+    await page.getByTestId("vd-k-laenge-max").fill("14");
     for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
     await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
@@ -279,7 +293,11 @@ test.describe("B36 Video-Pipeline", () => {
       await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
       token = (await page.getByTestId("vw-token").innerText()).trim();
     }
-    await page.getByTestId("vd-thema").fill("Testthema Drive-Ablage für die Abnahme");
+    await expect(page.getByTestId("vd-ziel")).toContainText("12–14 Min. · 1.750–2.050 Wörter");
+    await page.getByTestId("vd-thema").fill(THEMA2);
+    // Englische Vorlage (erfundener Text): nur Muster für den Aufbau
+    await page.getByTestId("vd-vorlage-bereich").locator("summary").click();
+    await page.getByTestId("vd-vorlage").fill(VORLAGE);
     await expect(page.getByTestId("vd-schaetzung")).toContainText("Claude Opus 5.5");
     await Promise.all([aktion(page), page.getByTestId("vd-start").click()]);
     await sql("update video_worker set frei_gb = null where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
@@ -290,6 +308,15 @@ test.describe("B36 Video-Pipeline", () => {
     let a = await auftrag2();
     for (const bis = Date.now() + 240_000; !(a.status === "fertig" || a.status === "fehler") && Date.now() < bis; a = await auftrag2()) await new Promise((r) => setTimeout(r, 300));
     expect(a.status, `${a.schritte[a.schritt]?.fehler ?? ""}\n${log.slice(-2000)}`).toBe("fertig");
+    // Länge 12–14 Min. und Vorlage kamen im Prompt an; Skript in der Spanne
+    expect(a.woerter).toBeGreaterThanOrEqual(1750);
+    expect(a.woerter).toBeLessThanOrEqual(2050);
+    const prompts = ((await (await fetch(`${TD}/__ki`)).json()) as { text: string }[]).filter((k) => k.text.includes(THEMA2));
+    const rp = prompts.find((k) => k.text.startsWith("[video:research]"))!;
+    expect(rp.text).toContain("(12–14 Minuten)");
+    expect(rp.text).toContain("Nicht übersetzen");
+    expect(rp.text).toContain("five reasons why some men");
+    expect(prompts.find((k) => k.text.startsWith("[video:script]"))!.text).toContain("insgesamt 1.750–2.050 Wörter");
     // Claude lief mit Opus 5.5 (Kosten je Modell gebucht)
     expect(a.kosten_positionen.some((k) => k.anbieter === "Claude" && /Opus 5\.5/.test((k as unknown as { art: string }).art))).toBe(true);
     // MP4 nur in Drive, kleine Dateien zusätzlich im Seller-System
@@ -303,7 +330,7 @@ test.describe("B36 Video-Pipeline", () => {
     const drv = (await (await fetch(`${TD}/__drive`)).json()) as { id: string; name: string; pfad: string; groesse: number }[];
     const mp4 = drv.find((d) => d.id === dateien.mp4.drive)!;
     expect(mp4.name).toBe("video.mp4");
-    expect(mp4.pfad).toBe(`Seller-System Videos/${KANAL2}/${new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date())} Testthema Drive-Ablage für die Abnahme`);
+    expect(mp4.pfad).toBe(`Seller-System Videos/${KANAL2}/${new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date())} ${THEMA2}`);
     expect(mp4.groesse).toBe(dateien.mp4.groesse);
     // Seite: Vorschau aus Drive, Link öffnet Drive
     await page.goto(`/marken/video?kanal=${(await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL2]))[0].id}`);
