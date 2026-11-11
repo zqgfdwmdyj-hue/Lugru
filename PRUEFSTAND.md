@@ -101,6 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/3 Abläufe | – | 4 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -542,6 +543,19 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - 👁 Live (vor dem 28.10.2026, Prüfung mit ChatGPT): Uhren-Deal bearbeiten – Eingaben/Status gingen verloren – behoben, seither automatisch geprüft
 - 👁 Live (vor dem 28.10.2026, Prüfung mit ChatGPT): Übungs-Deal – zählte unter „Verworfen“ – behoben, seither automatisch geprüft
 
+### Marken & Content › Video (YouTube) (`/marken/video`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| B36.7 Abnahme 1–3: Kanal (streng) anlegen, Worker-Token, Thema „Kein Sex mehr in der Beziehung? 5 Gründe …“ mit vidIQ-Keywords, echter Python-Worker; Gliederung, Skript, Vorschau freigeben | Gliederung mit 5 Punkten und 6 Quellen zur Freigabe (Websuche, vidIQ in der Recherche); Skript 1.600 Wörter, 5 Punkte, alle Quellen-IDs in der Liste; MP4 1920×1080, 10–12 Min., Untertitel, Thumbnail 1280×720, 5 Titel, Beschreibung mit Kapiteln (0:00 Intro) und Quellen, Tags; Video im Player | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| B36.7 Abnahme 4/7/8: Worker während „Sprache“ hart beenden, 11 Min. Stille, Neustart; Bildidee „Bett“ (streng) und abgelehnte Bildidee | „wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Neustart macht weiter, jede Szene genau einmal bei ElevenLabs (höchstens die beim Abbruch laufende doppelt), Bilder einmal; gpt-image-1/1536×1024/medium; Ablehnung → Ersatzmotiv; „Bett“ erreicht den Anbieter nicht; < 3 GB frei → kein Auftrag | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten | Refresh-Token verschlüsselt; Upload mit Sichtbarkeit private, gewähltem Titel, Thumbnail; Seller-System bestätigt „privat“; Kosten Ist > 0 mit Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick; Projektordner am PC danach aufgeräumt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+
+- – Offen: Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload) – erstes Video mit echten Zugängen prüfen
+- – Offen: Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
+- – Offen: Ablage fertiger Videos in Google Drive – nicht gebaut (Rückfrage)
+- – Offen: vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
+
 ### Team & Verwaltung › VA & Delegation (`/delegation`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -722,7 +736,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (175 Abläufe + Oberfläche auf 120 Seiten): 0 bestanden, 0 fehlgeschlagen, 175 nicht gelaufen.
+**Automatisch** (178 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 178 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -840,6 +854,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Uhren: Buy & Flip: Übungs-Deal – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Pflichtfeld-Fehler → Eingaben bleiben → speichern → neu laden → Status ändern → nochmals speichern – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Filter und Schalter „Übungs-Deals zeigen“ – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): B36.7 Abnahme 1–3: Kanal (streng) anlegen, Worker-Token, Thema „Kein Sex mehr in der Beziehung? 5 Gründe …“ mit vidIQ-Keywords, echter Python-Worker; Gliederung, Skript, Vorschau freigeben – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): B36.7 Abnahme 4/7/8: Worker während „Sprache“ hart beenden, 11 Min. Stille, Neustart; Bildidee „Bett“ (streng) und abgelehnte Bildidee – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: Aufgabe an die VA über Discord: Thread mit Anleitung und Datei, ✅ erledigt, Rechnungsfrage automatisch beantwortet, Rückfrage → Antwort im Thread – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: B18: Anspruch mit Frist in 8 Tagen, Frist rückt auf 7/5/3/1 Tage, VA antwortet „case 12345678901“, Anspruch mit Frist heute, dann abgelaufen; Claude va_aufgaben/ueberblick – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: B18: Amazon-Mails Markenbeschwerde, Fall „Antwort nötig“ 120 €, Fall 800 €, Fallnummer im Fall-Thread, „An die VA“ von Hand, Modus „Vorschlag“, Regel je Kategorie ändern – im letzten Lauf nicht gelaufen
@@ -964,6 +981,10 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Leads (Lead-Maschine): Rechtliche Prüfung (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – erst danach Datum eintragen
 - Leads (Lead-Maschine): Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen
 - Leads (Lead-Maschine): Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet
+- Video (YouTube): Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload) – erstes Video mit echten Zugängen prüfen
+- Video (YouTube): Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
+- Video (YouTube): Ablage fertiger Videos in Google Drive – nicht gebaut (Rückfrage)
+- Video (YouTube): vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - Calls (Consultant & Gruppe): Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
