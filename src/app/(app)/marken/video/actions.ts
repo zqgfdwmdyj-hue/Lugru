@@ -100,7 +100,7 @@ export async function freigebenAction(fd: FormData) {
   const f = txt(fd, "freigabe", 20) as VideoFreigabe;
   await mitFehler(async () => {
     const { freigeben, VideoFehler } = await import("@/lib/video/service");
-    if (!["gliederung", "skript", "vorschau"].includes(f)) throw new VideoFehler("Unbekannte Freigabe.");
+    if (!["gliederung", "skript", "szenen", "vorschau"].includes(f)) throw new VideoFehler("Unbekannte Freigabe.");
     const tw = txt(fd, "titelWahl", 3);
     return freigeben(s, id(fd), f, { hinweis: txt(fd, "hinweis", 2000) || null, titelWahl: tw === "" ? null : Number(tw) });
   }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);

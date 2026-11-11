@@ -454,6 +454,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Freigeben → Render (Aufdeck-Animation) → Paket → fertig
     await page.reload();
     await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Szenen freigegeben");
     a = await warte3("fertig", (x) => x.status === "fertig");
     const mp4 = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id, "video.mp4");
     const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=width,height", "-of", "json", mp4]).toString()) as { format: { duration: string }; streams: { width?: number; height?: number }[] };
