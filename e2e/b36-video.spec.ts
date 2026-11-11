@@ -100,9 +100,9 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(page.getByTestId("vd-kanaele")).toContainText(KANAL);
 
     // Worker anlegen: Token nur einmal sichtbar
-    await page.getByTestId("vd-name").fill(`Test-PC ${m}`);
-    await Promise.all([aktion(page), page.getByTestId("vd-anlegen-los").click()]);
-    token = (await page.getByTestId("vd-token").innerText()).trim();
+    await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+    await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+    token = (await page.getByTestId("vw-token").innerText()).trim();
     expect(token).toMatch(/^vw_[A-Za-z0-9_-]{40,}$/);
     expect((await sql<{ token_hash: string }>("select token_hash from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]))[0].token_hash).not.toContain(token.slice(3));
 
