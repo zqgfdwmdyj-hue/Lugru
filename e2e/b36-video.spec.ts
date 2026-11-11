@@ -470,7 +470,7 @@ test.describe("B36 Video-Pipeline", () => {
     };
     const d1 = (a.skript as unknown as Szene[])[0].dauer;
     const d2 = (a.skript as unknown as Szene[])[1].dauer;
-    expect(bild(0.1).weiss).toBeGreaterThan(0.99); // leeres Whiteboard, bevor gezeichnet wird
+    expect(bild(0).weiss).toBeGreaterThan(0.99); // leeres Whiteboard, bevor gezeichnet wird (erstes Bild; ffmpeg liefert bei -ss das nächste Bild ab t)
     const ende1 = bild(d1 - 1);
     expect(ende1.weiss).toBeGreaterThan(0.4);
     expect(ende1.weiss).toBeLessThan(0.97); // Überschrift + Motive gezeichnet, Hintergrund weiß
