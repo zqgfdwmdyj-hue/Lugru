@@ -10,6 +10,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY filter.json worker.py ./
 COPY udd ./udd
+# feste Schrift für alle Texte im Whiteboard-Stil (Anton, SIL Open Font License – siehe schriften/OFL-Anton.txt)
+COPY schriften ./schriften
 
 # Arbeitsdateien und Musik liegen außerhalb des Containers (Volumes), damit ein Neustart dort weitermacht.
 ENV ARBEITSORDNER=/arbeit MUSIKORDNER=/musik PYTHONUNBUFFERED=1

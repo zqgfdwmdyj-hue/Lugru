@@ -41,10 +41,11 @@ async function ziel(tenantId: string, anbieter: string, pfad: string[], request:
     return { anbieter, url: `${basis(process.env.ELEVENLABS_BASE_URL, "https://api.elevenlabs.io")}/v1/text-to-speech/${m[1]}${query}`, kopf: { "xi-api-key": k.apiKey, "content-type": "application/json", accept: "audio/mpeg" } };
   }
   if (anbieter === "openai") {
-    if (p !== "v1/images/generations") return { fehler: "Pfad nicht erlaubt", status: 404 };
+    // generations: Bild aus Text (JSON); edits: Motiv mit Stil-Referenzbildern (multipart, B36.9)
+    if (p !== "v1/images/generations" && p !== "v1/images/edits") return { fehler: "Pfad nicht erlaubt", status: 404 };
     const k = await getIntegration(tenantId, "openai");
     if (!k?.apiKey) return { fehler: "OpenAI-Schlüssel fehlt (Anbindungen → OpenAI Bilder)", status: 424 };
-    return { anbieter, url: `${basis(process.env.OPENAI_BASE_URL, "https://api.openai.com")}/v1/images/generations`, kopf: { authorization: `Bearer ${k.apiKey}`, "content-type": "application/json" } };
+    return { anbieter, url: `${basis(process.env.OPENAI_BASE_URL, "https://api.openai.com")}/${p}`, kopf: p === "v1/images/edits" ? { authorization: `Bearer ${k.apiKey}` } : { authorization: `Bearer ${k.apiKey}`, "content-type": "application/json" } };
   }
   return { fehler: "Unbekannter Anbieter", status: 404 };
 }
@@ -71,6 +72,7 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
   if (a.status === "abgebrochen") return fehler(409, "Auftrag abgebrochen");
   const z = await ziel(w.tenantId, anbieter, pfad, request);
   if ("fehler" in z) return fehler(z.status, z.fehler);
+  if (z.anbieter === "openai" && z.url.endsWith("/v1/images/edits")) return bildBearbeiten(w, auftragId, z, request);
   const roh = await request.text();
   if (roh.length > 2_000_000) return fehler(413, "Anfrage zu groß");
   let body: Record<string, unknown>;
@@ -116,8 +118,37 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
 
   const daten = new Uint8Array(await res.arrayBuffer());
   if (res.ok) {
-    const pos = z.anbieter === "elevenlabs" ? kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }) : kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1 });
+    const pos = z.anbieter === "elevenlabs" ? kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }) : kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1, motiv: body.size === "1024x1024" });
     await kostenBuchen(w.tenantId, auftragId, pos);
   }
   return new Response(daten, { status: res.status, headers: kopf });
+}
+
+/** Motiv mit Stil-Referenzbildern (gpt-image-1 „edits“, multipart): Prompt, Anzahl und Bilder prüfen, weiterreichen, zählen. */
+async function bildBearbeiten(w: Worker, auftragId: string, z: Ziel, request: Request): Promise<Response> {
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return fehler(400, "Kein multipart/form-data");
+  }
+  const prompt = form.get("prompt");
+  if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 32_000) return fehler(400, "prompt fehlt oder zu lang");
+  const n = Number(form.get("n") ?? 1) || 1;
+  if (n < 1 || n > 2) return fehler(400, "höchstens 2 Bilder je Aufruf");
+  const bilder = [...form.getAll("image[]"), ...form.getAll("image")].filter((x): x is File => typeof x !== "string");
+  if (!bilder.length || bilder.length > 8) return fehler(400, "1–8 Referenzbilder nötig");
+  if (bilder.some((b) => b.size > 10 * 1024 ** 2 || !/^image\/(png|jpeg|webp)$/.test(b.type))) return fehler(400, "Referenzbilder nur PNG/JPG/WebP bis 10 MB");
+  const raus = new FormData();
+  for (const [k, v] of form.entries()) raus.append(k, v);
+  const preise = (await videoEinstellungen(w.tenantId)).preise;
+  let res: Response;
+  try {
+    res = await fetch(z.url, { method: "POST", headers: z.kopf, body: raus, signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]) });
+  } catch (e) {
+    return fehler(502, `Anbieter nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
+  }
+  const daten = new Uint8Array(await res.arrayBuffer());
+  if (res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("openai", preise, { bilder: n, motiv: form.get("size") === "1024x1024" }));
+  return new Response(daten, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
 }

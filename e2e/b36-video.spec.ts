@@ -65,9 +65,12 @@ test.describe("B36 Video-Pipeline", () => {
     mkdirSync(path.dirname(logDatei), { recursive: true });
     writeFileSync(logDatei, log);
     if (T) {
-      const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name in ($2, $3)", [T, KANAL, `Testkanal Drive ${m}`]);
+      const namen = [KANAL, `Testkanal Drive ${m}`, `Testkanal Whiteboard ${m}`];
+      const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = any($2)", [T, namen]);
       for (const { id } of ids) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, id), { recursive: true, force: true });
-      await sql("delete from video_kanaele where tenant_id = $1 and name in ($2, $3)", [T, KANAL, `Testkanal Drive ${m}`]);
+      const kanaeleIds = await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
+      for (const { id } of kanaeleIds) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, `kanal-${id}`), { recursive: true, force: true });
+      await sql("delete from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
       await sql("delete from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
       await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai'${googleNeu ? ", 'google'" : ""})`, [T]);
       await sql("update tenants set settings = settings - 'video' where id = $1", [T]);
@@ -350,6 +353,142 @@ test.describe("B36 Video-Pipeline", () => {
     const yt = (await nachbau()).youtube.at(-1)!;
     expect(yt.sichtbarkeit).toBe("private");
     expect((yt as unknown as { groesse: number }).groesse).toBe(dateien.mp4.groesse);
+    await workerStoppen();
+  });
+  test("B36.9 Whiteboard-Collage: Motive einzeln mit Referenzbild, Bibliothek, Szenen-Übersicht mit „neu erzeugen“, Aufdeck-Render ohne eingebrannte Untertitel, YouTube-Untertitel", async ({ page }) => {
+    test.setTimeout(420_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL3 = `Testkanal Whiteboard ${m}`;
+    const THEMA3 = "Testthema Whiteboard für die Abnahme";
+    // Zugänge wie über das sichere Formular (nur Testwerte), Ablage Seller-Server, Preis je Motiv
+    if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'elevenlabs'", [T])).length) {
+      await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" }))]);
+    }
+    if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'google'", [T])).length) {
+      googleNeu = true;
+      await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'google', 'Test', $2::jsonb, $3)", [T, JSON.stringify({ clientId: "test-google-client.apps.example.invalid" }), versiegeln(JSON.stringify({ clientSecret: "test-google-secret" }))]);
+    }
+    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ ablage: "server", preise: { claudeEingabeJeMio: 2, claudeAusgabeJeMio: 10, websucheJe1000: 10, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04, motivJeStueck: 0.02 }, serverReserveGb: 0.1 })]);
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0 }) });
+    await anmelden(page, "inhaber");
+
+    // Kanal im Stil Whiteboard: feste Figur, nur Freigabe „Szenen-Übersicht“, kurze Länge (3–4 Min.), Qualität niedrig
+    await page.goto("/marken/video?neu=1");
+    await page.getByTestId("vd-k-name").fill(KANAL3);
+    await page.getByTestId("vd-k-stimme").fill("testStimme03");
+    await page.getByTestId("vd-k-stil").selectOption("whiteboard");
+    await page.getByTestId("vd-k-qualitaet").selectOption("low");
+    await page.getByTestId("vd-k-figuren").fill("testmann: Mann um die 60 mit Hut (erfunden)");
+    await page.getByTestId("vd-k-laenge-min").fill("3");
+    await page.getByTestId("vd-k-laenge-max").fill("4");
+    for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
+    await page.getByTestId("vd-k-f-szenen").check();
+    await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
+    // Stil-Referenzbild hochladen (erfundenes 1×1-PNG)
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+    await page.getByTestId("vd-referenz-datei").setInputFiles({ name: "referenz-test.png", mimeType: "image/png", buffer: png });
+    await Promise.all([aktion(page), page.getByTestId("vd-referenz-hochladen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("1 Referenzbild gespeichert");
+    await expect(page.getByTestId("vd-referenz")).toHaveCount(1);
+    await page.getByTestId("vd-yt-verbinden").click();
+    await expect(page.getByTestId("vd-meldung")).toContainText("YouTube verbunden");
+    if (!token) {
+      await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+      await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+      token = (await page.getByTestId("vw-token").innerText()).trim();
+    }
+    await expect(page.getByTestId("vd-ziel")).toContainText("Whiteboard-Collage");
+    await page.getByTestId("vd-thema").fill(THEMA3);
+    await Promise.all([aktion(page), page.getByTestId("vd-start").click()]);
+    await sql("update video_worker set frei_gb = null where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
+    await sql("update video_auftraege set status = 'abgebrochen' where tenant_id = $1 and status = 'wartet' and kanal_id in (select id from video_kanaele where tenant_id = $1 and name <> $2)", [T, KANAL3]);
+    await workerStoppen();
+    workerStarten();
+    const auftrag3 = async () => (await sql<Auftrag & { kanal_id: string }>("select id, kanal_id, status, schritt, freigabe_offen, schritte, woerter, dauer_sek, skript, quellen, paket, dateien, kosten_ist::float as kosten_ist, kosten_positionen, youtube_id, youtube_status, aufraeumen from video_auftraege where tenant_id = $1 and kanal_id = (select id from video_kanaele where tenant_id = $1 and name = $2) order by created_at desc limit 1", [T, KANAL3]))[0];
+    const warte3 = async (was: string, ok: (a: Awaited<ReturnType<typeof auftrag3>>) => boolean | Promise<boolean>, ms = 240_000) => {
+      for (const bis = Date.now() + ms; ; ) {
+        const a = await auftrag3();
+        if (a && (await ok(a))) return a;
+        if (a?.status === "fehler") throw new Error(`Fehler (${a.schritt}): ${a.schritte[a.schritt]?.fehler}\n${log.slice(-3000)}`);
+        if (Date.now() > bis) throw new Error(`Zeitüberschreitung: ${was} (${a?.status}/${a?.schritt})\n${log.slice(-3000)}`);
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    };
+    type Szene = { nr: number; layout: string; motive: { key: string; beschreibung: string; ersatz?: boolean }[]; dauer: number; balken: string | null; ueberschrift: string | null };
+    let a = await warte3("Szenen-Übersicht", (x) => x.freigabe_offen === "szenen");
+    const szenen = a.skript as unknown as Szene[];
+    const keys = szenen.flatMap((x) => x.motive.map((mm) => mm.key));
+    // Prompt fürs Skript: Whiteboard-Regeln + feste Figur
+    const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string }[];
+    const skriptPrompt = ki.filter((k) => k.text.startsWith("[video:script]") && k.text.includes(THEMA3)).at(-1)!;
+    expect(skriptPrompt.text).toContain("STIL WHITEBOARD-COLLAGE");
+    expect(skriptPrompt.text).toContain("testmann: Mann um die 60 mit Hut (erfunden)");
+    // Motive einzeln: 1024×1024, transparent, Qualität niedrig, mit dem Referenzbild (edits); jede Motiv-Art nur einmal bezahlt
+    let nb = await nachbau();
+    expect(nb.bilder.length).toBeGreaterThan(5);
+    for (const b of nb.bilder as unknown as { size: string; background: string; edits: boolean; referenzen: number; quality: string }[]) expect([b.size, b.background, b.edits, b.referenzen, b.quality]).toEqual(["1024x1024", "transparent", true, 1, "low"]);
+    const prompts = nb.bilder.map((b) => b.prompt);
+    expect(prompts.filter((p) => p.includes("hält einen schwarzen Filzstift"))).toHaveLength(1); // Hand einmal je Kanal
+    expect(prompts.some((p) => p.includes("Mann um die 60 mit Hut"))).toBe(true); // feste Figur aus dem Profil
+    expect(prompts.every((p) => p.includes("Keine Schrift"))).toBe(true); // Texte setzt die Pipeline selbst
+    expect(nb.bilder.filter((b) => b.abgelehnt)).toHaveLength(1);
+    expect(keys).toContain("ersatz"); // abgelehntes Motiv → Ersatzmotiv
+    expect(nb.bilder.length).toBe(new Set(keys).size + 2); // je Schlüssel einmal + Hand + die Ablehnung
+    expect(keys.length).toBeGreaterThan(new Set(keys).size); // Motive kommen mehrfach vor (Wiederverwendung)
+    // Seite: Übersicht + Motive zum Neu-Erzeugen
+    await page.goto(`/marken/video?kanal=${a.kanal_id}`);
+    const karte = page.getByTestId("vd-auftrag").first();
+    await expect(karte.getByTestId("vd-status")).toContainText("Szenen-Übersicht");
+    await expect(karte.getByTestId("vd-uebersicht")).toBeVisible();
+    expect((await page.request.get(`/api/video/${a.id}/uebersicht`)).headers()["content-type"]).toBe("image/jpeg");
+    const neu = szenen[0].motive.find((mm) => mm.key !== "ersatz" && mm.key !== "testmann")!.key;
+    await karte.getByTestId(`vd-motiv-${neu}`).first().check();
+    await Promise.all([aktion(page), karte.getByTestId("vd-motive-neu").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("neu erzeugt");
+    const vorher = nb.bilder.length;
+    a = await warte3("Übersicht nach Neu-Erzeugen", async (x) => x.freigabe_offen === "szenen" && (await nachbau()).bilder.length > vorher);
+    nb = await nachbau();
+    expect(nb.bilder.length).toBe(vorher + 1); // nur das ausgewählte Motiv kostet erneut
+    expect(nb.bilder.at(-1)!.prompt).toContain(`Cartoon ${neu}`);
+    // Freigeben → Render (Aufdeck-Animation) → Paket → fertig
+    await page.reload();
+    await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
+    a = await warte3("fertig", (x) => x.status === "fertig");
+    const mp4 = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id, "video.mp4");
+    const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=width,height", "-of", "json", mp4]).toString()) as { format: { duration: string }; streams: { width?: number; height?: number }[] };
+    expect(probe.streams.find((x) => x.width)).toMatchObject({ width: 1920, height: 1080 });
+    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(180);
+    expect(Number(probe.format.duration)).toBeLessThanOrEqual(240);
+    const bild = (t: number) => {
+      const roh = execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]);
+      const px = (x: number, y: number) => [roh[(y * 192 + x) * 3], roh[(y * 192 + x) * 3 + 1], roh[(y * 192 + x) * 3 + 2]];
+      let weiss = 0;
+      for (let i = 0; i < roh.length; i += 3) if (roh[i] > 235 && roh[i + 1] > 235 && roh[i + 2] > 235) weiss++;
+      return { px, weiss: weiss / (roh.length / 3) };
+    };
+    const d1 = (a.skript as unknown as Szene[])[0].dauer;
+    const d2 = (a.skript as unknown as Szene[])[1].dauer;
+    expect(bild(0.1).weiss).toBeGreaterThan(0.99); // leeres Whiteboard, bevor gezeichnet wird
+    const ende1 = bild(d1 - 1);
+    expect(ende1.weiss).toBeGreaterThan(0.4);
+    expect(ende1.weiss).toBeLessThan(0.97); // Überschrift + Motive gezeichnet, Hintergrund weiß
+    for (let y = 96; y <= 104; y++) for (let x = 0; x < 192; x += 4) expect(Math.min(...ende1.px(x, y))).toBeGreaterThan(200); // keine eingebrannten Untertitel unten
+    const ende2 = bild(d1 + d2 - 1);
+    const [r, g, b] = ende2.px(20, 8);
+    expect(r > 170 && g < 90 && b < 90, `roter Balken oben (${r},${g},${b})`).toBe(true);
+    // Thumbnail aus der ersten Szene, Kosten je Motiv
+    expect(a.dateien.thumbnail).toBeTruthy();
+    expect(a.kosten_positionen.some((k) => (k as unknown as { art: string }).art === "Motiv" && k.betrag === 0.02)).toBe(true);
+    // „Privat hochladen“: Video privat, Untertitel als YouTube-Untertitel (Spur Deutsch)
+    await page.reload();
+    await Promise.all([aktion(page), karte.getByTestId("vd-hochladen").click()]);
+    a = await warte3("hochgeladen", (x) => !!x.youtube_status);
+    expect(a.youtube_status).toBe("privat");
+    const ut = (await (await fetch(`${TD}/__video/untertitel`)).json()) as { videoId: string; sprache: string; zeilen: number; entwurf: boolean }[];
+    expect(ut).toHaveLength(1);
+    expect(ut[0]).toMatchObject({ videoId: a.youtube_id, sprache: "de", entwurf: false });
+    expect(ut[0].zeilen).toBeGreaterThan(20);
     await workerStoppen();
   });
 });

@@ -18,8 +18,8 @@ Der Worker macht aus einem Thema ein fertiges YouTube-Video (Länge je Kanal, St
 | research | Websuche, Gliederung + Quellen | Claude + Websuche |
 | script | Skript (Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA), Wortzahl aus der Kanallänge (16–20 Min. = 2.300–2.900 Wörter, 27–45 Szenen), JSON je Szene | Claude |
 | voice | Sprache je Szene (ElevenLabs) | ElevenLabs |
-| visuals | Symbolbild je Szene (OpenAI gpt-image-1, 1536×1024, medium); bei Ablehnung Ersatzbild | OpenAI |
-| render | ffmpeg + Pillow: Clips mit eingebrannten Untertiteln, optional Musik | – |
+| visuals | Vollbild: Symbolbild je Szene (gpt-image-1, 1536×1024). Whiteboard: 3–5 Einzelmotive je Szene (1024×1024, transparent, Bibliothek) + Szenen-Übersicht; bei Ablehnung Ersatzmotiv | OpenAI |
+| render | ffmpeg + Pillow: Vollbild mit eingebrannten Untertiteln; Whiteboard mit Aufdeck-Animation, Hand und blassem Vorgänger, ohne eingebrannte Untertitel; optional Musik | – |
 | package | Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln + Quellen, Tags; Dateien ins Seller-System | Claude |
 | upload | YouTube, **privat** (nur mit Schalter „Privat hochladen“ und freigegebener Vorschau) | – |
 
@@ -30,6 +30,27 @@ möglichst wörtlich übernommen und in Szenen geteilt).
 
 Freigaben (je Kanal einstellbar) gibt es nach research (Gliederung + Quellen), script (Skript) und package
 (Vorschau-Video + Thumbnail + Titel). Weiter geht es erst nach der Freigabe auf der Seite **Video**.
+
+## Stil „Whiteboard-Collage“ (B36.9)
+
+Im Kanalprofil (Seller-System → Video) „Stil der Bilder: Whiteboard-Collage“ wählen. Dann gilt:
+- **Motive einzeln:** je Szene 3–5 Cartoon-Motive (gpt-image-1, 1024×1024, transparenter Hintergrund). Sind im
+  Kanalprofil **Stil-Referenzbilder** hinterlegt (bis 4, z. B. Bildschirmfotos aus dem Kanal), bekommt das Bildmodell
+  sie bei jedem neuen Motiv als Vorlage mit. Die Pipeline ordnet die Motive nach festen Vorlagen an: 3er, 4er, 5er,
+  Figur links + Liste, Gegenüberstellung.
+- **Bibliothek:** jedes Motiv liegt danach im Kanalordner unter `motive/` (mit `index.json`) und wird in späteren
+  Szenen und Videos wiederverwendet, ohne neu zu kosten. Wiederkehrende Figuren stehen im Kanalprofil („kurzname:
+  Beschreibung“) und werden einmal gezeichnet. Die Hand mit Stift wird einmal je Kanal erzeugt.
+- **Texte setzt die Pipeline selbst** in der Schrift Anton (`schriften/`, mit Umlauten): Überschrift schwarz,
+  Aussagesatz im roten Balken, Kernaussage rot, „Schritt N: …“ im schwarzen Kasten, Stichpunkte mit orangem Punkt.
+  Das Bildmodell zeichnet nie Schrift.
+- **Animation:** Elemente werden nacheinander von links nach rechts „aufgezeichnet“, die Hand folgt der Kante. Die
+  vorige Szene bleibt mit 15 % als blasser Hintergrund stehen.
+- **Untertitel** werden nicht eingebrannt, sondern beim privaten Upload als YouTube-Untertitel („Deutsch“)
+  mitgeschickt. Dafür braucht der YouTube-Zugang das Recht „Untertitel“ (bei bestehender Verbindung einmal neu
+  verbinden).
+- **Freigabe Szenen-Übersicht** (im Kanal einschaltbar): vor dem Render alle Szenen als Raster auf der Seite Video.
+  Einzelne Motive antippen → „Ausgewählte Motive neu erzeugen“. Nur die kosten erneut.
 
 ## Einrichten unter Windows
 

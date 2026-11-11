@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/4 Abläufe | – | 3 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/5 Abläufe | – | 4 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -551,8 +551,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B36.7 Abnahme 4/7/8: Worker während „Sprache“ hart beenden, 11 Min. Stille, Neustart; Bildidee „Bett“ (streng) und abgelehnte Bildidee | „wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Neustart macht weiter, jede Szene genau einmal bei ElevenLabs (höchstens die beim Abbruch laufende doppelt), Bilder einmal; gpt-image-1/1536×1024/medium; Ablehnung → Ersatzmotiv; „Bett“ erreicht den Anbieter nicht; < 3 GB frei → kein Auftrag | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten | Refresh-Token verschlüsselt; Upload mit Sichtbarkeit private, gewähltem Titel, Thumbnail; Seller-System bestätigt „privat“; Kosten Ist > 0 mit Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick; Projektordner am PC danach aufgeräumt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36.6 Ablage Google Drive: Drive verbinden, Kanal ohne Freigaben (Länge 12–14 Min.), Thema des ersten Durchlaufs mit englischer Vorlage, Video bis „fertig“, danach „Privat hochladen“; Modell Opus 5.5 | Prompt verlangt 1.750–2.050 Wörter, Skript in der Spanne; Vorlage + „Nicht übersetzen“ in der Recherche; MP4 nur in Drive („Seller-System Videos/<Kanal>/<Datum Thema>“, gleiche Größe), kleine Dateien auch im Seller-System, kein MP4 auf dem Server; Vorschau/Download leiten nach Drive; Upload holt das Video aus Drive und ist privat; Claude-Kosten mit Opus 5.5 | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| B36.9 Whiteboard-Collage: Kanal im Stil Whiteboard (Figur, Referenzbild, Freigabe Szenen-Übersicht), Video bis zur Übersicht, ein Motiv „neu erzeugen“, freigeben, „Privat hochladen“ | Motive einzeln 1024×1024 transparent mit Referenzbild, jede Motiv-Art einmal bezahlt, Hand einmal, Figur aus dem Profil, Ablehnung → Ersatzmotiv; Übersicht als Bild, „neu erzeugen“ kostet genau 1 Bild; Video 1920×1080 beginnt leer, weißer Hintergrund, keine eingebrannten Untertitel, roter Balken; Kosten je Motiv; privater Upload mit Untertitel-Spur „Deutsch“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 
 - – Offen: Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload, Google Drive) – erstes Video mit echten Zugängen prüfen
+- – Offen: B36.9 Sichtvergleich Testvideo ↔ Referenzvideo (echte Motive, Hand, Schrift, Farben)
 - – Offen: Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
 - – Offen: vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 
@@ -736,7 +738,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (179 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 179 nicht gelaufen.
+**Automatisch** (180 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 180 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -858,6 +860,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): B36.7 Abnahme 4/7/8: Worker während „Sprache“ hart beenden, 11 Min. Stille, Neustart; Bildidee „Bett“ (streng) und abgelehnte Bildidee – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36.6 Ablage Google Drive: Drive verbinden, Kanal ohne Freigaben (Länge 12–14 Min.), Thema des ersten Durchlaufs mit englischer Vorlage, Video bis „fertig“, danach „Privat hochladen“; Modell Opus 5.5 – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): B36.9 Whiteboard-Collage: Kanal im Stil Whiteboard (Figur, Referenzbild, Freigabe Szenen-Übersicht), Video bis zur Übersicht, ein Motiv „neu erzeugen“, freigeben, „Privat hochladen“ – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: Aufgabe an die VA über Discord: Thread mit Anleitung und Datei, ✅ erledigt, Rechnungsfrage automatisch beantwortet, Rückfrage → Antwort im Thread – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: B18: Anspruch mit Frist in 8 Tagen, Frist rückt auf 7/5/3/1 Tage, VA antwortet „case 12345678901“, Anspruch mit Frist heute, dann abgelaufen; Claude va_aufgaben/ueberblick – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: B18: Amazon-Mails Markenbeschwerde, Fall „Antwort nötig“ 120 €, Fall 800 €, Fallnummer im Fall-Thread, „An die VA“ von Hand, Modus „Vorschlag“, Regel je Kategorie ändern – im letzten Lauf nicht gelaufen
@@ -983,6 +986,7 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Leads (Lead-Maschine): Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen
 - Leads (Lead-Maschine): Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet
 - Video (YouTube): Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload, Google Drive) – erstes Video mit echten Zugängen prüfen
+- Video (YouTube): B36.9 Sichtvergleich Testvideo ↔ Referenzvideo (echte Motive, Hand, Schrift, Farben)
 - Video (YouTube): Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
 - Video (YouTube): vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen

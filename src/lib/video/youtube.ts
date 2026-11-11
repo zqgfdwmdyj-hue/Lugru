@@ -5,7 +5,8 @@ import "server-only";
 // youtube.upload) – Sichtbarkeit immer „privat“; danach prüft das Seller-System die Sichtbarkeit (youtube.readonly).
 // Im Testbetrieb gegen den Nachbau (YOUTUBE_*_URL).
 
-export const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+/** youtube.force-ssl: nur für die Untertitel (captions.insert, Whiteboard-Stil B36.9.4) – Upload bleibt immer privat. */
+export const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/youtube.force-ssl"];
 /** Google Drive als Video-Ablage: nur Dateien, die das Seller-System selbst anlegt (drive.file). */
 export const DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"];
 const AUTH = () => process.env.YOUTUBE_AUTH_URL || "https://accounts.google.com/o/oauth2/v2/auth";

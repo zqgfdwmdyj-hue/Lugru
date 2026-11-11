@@ -8,12 +8,20 @@ import { createdAt, id, tenantId, users } from "./core";
  */
 
 export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload";
-export type VideoFreigabe = "gliederung" | "skript" | "vorschau";
+export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau";
 export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string };
 /** gefunden: URL stammt direkt aus den Suchtreffern der Recherche. */
 export type VideoQuelle = { id: string; titel: string; url: string | null; jahr: number | null; art: string | null; autoren?: string | null; gefunden?: boolean };
 export type VideoGliederung = { hook?: string | null; angst?: string | null; punkte: { titel: string; kern?: string; quelle_ids?: string[] }[]; fazit?: string | null; cta?: string | null };
-export type VideoSzene = { nr: number; abschnitt: string; text: string; bildidee: string; einblendung: string | null; quelle_ids: string[]; dauer?: number | null; ersatzbild?: boolean };
+/** Whiteboard-Collage (B36.9): Motiv mit Bibliotheks-Schlüssel (wiederverwendbar) und Beschreibung fürs Bildmodell. */
+export type VideoMotiv = { key: string; beschreibung: string; ersatz?: boolean; wiederverwendet?: boolean };
+export type VideoSzene = {
+  nr: number; abschnitt: string; text: string; bildidee: string; einblendung: string | null; quelle_ids: string[]; dauer?: number | null; ersatzbild?: boolean;
+  // nur Stil „whiteboard“: Texte setzt die Pipeline selbst (Schrift fest), Motive kommen einzeln vom Bildmodell
+  layout?: string | null; ueberschrift?: string | null; balken?: string | null; kernaussage?: string | null; schrittText?: string | null; liste?: string[] | null; motive?: VideoMotiv[] | null;
+};
+/** Stil-Referenzbild eines Kanals (Seite Video → Kanalprofil), wird dem Bildmodell als Vorlage mitgegeben. */
+export type VideoReferenz = { nr: number; name: string; typ: string; groesse: number; hash: string };
 export type VideoPaket = { titel: string[]; titelGewaehlt?: number | null; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[]; thumbnailText: string | null; warnungen?: string[] };
 export type VideoKosten = { anbieter: string; art: string; menge: number; einheit: string; betrag: number | null; am: string };
 /** drive: Datei-ID in Google Drive (Ablage „Drive“) – dann liegt die Datei nicht auf dem Seller-Server. */
@@ -39,10 +47,18 @@ export const videoKanaele = pgTable(
     stimmeId: text("stimme_id"),
     bildstil: text("bildstil"),
     sicherheitsstufe: text("sicherheitsstufe", { enum: ["normal", "streng"] }).notNull().default("normal"),
+    /** Bildstil der Pipeline: „vollbild“ (ein Symbolbild je Szene, Untertitel eingebrannt) oder „whiteboard“ (B36.9:
+     *  Collage aus 3–5 Motiven, Hand zeichnet mit, Texte in fester Schrift, Untertitel als YouTube-Untertitel). */
+    stil: text("stil", { enum: ["vollbild", "whiteboard"] }).notNull().default("vollbild"),
+    /** Wiederkehrende Figuren, eine je Zeile „kurzname: Beschreibung“ (einmal festgelegt, immer gleich gezeichnet). */
+    figuren: text("figuren"),
+    /** Qualität beim Bildmodell (gpt-image-1): low/medium/high – bestimmt die Kosten je Bild/Motiv. */
+    bildQualitaet: text("bild_qualitaet", { enum: ["low", "medium", "high"] }).notNull().default("medium"),
+    referenzen: jsonb("referenzen").$type<VideoReferenz[]>().notNull().default([]),
     /** Dateiname einer Hintergrundmusik im Ordner „musik“ des Workers (leer = ohne Musik). */
     musik: text("musik"),
     /** Welche Freigabe-Punkte aktiv sind. */
-    freigaben: jsonb("freigaben").$type<Record<VideoFreigabe, boolean>>().notNull().default({ gliederung: true, skript: true, vorschau: true }),
+    freigaben: jsonb("freigaben").$type<Partial<Record<VideoFreigabe, boolean>>>().notNull().default({ gliederung: true, skript: true, vorschau: true }),
     /** YouTube-Zugang je Kanal: Refresh-Token verschlüsselt (pii); Kanalname zur Anzeige. */
     youtubeToken: text("youtube_token"),
     youtubeKanal: text("youtube_kanal"),
@@ -67,6 +83,8 @@ export const videoAuftraege = pgTable(
      *  übersetzen) oder eigenes Skript (wird möglichst wörtlich übernommen). */
     vorlage: text("vorlage"),
     vorlageArt: text("vorlage_art", { enum: ["vorlage", "skript"] }),
+    /** Szenen-Übersicht: diese Motive (Bibliotheks-Schlüssel) beim nächsten Lauf neu erzeugen. */
+    neuMotive: jsonb("neu_motive").$type<string[]>().notNull().default([]),
     /** Anmerkung zur Gliederung/zum Skript (bei Freigabe oder „neu“). */
     hinweis: text("hinweis"),
     /** Frühester Start (z. B. „heute Nacht“). */

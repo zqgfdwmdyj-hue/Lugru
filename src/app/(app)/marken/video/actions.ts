@@ -48,7 +48,10 @@ export async function kanalSpeichernAction(fd: FormData) {
       bildstil: txt(fd, "bildstil") || null,
       sicherheitsstufe: fd.get("sicherheitsstufe") === "streng" ? "streng" : "normal",
       musik: txt(fd, "musik", 120) || null,
-      freigaben: { gliederung: fd.get("f_gliederung") === "1", skript: fd.get("f_skript") === "1", vorschau: fd.get("f_vorschau") === "1" },
+      freigaben: { gliederung: fd.get("f_gliederung") === "1", skript: fd.get("f_skript") === "1", szenen: fd.get("f_szenen") === "1", vorschau: fd.get("f_vorschau") === "1" },
+      stil: txt(fd, "stil", 20) || "vollbild",
+      figuren: txt(fd, "figuren", 3000) || null,
+      bildQualitaet: txt(fd, "bildQualitaet", 10) || "medium",
       aktiv: fd.get("aktiv") !== "0",
     });
   } catch (e) {
@@ -193,7 +196,7 @@ export async function preiseAction(fd: FormData) {
   };
   await mitFehler(async () => {
     const { videoEinstellungenSpeichern } = await import("@/lib/video/service");
-    const preise: VideoPreise = { claudeEingabeJeMio: zahl("claudeEingabeJeMio"), claudeAusgabeJeMio: zahl("claudeAusgabeJeMio"), websucheJe1000: zahl("websucheJe1000"), elevenlabsJe1000Zeichen: zahl("elevenlabsJe1000Zeichen"), bildJeStueck: zahl("bildJeStueck") };
+    const preise: VideoPreise = { claudeEingabeJeMio: zahl("claudeEingabeJeMio"), claudeAusgabeJeMio: zahl("claudeAusgabeJeMio"), websucheJe1000: zahl("websucheJe1000"), elevenlabsJe1000Zeichen: zahl("elevenlabsJe1000Zeichen"), bildJeStueck: zahl("bildJeStueck"), motivJeStueck: zahl("motivJeStueck") };
     await videoEinstellungenSpeichern(s, { preise, serverReserveGb: zahl("serverReserveGb") ?? 2 });
     return "Preise gespeichert – gelten für neue Schätzungen und Kosten ab jetzt.";
   }, null, "#preise");
@@ -233,4 +236,35 @@ export async function driveEinfuegenAction(fd: FormData) {
     await videoDriveEinfuegen(s.tenantId, txt(fd, "adresse", 4000));
     return "Google Drive verbunden – fertige Videos landen im Ordner „Seller-System Videos“.";
   }, null, "#ablage");
+}
+
+/** B36.9: Stil-Referenzbilder je Kanal (bis 4). */
+export async function referenzAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanalId = id(fd, "kanalId");
+  await mitFehler(async () => {
+    const { referenzenHinzufuegen } = await import("@/lib/video/service");
+    const dateien = fd.getAll("bilder").filter((x): x is File => typeof x !== "string");
+    const n = await referenzenHinzufuegen(s, kanalId, dateien);
+    return `${n} Referenzbild${n === 1 ? "" : "er"} gespeichert.`;
+  }, kanalId, "#kanal");
+}
+
+export async function referenzLoeschenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanalId = id(fd, "kanalId");
+  await mitFehler(async () => {
+    const { referenzEntfernen } = await import("@/lib/video/service");
+    await referenzEntfernen(s, kanalId, Number(txt(fd, "nr", 4)));
+    return "Referenzbild entfernt.";
+  }, kanalId, "#kanal");
+}
+
+/** B36.9.6: In der Szenen-Übersicht ausgewählte Motive neu erzeugen lassen. */
+export async function motiveNeuAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { motiveNeu } = await import("@/lib/video/service");
+    return motiveNeu(s, id(fd), fd.getAll("motiv").map((x) => String(x).slice(0, 60)));
+  }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
 }

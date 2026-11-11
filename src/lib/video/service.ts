@@ -1,17 +1,17 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rename, rm, stat, statfs } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, VideoQuelle, VideoSchritt, VideoSzene } from "@/db/tables/video";
+import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, VideoQuelle, VideoReferenz, VideoSchritt, VideoSzene } from "@/db/tables/video";
 import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
-import { FREIGABE_VOR, istVideoModell, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
+import { FREIGABE_VOR, figurenAus, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -56,7 +56,7 @@ export async function videoEinstellungenSpeichern(s: Session, patch: Partial<Vid
 
 // ---- Kanäle ------------------------------------------------------------------------------------------------------
 
-export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; laengeMin?: number | null; laengeMax?: number | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Record<VideoFreigabe, boolean>; aktiv: boolean };
+export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; laengeMin?: number | null; laengeMax?: number | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null };
 
 export const kanaele = (tenantId: string) => db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(asc(K.createdAt));
 
@@ -65,7 +65,7 @@ export async function kanalSpeichern(s: Session, id: string | null, e: KanalEing
   const name = e.name.trim().slice(0, 80);
   if (!name) throw new VideoFehler("Bitte einen Kanalnamen angeben.");
   const laenge = laengeZiel(e.laengeMin, e.laengeMax).minuten;
-  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, laengeMin: laenge[0], laengeMax: laenge[1], stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: e.freigaben, aktiv: e.aktiv };
+  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, laengeMin: laenge[0], laengeMax: laenge[1], stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium" } as const;
   if (id) {
     const [r] = await db.update(K).set(werte).where(and(eq(K.tenantId, s.tenantId), eq(K.id, id))).returning({ id: K.id });
     if (!r) throw new VideoFehler("Kanal nicht gefunden.");
@@ -97,7 +97,7 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.laengeMin, kanal.laengeMax), cfg.modell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.laengeMin, kanal.laengeMax, kanal.stil), cfg.modell);
   const vorlage = e.vorlage?.trim() || null;
   if (vorlage && vorlage.length > VORLAGE_MAX) throw new VideoFehler(`Vorlage/Skript ist zu lang (${vorlage.length.toLocaleString("de-DE")} Zeichen, höchstens ${VORLAGE_MAX.toLocaleString("de-DE")}).`);
   if (vorlage && vorlage.length < 200) throw new VideoFehler("Vorlage/Skript ist sehr kurz – bitte den ganzen Text einfügen (oder das Feld leer lassen).");
@@ -138,6 +138,10 @@ export async function freigeben(s: Session, id: string, f: VideoFreigabe, o: { h
   if (a.freigabeOffen !== f) throw new VideoFehler("Diese Freigabe steht gerade nicht an.");
   const freigegeben = { ...a.freigegeben, [f]: jetzt().toISOString() };
   const paket = f === "vorschau" && a.paket && o.titelWahl !== undefined && o.titelWahl !== null ? { ...a.paket, titelGewaehlt: Math.max(0, Math.min(a.paket.titel.length - 1, o.titelWahl)) } : a.paket;
+  if (f === "szenen") {
+    await aendern(id, { freigegeben, freigabeOffen: null, neuMotive: [], status: "wartet", schritt: "render", hinweis: o.hinweis?.trim().slice(0, 2000) || a.hinweis });
+    return "Szenen freigegeben – der Worker rendert das Video.";
+  }
   if (f === "vorschau" && !a.hochladen) {
     await aendern(id, { freigegeben, freigabeOffen: null, paket, status: "fertig", fertigAm: jetzt(), aufraeumen: true });
     return "Freigegeben – fertig. Zum Hochladen „Privat hochladen“ einschalten.";
@@ -151,6 +155,20 @@ export async function neuMachen(s: Session, id: string, schritt: "research" | "s
   const { a } = await auftragFuer(s, id);
   const freigegeben = schritt === "research" ? {} : { gliederung: a.freigegeben.gliederung };
   await aendern(id, { status: "wartet", schritt, wiederholen: schritt, freigabeOffen: null, freigegeben, hinweis: hinweis?.trim().slice(0, 2000) || a.hinweis, fertigAm: null });
+}
+
+/** Szenen-Übersicht (B36.9.6): ausgewählte Motive verwerfen und neu erzeugen lassen – alles andere bleibt (Bibliothek). */
+export async function motiveNeu(s: Session, id: string, keys: string[]) {
+  const { a } = await auftragFuer(s, id);
+  if (a.freigabeOffen !== "szenen") throw new VideoFehler("Die Szenen-Übersicht steht gerade nicht zur Freigabe an.");
+  const vorhanden = new Set((a.skript ?? []).flatMap((x) => (x.motive ?? []).map((m) => m.key)));
+  const neu = [...new Set(keys)].filter((k) => vorhanden.has(k)).slice(0, 60);
+  if (!neu.length) throw new VideoFehler("Bitte mindestens ein Motiv auswählen.");
+  const { szenen: _s, vorschau: _v, ...freigegeben } = a.freigegeben;
+  const schritte = { ...a.schritte, visuals: { status: "offen" as const } };
+  // „#…“ = Kennung dieser Runde: der Worker löscht die Motive je Runde nur einmal (kein Doppel-Bezahlen nach Neustart)
+  await aendern(id, { status: "wartet", schritt: "visuals", wiederholen: "visuals", neuMotive: [...neu, `#${Date.now().toString(36)}`], freigabeOffen: null, freigegeben, schritte });
+  return `${neu.length} Motiv${neu.length === 1 ? "" : "e"} werden neu erzeugt – danach kommt die Szenen-Übersicht wieder.`;
 }
 
 /** Nach Fehler: denselben Schritt erneut (bereits bezahlte Dateien nutzt der Worker weiter). */
@@ -283,8 +301,9 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
     hochladen: a.hochladen,
     vidiq: { keywords: a.vidiqKeywords, titel: a.vidiqTitel },
     vorlage: a.vorlage ? { art: a.vorlageArt ?? "vorlage", text: a.vorlage } : null,
+    neuMotive: a.neuMotive,
     laenge: laengeZiel(k.laengeMin, k.laengeMax),
-    kanal: { slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
+    kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
     daten: { gliederung: a.gliederung, quellen: a.quellen, skript: a.skript, paket: a.paket },
   };
 }
@@ -360,6 +379,7 @@ export async function schrittMelden(w: Worker, id: string, m: SchrittMeldung): P
   if (typeof d.dauerSek === "number") werte.dauerSek = Math.round(d.dauerSek);
   if (d.paket) werte.paket = { ...d.paket, titel: d.paket.titel.slice(0, 5), warnungen: [...(d.paket.warnungen ?? []), ...d.paket.titel.map((t) => (titelTreffer(t) ? `Titel „${t}“ enthält „${titelTreffer(t)}“` : null)).filter((x): x is string => !!x)] };
   if (a.wiederholen === m.schritt) werte.wiederholen = null;
+  if (m.schritt === "visuals") werte.neuMotive = [];
   const n = nachSchritt(m.schritt, { freigaben: k.freigaben, freigegeben: a.freigegeben, hochladen: a.hochladen });
   const fertig = n.status === "fertig";
   await aendern(id, { ...werte, status: n.status, schritt: n.schritt, freigabeOffen: n.freigabeOffen, ...(fertig ? { fertigAm: jetzt(), aufraeumen: true } : {}) });
@@ -374,7 +394,61 @@ export const DATEI_ARTEN: Record<string, { name: string; typ: string; max: numbe
   skript: { name: "skript.txt", typ: "text/plain; charset=utf-8", max: 5 * 1024 ** 2 },
   quellen: { name: "quellen.json", typ: "application/json", max: 5 * 1024 ** 2 },
   untertitel: { name: "untertitel.srt", typ: "application/x-subrip", max: 5 * 1024 ** 2 },
+  /** Whiteboard: Szenen-Übersicht (alle Szenen als Raster) zur Freigabe vor dem Render. */
+  uebersicht: { name: "uebersicht.jpg", typ: "image/jpeg", max: 30 * 1024 ** 2 },
 };
+
+// ---- Stil-Referenzbilder je Kanal (B36.9.1) -----------------------------------------------------------------------
+
+export const REFERENZ_MAX = 4;
+const REFERENZ_TYPEN: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+const referenzOrdner = (tenantId: string, kanalId: string) => {
+  if (!/^[0-9a-f-]{36}$/.test(tenantId) || !/^[0-9a-f-]{36}$/.test(kanalId)) throw new VideoFehler("Ungültige Kennung.");
+  return path.join(/*turbopackIgnore: true*/ medienOrdner(), "video", tenantId, `kanal-${kanalId}`);
+};
+
+/** Bis zu 4 Bilder (PNG/JPG/WebP, je ≤ 5 MB) als Stil-Vorlage fürs Bildmodell. */
+export async function referenzenHinzufuegen(s: Session, kanalId: string, dateien: File[]): Promise<number> {
+  if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
+  const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, kanalId)));
+  if (!kanal) throw new VideoFehler("Kanal nicht gefunden.");
+  const liste = [...kanal.referenzen];
+  const ordner = referenzOrdner(s.tenantId, kanalId);
+  await mkdir(ordner, { recursive: true });
+  let neu = 0;
+  for (const f of dateien.filter((x) => x.size > 0)) {
+    if (liste.length >= REFERENZ_MAX) throw new VideoFehler(`Höchstens ${REFERENZ_MAX} Referenzbilder je Kanal – erst eines entfernen.`);
+    const endung = REFERENZ_TYPEN[f.type];
+    if (!endung) throw new VideoFehler(`„${f.name}“: nur PNG, JPG oder WebP.`);
+    if (f.size > 5 * 1024 ** 2) throw new VideoFehler(`„${f.name}“ ist größer als 5 MB.`);
+    const daten = Buffer.from(await f.arrayBuffer());
+    const nr = Math.max(0, ...liste.map((r) => r.nr)) + 1;
+    await writeFile(path.join(ordner, `referenz-${nr}.${endung}`), daten);
+    liste.push({ nr, name: f.name.slice(0, 120), typ: f.type, groesse: daten.length, hash: createHash("sha256").update(daten).digest("hex").slice(0, 16) });
+    neu++;
+  }
+  if (!neu) throw new VideoFehler("Bitte ein Bild auswählen.");
+  await db.update(K).set({ referenzen: liste }).where(and(eq(K.tenantId, s.tenantId), eq(K.id, kanalId)));
+  return neu;
+}
+
+export async function referenzEntfernen(s: Session, kanalId: string, nr: number) {
+  if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
+  const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, kanalId)));
+  const r = kanal?.referenzen.find((x) => x.nr === nr);
+  if (!kanal || !r) throw new VideoFehler("Referenzbild nicht gefunden.");
+  await rm(path.join(referenzOrdner(s.tenantId, kanalId), `referenz-${nr}.${REFERENZ_TYPEN[r.typ] ?? "png"}`), { force: true });
+  await db.update(K).set({ referenzen: kanal.referenzen.filter((x) => x.nr !== nr) }).where(and(eq(K.tenantId, s.tenantId), eq(K.id, kanalId)));
+}
+
+/** Referenzbild lesen (Seite: Vorschau; Worker: Vorlage fürs Bildmodell) – immer mit Mandant. */
+export async function referenzLesen(tenantId: string, kanalId: string, nr: number): Promise<{ daten: Buffer; typ: string; ref: VideoReferenz } | null> {
+  const [kanal] = await db.select({ referenzen: K.referenzen }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.id, kanalId)));
+  const ref = kanal?.referenzen.find((x) => x.nr === nr);
+  if (!ref) return null;
+  const daten = await readFile(path.join(referenzOrdner(tenantId, kanalId), `referenz-${nr}.${REFERENZ_TYPEN[ref.typ] ?? "png"}`)).catch(() => null);
+  return daten ? { daten, typ: ref.typ, ref } : null;
+}
 
 const auftragOrdner = (tenantId: string, id: string) => {
   if (!/^[0-9a-f-]{36}$/.test(tenantId) || !/^[0-9a-f-]{36}$/.test(id)) throw new VideoFehler("Ungültige Kennung.");

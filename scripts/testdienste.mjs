@@ -1716,11 +1716,20 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], sitzungen: new Map(), n: 0 });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0 });
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
       return send(200, { ok: true });
     }
     if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube });
+    if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
+      // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
+      const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
+      const felder = form ? Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string")) : {};
+      const bilder = form ? [...form.getAll("image[]"), ...form.getAll("image")].filter((v) => typeof v !== "string") : [];
+      const [code, data] = await openaiBildNb(req, { ...felder, n: Number(felder.n ?? 1) }, { edits: true, referenzen: bilder.length });
+      return send(code, data);
+    }
+    if (url.pathname === "/__video/untertitel") return send(200, videoNb.untertitel);
     if (url.pathname.startsWith("/drive-upload/") && driveUploadRoh(req, res, url, body, roh)) {
       remember(log, { at: new Date().toISOString(), dienst: "Google Drive", method: req.method, path: url.pathname, status: res.statusCode, simuliert: true });
       return;
@@ -1756,7 +1765,7 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0 };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0 };
 
 function crc32(buf) {
   let c;
@@ -1795,6 +1804,39 @@ async function testPng(farbe) {
   return png;
 }
 
+/** Motiv 1024×1024: farbiger Kreis mit schwarzem Rand, Hintergrund transparent (RGBA) bzw. weiß. */
+async function motivPng(farbe, transparent) {
+  const k = `m${farbe.join(",")}${transparent}`;
+  if (pngCache.has(k)) return pngCache.get(k);
+  const { deflateSync } = await import("node:zlib");
+  const n = 1024;
+  const zeilen = [];
+  for (let y = 0; y < n; y++) {
+    const z = Buffer.alloc(1 + n * 4);
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x - n / 2, y - n / 2);
+      const px = d < 380 ? [...farbe, 255] : d < 410 ? [20, 20, 20, 255] : transparent ? [0, 0, 0, 0] : [255, 255, 255, 255];
+      z.set(px, 1 + x * 4);
+    }
+    zeilen.push(z);
+  }
+  const chunk = (typ, daten) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(daten.length);
+    const td = Buffer.concat([Buffer.from(typ), daten]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(n, 0);
+  ihdr.writeUInt32BE(n, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.concat(zeilen), { level: 1 })), chunk("IEND", Buffer.alloc(0))]);
+  pngCache.set(k, png);
+  return png;
+}
+
 /** Stille MP3 (MPEG-1 Layer III, 128 kbit/s, 44,1 kHz): ein Rahmen = 417 Byte = 26,12 ms. */
 function stilleMp3(sekunden) {
   const rahmen = Buffer.alloc(417);
@@ -1816,15 +1858,16 @@ async function elevenNb(req, p, b) {
   return [200, stilleMp3(woerter / 2.6), "audio/mpeg"];
 }
 
-async function openaiBildNb(req, b) {
+async function openaiBildNb(req, b, extra = {}) {
   if (!String(req.headers.authorization ?? "").startsWith("Bearer ")) return [401, { error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } }];
   const prompt = String(b.prompt ?? "");
   const abgelehnt = prompt.includes("TESTABLEHNUNG");
-  videoNb.bilder.push({ at: new Date().toISOString(), model: b.model, size: b.size, quality: b.quality, prompt: prompt.slice(0, 300), abgelehnt });
+  videoNb.bilder.push({ at: new Date().toISOString(), model: b.model, size: b.size, quality: b.quality, background: b.background ?? null, edits: !!extra.edits, referenzen: extra.referenzen ?? 0, prompt: prompt.slice(0, 600), abgelehnt });
   if (videoNb.verzoegerungMs) await warte(Math.round(videoNb.verzoegerungMs / 2));
   if (abgelehnt) return [400, { error: { message: "Your request was rejected as a result of our safety system.", type: "image_generation_user_error", code: "moderation_blocked" } }];
   const h = createHash("sha256").update(prompt).digest();
-  const png = await testPng([40 + (h[0] % 120), 60 + (h[1] % 120), 80 + (h[2] % 120)]);
+  const farbe = [40 + (h[0] % 120), 60 + (h[1] % 120), 80 + (h[2] % 120)];
+  const png = b.background === "transparent" || b.size === "1024x1024" ? await motivPng(farbe, b.background === "transparent") : await testPng(farbe);
   return [200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: png.toString("base64") }], usage: { total_tokens: 1000 } }];
 }
 
@@ -1895,6 +1938,19 @@ function youtubeNb(req, url, p, body) {
     const v = videoNb.youtube.find((x) => x.id === url.searchParams.get("id"));
     return [200, { items: v ? [{ id: v.id, status: { privacyStatus: v.sichtbarkeit } }] : [] }];
   }
+  if (p === "/youtube-upload/youtube/v3/captions" && req.method === "POST") {
+    // B36.9.4: Untertitel-Spur (multipart/related: JSON-Snippet + SRT)
+    const meta = /\{[\s\S]*?"snippet"[\s\S]*?\}\s*\}/.exec(body);
+    let snippet = {};
+    try {
+      snippet = JSON.parse(meta?.[0] ?? "{}").snippet ?? {};
+    } catch {}
+    const v = videoNb.youtube.find((x) => x.id === snippet.videoId);
+    if (!v) return [404, { error: { code: 404, message: "videoNotFound" } }];
+    const zeilen = (body.match(/-->/g) ?? []).length;
+    videoNb.untertitel.push({ at: new Date().toISOString(), videoId: snippet.videoId, sprache: snippet.language, name: snippet.name, entwurf: snippet.isDraft, zeilen });
+    return [200, { kind: "youtube#caption", id: `cap-${snippet.videoId}`, snippet: { videoId: snippet.videoId, language: snippet.language, name: snippet.name, isDraft: false } }];
+  }
   if (p === "/youtube-upload/youtube/v3/thumbnails/set") {
     const v = videoNb.youtube.find((x) => x.id === url.searchParams.get("videoId"));
     if (v) v.thumbnail = true;
@@ -1915,6 +1971,9 @@ function fuelltext(n, start) {
   return t.join(" ");
 }
 
+const WB_LAYOUTS = ["3er", "4er", "figur-liste", "gegenueberstellung", "5er"];
+const WB_MOTIVE = ["sanduhr", "banane", "kirsche", "lineal", "wasserhahn", "wecker", "herz", "glas"];
+
 function videoAntwort(text) {
   const thema = (/Thema: (.*)/.exec(text)?.[1] ?? "Testthema").trim();
   if (text.startsWith("[video:research]")) {
@@ -1933,6 +1992,8 @@ function videoAntwort(text) {
     const jePunkt = Math.max(2, Math.floor((anzahlSzenen - 7) / 5));
     const plan = [["hook", 2], ["angst", 2], ...[1, 2, 3, 4, 5].map((p, i) => [`punkt-${p}`, jePunkt + (i < anzahlSzenen - 7 - jePunkt * 5 ? 1 : 0)]), ["zusammenfassung", 2], ["cta", 1]];
     const gesamt = plan.reduce((a, [, x]) => a + x, 0);
+    const wb = text.includes("STIL WHITEBOARD-COLLAGE");
+    const figur = /Feste Figuren[^\n]*:\n- ([a-z0-9-]+):/.exec(text)?.[1] ?? null;
     const szenen = [];
     let nr = 0;
     for (const [abschnitt, anzahl] of plan) {
@@ -1941,6 +2002,24 @@ function videoAntwort(text) {
         const n = Math.floor(ziel / gesamt) + (nr <= ziel % gesamt ? 1 : 0);
         const punkt = /punkt-(\d)/.exec(abschnitt)?.[1];
         const bildidee = nr === 5 ? "Leeres Bett im Morgenlicht, Symbolbild" : nr === 9 ? "TESTABLEHNUNG Kalender an der Wand, Symbolbild" : `Symbolbild ${nr}: zwei Kaffeetassen, Pflanze und Licht`;
+        if (wb) {
+          // B36.9 Whiteboard: Layout, Texte, 3–5 Motive (wiederkehrende Schlüssel, Figur aus dem Kanalprofil, eine Ablehnung)
+          const layout = WB_LAYOUTS[(nr - 1) % WB_LAYOUTS.length];
+          const anzahl = { "3er": 3, "4er": 4, "5er": 5, "figur-liste": 1, gegenueberstellung: 2 }[layout];
+          const motive = Array.from({ length: anzahl }, (_, i) => {
+            if (layout === "figur-liste" && figur) return { key: figur, beschreibung: "Figur aus dem Kanalprofil" };
+            if (nr === 2 && i === 0) return { key: "verboten", beschreibung: "TESTABLEHNUNG Motiv" };
+            const key = WB_MOTIVE[(nr + i * 3) % WB_MOTIVE.length];
+            return { key, beschreibung: `Cartoon ${key} mit Comic-Gesicht` };
+          });
+          szenen.push({
+            abschnitt, text: fuelltext(n, nr), quelle_ids: punkt ? [`Q${punkt}`] : [], layout,
+            ueberschrift: nr % 3 === 1 ? `Teil ${nr}: Was hilft` : "", balken: nr % 3 === 2 ? `Studie zeigt klaren Unterschied ${nr}` : "",
+            kernaussage: nr % 2 === 0 ? "Das ist normal" : "", schritt: nr === 4 ? "Schritt 4: Arzt fragen" : "",
+            liste: layout === "figur-liste" ? ["Bewegung", "Schlaf", "Weniger Alkohol"] : [], motive,
+          });
+          continue;
+        }
         szenen.push({ abschnitt, text: fuelltext(n, nr), bildidee, einblendung: punkt && k === 0 ? `Studie Q${punkt} (${2013 + Number(punkt)})` : "", quelle_ids: punkt ? [`Q${punkt}`] : [] });
       }
     }

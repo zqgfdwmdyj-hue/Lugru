@@ -219,6 +219,31 @@ def clip(ffmpeg: str, ordner: Path, bild: str, ton: str, untertitel: str, ziel: 
     )
 
 
+def clip_bilder(ffmpeg: str, ordner: Path, bilder: list[tuple[str, float]], ton: str, ziel: str, laenge: float, fps: int) -> None:
+    """Whiteboard-Clip (B36.9): Bildfolge mit Dauern (Aufdeck-Animation) + Sprache, ohne eingebrannte Untertitel.
+    Läuft im Bildordner (relative Pfade)."""
+    zeilen = ["ffconcat version 1.0"]
+    for name, d in bilder:
+        zeilen += [f"file '{name}'", f"duration {max(d, 1 / fps):.4f}"]
+    zeilen.append(f"file '{bilder[-1][0]}'")
+    (ordner / "bilder.txt").write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+    _lauf(
+        [
+            ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "concat", "-safe", "0", "-i", "bilder.txt",
+            "-i", ton,
+            "-vf", f"fps={fps},scale={BREITE}:{HOEHE},format=yuv420p",
+            "-af", "apad",
+            "-t", f"{laenge:.3f}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-r", str(fps),
+            "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2",
+            "-movflags", "+faststart",
+            ziel,
+        ],
+        cwd=ordner,
+    )
+
+
 def zusammenfuegen(ffmpeg: str, ordner: Path, clips: list[str], ziel: str) -> None:
     liste = ordner / "liste.txt"
     liste.write_text("".join(f"file '{c}'\n" for c in clips), encoding="utf-8")

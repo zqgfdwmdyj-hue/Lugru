@@ -16,6 +16,7 @@ from typing import Any, Callable
 import requests
 
 from . import ki, medien
+from . import whiteboard as wb
 from .filter import ERSATZ_BILDIDEE, bild_treffer, titel_treffer
 from .konfig import Konfig
 from .projekt import Projekt, kurz_hash, schreiben_atomar
@@ -53,6 +54,8 @@ class Lauf:
         self.streng = self.kanal.get("sicherheitsstufe") == "streng"
         self.laenge: dict[str, list[int]] = {**LAENGE_STANDARD, **(auftrag.get("laenge") or {})}
         self.vorlage: dict[str, str] | None = auftrag.get("vorlage") if (auftrag.get("vorlage") or {}).get("text") else None
+        self.whiteboard = self.kanal.get("stil") == "whiteboard"
+        self._bib: wb.Bibliothek | None = None
         # Modell: CLAUDE_MODELL am PC (falls gesetzt) vor der Einstellung im Seller-System
         self.modell: str = k.claude_modell or auftrag.get("modell") or MODELL_STANDARD
         self.p = Projekt(k.arbeitsordner, self.kanal["slug"], self.id)
@@ -93,6 +96,25 @@ class Lauf:
         if v.get("titel"):
             teile.append(f"Titelvorschläge aus vidIQ (als Anregung):\n{v['titel']}")
         return "\n\n".join(teile)
+
+    @property
+    def bib(self) -> wb.Bibliothek:
+        """Motiv-Bibliothek des Kanals (Whiteboard): bleibt über alle Videos im Kanalordner."""
+        if self._bib is None:
+            self._bib = wb.Bibliothek(self.k.arbeitsordner / self.kanal["slug"] / "motive")
+        return self._bib
+
+    def referenzen(self) -> list[tuple[str, bytes, str]]:
+        """Stil-Referenzbilder des Kanals (höchstens 4), im Kanalordner zwischengespeichert."""
+        out: list[tuple[str, bytes, str]] = []
+        ordner = self.k.arbeitsordner / self.kanal["slug"] / "referenz"
+        for r in (self.kanal.get("referenzen") or [])[:4]:
+            endung = {"image/jpeg": "jpg", "image/webp": "webp"}.get(r.get("typ") or "", "png")
+            pfad = ordner / f"{r['nr']}-{r.get('hash', 'x')}.{endung}"
+            if not pfad.exists():
+                schreiben_atomar(pfad, self.seller.referenz_holen(self.kanal["id"], r["nr"]))
+            out.append((pfad.name, pfad.read_bytes(), r.get("typ") or "image/png"))
+        return out
 
     def minuten(self) -> str:
         m = self.laenge["minuten"]
@@ -202,6 +224,78 @@ SKRIPT_SCHEMA = {
 }
 
 
+WB_SKRIPT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "szenen": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "abschnitt": {"type": "string", "enum": ABSCHNITTE},
+                    "text": {"type": "string"},
+                    "quelle_ids": {"type": "array", "items": {"type": "string"}},
+                    "layout": {"type": "string", "enum": list(wb.LAYOUTS)},
+                    "ueberschrift": {"type": "string"},
+                    "balken": {"type": "string"},
+                    "kernaussage": {"type": "string"},
+                    "schritt": {"type": "string"},
+                    "liste": {"type": "array", "items": {"type": "string"}},
+                    "motive": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"key": {"type": "string"}, "beschreibung": {"type": "string"}},
+                            "required": ["key", "beschreibung"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["abschnitt", "text", "quelle_ids", "layout", "ueberschrift", "balken", "kernaussage", "schritt", "liste", "motive"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["szenen"],
+    "additionalProperties": False,
+}
+
+
+def _kurz(text: str, woerter_max: int) -> str:
+    w = (text or "").split()
+    return " ".join(w[:woerter_max])
+
+
+def wb_pruefen(szenen: list[dict]) -> list[str]:
+    """Whiteboard: je Szene 3–5 Motive (Figur + Liste: 1–2 Motive und 2–4 Stichpunkte)."""
+    probleme: list[str] = []
+    for i, s in enumerate(szenen, 1):
+        n = len(s.get("motive") or [])
+        if s.get("layout") == "figur-liste":
+            if not 1 <= n <= 2 or not 2 <= len(s.get("liste") or []) <= 4:
+                probleme.append(f"Szene {i} (figur-liste) braucht 1–2 Motive und 2–4 Stichpunkte.")
+        elif not 2 <= n <= 5:
+            probleme.append(f"Szene {i} hat {n} Motive – nötig sind 3–5 (Gegenüberstellung: 2–5).")
+    return probleme[:8]
+
+
+def wb_aufbereiten(szenen: list[dict], figuren: dict[str, str]) -> None:
+    """Texte kürzen (Schrift setzt die Pipeline), Schlüssel vereinheitlichen, Anzeige-Felder füllen."""
+    for s in szenen:
+        s["ueberschrift"] = _kurz(s.get("ueberschrift", ""), 6) or None
+        s["balken"] = _kurz(s.get("balken", ""), 10) or None
+        s["kernaussage"] = _kurz(s.get("kernaussage", ""), 8) or None
+        s["schrittText"] = _kurz(s.pop("schritt", "") or "", 7) or None
+        s["liste"] = [_kurz(x, 5) for x in (s.get("liste") or []) if x.strip()][:4] or None
+        motive = []
+        for m in (s.get("motive") or [])[:5]:
+            key = wb.schluessel(m.get("key") or m.get("beschreibung") or "motiv")
+            motive.append({"key": key, "beschreibung": figuren.get(key) or (m.get("beschreibung") or key).strip()[:300]})
+        s["motive"] = motive
+        s["bildidee"] = "; ".join(m["beschreibung"] for m in motive)[:500]
+        s["einblendung"] = s.get("ueberschrift") or s.get("balken")
+
+
 def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | None = None) -> list[str]:
     ids = {q["id"] for q in quellen}
     probleme: list[str] = []
@@ -219,6 +313,29 @@ def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | No
     if ohne:
         probleme.append(f"Szenen {', '.join(map(str, ohne))} (Punkte) haben keine Quelle.")
     return probleme
+
+
+def _wb_regeln(l: Lauf, figuren: dict[str, str]) -> str:
+    bib = l.bib.liste()[:150]
+    teile = [
+        "STIL WHITEBOARD-COLLAGE: Jede Szene zeigt auf weißem Hintergrund 3–5 bunte Cartoon-Clipart-Motive (Figuren mit Comic-Gesicht, "
+        "Alltagsgegenstände als Symbol: z. B. Banane, Kirsche, Sanduhr, Lineal, Wasserhahn), dazu kurze Texte, die das System selbst in fester Schrift setzt. "
+        "Statt bildidee/einblendung lieferst du je Szene:",
+        "- layout: „3er“, „4er“, „5er“ (so viele Motive), „figur-liste“ (eine Figur links + 2–4 Stichpunkte in liste) oder „gegenueberstellung“ (zwei Motive im Vergleich, optional bis zu 3 kleine dazu)",
+        "- ueberschrift: fette Überschrift, höchstens 5 Wörter, oder leer",
+        "- balken: Aussagesatz im roten Balken oben, höchstens 9 Wörter, oder leer",
+        "- kernaussage: Kernaussage in Rot, höchstens 6 Wörter, oder leer",
+        "- schritt: nur bei Anleitungen „Schritt N: …“, höchstens 6 Wörter, sonst leer",
+        "- liste: nur bei figur-liste 2–4 Stichpunkte (je höchstens 4 Wörter), sonst leer",
+        "- motive: {key, beschreibung}; key = kurzer Name in Kleinbuchstaben mit Bindestrich (z. B. „banane“, „sanduhr“); beschreibung = ein einzelnes Objekt bzw. eine Figur, Cartoon, OHNE Text, Schrift oder Zahlen.",
+        "Nicht jede Szene braucht alle Texte – höchstens zwei Textelemente je Szene. Symbolik andeutend und humorvoll, niemals explizit, keine Nacktheit, keine erkennbaren realen Personen"
+        + (", kein Bett, kein Kuss, keine Berührung." if l.streng else "."),
+    ]
+    if bib:
+        teile.append("Bibliothek (schon gezeichnet, kostet nichts – mit genau diesem key wiederverwenden, wo es passt):\n" + "\n".join(f"- {x['key']}: {x['beschreibung']}" for x in bib))
+    if figuren:
+        teile.append("Feste Figuren (für Personen nur diese, mit genau diesem key):\n" + "\n".join(f"- {k}: {v}" for k, v in figuren.items()))
+    return "\n".join(teile)
 
 
 def script(l: Lauf) -> tuple[dict, list[str]]:
@@ -242,22 +359,29 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
             f"Aufbau: hook → angst (Fear Activation) → punkt-1 … punkt-N (5–7 Punkte, je {jp[0]}–{jp[1]} Szenen) → zusammenfassung → cta.",
             f"Länge: insgesamt {zahl(w[0])}–{zahl(w[1])} Wörter (zähle mit), {sz[0]}–{sz[1]} Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
             "Jede Behauptung braucht eine Quelle: in den Punkt-Szenen die Studie im Text nennen (z. B. „Eine Studie aus 2016 mit 2.400 Paaren zeigt …“) und die ID in quelle_ids eintragen.",
-            "bildidee: ruhiges Symbolbild, Illustration oder Infografik – keine erkennbaren realen Personen, keine Nacktheit, nichts Intimes"
+            ""
+            if l.whiteboard
+            else "bildidee: ruhiges Symbolbild, Illustration oder Infografik – keine erkennbaren realen Personen, keine Nacktheit, nichts Intimes"
             + (", kein Bett, kein Kuss, keine Berührung" if l.streng else "")
             + ". einblendung: kurzer Text fürs Bild (höchstens 8 Wörter, z. B. Studie + Jahr) oder leer.",
         ]
         if x
     )
+    figuren = {f["key"]: f["beschreibung"] for f in (l.kanal.get("figuren") or []) if f.get("key")}
+    if l.whiteboard:
+        basis += "\n\n" + _wb_regeln(l, figuren)
     prompt = basis
     szenen: list[dict] = []
     probleme: list[str] = []
     for versuch in range(2):
-        text, _ = ki.fragen(l.claude, l.modell, prompt, schema=SKRIPT_SCHEMA, max_tokens=24000)
+        text, _ = ki.fragen(l.claude, l.modell, prompt, schema=WB_SKRIPT_SCHEMA if l.whiteboard else SKRIPT_SCHEMA, max_tokens=32000 if l.whiteboard else 24000)
         szenen = [s for s in ki.json_aus(text).get("szenen", []) if s.get("text", "").strip()]
-        probleme = skript_pruefen(szenen, quellen, w)
+        probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen) if l.whiteboard else [])
         if not probleme:
             break
         prompt = basis + "\n\nKorrektur zum ersten Entwurf: " + " ".join(probleme) + " Bitte das ganze Skript neu und korrekt liefern."
+    if l.whiteboard:
+        wb_aufbereiten(szenen, figuren)
     for i, s in enumerate(szenen, 1):
         s["nr"] = i
         s["einblendung"] = (s.get("einblendung") or "").strip() or None
@@ -307,7 +431,118 @@ def _bild_holen(l: Lauf, prompt: str) -> bytes | None:
     raise RuntimeError(f"Bildanbieter: {text}")
 
 
+# ---- 4b visuals im Stil Whiteboard-Collage (B36.9) -------------------------------------------------------------------
+
+STANDARD_CLIPART = "Bunte Cartoon-Clipart mit kräftigen schwarzen Umrissen und flachen Farben, Comic-Gesichter, freundlich"
+HAND_PROMPT = "Eine rechte Hand im Comic-Stil hält einen schwarzen Filzstift; die Stiftspitze zeigt nach oben links, die Hand kommt von unten rechts. Kräftige schwarze Umrisse, flache Farben"
+
+
+def _motiv_prompt(l: Lauf, beschreibung: str) -> str:
+    stil = (l.kanal.get("bildstil") or STANDARD_CLIPART).strip()
+    return (
+        f"{stil}. Einzelnes Motiv: {beschreibung}. Freigestellt auf transparentem Hintergrund, nur dieses eine Motiv, mittig und ganz sichtbar. "
+        "Keine Schrift, keine Buchstaben, keine Zahlen. Keine erkennbaren realen Personen, keine Nacktheit."
+    )
+
+
+def _motiv_holen(l: Lauf, prompt: str) -> bytes | None:
+    """Ein Motiv (1024×1024, transparent). Mit Stil-Referenzbildern über „edits“, sonst „generations“. None = abgelehnt."""
+    q = l.kanal.get("bildQualitaet") or "medium"
+    refs = l.referenzen()
+    if refs:
+        felder = {"model": "gpt-image-1", "prompt": prompt + " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt).", "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
+        r = l.seller.anbieter_datei(l.id, "openai", "v1/images/edits", felder, [("image[]", name, daten, typ) for name, daten, typ in refs])
+    else:
+        r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=300)
+    if r.status_code == 200:
+        return base64.b64decode(r.json()["data"][0]["b64_json"])
+    text = _fehlertext(r)
+    if r.status_code == 400 and re.search(r"moderation|safety|content.?policy|rejected", text, re.I):
+        return None
+    raise RuntimeError(f"Bildanbieter: {text}")
+
+
+def _wb_hand(l: Lauf, hinweise: list[str]):
+    """Hand mit Stift: einmal je Kanal erzeugt (Bibliothek „_hand“), sonst gezeichneter Ersatz."""
+    if not l.bib.hat("_hand"):
+        try:
+            daten = _motiv_holen(l, _motiv_prompt(l, HAND_PROMPT))
+        except RuntimeError as e:
+            daten = None
+            hinweise.append(f"Hand mit Stift nicht erzeugt ({e}) – gezeichnete Ersatz-Hand.")
+        if daten:
+            l.bib.merken("_hand", wb.freistellen(daten), "Hand mit Stift")
+    return wb.hand_vorbereiten(l.bib.bild("_hand") if l.bib.hat("_hand") else wb.hand_gezeichnet())
+
+
+def _wb_szenenbilder(l: Lauf, szenen: list[dict]) -> list:
+    """Fertige Szenen (ohne Animation) der Reihe nach – jede mit der vorigen als blassem Hintergrund."""
+    vorher = None
+    fertige = []
+    for s in szenen:
+        motive = [l.bib.bild(m["key"]) for m in s.get("motive") or [] if l.bib.hat(m["key"])]
+        bild = wb.fertig(wb.hintergrund(vorher), wb.elemente(s, motive))
+        fertige.append(bild)
+        vorher = bild
+    return fertige
+
+
+def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
+    szenen = l.daten.get("skript") or []
+    hinweise: list[str] = []
+    # Szenen-Übersicht: ausgewählte Motive verwerfen (je Runde nur einmal – nach Neustart nicht doppelt bezahlen)
+    neu = [k for k in (l.a.get("neuMotive") or []) if not k.startswith("#")]
+    runde = next((k for k in (l.a.get("neuMotive") or []) if k.startswith("#")), "")
+    erledigt = l.p.state.setdefault("neu_runden", {})
+    if neu and runde not in erledigt:
+        for k in neu:
+            l.bib.entfernen(k)
+        erledigt[runde] = neu
+        l.p.speichern()
+    vorher = set(l.bib.index)
+    hand = _wb_hand(l, hinweise)
+    figuren = {f["key"]: f["beschreibung"] for f in (l.kanal.get("figuren") or []) if f.get("key")}
+    gesamt = sum(len(s.get("motive") or []) for s in szenen) or 1
+    n = 0
+    for s in szenen:
+        for m in s.get("motive") or []:
+            n += 1
+            key = m["key"]
+            beschreibung = figuren.get(key) or m.get("beschreibung") or key
+            treffer = bild_treffer(beschreibung, l.streng)
+            if treffer:
+                hinweise.append(f"Szene {s.get('nr')}: Motiv „{key}“ enthielt „{treffer}“ – Ersatzmotiv.")
+                key, beschreibung, m["ersatz"] = "ersatz", ERSATZ_BILDIDEE, True
+            if not l.bib.hat(key):
+                daten = _motiv_holen(l, _motiv_prompt(l, beschreibung))
+                if daten is None:
+                    hinweise.append(f"Szene {s.get('nr')}: Bildanbieter hat Motiv „{key}“ abgelehnt – Ersatzmotiv.")
+                    key, m["ersatz"] = "ersatz", True
+                    if not l.bib.hat(key):
+                        daten = _motiv_holen(l, _motiv_prompt(l, ERSATZ_BILDIDEE)) or wb.ersatz_motiv()
+                if daten and not l.bib.hat(key):
+                    l.bib.merken(key, wb.freistellen(daten), beschreibung)
+            m["key"] = key
+            m["wiederverwendet"] = key in vorher
+            l.fortschritt("visuals", n, gesamt)
+    for s in szenen:
+        s["ersatzbild"] = any(m.get("ersatz") for m in s.get("motive") or [])
+        s["bildidee"] = "; ".join(m["beschreibung"] for m in s.get("motive") or [])[:500]
+    # Szenen-Übersicht für die Freigabe vor dem Render (B36.9.6)
+    fertige = _wb_szenenbilder(l, szenen)
+    ordner = l.p.pfad("szenen", "x").parent
+    for i, b in enumerate(fertige, 1):
+        b.save(ordner / f"{i:03d}.png")
+    wb.uebersicht([(s.get("nr") or i, b, ", ".join(m["key"] for m in s.get("motive") or [])) for i, (s, b) in enumerate(zip(szenen, fertige), 1)], l.p.pfad("uebersicht.jpg"))
+    l.seller.datei_hochladen(l.id, "uebersicht", l.p.pfad("uebersicht.jpg"))
+    del hand
+    l.p.markieren("visuals", hinweise=hinweise)
+    return {"skript": _ohne_intern(szenen)}, hinweise
+
+
 def visuals(l: Lauf) -> tuple[dict, list[str]]:
+    if l.whiteboard:
+        return visuals_wb(l)
     szenen = l.daten.get("skript") or []
     stil = (l.kanal.get("bildstil") or "Moderne, ruhige Illustration in warmen Farben").strip()
     hinweise: list[str] = []
@@ -351,11 +586,88 @@ def _schluessel_szene(l: Lauf, s: dict) -> tuple[str, str]:
     return v, b
 
 
+def _ton(l: Lauf, s: dict):
+    stimme = (l.kanal.get("stimmeId") or "").strip()
+    v = kurz_hash(stimme, "eleven_multilingual_v2", s["text"])
+    return v, l.p.datei_vorhanden("voice", v)
+
+
+def render_wb(l: Lauf) -> tuple[dict, list[str]]:
+    """Whiteboard: je Szene Aufdeck-Animation mit Hand über dem blassen Vorgänger; Untertitel NICHT eingebrannt
+    (gehen als YouTube-Untertitel mit dem Upload)."""
+    video = l.p.pfad("video.mp4")
+    szenen = l.daten.get("skript") or []
+    clips = l.p.pfad("clips", "x").parent
+    hinweise: list[str] = []
+    hand = wb.hand_vorbereiten(l.bib.bild("_hand") if l.bib.hat("_hand") else wb.hand_gezeichnet())
+    namen: list[str] = []
+    srt_gesamt: list[str] = []
+    t, nr = 0.0, 1
+    vorher = None
+    vorher_key = ""
+    for i, s in enumerate(szenen):
+        v, ton = _ton(l, s)
+        if not ton:
+            raise RuntimeError(f"Szene {i + 1}: Sprache fehlt – bitte Schritt „Sprache“ wiederholen.")
+        fehlend = [m["key"] for m in s.get("motive") or [] if not l.bib.hat(m["key"])]
+        if fehlend:
+            raise RuntimeError(f"Szene {i + 1}: Motiv(e) {', '.join(fehlend)} fehlen – bitte Schritt „Bilder“ wiederholen.")
+        laenge = l.p.state["voice"][v]["dauer"] + PAUSE_S
+        teile = medien.untertitel_teile(s["text"], laenge - PAUSE_S)
+        srt_gesamt.append(medien.srt(teile, versatz=t, start_nr=nr))
+        nr += len(teile)
+        name = f"{i + 1:03d}"
+        inhalt = json.dumps({k: s.get(k) for k in ("layout", "ueberschrift", "balken", "kernaussage", "schrittText", "liste")}, ensure_ascii=False, sort_keys=True)
+        key = kurz_hash(vorher_key, v, inhalt, *[l.bib.merkmal(m["key"]) for m in s.get("motive") or []], str(l.k.fps), "wb1")
+        grund = wb.hintergrund(vorher)
+        els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or []])
+        if l.p.state["clips"].get(name, {}).get("key") == key and (clips / f"{name}.mp4").exists():
+            vorher = wb.fertig(grund, els)
+        else:
+            bilder_ordner = clips / f"b{name}"
+            liste, vorher = wb.animation(grund, els, laenge, l.k.fps, hand, bilder_ordner)
+            medien.clip_bilder(l.k.ffmpeg, bilder_ordner, liste, "../../" + ton.relative_to(l.p.ordner).as_posix(), f"../{name}.mp4", laenge, l.k.fps)
+            shutil.rmtree(bilder_ordner, ignore_errors=True)
+            l.p.state["clips"][name] = {"key": key}
+            l.p.speichern()
+        vorher_key = key
+        namen.append(f"{name}.mp4")
+        t += laenge
+        l.fortschritt("render", i + 1, len(szenen) + 1)
+    return _render_abschluss(l, video, clips, namen, srt_gesamt, hinweise, len(szenen))
+
+
+def _render_abschluss(l: Lauf, video, clips, namen: list[str], srt_gesamt: list[str], hinweise: list[str], anzahl: int) -> tuple[dict, list[str]]:
+    medien.zusammenfuegen(l.k.ffmpeg, clips, namen, "gesamt.mp4")
+    musik = (l.kanal.get("musik") or "").strip()
+    if musik and (l.k.musikordner / musik).exists():
+        medien.musik_unterlegen(l.k.ffmpeg, l.k.ffprobe, clips / "gesamt.mp4", l.k.musikordner / musik, l.p.pfad("video.teil.mp4"))
+        l.p.pfad("video.teil.mp4").replace(video)
+    else:
+        if musik:
+            hinweise.append(f"Musik „{musik}“ liegt nicht im Musikordner – Video ohne Musik.")
+        shutil.move(str(clips / "gesamt.mp4"), video)
+    schreiben_atomar(l.p.pfad("untertitel.srt"), "".join(srt_gesamt).encode("utf-8"))
+    info = medien.video_info(l.k.ffprobe, video)
+    if (info["breite"], info["hoehe"]) != (1920, 1080):
+        raise RuntimeError(f"Video hat {info['breite']}×{info['hoehe']} statt 1920×1080.")
+    dauer = round(info["dauer"])
+    lo, hi = l.laenge["sekunden"]
+    if not lo <= dauer <= hi:
+        hinweise.append(f"Video ist {dauer // 60}:{dauer % 60:02d} lang (Ziel {l.minuten().replace('Minuten', 'Min.')}).")
+    l.p.zwischendateien_loeschen()
+    l.fortschritt("render", anzahl + 1, anzahl + 1)
+    l.p.markieren("render", dauer=dauer, hinweise=hinweise)
+    return {"dauerSek": dauer}, hinweise
+
+
 def render(l: Lauf) -> tuple[dict, list[str]]:
     video = l.p.pfad("video.mp4")
     if l.p.erledigt("render") and video.exists():
         e = l.p.state["schritte"]["render"]
         return {"dauerSek": e["dauer"]}, e.get("hinweise", [])
+    if l.whiteboard:
+        return render_wb(l)
     szenen = l.daten.get("skript") or []
     clips = l.p.pfad("clips", "x").parent
     namen: list[str] = []
@@ -383,28 +695,7 @@ def render(l: Lauf) -> tuple[dict, list[str]]:
         namen.append(f"{name}.mp4")
         t += laenge
         l.fortschritt("render", i + 1, len(szenen) + 1)
-    medien.zusammenfuegen(l.k.ffmpeg, clips, namen, "gesamt.mp4")
-    hinweise: list[str] = []
-    musik = (l.kanal.get("musik") or "").strip()
-    if musik and (l.k.musikordner / musik).exists():
-        medien.musik_unterlegen(l.k.ffmpeg, l.k.ffprobe, clips / "gesamt.mp4", l.k.musikordner / musik, l.p.pfad("video.teil.mp4"))
-        l.p.pfad("video.teil.mp4").replace(video)
-    else:
-        if musik:
-            hinweise.append(f"Musik „{musik}“ liegt nicht im Musikordner – Video ohne Musik.")
-        shutil.move(str(clips / "gesamt.mp4"), video)
-    schreiben_atomar(l.p.pfad("untertitel.srt"), "".join(srt_gesamt).encode("utf-8"))
-    info = medien.video_info(l.k.ffprobe, video)
-    if (info["breite"], info["hoehe"]) != (1920, 1080):
-        raise RuntimeError(f"Video hat {info['breite']}×{info['hoehe']} statt 1920×1080.")
-    dauer = round(info["dauer"])
-    lo, hi = l.laenge["sekunden"]
-    if not lo <= dauer <= hi:
-        hinweise.append(f"Video ist {dauer // 60}:{dauer % 60:02d} lang (Ziel {l.minuten().replace('Minuten', 'Min.')}).")
-    l.p.zwischendateien_loeschen()
-    l.fortschritt("render", len(szenen) + 1, len(szenen) + 1)
-    l.p.markieren("render", dauer=dauer, hinweise=hinweise)
-    return {"dauerSek": dauer}, hinweise
+    return _render_abschluss(l, video, clips, namen, srt_gesamt, [], len(szenen))
 
 
 # ---- 6 package -----------------------------------------------------------------------------------------------------
@@ -496,7 +787,9 @@ def package(l: Lauf) -> tuple[dict, list[str]]:
 
     # Dateien erzeugen und ins Seller-System sichern (erst dann gilt das Paket als fertig)
     erstes_bild = None
-    if szenen:
+    if szenen and l.whiteboard:
+        erstes_bild = l.p.pfad("szenen", "001.png") if l.p.pfad("szenen", "001.png").exists() else None
+    elif szenen:
         _v, b = _schluessel_szene(l, szenen[0])
         erstes_bild = l.p.datei_vorhanden("bilder", b)
     medien.thumbnail(erstes_bild, daumen or l.a["thema"], l.p.pfad("thumbnail.png"))
@@ -596,6 +889,7 @@ def upload(l: Lauf) -> tuple[dict, list[str]]:
     titel = titel_liste[min(len(titel_liste) - 1, max(0, int(paket.get("titelGewaehlt") or 0)))]
     hinweise: list[str] = []
     yt = l.p.state.setdefault("youtube", {})
+    z: dict | None = None
     if not yt.get("id"):
         z = l.seller.youtube_zugang(l.id)
         kopf = {"Authorization": f"Bearer {z['accessToken']}"}
@@ -634,11 +928,36 @@ def upload(l: Lauf) -> tuple[dict, list[str]]:
             r = requests.post(f"{z['uploadBasis']}/youtube/v3/thumbnails/set?videoId={yt['id']}", data=thumb.read_bytes(), headers={**kopf, "Content-Type": "image/png"}, timeout=120)
             if r.status_code >= 400:
                 hinweise.append(f"Thumbnail nicht gesetzt ({_fehlertext(r)}) – in YouTube Studio von Hand hochladen.")
+    if l.whiteboard and not yt.get("untertitel"):
+        # B36.9.4: Untertitel nicht eingebrannt, sondern als YouTube-Untertitel (Spur „Deutsch“)
+        srt = l.p.pfad("untertitel.srt")
+        if not srt.exists():
+            l.seller.datei_holen(l.id, "untertitel", srt)
+        if srt.exists():
+            z = z or l.seller.youtube_zugang(l.id)
+            hinweis = _untertitel_hochladen(z, yt["id"], srt, l.kanal.get("sprache") or "de")
+            if hinweis:
+                hinweise.append(hinweis)
+            else:
+                yt["untertitel"] = True
+                l.p.speichern()
     b = l.seller.youtube_bestaetigen(l.id, yt["id"])
     if not b.get("privat"):
         raise RuntimeError(f"Video ist NICHT privat (Sichtbarkeit: {b.get('sichtbarkeit')}) – sofort in YouTube Studio prüfen!")
     l.p.markieren("upload", youtube=yt["id"])
     return {}, hinweise
+
+
+def _untertitel_hochladen(z: dict, video_id: str, srt, sprache: str) -> str | None:
+    """captions.insert (multipart/related). Fehler → Hinweis statt Abbruch (das Video ist schon privat oben)."""
+    grenze = "udd" + kurz_hash(video_id, str(srt.stat().st_size))
+    meta = json.dumps({"snippet": {"videoId": video_id, "language": sprache, "name": "Deutsch" if sprache == "de" else sprache, "isDraft": False}})
+    body = f"--{grenze}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n--{grenze}\r\nContent-Type: application/octet-stream\r\n\r\n".encode("utf-8") + srt.read_bytes() + f"\r\n--{grenze}--\r\n".encode("utf-8")
+    r = requests.post(f"{z['uploadBasis']}/youtube/v3/captions?uploadType=multipart&part=snippet", data=body, headers={"Authorization": f"Bearer {z['accessToken']}", "Content-Type": f"multipart/related; boundary={grenze}"}, timeout=120)
+    if r.status_code in (200, 201):
+        return None
+    zusatz = " – YouTube im Kanalprofil neu verbinden (Recht für Untertitel fehlt)" if r.status_code in (401, 403) else ""
+    return f"Untertitel nicht hochgeladen ({_fehlertext(r)}){zusatz}; untertitel.srt kann in YouTube Studio von Hand hochgeladen werden."
 
 
 # ---- Ablauf --------------------------------------------------------------------------------------------------------

@@ -6,10 +6,37 @@ import type { SchrittStand, VideoFreigabe, VideoKosten, VideoSchritt } from "@/d
 
 export const SCHRITTE: VideoSchritt[] = ["research", "script", "voice", "visuals", "render", "package", "upload"];
 export const SCHRITT_TEXT: Record<VideoSchritt, string> = { research: "Recherche", script: "Skript", voice: "Sprache", visuals: "Bilder", render: "Render", package: "Paket", upload: "Upload (privat)" };
-export const FREIGABE_TEXT: Record<VideoFreigabe, string> = { gliederung: "Gliederung + Quellen", skript: "Skript", vorschau: "Vorschau-Video + Thumbnail + Titel" };
-/** Nach welchem Schritt welcher Freigabe-Punkt kommt (B36.3). */
-export const FREIGABE_NACH: Partial<Record<VideoSchritt, VideoFreigabe>> = { research: "gliederung", script: "skript", package: "vorschau" };
-export const FREIGABE_VOR: Record<VideoFreigabe, VideoSchritt> = { gliederung: "script", skript: "voice", vorschau: "upload" };
+export const FREIGABE_TEXT: Record<VideoFreigabe, string> = { gliederung: "Gliederung + Quellen", skript: "Skript", szenen: "Szenen-Übersicht (Motive)", vorschau: "Vorschau-Video + Thumbnail + Titel" };
+/** Nach welchem Schritt welcher Freigabe-Punkt kommt (B36.3; Szenen-Übersicht vor dem Render: B36.9). */
+export const FREIGABE_NACH: Partial<Record<VideoSchritt, VideoFreigabe>> = { research: "gliederung", script: "skript", visuals: "szenen", package: "vorschau" };
+export const FREIGABE_VOR: Record<VideoFreigabe, VideoSchritt> = { gliederung: "script", skript: "voice", szenen: "render", vorschau: "upload" };
+/** Ohne Eintrag im Kanal: die drei Freigaben aus B36.3 an, die Szenen-Übersicht (neu mit B36.9) aus. */
+export const FREIGABE_STANDARD: Record<VideoFreigabe, boolean> = { gliederung: true, skript: true, szenen: false, vorschau: true };
+export const freigabeAktiv = (freigaben: Partial<Record<VideoFreigabe, boolean>>, f: VideoFreigabe) => freigaben[f] ?? FREIGABE_STANDARD[f];
+
+/** Bildstile je Kanal. */
+export const VIDEO_STILE = {
+  vollbild: { name: "Vollbild", hinweis: "ein Symbolbild je Szene, Untertitel eingebrannt" },
+  whiteboard: { name: "Whiteboard-Collage", hinweis: "3–5 Cartoon-Motive je Szene auf Weiß, Hand zeichnet mit, Texte in fester Schrift, Untertitel als YouTube-Untertitel" },
+} as const;
+export type VideoStil = keyof typeof VIDEO_STILE;
+export const istVideoStil = (x: unknown): x is VideoStil => typeof x === "string" && x in VIDEO_STILE;
+/** Whiteboard: im Mittel 4 Motive je Szene (Schätzung ohne Wiederverwendung aus der Bibliothek = Obergrenze). */
+export const MOTIVE_JE_SZENE = 4;
+/** Layout-Vorlagen der Collage (B36.9.1). */
+export const WHITEBOARD_LAYOUTS = ["3er", "4er", "5er", "figur-liste", "gegenueberstellung"] as const;
+
+/** Figuren-Zeilen „kurzname: Beschreibung“ → Liste (Schlüssel a–z, 0–9, -). */
+export function figurenAus(text: string | null | undefined): { key: string; beschreibung: string }[] {
+  const out: { key: string; beschreibung: string }[] = [];
+  for (const zeile of (text ?? "").split(/\r?\n/)) {
+    const m = /^\s*([^:]{2,40}):\s*(.{3,300})$/.exec(zeile);
+    if (!m) continue;
+    const key = slugAus(m[1]).slice(0, 40);
+    if (key && !out.some((f) => f.key === key)) out.push({ key, beschreibung: m[2].trim() });
+  }
+  return out.slice(0, 12);
+}
 
 /** Mindestens frei auf dem Worker, sonst kein Lauf (B36.6); Warnung, wenn der Worker so lange schweigt. */
 export const WORKER_MIN_FREI_GB = 3;
@@ -18,9 +45,9 @@ export const WORKER_STILL_MIN = 10;
 export const naechsterNach = (s: VideoSchritt): VideoSchritt | null => SCHRITTE[SCHRITTE.indexOf(s) + 1] ?? null;
 
 /** Was passiert, wenn der Worker einen Schritt fertig meldet: Freigabe abwarten, weitermachen oder fertig. */
-export function nachSchritt(s: VideoSchritt, o: { freigaben: Record<VideoFreigabe, boolean>; freigegeben: Partial<Record<VideoFreigabe, string>>; hochladen: boolean }): { status: "laeuft" | "freigabe" | "fertig"; schritt: VideoSchritt; freigabeOffen: VideoFreigabe | null } {
+export function nachSchritt(s: VideoSchritt, o: { freigaben: Partial<Record<VideoFreigabe, boolean>>; freigegeben: Partial<Record<VideoFreigabe, string>>; hochladen: boolean }): { status: "laeuft" | "freigabe" | "fertig"; schritt: VideoSchritt; freigabeOffen: VideoFreigabe | null } {
   const f = FREIGABE_NACH[s];
-  if (f && o.freigaben[f] !== false && !o.freigegeben[f]) return { status: "freigabe", schritt: FREIGABE_VOR[f], freigabeOffen: f };
+  if (f && freigabeAktiv(o.freigaben, f) && !o.freigegeben[f]) return { status: "freigabe", schritt: FREIGABE_VOR[f], freigabeOffen: f };
   const weiter = naechsterNach(s);
   if (!weiter) return { status: "fertig", schritt: s, freigabeOffen: null };
   // Upload nur mit Schalter „Privat hochladen“ – sonst ist der Auftrag nach dem Paket fertig.
@@ -83,8 +110,10 @@ function berlinVersatzMin(d: Date): number {
 
 /** Preise in US-Dollar (so rechnen die Anbieter ab). Leer = unbekannt → Schätzung nennt den fehlenden Preis.
  *  Claude leer = Listenpreis des gewählten Modells (siehe VIDEO_MODELLE). */
-export type VideoPreise = { claudeEingabeJeMio: number | null; claudeAusgabeJeMio: number | null; websucheJe1000: number | null; elevenlabsJe1000Zeichen: number | null; bildJeStueck: number | null };
-export const VIDEO_PREISE_STANDARD: VideoPreise = { claudeEingabeJeMio: null, claudeAusgabeJeMio: null, websucheJe1000: 10, elevenlabsJe1000Zeichen: null, bildJeStueck: null };
+/** motivJeStueck: Preis je Einzelmotiv (Whiteboard, 1024×1024) – leer = Preis je Bild. */
+export type VideoPreise = { claudeEingabeJeMio: number | null; claudeAusgabeJeMio: number | null; websucheJe1000: number | null; elevenlabsJe1000Zeichen: number | null; bildJeStueck: number | null; motivJeStueck?: number | null };
+export const VIDEO_PREISE_STANDARD: VideoPreise = { claudeEingabeJeMio: null, claudeAusgabeJeMio: null, websucheJe1000: 10, elevenlabsJe1000Zeichen: null, bildJeStueck: null, motivJeStueck: null };
+export const motivPreis = (p: VideoPreise) => p.motivJeStueck ?? p.bildJeStueck;
 
 /** Wählbare Claude-Modelle für Recherche/Skript/Paket mit Listenpreis ($ je Mio. Tokens Eingabe/Ausgabe). */
 export const VIDEO_MODELLE = {
@@ -118,30 +147,34 @@ export function laengeZiel(von?: number | null, bis?: number | null): LaengeZiel
   return { minuten: [v, b], sekunden: [v * 60, b * 60], woerter: w, szenen: sz, szenenJePunkt: [jePunktVon, Math.max(jePunktVon + 1, Math.round(sz[1] / 7))] };
 }
 
-/** Typischer Lauf für eine Länge: Zeichen Sprache (~6,6 je Wort), Bilder (1 je ~65 Wörter), ~6 Websuchen, Tokens. */
-export function typischFuer(von?: number | null, bis?: number | null) {
+/** Typischer Lauf für eine Länge: Zeichen Sprache (~6,6 je Wort), Bilder (1 je ~65 Wörter), ~6 Websuchen, Tokens.
+ *  Whiteboard: statt eines Bildes je Szene ~4 Einzelmotive (ohne Wiederverwendung gerechnet = Obergrenze). */
+export function typischFuer(von?: number | null, bis?: number | null, stil: string | null = "vollbild") {
   const z = laengeZiel(von, bis);
   const w = (z.woerter[0] + z.woerter[1]) / 2;
   const k = (x: number) => Math.round(x / 1000) * 1000;
-  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: Math.round(w / 65), websuchen: 6, eingabeTokens: k(50_000 + w * 6), ausgabeTokens: k(5_000 + w * 6) };
+  const szenen = Math.round(w / 65);
+  const wb = stil === "whiteboard";
+  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? szenen * MOTIVE_JE_SZENE : 0, websuchen: 6, eingabeTokens: k(50_000 + w * 6), ausgabeTokens: k(5_000 + w * 6) };
 }
 
 /** Typischer Lauf mit Standardlänge (16–20 Min.): ~2.600 Wörter ≈ 17.200 Zeichen Sprache, ~40 Bilder, ~66k/21k Tokens. */
 export const TYPISCH = typischFuer();
 
-export function kostenSchaetzung(p: VideoPreise, menge = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
+export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typischFuer> = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
   const c = claudePreis(p, modell);
   const pos = [
     { art: "Claude (Recherche, Skript, Paket)", betrag: (menge.eingabeTokens / 1e6) * c.eingabe + (menge.ausgabeTokens / 1e6) * c.ausgabe },
     { art: "Websuche", betrag: p.websucheJe1000 !== null ? (menge.websuchen / 1000) * p.websucheJe1000 : null },
     { art: "Sprache (ElevenLabs)", betrag: p.elevenlabsJe1000Zeichen !== null ? (menge.zeichen / 1000) * p.elevenlabsJe1000Zeichen : null },
-    { art: "Bilder (gpt-image-1)", betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null },
+    ...(menge.bilder > 0 ? [{ art: "Bilder (gpt-image-1)", betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null }] : []),
+    ...(menge.motive > 0 ? [{ art: `Motive (gpt-image-1, höchstens ${menge.motive})`, betrag: motivPreis(p) != null ? menge.motive * (motivPreis(p) as number) : null }] : []),
   ];
   return { summe: Math.round(pos.reduce((a, x) => a + (x.betrag ?? 0), 0) * 100) / 100, positionen: pos.map((x) => ({ ...x, betrag: x.betrag === null ? null : Math.round(x.betrag * 100) / 100 })), fehlend: pos.filter((x) => x.betrag === null).map((x) => x.art) };
 }
 
 /** Kosten eines Anbieter-Aufrufs aus der Antwort (Tokens, Websuchen, Zeichen, Bilder). */
-export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number; modell?: string | null }, am = new Date()): VideoKosten[] {
+export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number; motiv?: boolean; modell?: string | null }, am = new Date()): VideoKosten[] {
   const iso = am.toISOString();
   const r = (x: number) => Math.round(x * 10_000) / 10_000;
   if (anbieter === "anthropic") {
@@ -153,7 +186,8 @@ export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", 
     return out;
   }
   if (anbieter === "elevenlabs") return [{ anbieter: "ElevenLabs", art: "Sprache", menge: m.zeichen ?? 0, einheit: "Zeichen", betrag: p.elevenlabsJe1000Zeichen !== null ? r(((m.zeichen ?? 0) / 1000) * p.elevenlabsJe1000Zeichen) : null, am: iso }];
-  return [{ anbieter: "OpenAI", art: "Bild", menge: m.bilder ?? 1, einheit: "Bilder", betrag: p.bildJeStueck !== null ? r((m.bilder ?? 1) * p.bildJeStueck) : null, am: iso }];
+  const preis = m.motiv ? motivPreis(p) : p.bildJeStueck;
+  return [{ anbieter: "OpenAI", art: m.motiv ? "Motiv" : "Bild", menge: m.bilder ?? 1, einheit: m.motiv ? "Motive" : "Bilder", betrag: preis != null ? r((m.bilder ?? 1) * preis) : null, am: iso }];
 }
 
 export const kostenSumme = (k: VideoKosten[]) => Math.round(k.reduce((a, x) => a + (x.betrag ?? 0), 0) * 10_000) / 10_000;

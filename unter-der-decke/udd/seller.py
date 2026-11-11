@@ -109,6 +109,29 @@ class Seller:
     def drive_melden(self, auftrag_id: str, art: str, file_id: str, groesse: int, link: str | None) -> dict[str, Any]:
         return self._anfrage("POST", f"/api/video-worker/auftrag/{auftrag_id}/datei/{art}", json={"drive": {"fileId": file_id, "groesse": groesse, "link": link}})
 
+    def referenz_holen(self, kanal_id: str, nr: int) -> bytes:
+        """Stil-Referenzbild eines Kanals (Whiteboard, B36.9)."""
+        r = self.s.get(f"{self.url}/api/video-worker/referenz/{kanal_id}/{nr}", timeout=60)
+        if r.status_code != 200:
+            raise SellerFehler(f"Referenzbild {nr}: HTTP {r.status_code}", r.status_code)
+        return r.content
+
+    def anbieter_datei(self, auftrag_id: str, anbieter: str, pfad: str, felder: dict[str, str], dateien: list[tuple[str, str, bytes, str]], timeout: float = 300) -> requests.Response:
+        """Anbieter-Brücke mit Dateien (multipart, z. B. Bild mit Referenzbildern) – rohe Antwort."""
+        letzter: Exception | None = None
+        for i in range(3):
+            try:
+                r = self.s.post(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", data=felder, files=[(feld, (name, daten, typ)) for feld, name, daten, typ in dateien], headers={"x-auftrag": auftrag_id}, timeout=timeout)
+                if r.status_code in (429, 500, 502, 503, 504):
+                    letzter = SellerFehler(f"{anbieter}: HTTP {r.status_code}", r.status_code)
+                    time.sleep(5 * (i + 1))
+                    continue
+                return r
+            except (requests.ConnectionError, requests.Timeout) as e:
+                letzter = e
+                time.sleep(5 * (i + 1))
+        raise SellerFehler(f"{anbieter} nicht erreichbar: {letzter}")
+
     def anbieter(self, auftrag_id: str, anbieter: str, pfad: str, body: dict[str, Any], timeout: float = 180) -> requests.Response:
         """Anbieter-Brücke (ElevenLabs, OpenAI) – liefert die rohe Antwort (Status wird vom Aufrufer geprüft)."""
         letzter: Exception | None = None

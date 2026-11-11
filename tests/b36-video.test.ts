@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, LAENGE_STANDARD, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, LAENGE_STANDARD, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -21,6 +21,22 @@ describe("Schrittfolge und Freigaben (B36.3)", () => {
     expect(nachSchritt("package", { freigaben: ohne, freigegeben: {}, hochladen: true })).toEqual({ status: "laeuft", schritt: "upload", freigabeOffen: null });
     expect(nachSchritt("upload", { freigaben: ohne, freigegeben: {}, hochladen: true }).status).toBe("fertig");
     expect(nachSchritt("voice", { freigaben: alle, freigegeben: {}, hochladen: false })).toEqual({ status: "laeuft", schritt: "visuals", freigabeOffen: null });
+  });
+  it("B36.9: Szenen-Übersicht nach den Bildern, vor dem Render – nur wenn im Kanal eingeschaltet", () => {
+    // ohne Eintrag (alte Kanäle): aus → Bilder gehen direkt in den Render
+    expect(freigabeAktiv({}, "szenen")).toBe(false);
+    expect(freigabeAktiv({}, "gliederung")).toBe(true);
+    expect(nachSchritt("visuals", { freigaben: alle, freigegeben: {}, hochladen: false })).toEqual({ status: "laeuft", schritt: "render", freigabeOffen: null });
+    const mitSzenen = { ...alle, szenen: true };
+    expect(nachSchritt("visuals", { freigaben: mitSzenen, freigegeben: {}, hochladen: false })).toEqual({ status: "freigabe", schritt: "render", freigabeOffen: "szenen" });
+    expect(nachSchritt("visuals", { freigaben: mitSzenen, freigegeben: { szenen: "x" }, hochladen: false })).toEqual({ status: "laeuft", schritt: "render", freigabeOffen: null });
+  });
+  it("B36.9: Figuren aus dem Kanalprofil („kurzname: Beschreibung“)", () => {
+    expect(figurenAus("Blonder Mann: Mann um die 60, blond\nbrille: Mann mit runder Brille\nohne Doppelpunkt\nx: zu")).toEqual([
+      { key: "blonder-mann", beschreibung: "Mann um die 60, blond" },
+      { key: "brille", beschreibung: "Mann mit runder Brille" },
+    ]);
+    expect(figurenAus(null)).toEqual([]);
   });
   it("Fortschritt in Prozent (ohne Upload, wenn der Schalter aus ist)", () => {
     expect(fortschrittProzent({ research: { status: "fertig" }, script: { status: "fertig" }, voice: { status: "laeuft", fortschritt: { fertig: 13, gesamt: 26 } } }, false)).toBe(Math.round((2.5 / 6) * 100));
@@ -59,13 +75,22 @@ describe("Kosten (B36.3)", () => {
     const sonnet = kostenSchaetzung(p, TYPISCH, "claude-sonnet-5-5");
     expect(sonnet.fehlend).toEqual([]);
     // Standardlänge 16–20 Min.: 66k/21k Tokens, 6 Suchen, 17.200 Zeichen, 40 Bilder
-    expect(TYPISCH).toEqual({ zeichen: 17_200, bilder: 40, websuchen: 6, eingabeTokens: 66_000, ausgabeTokens: 21_000 });
+    expect(TYPISCH).toEqual({ zeichen: 17_200, bilder: 40, motive: 0, websuchen: 6, eingabeTokens: 66_000, ausgabeTokens: 21_000 });
     expect(sonnet.summe).toBeCloseTo(0.132 + 0.21 + 0.06 + 3.096 + 1.6, 2);
     // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
     expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
     expect(kostenSchaetzung(p).summe).toBeCloseTo(0.264 + 0.42 + 0.06 + 3.096 + 1.6, 2);
     // Kurzer Kanal (10–12 Min.) wie vorher: ~1.600 Wörter
-    expect(typischFuer(10, 12)).toEqual({ zeichen: 10_600, bilder: 25, websuchen: 6, eingabeTokens: 60_000, ausgabeTokens: 15_000 });
+    expect(typischFuer(10, 12)).toEqual({ zeichen: 10_600, bilder: 25, motive: 0, websuchen: 6, eingabeTokens: 60_000, ausgabeTokens: 15_000 });
+    // Whiteboard: statt 40 Bildern bis zu 160 Einzelmotive (ohne Wiederverwendung = Obergrenze), eigener Preis je Motiv
+    const wb = typischFuer(16, 20, "whiteboard");
+    expect(wb).toMatchObject({ bilder: 0, motive: 40 * MOTIVE_JE_SZENE });
+    const mitMotivpreis = kostenSchaetzung({ ...p, motivJeStueck: 0.02 }, wb, "claude-opus-5-5");
+    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (gpt-image-1, höchstens 160)"]);
+    expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(3.2, 2);
+    // ohne eigenen Motivpreis gilt der Bildpreis
+    expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(6.4, 2);
+    expect(kostenPosition("openai", { ...p, motivJeStueck: 0.02 }, { bilder: 1, motiv: true }, new Date(0))[0]).toMatchObject({ art: "Motiv", einheit: "Motive", betrag: 0.02 });
   });
   it("Länge je Kanal: Wörter, Szenen, Sekunden; Grenzen", () => {
     expect(LAENGE_STANDARD).toEqual({ von: 16, bis: 20 });

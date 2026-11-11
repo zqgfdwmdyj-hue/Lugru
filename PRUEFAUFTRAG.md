@@ -1689,13 +1689,13 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 
 Unit-Tests: `tests/b36-video.test.ts` (neu, 12 Tests: Schrittfolge/Freigaben, Worker-Stand, „heute Nacht“, Kosten aus
 JSON und Stream je Modell, Länge je Kanal, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (13 Tests: Filter, state.json, Aufräumen, Untertitel,
-Kapitel, Skript-Prüfung je Länge, Zielgruppe/Vorlage im Prompt, Bilder, ffmpeg-Clip), `tests/nav.test.ts` (89 Einträge). Migrationen: `0149_b36_video`, `0150_b36_zielgruppe_laenge`.
+Kapitel, Skript-Prüfung je Länge, Zielgruppe/Vorlage im Prompt, Bilder, ffmpeg-Clip; dazu 9 Whiteboard-Tests), `tests/nav.test.ts` (89 Einträge). Migrationen: `0149_b36_video`, `0150_b36_zielgruppe_laenge`, `0151_b36_whiteboard`.
 Testdienste: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG, Ablehnung), YouTube (Anmeldung,
 resumable Upload, Sichtbarkeit, Thumbnail), Claude-Antworten für Recherche/Skript/Paket (auch als Stream). GitHub-Prüfung
 installiert dafür Python 3.12 + ffmpeg und führt die Worker-Tests aus.
 
 **Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand,
-Claude-Modell, Ablage, je Kanal Zielgruppe und Länge, je Auftrag Vorlage/eigenes Skript)
+Claude-Modell, Ablage, je Kanal Zielgruppe, Länge und Stil, je Auftrag Vorlage/eigenes Skript)
 und `video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage). `notifications/tools/list_changed` nötig – geht
 beim Verbinden raus.
 
@@ -1709,6 +1709,26 @@ Erstes echtes Video: Thema „Mit 60, 70 oder 80: Warum manche Männer lange kö
 vorhanden, oder lieber Python direkt? (4) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
 Kostenanzeige). (5) Neues Video aus dem claude.ai-Chat anlegen (Thema, englische Vorlage, eigenes Skript) – dafür
 wäre ein ändernder Werkzeug-Aufruf nötig (`video_auftrag_anlegen`); bisher nur über die Seite (Text einfügen).
+
+### B36.9 Stilprofil „Whiteboard-Collage“ (Nachtrag 11.11., nach Bildschirmfotos aus dem Kanal)
+
+Gilt je Kanal (Kanalprofil → „Stil der Bilder: Whiteboard-Collage“); der bisherige Stil „Vollbild“ bleibt für andere
+Kanäle. Länge bleibt 16–20 Min. (Nachtrag 11.11.) – der wiederholte Auftragstext nennt noch 10–12 Min.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B36.9 Stil: weißer Hintergrund, 3–5 Cartoon-Clipart-Motive je Szene, kräftige Umrisse, flache Farben | ❌ (ein Vollbild je Szene) | ✅ Motive einzeln (gpt-image-1, 1024×1024, `background: transparent`, Qualität je Kanal), Stil-Text + bis zu 4 **Stil-Referenzbilder** aus dem Kanalprofil über `images/edits`; weißer Hintergrund beim Freistellen wird durchsichtig | `udd/schritte.py › visuals_wb, _motiv_holen`, `udd/whiteboard.py › freistellen`, Brücke `bildBearbeiten` |
+| B36.9.1 Layout-Engine mit festen Raster-Vorlagen | ❌ | ✅ 3er, 4er (2×2), 5er (3+2), Figur links + Liste, Gegenüberstellung; Kopfzone (Überschrift, roter Balken) und Fußzone (Kernaussage, Schritt) werden freigehalten | `whiteboard.py › slots, elemente` |
+| B36.9.2 Text nicht vom Bildmodell, feste Schrift, Umlaute | ❌ | ✅ Schrift **Anton** (OFL, im Worker unter `schriften/`); Überschrift schwarz, Aussagesatz im **roten Balken** weiß, Kernaussage **rot**, „Schritt N: …“ im **schwarz umrandeten Kasten**, Stichpunkte mit orangem Punkt; Bild-Prompts verbieten Schrift | `whiteboard.py › _text_ebene, _balken, _schritt_kasten` |
+| B36.9.3 Aufdeck-Animation, Hand folgt, Dauer nach Sprecherlänge, danach blasser Hintergrund | ❌ | ✅ Elemente nacheinander von links nach rechts aufgedeckt, **Hand mit Stift** an der Kante (einmal je Kanal erzeugt, sonst gezeichnet), Zeitplan passt sich der Szenenlänge an; vorige Szene bleibt mit **15 %** stehen | `whiteboard.py › animation, hintergrund`, `medien.clip_bilder` |
+| B36.9.4 Untertitel als YouTube-Untertitel, nicht eingebrannt | ❌ (eingebrannt) | ✅ SRT aus dem Sprech-Timing, beim privaten Upload per `captions.insert` als Spur „Deutsch“; Recht `youtube.force-ssl` ergänzt (bei Fehler Hinweis statt Abbruch) | `_untertitel_hochladen`, `YT_SCOPES` |
+| B36.9.5 Stil-Bibliothek im Kanalordner, Wiederverwendung, feste Figuren | ❌ | ✅ `motive/` + `index.json` je Kanal; Claude bekommt die Liste und verwendet Schlüssel wieder (kostet nichts); Figuren im Kanalprofil („kurzname: Beschreibung“) werden immer gleich beschrieben und einmal gezeichnet | `whiteboard.Bibliothek`, `_wb_regeln`, `figurenAus` |
+| B36.9.6 Freigabe: Übersicht aller Szenen vor dem Render, einzelne Motive neu erzeugen | ❌ | ✅ neue Freigabe „Szenen-Übersicht (Motive)“ nach den Bildern (im Kanal einschaltbar); Raster aller fertigen Szenen + Motiv-Chips; „Ausgewählte Motive neu erzeugen“ verwirft nur diese (je Runde einmal, auch nach Neustart nicht doppelt) | `FREIGABE_NACH.visuals`, `motiveNeu`, Seite `vd-szenen` |
+| Kosten | – | ✅ Preis je Motiv (eigenes Feld, sonst Preis je Bild); Schätzung zeigt die Obergrenze ohne Wiederverwendung (16–20 Min. ≈ 160 Motive) | `typischFuer(…, "whiteboard")`, `motivPreis` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Testvideo neben dem Referenzvideo: Hintergrund, Schrift, Farben, Collage-Aufbau, Hand und blasser Hintergrund stimmen sichtbar überein | 🟡 automatisch geprüft (`b36-video.spec.ts › B36.9`, echter Worker, Nachbauten): Motive 1024×1024 transparent mit Referenzbild, jede Motiv-Art nur einmal bezahlt, Hand einmal, feste Figur aus dem Profil, Ablehnung → Ersatzmotiv, Szenen-Übersicht + „neu erzeugen“ (genau 1 neues Bild), Video 1920×1080 beginnt mit leerem Whiteboard, Szene 1 mit Überschrift/Motiven auf Weiß, **keine eingebrannten Untertitel**, roter Balken in Szene 2, Kosten je Motiv, privater Upload mit Untertitel-Spur „Deutsch“. Pixelprüfungen der Bausteine in `test_worker.py` (Balken rot, Kernaussage rot, Weiß, 15 % blass, Hand während des Aufdeckens, keine Hand am Ende, Anton mit Umlauten). **Offen:** der Sichtvergleich mit dem echten Referenzvideo – geht nur mit echten Motiven (To-do 176–178) |
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
@@ -2739,3 +2759,12 @@ nie in Chats oder Mails.
 175. **Erstes Video**: Thema „Mit 60, 70 oder 80: Warum manche Männer lange können und andere nicht“ anlegen (optional
      englische Vorlage oder eigenes Skript ins Feld einfügen), Gliederung/Skript lesen und freigeben, Vorschau ansehen,
      dann „Privat hochladen“ – öffentlich stellst du es selbst in YouTube Studio.
+176. **Whiteboard-Stil einstellen** (Unter der Decke): Kanalprofil → „Stil der Bilder: Whiteboard-Collage“, Freigabe
+     „Szenen-Übersicht“ an, 2–4 Bildschirmfotos aus dem Referenzvideo als **Stil-Referenzbilder** hochladen,
+     wiederkehrende Figuren eintragen (z. B. „blonder-mann: …“, „brille: …“), Bildqualität wählen. Unter „Kosten“ den
+     Preis je Motiv eintragen (gpt-image-1, 1024×1024: niedrig ≈ 0,01 $, mittel ≈ 0,04 $; Referenzbilder kosten je
+     Motiv etwas zusätzlich – 1–2 Referenzbilder reichen meist).
+177. **Google-App**: im Zustimmungsbildschirm den Bereich `youtube.force-ssl` (Untertitel) ergänzen und YouTube je Kanal
+     einmal **neu verbinden** – sonst wird das Video hochgeladen, aber die Untertitel nicht (Hinweis am Auftrag).
+178. **Abnahme B36.9**: erstes Testvideo neben das Referenzvideo legen (Hintergrund, Schrift, Farben, Collage, Hand,
+     blasser Hintergrund) und Rückmeldung geben – Größen, Abstände und Tempo lassen sich danach nachschärfen.

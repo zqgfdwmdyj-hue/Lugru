@@ -31,7 +31,7 @@ export const videoAuftraegeTool = defineTool({
     return json({
       worker: worker ? { text: worker.stand.text, online, frei_gb: worker.freiGb } : { text: "Noch kein Worker angelegt" },
       einstellungen: { claude_modell: VIDEO_MODELLE[cfg.modell].name, ablage: cfg.ablage === "drive" ? "Google Drive (Ordner „Seller-System Videos“)" : "Seller-Server" },
-      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken, zielgruppe: k.zielgruppe ?? undefined, laenge_min: `${k.laengeMin}–${k.laengeMax}` })),
+      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken, zielgruppe: k.zielgruppe ?? undefined, stil: k.stil === "whiteboard" ? "Whiteboard-Collage" : "Vollbild", laenge_min: `${k.laengeMin}–${k.laengeMax}` })),
       auftraege: gefiltert.map(({ a, kanal }) => ({
         id: a.id,
         kanal,

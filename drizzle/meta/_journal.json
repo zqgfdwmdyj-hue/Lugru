@@ -1058,6 +1058,13 @@
       "when": 1794434684191,
       "tag": "0150_b36_zielgruppe_laenge",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1794435468910,
+      "tag": "0151_b36_whiteboard",
+      "breakpoints": true
     }
   ]
 }

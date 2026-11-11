@@ -157,3 +157,115 @@ def test_clip_mit_untertiteln(tmp_path: Path):
     info = medien.video_info("ffprobe", tmp_path / "gesamt.mp4")
     assert (info["breite"], info["hoehe"]) == (1920, 1080)
     assert 4.3 <= info["dauer"] <= 5.4
+
+
+# ---- B36.9 Whiteboard-Collage ---------------------------------------------------------------------------------------
+
+import io  # noqa: E402
+
+from PIL import Image as _Img, ImageDraw as _Draw  # noqa: E402
+
+from udd import whiteboard as wb  # noqa: E402
+from udd.schritte import wb_aufbereiten, wb_pruefen  # noqa: E402
+
+
+def _png(weiss_hintergrund: bool = True, farbe=(240, 180, 40)) -> bytes:
+    img = _Img.new("RGBA", (400, 400), (255, 255, 255, 255) if weiss_hintergrund else (0, 0, 0, 0))
+    _Draw.Draw(img).ellipse((80, 80, 320, 320), fill=farbe + (255,), outline=(20, 20, 20, 255), width=12)
+    b = io.BytesIO()
+    img.save(b, "PNG")
+    return b.getvalue()
+
+
+def test_freistellen_weisser_hintergrund_wird_transparent():
+    m = _Img.open(io.BytesIO(wb.freistellen(_png()))).convert("RGBA")
+    assert m.size[0] < 400 and m.size[1] < 400  # auf den Inhalt zugeschnitten
+    assert m.getpixel((0, 0))[3] == 0  # Ecke durchsichtig
+    assert m.getpixel((m.width // 2, m.height // 2))[3] == 255  # Motiv bleibt
+    # schon transparent: bleibt so
+    m2 = _Img.open(io.BytesIO(wb.freistellen(_png(False)))).convert("RGBA")
+    assert m2.getpixel((0, 0))[3] == 0
+
+
+def test_bibliothek_merken_wiederverwenden_entfernen(tmp_path):
+    bib = wb.Bibliothek(tmp_path / "motive")
+    bib.merken("banane", wb.freistellen(_png()), "gelbe Banane")
+    bib.merken("_hand", wb.freistellen(_png()), "Hand")
+    assert bib.hat("banane") and bib.merkmal("banane")
+    assert [x["key"] for x in wb.Bibliothek(tmp_path / "motive").liste()] == ["banane"]  # neu geladen, ohne „_hand“
+    bib.entfernen("banane")
+    assert not bib.hat("banane")
+
+
+def test_schluessel_umlaute():
+    assert wb.schluessel("Blonder Mann") == "blonder-mann"
+    assert wb.schluessel("Größe & Maß") == "groesse-mass"
+
+
+def test_anton_schrift_mit_umlauten():
+    f = wb.anton(60)
+    assert "Anton" in " ".join(f.getname())
+    assert f.getmask("Ä").getbbox() is not None and f.getmask("ß").getbbox() is not None
+
+
+def test_layout_und_elemente():
+    assert wb.layout_wahl("3er", 4) == "4er" and wb.layout_wahl(None, 2) == "gegenueberstellung" and wb.layout_wahl("figur-liste", 1) == "figur-liste"
+    assert len(wb.slots("5er", 5, (60, 200, 1860, 900))) == 5
+    motiv = _Img.open(io.BytesIO(wb.freistellen(_png()))).convert("RGBA")
+    s = {"layout": "4er", "balken": "Studie zeigt klaren Unterschied", "kernaussage": "Das ist normal", "motive": [{}] * 4}
+    els = wb.elemente(s, [motiv] * 4)
+    assert [e.art for e in els] == ["text", "motiv", "motiv", "motiv", "motiv", "text"]  # Balken → Motive → Kernaussage
+    bild = wb.fertig(wb.hintergrund(None), els)
+    assert bild.size == (1920, 1080)
+    r, g, b = bild.getpixel((100, 50))  # roter Balken oben
+    assert r > 190 and g < 70 and b < 70
+    assert bild.getpixel((5, 600)) == (255, 255, 255)  # weißer Hintergrund
+    # Kernaussage in Rot unten
+    unten = [bild.getpixel((x, y)) for x in range(600, 1320, 4) for y in range(960, 1040, 4)]
+    assert any(p[0] > 190 and p[1] < 70 for p in unten)
+    # Liste + Schritt-Kasten bei figur-liste
+    s2 = {"layout": "figur-liste", "ueberschrift": "Was hilft", "liste": ["Bewegung", "Schlaf"], "schrittText": "Schritt 4: Arzt fragen", "motive": [{}]}
+    assert [e.art for e in wb.elemente(s2, [motiv])] == ["text", "motiv", "punkt", "punkt", "text"]
+
+
+def test_hintergrund_blass_15_prozent():
+    schwarz = _Img.new("RGB", (1920, 1080), (0, 0, 0))
+    v = wb.hintergrund(schwarz).getpixel((10, 10))[0]
+    assert 214 <= v <= 220  # 255 × 0,85
+
+
+def test_animation_hand_folgt_und_dauer_stimmt(tmp_path):
+    motiv = _Img.open(io.BytesIO(wb.freistellen(_png(farbe=(60, 120, 240))))).convert("RGBA")
+    els = wb.elemente({"layout": "3er", "ueberschrift": "Teil eins", "motive": [{}] * 3}, [motiv] * 3)
+    liste, fertig = wb.animation(wb.hintergrund(None), els, 5.0, 25, wb.hand_vorbereiten(wb.hand_gezeichnet()), tmp_path)
+    assert abs(sum(d for _, d in liste) - 5.0) < 0.01
+    assert len(liste) > 20
+    # mitten im Aufdecken: Hand (Hautfarbe) im Bild; im fertigen Bild keine Hand mehr
+    haut = lambda p: abs(p[0] - 247) < 14 and abs(p[1] - 205) < 16 and abs(p[2] - 170) < 18  # noqa: E731
+    mitte = _Img.open(tmp_path / liste[len(liste) // 2][0]).convert("RGB").resize((480, 270))
+    assert any(haut(mitte.getpixel((x, y))) for x in range(0, 480, 2) for y in range(0, 270, 2))
+    klein = fertig.resize((480, 270))
+    assert not any(haut(klein.getpixel((x, y))) for x in range(0, 480, 2) for y in range(0, 270, 2))
+
+
+def test_uebersicht_raster(tmp_path):
+    bilder = [(i, _Img.new("RGB", (1920, 1080), (255, 255, 255)), "banane, sanduhr") for i in range(1, 6)]
+    wb.uebersicht(bilder, tmp_path / "u.jpg")
+    u = _Img.open(tmp_path / "u.jpg")
+    assert u.size == (4 * 480 + 50, 2 * (270 + 40) + 30)
+
+
+def test_wb_pruefen_und_aufbereiten():
+    szenen = [
+        {"layout": "3er", "motive": [{"key": "a", "beschreibung": "x"}] * 3, "liste": []},
+        {"layout": "4er", "motive": [{"key": "a", "beschreibung": "x"}], "liste": []},
+        {"layout": "figur-liste", "motive": [{"key": "f", "beschreibung": "y"}], "liste": ["eins"]},
+    ]
+    p = wb_pruefen(szenen)
+    assert len(p) == 2 and "Szene 2" in p[0] and "Szene 3" in p[1]
+    s = [{"ueberschrift": "eins zwei drei vier fünf sechs sieben", "balken": "", "kernaussage": "", "schritt": "Schritt 4: Arzt fragen", "liste": [], "motive": [{"key": "Blonder Mann", "beschreibung": "egal"}, {"key": "Sanduhr", "beschreibung": "Sanduhr mit Gesicht"}]}]
+    wb_aufbereiten(s, {"blonder-mann": "Mann um die 60, blond"})
+    assert s[0]["ueberschrift"] == "eins zwei drei vier fünf sechs"
+    assert s[0]["balken"] is None and s[0]["schrittText"] == "Schritt 4: Arzt fragen" and "schritt" not in s[0]
+    assert s[0]["motive"][0] == {"key": "blonder-mann", "beschreibung": "Mann um die 60, blond"}  # feste Figur
+    assert s[0]["motive"][1]["key"] == "sanduhr" and "Sanduhr mit Gesicht" in s[0]["bildidee"]

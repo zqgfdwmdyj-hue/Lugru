@@ -5,9 +5,9 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, laengeZiel, LAENGE_STANDARD, SCHRITT_TEXT, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, LAENGE_STANDARD, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
-import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, neuAction, preiseAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
 
 export const metadata: Metadata = { title: "Video – Seller-System" };
@@ -66,7 +66,8 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
   const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
   const ws = worker?.stand ?? workerStand(null);
   const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
-  const typisch = typischFuer(kanal?.laengeMin, kanal?.laengeMax);
+  const typisch = typischFuer(kanal?.laengeMin, kanal?.laengeMax, kanal?.stil);
+  const whiteboard = kanal?.stil === "whiteboard";
   const ziel = laengeZiel(kanal?.laengeMin, kanal?.laengeMax);
   const schaetzung = kostenSchaetzung(cfg.preise, typisch, cfg.modell);
   const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, typisch, m).summe }));
@@ -106,7 +107,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         <section className="card card-pad stack" style={{ gap: 8 }} id="neu" data-testid="vd-neu">
           <h2 style={{ margin: 0 }}>Neues Video · {kanal.name}</h2>
           <p className="small muted" style={{ margin: 0 }} data-testid="vd-ziel">
-            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {ziel.szenen[0]}–{ziel.szenen[1]} Szenen/Bilder{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
+            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {ziel.szenen[0]}–{ziel.szenen[1]} Szenen{whiteboard ? ` · Whiteboard-Collage (bis ${typisch.motive} Motive, Wiederverwendung aus der Bibliothek spart)` : "/Bilder"}{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
           </p>
           <form action={auftragAction} className="stack small" style={{ gap: 8 }}>
             <input type="hidden" name="kanalId" value={kanal.id} />
@@ -213,10 +214,42 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                       {a.skript.map((x) => (
                         <li key={x.nr} style={{ marginBottom: 6 }}>
                           <span className="muted">[{x.abschnitt}{x.dauer ? ` · ${dauerText(x.dauer)}` : ""}]</span> {x.text}
+                          {x.motive && x.motive.length > 0 && (
+                            <div className="muted" data-testid="vd-szene-wb">
+                              {x.layout ? `Layout ${x.layout}` : ""}{x.balken ? ` · Balken: „${x.balken}“` : ""}{x.ueberschrift ? ` · Überschrift: „${x.ueberschrift}“` : ""}{x.kernaussage ? ` · Kernaussage: „${x.kernaussage}“` : ""}{x.schrittText ? ` · ${x.schrittText}` : ""}
+                              {" · Motive: "}{x.motive.map((m) => `${m.key}${m.wiederverwendet ? " (Bibliothek)" : ""}${m.ersatz ? " (Ersatz)" : ""}`).join(", ")}
+                            </div>
+                          )}
                           <div className="muted">Bild: {x.bildidee}{x.ersatzbild ? " (Ersatzbild)" : ""}{x.einblendung ? ` · Einblendung: „${x.einblendung}“` : ""}{x.quelle_ids.length ? ` · Quellen: ${x.quelle_ids.map((q) => (quellenIds.has(q) ? q : `${q}?`)).join(", ")}` : ""}</div>
                         </li>
                       ))}
                     </ol>
+                  </details>
+                )}
+
+                {/* Freigabe Szenen-Übersicht (Whiteboard, B36.9.6): alle Szenen als Raster, einzelne Motive neu erzeugen */}
+                {a.dateien.uebersicht && (offen === "szenen" || a.skript?.some((x) => x.motive?.length)) && (
+                  <details open={offen === "szenen"} data-testid="vd-szenen">
+                    <summary><strong>Szenen-Übersicht</strong> ({a.skript?.length ?? 0} Szenen, {new Set((a.skript ?? []).flatMap((x) => (x.motive ?? []).map((m) => m.key))).size} verschiedene Motive)</summary>
+                    <a href={`/api/video/${a.id}/uebersicht`} target="_blank" rel="noreferrer noopener"><img src={`/api/video/${a.id}/uebersicht?v=${a.dateien.uebersicht.groesse}`} alt="Szenen-Übersicht" style={{ width: "100%", maxWidth: 960, borderRadius: 6, border: "1px solid var(--border, #ddd)", marginTop: 6 }} data-testid="vd-uebersicht" /></a>
+                    {offen === "szenen" && !s.readOnly && (
+                      <form action={motiveNeuAction} className="stack small" style={{ gap: 6, marginTop: 6 }} data-testid="vd-motive-form">
+                        <input type="hidden" name="id" value={a.id} />
+                        <input type="hidden" name="kanal" value={kanal.id} />
+                        <span className="muted">Motiv antippen, das neu gezeichnet werden soll (gilt in allen Szenen, die es verwenden). Der Rest bleibt, nur das Ausgewählte kostet.</span>
+                        <div className="stack" style={{ gap: 4 }}>
+                          {(a.skript ?? []).filter((x) => x.motive?.length).map((x) => (
+                            <div key={x.nr} className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <span className="muted" style={{ minWidth: 70 }}>Szene {x.nr}</span>
+                              {x.motive!.map((m) => (
+                                <label key={`${x.nr}-${m.key}`} className="tag" title={m.beschreibung}><input type="checkbox" name="motiv" value={m.key} data-testid={`vd-motiv-${m.key}`} /> {m.key}</label>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                        <div><button className="btn btn-sm" type="submit" data-testid="vd-motive-neu">Ausgewählte Motive neu erzeugen</button></div>
+                      </form>
+                    )}
                   </details>
                 )}
 
@@ -354,17 +387,54 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Stimme (ElevenLabs-Voice-ID)<input className="input" name="stimmeId" defaultValue={kanal?.stimmeId ?? ""} data-testid="vd-k-stimme" /></label>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Musik (Dateiname im Musikordner des Workers)<input className="input" name="musik" defaultValue={kanal?.musik ?? ""} placeholder="leer = ohne Musik" /></label>
           </div>
-          <label className="stack" style={{ gap: 2 }}>Bildstil<input className="input" name="bildstil" defaultValue={kanal?.bildstil ?? ""} placeholder="z. B. Flache Illustration, warme Farben, ruhig" /></label>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label className="stack" style={{ gap: 2, minWidth: 220 }}>Stil der Bilder
+              <select className="input" name="stil" defaultValue={kanal?.stil ?? "vollbild"} data-testid="vd-k-stil">
+                {(Object.keys(VIDEO_STILE) as (keyof typeof VIDEO_STILE)[]).map((k) => <option key={k} value={k}>{VIDEO_STILE[k].name} – {VIDEO_STILE[k].hinweis}</option>)}
+              </select>
+            </label>
+            <label className="stack" style={{ gap: 2, width: 200 }}>Bildqualität (Kosten)
+              <select className="input" name="bildQualitaet" defaultValue={kanal?.bildQualitaet ?? "medium"} data-testid="vd-k-qualitaet"><option value="low">niedrig (günstig)</option><option value="medium">mittel</option><option value="high">hoch (teuer)</option></select>
+            </label>
+          </div>
+          <label className="stack" style={{ gap: 2 }}>Bildstil (Beschreibung fürs Bildmodell)<input className="input" name="bildstil" defaultValue={kanal?.bildstil ?? ""} placeholder="z. B. Bunte Cartoon-Clipart, kräftige schwarze Umrisse, flache Farben, Comic-Gesichter" /></label>
+          <label className="stack" style={{ gap: 2 }}>Wiederkehrende Figuren (Whiteboard; eine je Zeile „kurzname: Beschreibung“ – einmal gezeichnet, dann immer gleich)
+            <textarea className="input" name="figuren" rows={3} maxLength={3000} defaultValue={kanal?.figuren ?? ""} placeholder={"blonder-mann: Mann um die 60, blonde Haare, kariertes Hemd, freundlich\nbrille: Mann mit runder Brille und Glatze, Pullover"} data-testid="vd-k-figuren" />
+          </label>
           <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <label>Sicherheitsstufe <select className="input" name="sicherheitsstufe" defaultValue={kanal?.sicherheitsstufe ?? "normal"} data-testid="vd-k-stufe"><option value="normal">normal</option><option value="streng">streng (keine Bett-/Kuss-/Berührungsmotive)</option></select></label>
             <span>Freigaben:</span>
             <label><input type="checkbox" name="f_gliederung" value="1" defaultChecked={kanal?.freigaben.gliederung ?? true} /> Gliederung + Quellen</label>
             <label><input type="checkbox" name="f_skript" value="1" defaultChecked={kanal?.freigaben.skript ?? true} /> Skript</label>
+            <label><input type="checkbox" name="f_szenen" value="1" defaultChecked={freigabeAktiv(kanal?.freigaben ?? {}, "szenen")} data-testid="vd-k-f-szenen" /> Szenen-Übersicht (vor dem Render)</label>
             <label><input type="checkbox" name="f_vorschau" value="1" defaultChecked={kanal?.freigaben.vorschau ?? true} /> Vorschau</label>
             {kanal && <label><select className="input" name="aktiv" defaultValue={kanal.aktiv ? "1" : "0"}><option value="1">aktiv</option><option value="0">ausgeschaltet</option></select></label>}
           </div>
           <div><button className="btn btn-primary btn-sm" type="submit" disabled={s.readOnly} data-testid="vd-k-speichern">{kanal ? "Kanalprofil speichern" : "Kanal anlegen"}</button></div>
         </form>
+        {kanal && (
+          <div className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-referenzen">
+            <strong>Stil-Referenzbilder ({kanal.referenzen.length}/4)</strong>
+            <span className="muted">Bilder aus dem Kanal (z. B. Bildschirmfotos eines Videos im gewünschten Stil). Das Bildmodell bekommt sie bei jedem neuen Motiv als Vorlage – so bleiben Strich, Farben und Figuren gleich. Schrift zeichnet das Bildmodell nie; Texte setzt die Pipeline selbst.</span>
+            {kanal.referenzen.length > 0 && (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {kanal.referenzen.map((r) => (
+                  <div key={r.nr} className="stack" style={{ gap: 2, width: 150 }}>
+                    <img src={`/api/video/referenz/${kanal.id}/${r.nr}`} alt={r.name} style={{ width: 150, height: 85, objectFit: "cover", borderRadius: 4, border: "1px solid var(--border, #ddd)" }} data-testid="vd-referenz" />
+                    {!s.readOnly && <form action={referenzLoeschenAction}><input type="hidden" name="kanalId" value={kanal.id} /><input type="hidden" name="nr" value={r.nr} /><button className="btn btn-sm" type="submit">entfernen</button></form>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!s.readOnly && kanal.referenzen.length < 4 && (
+              <form action={referenzAction} className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="hidden" name="kanalId" value={kanal.id} />
+                <input className="input" type="file" name="bilder" accept="image/png,image/jpeg,image/webp" multiple data-testid="vd-referenz-datei" />
+                <button className="btn btn-sm" type="submit" data-testid="vd-referenz-hochladen">Hochladen</button>
+              </form>
+            )}
+          </div>
+        )}
         {kanal && (
           <div className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-youtube-zugang">
             <strong>YouTube-Zugang</strong>
@@ -453,6 +523,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
           <label className="stack" style={{ gap: 2 }}>Websuche $/1000<input className="input" name="websucheJe1000" defaultValue={cfg.preise.websucheJe1000 ?? ""} style={{ width: 80 }} /></label>
           <label className="stack" style={{ gap: 2 }}>ElevenLabs $/1000 Zeichen<input className="input" name="elevenlabsJe1000Zeichen" defaultValue={cfg.preise.elevenlabsJe1000Zeichen ?? ""} style={{ width: 90 }} data-testid="vd-preis-eleven" /></label>
           <label className="stack" style={{ gap: 2 }}>OpenAI $/Bild<input className="input" name="bildJeStueck" defaultValue={cfg.preise.bildJeStueck ?? ""} style={{ width: 80 }} data-testid="vd-preis-bild" /></label>
+          <label className="stack" style={{ gap: 2 }}>$/Motiv (1024²)<input className="input" name="motivJeStueck" defaultValue={cfg.preise.motivJeStueck ?? ""} placeholder="= Bild" style={{ width: 80 }} data-testid="vd-preis-motiv" /></label>
           <label className="stack" style={{ gap: 2 }}>Reserve Server GB<input className="input" name="serverReserveGb" defaultValue={cfg.serverReserveGb} style={{ width: 70 }} /></label>
           <button className="btn btn-sm" type="submit" disabled={!inhaber}>Preise speichern</button>
         </form>
