@@ -43,7 +43,7 @@ test.describe("B36 Video-Pipeline", () => {
     worker.stderr?.on("data", (d) => (log += d));
   };
   const workerStoppen = async () => {
-    if (!worker || worker.exitCode !== null) return;
+    if (!worker || worker.exitCode !== null || worker.signalCode !== null) return;
     const w = worker;
     w.kill("SIGKILL");
     await new Promise((r) => w.once("exit", r));
