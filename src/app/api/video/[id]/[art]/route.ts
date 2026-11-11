@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth/session";
-import { dateiOeffnen, dateiStrom } from "@/lib/video/service";
+import { dateiOeffnen, dateiStrom, driveLink } from "@/lib/video/service";
 
 // Fertige Video-Dateien ansehen/herunterladen (nur angemeldet, eigener Mandant). Mit Range für den Video-Player.
 
@@ -11,6 +11,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!/^[0-9a-f-]{36}$/.test(id)) return new Response("Nicht gefunden", { status: 404 });
   const d = await dateiOeffnen(s.tenantId, id, art);
   if (!d) return new Response("Nicht gefunden", { status: 404 });
+  // Ablage Google Drive: dorthin weiterleiten (Ansicht/Download in Drive, mit deiner Google-Anmeldung)
+  if ("drive" in d) return Response.redirect(driveLink(d.drive), 302);
   const herunterladen = new URL(request.url).searchParams.has("download");
   const kopf: Record<string, string> = { "content-type": d.typ, "accept-ranges": "bytes", "cache-control": "private, no-store", "content-disposition": `${herunterladen ? "attachment" : "inline"}; filename="${d.name}"` };
   const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get("range") ?? "");

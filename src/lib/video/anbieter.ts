@@ -108,7 +108,7 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
       async flush() {
         if (!res.ok) return;
         const n = claudeNutzung(text);
-        await kostenBuchen(w.tenantId, auftragId, kostenPosition("anthropic", preise, { eingabe: n.eingabe, ausgabe: n.ausgabe, websuchen: n.websuchen })).catch(() => undefined);
+        await kostenBuchen(w.tenantId, auftragId, kostenPosition("anthropic", preise, { eingabe: n.eingabe, ausgabe: n.ausgabe, websuchen: n.websuchen, modell: typeof body.model === "string" ? body.model : null })).catch(() => undefined);
       },
     });
     return new Response(res.body.pipeThrough(mitlesen), { status: res.status, headers: kopf });

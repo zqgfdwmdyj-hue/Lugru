@@ -11,7 +11,7 @@ import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, 
 import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
-import { FREIGABE_VOR, kostenSchaetzung, kostenSumme, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoPreise } from "./logic";
+import { FREIGABE_VOR, istVideoModell, kostenSchaetzung, kostenSumme, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, TYPISCH, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -28,13 +28,23 @@ const jetzt = () => new Date();
 
 // ---- Einstellungen -----------------------------------------------------------------------------------------------
 
-export type VideoEinstellungen = { preise: VideoPreise; serverReserveGb: number };
-const STANDARD: VideoEinstellungen = { preise: VIDEO_PREISE_STANDARD, serverReserveGb: 2 };
+/**
+ * modell: Claude-Modell für Recherche/Skript/Paket. ablage: wohin die fertigen Dateien gehen – „drive“ = Google Drive
+ * (der Worker lädt direkt dorthin, der Seller-Server bekommt nur die kleinen Dateien), „server“ = Medienablage.
+ * drive: Refresh-Token (verschlüsselt, Bereich drive.file) und Wurzelordner „Seller-System Videos“.
+ */
+export type VideoDrive = { token: string; ordnerId: string; verbundenAm: string };
+export type VideoEinstellungen = { preise: VideoPreise; serverReserveGb: number; modell: VideoModell; ablage: "drive" | "server"; drive: VideoDrive | null };
+const STANDARD: VideoEinstellungen = { preise: VIDEO_PREISE_STANDARD, serverReserveGb: 2, modell: VIDEO_MODELL_STANDARD, ablage: "server", drive: null };
 
 export async function videoEinstellungen(tenantId: string): Promise<VideoEinstellungen> {
   const [t] = await db.select({ s: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
   const roh = ((t?.s as Record<string, unknown> | null)?.video ?? {}) as Partial<VideoEinstellungen>;
-  return { ...STANDARD, ...roh, preise: { ...STANDARD.preise, ...(roh.preise ?? {}) } };
+  const cfg = { ...STANDARD, ...roh, preise: { ...STANDARD.preise, ...(roh.preise ?? {}) } };
+  if (!istVideoModell(cfg.modell)) cfg.modell = VIDEO_MODELL_STANDARD;
+  // Drive nur, wenn verbunden – sonst Seller-Server
+  if (cfg.ablage === "drive" && !cfg.drive?.token) cfg.ablage = "server";
+  return cfg;
 }
 
 export async function videoEinstellungenSpeichern(s: Session, patch: Partial<VideoEinstellungen>) {
@@ -83,7 +93,7 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise);
+  const schaetzung = kostenSchaetzung(cfg.preise, TYPISCH, cfg.modell);
   const [r] = await db
     .insert(A)
     .values({ tenantId: s.tenantId, kanalId: kanal.id, thema, vidiqKeywords: e.vidiqKeywords?.trim().slice(0, 2000) || null, vidiqTitel: e.vidiqTitel?.trim().slice(0, 2000) || null, startAb: startAbAus(e.startWahl, e.zeitpunkt), kostenSchaetzung: schaetzung.summe, erstelltVon: s.userId, schritte: Object.fromEntries(SCHRITTE.map((x) => [x, { status: "offen" }])) as Partial<Record<VideoSchritt, SchrittStand>> })
@@ -253,9 +263,12 @@ export async function workerMelden(w: Worker, m: Meldung) {
 }
 
 /** Was der Worker zum Auftrag braucht (Kanalprofil, Daten der vorigen Schritte, vidIQ, Anmerkung). */
-function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect) {
+function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, cfg: VideoEinstellungen) {
   return {
     id: a.id,
+    modell: cfg.modell,
+    ablage: cfg.ablage,
+    dateien: Object.fromEntries(Object.entries(a.dateien).map(([art, d]) => [art, { groesse: d?.groesse ?? 0, drive: d?.drive ?? null }])),
     thema: a.thema,
     schritt: a.schritt,
     wiederholen: a.wiederholen,
@@ -274,7 +287,7 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect) {
 export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType<typeof auftragFuerWorker> | null; grund?: string }> {
   await db.update(W).set({ zuletztGesehen: jetzt() }).where(eq(W.id, w.id));
   const [eigener] = await db.select({ a: A, k: K }).from(A).innerJoin(K, eq(K.id, A.kanalId)).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), eq(A.workerId, w.id))).limit(1);
-  if (eigener) return { auftrag: auftragFuerWorker(eigener.a, eigener.k) };
+  if (eigener) return { auftrag: auftragFuerWorker(eigener.a, eigener.k, await videoEinstellungen(w.tenantId)) };
   if (w.freiGb !== null && w.freiGb < WORKER_MIN_FREI_GB) return { auftrag: null, grund: `Zu wenig freier Speicher am Worker (${w.freiGb} GB, mindestens ${WORKER_MIN_FREI_GB} GB) – kein Lauf` };
   const still = new Date(Date.now() - 10 * 60_000);
   const [anderer] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), gte(A.zuletztVomWorker, still))).limit(1);
@@ -293,7 +306,7 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
       .returning();
     if (!r) continue;
     const [kanal] = await db.select().from(K).where(eq(K.id, r.kanalId));
-    return { auftrag: auftragFuerWorker(r, kanal) };
+    return { auftrag: auftragFuerWorker(r, kanal, await videoEinstellungen(w.tenantId)) };
   }
   return { auftrag: null };
 }
@@ -405,17 +418,20 @@ export async function dateiSpeichern(w: Worker, id: string, art: string, body: R
     return { ok: false, status: 400, fehler: `Upload unvollständig (${n} von ${groesse} Byte)` };
   }
   await rename(teil, ziel);
-  const datei: VideoDatei = { key: `${id}/${def.name}`, name: def.name, typ: def.typ, groesse: n };
+  const vorher = a.dateien[art];
+  const datei: VideoDatei = { key: `${id}/${def.name}`, name: def.name, typ: def.typ, groesse: n, drive: vorher?.drive ?? null, link: vorher?.link ?? null };
   await db.update(A).set({ dateien: sql`${A.dateien} || ${JSON.stringify({ [art]: datei })}::jsonb`, updatedAt: jetzt() }).where(eq(A.id, id));
   return { ok: true, groesse: n };
 }
 
 /** Datei zum Ansehen/Herunterladen (mit Range für den Video-Player). */
-export async function dateiOeffnen(tenantId: string, id: string, art: string): Promise<{ pfad: string; groesse: number; typ: string; name: string } | null> {
+export async function dateiOeffnen(tenantId: string, id: string, art: string): Promise<{ pfad: string; groesse: number; typ: string; name: string } | { drive: string } | null> {
   const def = DATEI_ARTEN[art];
   if (!def) return null;
   const r = await auftragLesen(tenantId, id);
-  if (!r?.a.dateien[art]) return null;
+  const d = r?.a.dateien[art];
+  if (!d) return null;
+  if (d.drive && !d.key.startsWith(id)) return { drive: d.drive };
   const pfad = path.join(auftragOrdner(tenantId, id), def.name);
   const st = await stat(pfad).catch(() => null);
   return st ? { pfad, groesse: st.size, typ: def.typ, name: def.name } : null;
@@ -460,4 +476,57 @@ export async function youtubeBestaetigen(w: Worker, id: string, videoId: string)
     await aendern(id, { youtubeId: videoId, youtubeStatus: `NICHT privat (${sicht ?? "unbekannt"})`, schritte, status: "fehler" });
   }
   return { privat, sichtbarkeit: sicht };
+}
+
+// ---- Google Drive als Ablage (B36.6) --------------------------------------------------------------------------------
+
+export const DRIVE_WURZEL = "Seller-System Videos";
+const driveApi = () => (process.env.DRIVE_API_BASE_URL || "https://www.googleapis.com/drive/v3").replace(/\/$/, "");
+const driveUpload = () => (process.env.DRIVE_UPLOAD_BASE_URL || "https://www.googleapis.com/upload/drive/v3").replace(/\/$/, "");
+export const driveLink = (fileId: string) => `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+
+/** Drive verbinden (Refresh-Token verschlüsselt) und den Wurzelordner anlegen bzw. trennen. */
+export async function videoDriveSetzen(tenantId: string, refreshToken: string | null): Promise<void> {
+  const cfg = await videoEinstellungen(tenantId);
+  let drive: VideoDrive | null = null;
+  if (refreshToken) {
+    const { ytZugang } = await import("./youtube");
+    const { ordnerSichern } = await import("@/lib/integrations/clients/drive");
+    const t = await ytZugang(await googleApp(tenantId), refreshToken);
+    const ordnerId = await ordnerSichern(t.access_token, "root", DRIVE_WURZEL);
+    drive = { token: sealPii(refreshToken), ordnerId, verbundenAm: jetzt().toISOString() };
+  }
+  const neu = { ...cfg, drive, ablage: drive ? "drive" : "server" };
+  await db.update(schema.tenants).set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('video', ${JSON.stringify(neu)}::jsonb)` }).where(eq(schema.tenants.id, tenantId));
+}
+
+/**
+ * Kurzlebiger Drive-Zugang für den Worker: Ordner „Seller-System Videos/<Kanal>/<Datum Thema>“ (wird angelegt) und die
+ * Upload-Adresse. Der Worker lädt MP4 & Co. direkt nach Drive – nichts davon läuft über den Seller-Server.
+ */
+export async function driveZugangFuerWorker(w: Worker, id: string): Promise<{ ablage: "drive"; accessToken: string; ordnerId: string; uploadUrl: string; apiBasis: string } | { ablage: "server" }> {
+  const cfg = await videoEinstellungen(w.tenantId);
+  if (cfg.ablage !== "drive" || !cfg.drive) return { ablage: "server" };
+  const [r] = await db.select({ a: A, k: K }).from(A).innerJoin(K, eq(K.id, A.kanalId)).where(and(eq(A.tenantId, w.tenantId), eq(A.id, id)));
+  if (!r) throw new VideoFehler("Auftrag nicht gefunden.");
+  const { ytZugang } = await import("./youtube");
+  const { ordnerSichern } = await import("@/lib/integrations/clients/drive");
+  const t = await ytZugang(await googleApp(w.tenantId), openPii(cfg.drive.token));
+  const tag = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(r.a.createdAt);
+  const name = (x: string) => x.replace(/[\\/]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
+  const ordnerId = await ordnerSichern(t.access_token, cfg.drive.ordnerId, `${name(r.k.name)}/${tag} ${name(r.a.thema)}`);
+  return { ablage: "drive", accessToken: t.access_token, ordnerId, uploadUrl: `${driveUpload()}/files?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink`, apiBasis: driveApi() };
+}
+
+/** Worker meldet eine nach Drive geladene Datei. */
+export async function driveDateiMerken(w: Worker, id: string, art: string, d: { fileId: string; groesse: number; link?: string | null }): Promise<void> {
+  const def = DATEI_ARTEN[art];
+  if (!def) throw new VideoFehler("Unbekannte Dateiart");
+  if (!/^[A-Za-z0-9_-]{5,100}$/.test(d.fileId)) throw new VideoFehler("Ungültige Drive-Datei-ID");
+  const [a] = await db.select({ id: A.id, dateien: A.dateien }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.id, id)));
+  if (!a) throw new VideoFehler("Auftrag nicht gefunden");
+  const vorher = a.dateien[art];
+  // Liegt die Datei zusätzlich auf dem Seller-Server (kleine Dateien), bleibt der Schlüssel dorthin erhalten.
+  const datei: VideoDatei = { key: vorher && !vorher.drive ? vorher.key : `drive:${d.fileId}`, name: def.name, typ: def.typ, groesse: Math.max(0, Math.round(d.groesse)), drive: d.fileId, link: d.link && /^https:\/\//.test(d.link) ? d.link : driveLink(d.fileId) };
+  await db.update(A).set({ dateien: sql`${A.dateien} || ${JSON.stringify({ [art]: datei })}::jsonb`, updatedAt: jetzt() }).where(eq(A.id, id));
 }

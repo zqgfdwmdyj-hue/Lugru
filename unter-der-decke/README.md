@@ -81,15 +81,25 @@ Seller-System → **Marken & Content → Video** → Abschnitt „Worker“ → 
 | `VIDEO_POLL_S` | Abfrage-Takt in Sekunden | `30` |
 | `MIN_FREI_GB` / `WARN_FREI_GB` | unter 3 GB frei kein Lauf, unter 5 GB Warnung | `3` / `5` |
 | `VIDEO_FPS` | Bilder je Sekunde im Video | `25` |
-| `CLAUDE_MODELL` | Claude-Modell | `claude-sonnet-5-5` |
+| `CLAUDE_MODELL` | Claude-Modell nur zum Übersteuern (sonst gilt die Wahl auf der Seite Video, Standard Opus 5.5) | leer |
 | `AUFBEWAHREN_TAGE` | Projekte spätestens nach … Tagen löschen | `14` |
 | `FFMPEG` / `FFPROBE` | Pfad, falls nicht im PATH | `ffmpeg` / `ffprobe` |
+
+## Ablage der fertigen Videos
+
+Auf der Seite Video unter „Modell und Ablage“ wählst du die Ablage:
+- **Google Drive** (empfohlen): Der Worker lädt MP4, Thumbnail, Skript, Quellen und Untertitel direkt in deinen
+  Drive-Ordner „Seller-System Videos/<Kanal>/<Datum Thema>“. Der Seller-Server bekommt nur die kleinen Dateien.
+  Das Seller-System sieht in Drive nur Dateien, die es selbst angelegt hat (Bereich `drive.file`).
+- **Seller-Server**: Alles liegt in der Medienablage des Seller-Systems (ca. 0,5–1 GB je Video).
+
+Für den späteren YouTube-Upload holt sich der Worker das Video bei Bedarf wieder aus Drive.
 
 ## Platz und Aufräumen
 
 - Unter 3 GB frei startet kein neuer Lauf. Das Seller-System zeigt den freien Platz und warnt.
-- Nach dem Render werden die Zwischenclips gelöscht. Fertiges MP4, Thumbnail, Skript, Quellen und Untertitel gehen
-  zuerst ins Seller-System.
+- Nach dem Render werden die Zwischenclips gelöscht. Fertiges MP4, Thumbnail, Skript, Quellen und Untertitel werden
+  zuerst gesichert (Google Drive bzw. Seller-System).
 - Das ganze Projekt wird gelöscht, sobald das Seller-System es freigibt (fertig/abgebrochen), spätestens nach
   14 Tagen.
 - Im Kanalordner liegt `kanal.json` mit dem Kanalprofil (nur zum Nachsehen; bearbeitet wird es im Seller-System).

@@ -40,7 +40,8 @@ def laden() -> Konfig:
         min_frei_gb=float(os.environ.get("MIN_FREI_GB", "3")),
         warn_frei_gb=float(os.environ.get("WARN_FREI_GB", "5")),
         fps=int(os.environ.get("VIDEO_FPS", "25")),
-        claude_modell=os.environ.get("CLAUDE_MODELL", "claude-sonnet-5-5"),
+        # leer = Modell aus dem Seller-System (Seite Video → Modell und Ablage)
+        claude_modell=os.environ.get("CLAUDE_MODELL", "").strip(),
         aufbewahren_tage=int(os.environ.get("AUFBEWAHREN_TAGE", "14")),
         ffmpeg=os.environ.get("FFMPEG", "ffmpeg"),
         ffprobe=os.environ.get("FFPROBE", "ffprobe"),

@@ -6,18 +6,20 @@ import "server-only";
 // Im Testbetrieb gegen den Nachbau (YOUTUBE_*_URL).
 
 export const YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+/** Google Drive als Video-Ablage: nur Dateien, die das Seller-System selbst anlegt (drive.file). */
+export const DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"];
 const AUTH = () => process.env.YOUTUBE_AUTH_URL || "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN = () => process.env.YOUTUBE_TOKEN_URL || "https://oauth2.googleapis.com/token";
 const API = () => (process.env.YOUTUBE_API_BASE_URL || "https://www.googleapis.com").replace(/\/$/, "");
 /** Basis für den resumable Upload – der Worker hängt /youtube/v3/videos an. */
 export const ytUploadBasis = () => (process.env.YOUTUBE_UPLOAD_BASE_URL || "https://www.googleapis.com/upload").replace(/\/$/, "");
 
-export function ytAuthUrl(clientId: string, redirectUri: string, state: string): string {
+export function ytAuthUrl(clientId: string, redirectUri: string, state: string, scopes: string[] = YT_SCOPES): string {
   const u = new URL(AUTH());
   u.searchParams.set("client_id", clientId);
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", YT_SCOPES.join(" "));
+  u.searchParams.set("scope", scopes.join(" "));
   u.searchParams.set("access_type", "offline");
   u.searchParams.set("prompt", "consent");
   u.searchParams.set("include_granted_scopes", "false");

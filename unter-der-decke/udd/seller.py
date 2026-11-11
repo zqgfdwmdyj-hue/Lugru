@@ -103,6 +103,12 @@ class Seller:
     def youtube_bestaetigen(self, auftrag_id: str, video_id: str) -> dict[str, Any]:
         return self._anfrage("POST", f"/api/video-worker/auftrag/{auftrag_id}/youtube", json={"videoId": video_id})
 
+    def drive_zugang(self, auftrag_id: str) -> dict[str, Any]:
+        return self._anfrage("GET", f"/api/video-worker/auftrag/{auftrag_id}/drive")
+
+    def drive_melden(self, auftrag_id: str, art: str, file_id: str, groesse: int, link: str | None) -> dict[str, Any]:
+        return self._anfrage("POST", f"/api/video-worker/auftrag/{auftrag_id}/datei/{art}", json={"drive": {"fileId": file_id, "groesse": groesse, "link": link}})
+
     def anbieter(self, auftrag_id: str, anbieter: str, pfad: str, body: dict[str, Any], timeout: float = 180) -> requests.Response:
         """Anbieter-Brücke (ElevenLabs, OpenAI) – liefert die rohe Antwort (Status wird vom Aufrufer geprüft)."""
         letzter: Exception | None = None

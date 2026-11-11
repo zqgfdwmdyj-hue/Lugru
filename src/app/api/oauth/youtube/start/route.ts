@@ -4,10 +4,11 @@ import { getSession } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { canRedirectTo, PASTE_REDIRECT } from "@/lib/oauth/mail-flow";
 import { appUrl, signState } from "@/lib/oauth/state";
-import { ytAuthUrl } from "@/lib/video/youtube";
+import { DRIVE_SCOPES, ytAuthUrl } from "@/lib/video/youtube";
 
-// B36: YouTube-Zugang je Kanal (nur Inhaber). Google-App aus Anbindungen → Google. Ohne https-Adresse geht es nach
-// http://localhost – die Adresse wird dann auf der Seite Video beim Kanal eingefügt.
+// B36: YouTube-Zugang je Kanal bzw. mit ?drive=1 Google Drive als Video-Ablage (nur Inhaber). Google-App aus
+// Anbindungen → Google, eine Rücksprung-Adresse für beides. Ohne https-Adresse geht es nach http://localhost – die
+// Adresse wird dann auf der Seite Video eingefügt.
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,14 @@ export async function GET(request: Request) {
   const s = await getSession();
   if (!s) return Response.redirect(`${base}/login`);
   if (s.readOnly || s.role !== "owner") return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent("Nur der Inhaber verbindet YouTube.")}`);
-  const kanalId = new URL(request.url).searchParams.get("kanal") ?? "";
+  const q = new URL(request.url).searchParams;
+  if (q.get("drive") === "1") {
+    const app = await getIntegration(s.tenantId, "google");
+    if (!app?.clientId) return Response.redirect(`${base}/anbindungen?p=google#google`);
+    const paste = q.get("modus") === "einfuegen" || !canRedirectTo(base);
+    return Response.redirect(ytAuthUrl(app.clientId, paste ? PASTE_REDIRECT : `${base}/api/oauth/youtube/callback`, signState(s.tenantId, s.userId, paste ? "video-drive-paste" : "video-drive"), DRIVE_SCOPES));
+  }
+  const kanalId = q.get("kanal") ?? "";
   const [k] = /^[0-9a-f-]{36}$/.test(kanalId) ? await db.select({ id: schema.videoKanaele.id }).from(schema.videoKanaele).where(and(eq(schema.videoKanaele.tenantId, s.tenantId), eq(schema.videoKanaele.id, kanalId))) : [];
   if (!k) return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent("Kanal nicht gefunden.")}`);
   const app = await getIntegration(s.tenantId, "google");

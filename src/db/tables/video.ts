@@ -16,7 +16,8 @@ export type VideoGliederung = { hook?: string | null; angst?: string | null; pun
 export type VideoSzene = { nr: number; abschnitt: string; text: string; bildidee: string; einblendung: string | null; quelle_ids: string[]; dauer?: number | null; ersatzbild?: boolean };
 export type VideoPaket = { titel: string[]; titelGewaehlt?: number | null; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[]; thumbnailText: string | null; warnungen?: string[] };
 export type VideoKosten = { anbieter: string; art: string; menge: number; einheit: string; betrag: number | null; am: string };
-export type VideoDatei = { key: string; name: string; typ: string; groesse: number };
+/** drive: Datei-ID in Google Drive (Ablage „Drive“) – dann liegt die Datei nicht auf dem Seller-Server. */
+export type VideoDatei = { key: string; name: string; typ: string; groesse: number; drive?: string | null; link?: string | null };
 
 export const videoKanaele = pgTable(
   "video_kanaele",

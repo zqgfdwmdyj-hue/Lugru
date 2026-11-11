@@ -22,6 +22,7 @@ from .projekt import Projekt, kurz_hash, schreiben_atomar
 from .seller import Seller
 
 REIHENFOLGE = ["research", "script", "voice", "visuals", "render", "package", "upload"]
+MODELL_STANDARD = "claude-opus-5-5"
 PAUSE_S = 0.4  # kurze Pause nach jeder Szene
 PRIVAT = "private"  # Sichtbarkeit beim Upload – fest, im System nicht änderbar
 ABSCHNITTE = ["hook", "angst"] + [f"punkt-{i}" for i in range(1, 8)] + ["zusammenfassung", "cta"]
@@ -44,6 +45,8 @@ class Lauf:
         self.kanal: dict[str, Any] = auftrag["kanal"]
         self.daten: dict[str, Any] = dict(auftrag.get("daten") or {})
         self.streng = self.kanal.get("sicherheitsstufe") == "streng"
+        # Modell: CLAUDE_MODELL am PC (falls gesetzt) vor der Einstellung im Seller-System
+        self.modell: str = k.claude_modell or auftrag.get("modell") or MODELL_STANDARD
         self.p = Projekt(k.arbeitsordner, self.kanal["slug"], self.id)
         # Kanalprofil als Datei im Worker (zum Nachsehen; bearbeitet wird es im Seller-System)
         schreiben_atomar(k.arbeitsordner / self.kanal["slug"] / "kanal.json", json.dumps(self.kanal, ensure_ascii=False, indent=1).encode("utf-8"))
@@ -107,7 +110,7 @@ def research(l: Lauf) -> tuple[dict, list[str]]:
         ]
         if x
     )
-    text, urls = ki.fragen(l.claude, l.k.claude_modell, prompt, websuche=8, max_tokens=16000)
+    text, urls = ki.fragen(l.claude, l.modell, prompt, websuche=8, max_tokens=16000)
     d = ki.json_aus(text)
     quellen = [q for q in d.get("quellen", []) if isinstance(q, dict) and q.get("id")]
     gefunden = {u.rstrip("/").lower() for u in urls}
@@ -204,7 +207,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
     szenen: list[dict] = []
     probleme: list[str] = []
     for versuch in range(2):
-        text, _ = ki.fragen(l.claude, l.k.claude_modell, prompt, schema=SKRIPT_SCHEMA, max_tokens=24000)
+        text, _ = ki.fragen(l.claude, l.modell, prompt, schema=SKRIPT_SCHEMA, max_tokens=24000)
         szenen = [s for s in ki.json_aus(text).get("szenen", []) if s.get("text", "").strip()]
         probleme = skript_pruefen(szenen, quellen)
         if not probleme:
@@ -394,7 +397,7 @@ def _paket_erzeugen(l: Lauf) -> dict:
     prompt = basis
     d: dict = {}
     for _ in range(2):
-        text, _u = ki.fragen(l.claude, l.k.claude_modell, prompt, schema=PAKET_SCHEMA, max_tokens=8000, effort="low")
+        text, _u = ki.fragen(l.claude, l.modell, prompt, schema=PAKET_SCHEMA, max_tokens=8000, effort="low")
         d = ki.json_aus(text)
         treffer = [t for t in d.get("titel", []) + [d.get("thumbnail_text", "")] if titel_treffer(t)]
         if not treffer:
@@ -408,6 +411,10 @@ def package(l: Lauf) -> tuple[dict, list[str]]:
     gliederung = l.daten.get("gliederung") or {}
     quellen = l.daten.get("quellen") or []
     e = l.p.state["schritte"].get("package") or {}
+    if l.p.erledigt("package") and e.get("paket"):
+        # schon fertig (z. B. Neustart): nur noch fehlende Sicherungen nachholen, nichts neu erzeugen
+        _dateien_sichern(l)
+        return {"paket": e["paket"]}, e["paket"].get("warnungen") or []
     d = e.get("roh") or _paket_erzeugen(l)
     l.p.state["schritte"]["package"] = {**e, "roh": d}
     l.p.speichern()
@@ -453,29 +460,88 @@ def package(l: Lauf) -> tuple[dict, list[str]]:
     video = l.p.pfad("video.mp4")
     if not video.exists():
         raise RuntimeError("video.mp4 fehlt – bitte Schritt „Render“ wiederholen.")
-    hoch = l.p.state.setdefault("hochgeladen", {})
-    for art, name in [("thumbnail", "thumbnail.png"), ("skript", "skript.txt"), ("quellen", "quellen.json"), ("untertitel", "untertitel.srt"), ("mp4", "video.mp4")]:
-        pfad = l.p.pfad(name)
-        if not pfad.exists():
-            continue
-        merkmal = f"{pfad.stat().st_size}:{int(pfad.stat().st_mtime)}"
-        if hoch.get(art) == merkmal:
-            continue
-        l.seller.datei_hochladen(l.id, art, pfad)
-        hoch[art] = merkmal
-        l.p.speichern()
+    _dateien_sichern(l)
     paket = {"titel": titel, "titelGewaehlt": 0, "beschreibung": beschreibung, "kapitel": kap, "tags": tags, "thumbnailText": daumen or None, "warnungen": warnungen}
     l.p.markieren("package", roh=d, paket=paket)
     return {"paket": paket}, warnungen
 
+
+
+# ---- Dateien sichern: Google Drive (direkt) oder Seller-Server ------------------------------------------------------
+
+DATEIEN = [("thumbnail", "thumbnail.png", "image/png"), ("skript", "skript.txt", "text/plain"), ("quellen", "quellen.json", "application/json"), ("untertitel", "untertitel.srt", "application/x-subrip"), ("mp4", "video.mp4", "video/mp4")]
+
+
+def _drive_hochladen(z: dict, pfad, name: str, mime: str) -> tuple[str, str | None]:
+    """Resumable Upload direkt nach Google Drive (Token vom Seller-System, nur drive.file)."""
+    groesse = pfad.stat().st_size
+    kopf = {"Authorization": f"Bearer {z['accessToken']}"}
+    r = requests.post(z["uploadUrl"], json={"name": name, "parents": [z["ordnerId"]]}, headers={**kopf, "X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(groesse)}, timeout=60)
+    if r.status_code >= 400 or not r.headers.get("Location"):
+        raise RuntimeError(f"Google Drive: Upload starten – {_fehlertext(r)}")
+    with pfad.open("rb") as f:
+        r = requests.put(r.headers["Location"], data=f, headers={**kopf, "Content-Type": mime, "Content-Length": str(groesse)}, timeout=7200)
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Google Drive: Upload – {_fehlertext(r)}")
+    j = r.json()
+    return j["id"], j.get("webViewLink")
+
+
+def _dateien_sichern(l: Lauf) -> None:
+    """Ablage „Drive“: alle Dateien direkt nach Drive, die kleinen zusätzlich ins Seller-System (Anzeige).
+    Ablage „Server“: alles ins Seller-System. Bereits Gesichertes (gleiche Größe/Zeit) wird übersprungen."""
+    hoch = l.p.state.setdefault("hochgeladen", {})
+    z = l.seller.drive_zugang(l.id)
+    drive = z.get("ablage") == "drive"
+    for art, name, mime in DATEIEN:
+        pfad = l.p.pfad(name)
+        if not pfad.exists():
+            continue
+        merkmal = f"{pfad.stat().st_size}:{int(pfad.stat().st_mtime)}"
+        if not (drive and art == "mp4") and hoch.get(art) != merkmal:
+            l.seller.datei_hochladen(l.id, art, pfad)
+            hoch[art] = merkmal
+            l.p.speichern()
+        if drive:
+            d = hoch.get(f"drive:{art}") or {}
+            if d.get("merkmal") != merkmal:
+                file_id, link = _drive_hochladen(z, pfad, name, mime)
+                d = {"merkmal": merkmal, "id": file_id, "link": link, "gemeldet": False}
+                hoch[f"drive:{art}"] = d
+                l.p.speichern()
+            if not d.get("gemeldet"):
+                l.seller.drive_melden(l.id, art, d["id"], pfad.stat().st_size, d.get("link"))
+                d["gemeldet"] = True
+                l.p.speichern()
+
+
+def _video_holen(l: Lauf, video) -> None:
+    """Für den YouTube-Upload: Video vom PC, sonst aus Google Drive bzw. dem Seller-System holen."""
+    if video.exists():
+        return
+    drive_id = ((l.a.get("dateien") or {}).get("mp4") or {}).get("drive")
+    if drive_id:
+        z = l.seller.drive_zugang(l.id)
+        if z.get("ablage") != "drive":
+            raise RuntimeError("Video liegt in Google Drive, aber Drive ist nicht mehr verbunden.")
+        r = requests.get(f"{z['apiBasis']}/files/{drive_id}?alt=media&supportsAllDrives=true", headers={"Authorization": f"Bearer {z['accessToken']}"}, stream=True, timeout=7200)
+        if r.status_code != 200:
+            raise RuntimeError(f"Google Drive: Video holen – {_fehlertext(r)}")
+        teil = video.with_name(video.name + ".teil")
+        with teil.open("wb") as f:
+            for block in r.iter_content(1024 * 1024):
+                f.write(block)
+        teil.replace(video)
+        return
+    if not l.seller.datei_holen(l.id, "mp4", video):
+        raise RuntimeError("Video-Datei weder am PC noch im Seller-System gefunden.")
 
 # ---- 7 upload (immer privat) -----------------------------------------------------------------------------------------
 
 
 def upload(l: Lauf) -> tuple[dict, list[str]]:
     video = l.p.pfad("video.mp4")
-    if not video.exists() and not l.seller.datei_holen(l.id, "mp4", video):
-        raise RuntimeError("Video-Datei weder am PC noch im Seller-System gefunden.")
+    _video_holen(l, video)
     thumb = l.p.pfad("thumbnail.png")
     if not thumb.exists():
         l.seller.datei_holen(l.id, "thumbnail", thumb)

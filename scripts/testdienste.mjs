@@ -593,7 +593,8 @@ function drivePfad(f) {
 }
 function driveRoute(req, url, p, b) {
   if (p === "/google-oauth/token") return [200, { access_token: `test-drive-token-${++drive.n}`, token_type: "Bearer", expires_in: 3600 }];
-  if (!/^Bearer test-drive-token-/.test(req.headers.authorization ?? "")) return [401, { error: { code: 401, message: "Invalid Credentials" } }];
+  // Dienstkonto (Rechnungsordner) oder Google-Anmeldung (B36 Video-Ablage, drive.file)
+  if (!/^Bearer (test-drive-token-|yt-access)/.test(req.headers.authorization ?? "")) return [401, { error: { code: 401, message: "Invalid Credentials" } }];
   if (p === "/drive/v3/files" && req.method === "GET") {
     const q = driveQ(url.searchParams.get("q") ?? "");
     const files = [...drive.dateien.values()].filter((f) => (!q.eltern || f.parents.includes(q.eltern)) && (!q.name || f.name === q.name) && (!q.mime || f.mimeType === q.mime) && (!q.ohnePapierkorb || !f.trashed));
@@ -1475,8 +1476,11 @@ const dienstOf = (p) => (p.startsWith("/elevenlabs") ? "ElevenLabs" : p.startsWi
 
 http
   .createServer(async (req, res) => {
-    let body = "";
-    for await (const c of req) body += c;
+    // Rohdaten (Binär-Uploads wie Videos nach Drive) und als Text für die JSON-Nachbauten
+    const teile = [];
+    for await (const c of req) teile.push(c);
+    const roh = Buffer.concat(teile);
+    const body = roh.toString("utf8");
     const url = new URL(req.url, "http://x");
     const send = (code, data, type = "application/json") => {
       res.writeHead(code, { "Content-Type": type, "request-id": "req_test" });
@@ -1696,7 +1700,7 @@ http
       }
       return send(200, { ids });
     }
-    if (url.pathname === "/__drive") return send(200, [...drive.dateien.values()].filter((f) => f.mimeType !== "application/vnd.google-apps.folder").map((f) => ({ id: f.id, name: f.name, pfad: drivePfad(f), trashed: f.trashed })));
+    if (url.pathname === "/__drive") return send(200, [...drive.dateien.values()].filter((f) => f.mimeType !== "application/vnd.google-apps.folder").map((f) => ({ id: f.id, name: f.name, pfad: drivePfad(f), trashed: f.trashed, groesse: f.inhalt ? f.inhalt.length : 0 })));
     if (url.pathname === "/__briefe" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       if (b.zuruecksetzen) briefe.jobs.clear();
@@ -1717,6 +1721,10 @@ http
       return send(200, { ok: true });
     }
     if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube });
+    if (url.pathname.startsWith("/drive-upload/") && driveUploadRoh(req, res, url, body, roh)) {
+      remember(log, { at: new Date().toISOString(), dienst: "Google Drive", method: req.method, path: url.pathname, status: res.statusCode, simuliert: true });
+      return;
+    }
     if (url.pathname.startsWith("/youtube") && youtubeRoh(req, res, url, body)) {
       remember(log, { at: new Date().toISOString(), dienst: "YouTube", method: req.method, path: url.pathname, status: res.statusCode, simuliert: req.method !== "GET" });
       return;
@@ -1955,4 +1963,34 @@ function videoSse(b, antwort) {
   out += ev("message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: u.output_tokens, ...(u.server_tool_use ? { server_tool_use: u.server_tool_use } : {}) } });
   out += ev("message_stop", {});
   return out;
+}
+
+/** B36 Video-Ablage: resumable Upload nach Drive (POST Metadaten → Location, PUT Datei → Datei-ID). */
+var driveSitzungen = new Map();
+function driveUploadRoh(req, res, url, body, roh) {
+  const json = (code, o, kopf = {}) => {
+    res.writeHead(code, { "Content-Type": "application/json", ...kopf });
+    res.end(JSON.stringify(o));
+    return true;
+  };
+  if (!/^Bearer (test-drive-token-|yt-access)/.test(req.headers.authorization ?? "")) return json(401, { error: { code: 401, message: "Invalid Credentials" } });
+  if (url.pathname === "/drive-upload/drive/v3/files" && req.method === "POST" && url.searchParams.get("uploadType") === "resumable") {
+    let meta = {};
+    try {
+      meta = JSON.parse(body || "{}");
+    } catch {}
+    const sid = `s${driveSitzungen.size + 1}-${Date.now().toString(36)}`;
+    driveSitzungen.set(sid, { meta, mime: String(req.headers["x-upload-content-type"] ?? "application/octet-stream") });
+    return json(200, {}, { Location: `${SELF}/drive-upload/sitzung/${sid}` });
+  }
+  const m = /^\/drive-upload\/sitzung\/([\w-]+)$/.exec(url.pathname);
+  if (m && req.method === "PUT") {
+    const sz = driveSitzungen.get(m[1]);
+    if (!sz) return json(404, { error: { code: 404, message: "Upload-Sitzung unbekannt" } });
+    const id = `drv-${++drive.n}`;
+    drive.dateien.set(id, { id, name: String(sz.meta.name ?? "Datei"), mimeType: sz.mime, parents: Array.isArray(sz.meta.parents) ? sz.meta.parents : [], createdTime: new Date().toISOString(), trashed: false, inhalt: roh });
+    driveSitzungen.delete(m[1]);
+    return json(200, { id, webViewLink: `https://drive.google.com/file/d/${id}/view` });
+  }
+  return false;
 }

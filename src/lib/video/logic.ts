@@ -81,16 +81,33 @@ function berlinVersatzMin(d: Date): number {
 
 // ---- Kosten -------------------------------------------------------------------------------------------------------
 
-/** Preise in US-Dollar (so rechnen die Anbieter ab). Leer = unbekannt → Schätzung nennt den fehlenden Preis. */
+/** Preise in US-Dollar (so rechnen die Anbieter ab). Leer = unbekannt → Schätzung nennt den fehlenden Preis.
+ *  Claude leer = Listenpreis des gewählten Modells (siehe VIDEO_MODELLE). */
 export type VideoPreise = { claudeEingabeJeMio: number | null; claudeAusgabeJeMio: number | null; websucheJe1000: number | null; elevenlabsJe1000Zeichen: number | null; bildJeStueck: number | null };
-export const VIDEO_PREISE_STANDARD: VideoPreise = { claudeEingabeJeMio: 2, claudeAusgabeJeMio: 10, websucheJe1000: 10, elevenlabsJe1000Zeichen: null, bildJeStueck: null };
+export const VIDEO_PREISE_STANDARD: VideoPreise = { claudeEingabeJeMio: null, claudeAusgabeJeMio: null, websucheJe1000: 10, elevenlabsJe1000Zeichen: null, bildJeStueck: null };
+
+/** Wählbare Claude-Modelle für Recherche/Skript/Paket mit Listenpreis ($ je Mio. Tokens Eingabe/Ausgabe). */
+export const VIDEO_MODELLE = {
+  "claude-opus-5-5": { name: "Claude Opus 5.5", eingabe: 4, ausgabe: 20, hinweis: "beste Recherche und Texte (empfohlen)" },
+  "claude-sonnet-5-5": { name: "Claude Sonnet 5.5", eingabe: 2, ausgabe: 10, hinweis: "günstiger, etwas schwächer bei Quellen und Stil" },
+} as const;
+export type VideoModell = keyof typeof VIDEO_MODELLE;
+export const VIDEO_MODELL_STANDARD: VideoModell = "claude-opus-5-5";
+export const istVideoModell = (m: unknown): m is VideoModell => typeof m === "string" && m in VIDEO_MODELLE;
+
+/** Claude-Preis: eingetragener Preis, sonst Listenpreis des Modells (unbekanntes Modell → Opus-Preis, lieber zu hoch). */
+export function claudePreis(p: VideoPreise, modell?: string | null): { eingabe: number; ausgabe: number } {
+  const liste = VIDEO_MODELLE[istVideoModell(modell) ? modell : VIDEO_MODELL_STANDARD];
+  return { eingabe: p.claudeEingabeJeMio ?? liste.eingabe, ausgabe: p.claudeAusgabeJeMio ?? liste.ausgabe };
+}
 
 /** Typischer Lauf (10–12 Min.): ~1.600 Wörter ≈ 10.500 Zeichen Sprache, ~26 Szenen/Bilder, ~6 Websuchen, ~60k/15k Tokens. */
 export const TYPISCH = { zeichen: 10_500, bilder: 26, websuchen: 6, eingabeTokens: 60_000, ausgabeTokens: 15_000 };
 
-export function kostenSchaetzung(p: VideoPreise, menge = TYPISCH): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
+export function kostenSchaetzung(p: VideoPreise, menge = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
+  const c = claudePreis(p, modell);
   const pos = [
-    { art: "Claude (Recherche, Skript, Paket)", betrag: p.claudeEingabeJeMio !== null && p.claudeAusgabeJeMio !== null ? (menge.eingabeTokens / 1e6) * p.claudeEingabeJeMio + (menge.ausgabeTokens / 1e6) * p.claudeAusgabeJeMio : null },
+    { art: "Claude (Recherche, Skript, Paket)", betrag: (menge.eingabeTokens / 1e6) * c.eingabe + (menge.ausgabeTokens / 1e6) * c.ausgabe },
     { art: "Websuche", betrag: p.websucheJe1000 !== null ? (menge.websuchen / 1000) * p.websucheJe1000 : null },
     { art: "Sprache (ElevenLabs)", betrag: p.elevenlabsJe1000Zeichen !== null ? (menge.zeichen / 1000) * p.elevenlabsJe1000Zeichen : null },
     { art: "Bilder (gpt-image-1)", betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null },
@@ -99,13 +116,14 @@ export function kostenSchaetzung(p: VideoPreise, menge = TYPISCH): { summe: numb
 }
 
 /** Kosten eines Anbieter-Aufrufs aus der Antwort (Tokens, Websuchen, Zeichen, Bilder). */
-export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number }, am = new Date()): VideoKosten[] {
+export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number; modell?: string | null }, am = new Date()): VideoKosten[] {
   const iso = am.toISOString();
   const r = (x: number) => Math.round(x * 10_000) / 10_000;
   if (anbieter === "anthropic") {
     const out: VideoKosten[] = [];
     const tok = (m.eingabe ?? 0) + (m.ausgabe ?? 0);
-    if (tok) out.push({ anbieter: "Claude", art: "Tokens", menge: tok, einheit: "Tokens", betrag: p.claudeEingabeJeMio !== null && p.claudeAusgabeJeMio !== null ? r(((m.eingabe ?? 0) / 1e6) * p.claudeEingabeJeMio + ((m.ausgabe ?? 0) / 1e6) * p.claudeAusgabeJeMio) : null, am: iso });
+    const c = claudePreis(p, m.modell);
+    if (tok) out.push({ anbieter: "Claude", art: istVideoModell(m.modell) ? `Tokens (${VIDEO_MODELLE[m.modell].name})` : "Tokens", menge: tok, einheit: "Tokens", betrag: r(((m.eingabe ?? 0) / 1e6) * c.eingabe + ((m.ausgabe ?? 0) / 1e6) * c.ausgabe), am: iso });
     if (m.websuchen) out.push({ anbieter: "Claude", art: "Websuche", menge: m.websuchen, einheit: "Suchen", betrag: p.websucheJe1000 !== null ? r((m.websuchen / 1000) * p.websucheJe1000) : null, am: iso });
     return out;
   }

@@ -65,9 +65,9 @@ test.describe("B36 Video-Pipeline", () => {
     mkdirSync(path.dirname(logDatei), { recursive: true });
     writeFileSync(logDatei, log);
     if (T) {
-      const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = $2", [T, KANAL]);
+      const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name in ($2, $3)", [T, KANAL, `Testkanal Drive ${m}`]);
       for (const { id } of ids) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, id), { recursive: true, force: true });
-      await sql("delete from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL]);
+      await sql("delete from video_kanaele where tenant_id = $1 and name in ($2, $3)", [T, KANAL, `Testkanal Drive ${m}`]);
       await sql("delete from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
       await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai'${googleNeu ? ", 'google'" : ""})`, [T]);
       await sql("update tenants set settings = settings - 'video' where id = $1", [T]);
@@ -249,5 +249,80 @@ test.describe("B36 Video-Pipeline", () => {
     expect(j.grund).toContain("Zu wenig freier Speicher");
     // Ohne gültiges Token: nichts
     expect((await fetch(`http://localhost:${E2E_PORT}/api/video-worker/auftrag`, { headers: { Authorization: "Bearer vw_falsch-falsch-falsch-falsch-falsch" } })).status).toBe(401);
+  });
+
+  test("B36.6 Ablage Google Drive: Worker lädt direkt nach Drive, Seller-Server nur kleine Dateien; Upload holt das Video aus Drive; Opus als Standard", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL2 = `Testkanal Drive ${m}`;
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0 }) });
+    await anmelden(page, "inhaber");
+    await page.goto("/marken/video");
+    // Modell: Standard Opus 5.5 (Schätzung nennt es)
+    await expect(page.getByTestId("vd-modell-claude-opus-5-5")).toBeChecked();
+    // Google Drive verbinden (Nachbau-Anmeldung) → Ablage „Google Drive“
+    await page.getByTestId("vd-drive-verbinden").click();
+    await expect(page.getByTestId("vd-meldung")).toContainText("Google Drive verbunden");
+    await expect(page.getByTestId("vd-drive-verbunden")).toBeVisible();
+    await expect(page.getByTestId("vd-ablage-drive")).toBeChecked();
+    // Kanal ohne Freigaben, mit YouTube
+    await page.goto("/marken/video?neu=1");
+    await page.getByTestId("vd-k-name").fill(KANAL2);
+    await page.getByTestId("vd-k-stimme").fill("testStimme02");
+    for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
+    await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
+    await page.getByTestId("vd-yt-verbinden").click();
+    await expect(page.getByTestId("vd-meldung")).toContainText("YouTube verbunden");
+    if (!token) {
+      await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+      await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+      token = (await page.getByTestId("vw-token").innerText()).trim();
+    }
+    await page.getByTestId("vd-thema").fill("Testthema Drive-Ablage für die Abnahme");
+    await expect(page.getByTestId("vd-schaetzung")).toContainText("Claude Opus 5.5");
+    await Promise.all([aktion(page), page.getByTestId("vd-start").click()]);
+    await sql("update video_worker set frei_gb = null where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
+    // Rest aus dem ersten Test (Platz-Schutz-Auftrag) nicht mitlaufen lassen
+    await sql("update video_auftraege set status = 'abgebrochen' where tenant_id = $1 and status = 'wartet' and kanal_id in (select id from video_kanaele where tenant_id = $1 and name = $2)", [T, KANAL]);
+    workerStarten();
+    const auftrag2 = async () => (await sql<Auftrag>("select id, status, schritt, freigabe_offen, schritte, woerter, dauer_sek, skript, quellen, paket, dateien, kosten_ist::float as kosten_ist, kosten_positionen, youtube_id, youtube_status, aufraeumen from video_auftraege where tenant_id = $1 and kanal_id = (select id from video_kanaele where tenant_id = $1 and name = $2) order by created_at desc limit 1", [T, KANAL2]))[0];
+    let a = await auftrag2();
+    for (const bis = Date.now() + 240_000; !(a.status === "fertig" || a.status === "fehler") && Date.now() < bis; a = await auftrag2()) await new Promise((r) => setTimeout(r, 300));
+    expect(a.status, `${a.schritte[a.schritt]?.fehler ?? ""}\n${log.slice(-2000)}`).toBe("fertig");
+    // Claude lief mit Opus 5.5 (Kosten je Modell gebucht)
+    expect(a.kosten_positionen.some((k) => k.anbieter === "Claude" && /Opus 5\.5/.test((k as unknown as { art: string }).art))).toBe(true);
+    // MP4 nur in Drive, kleine Dateien zusätzlich im Seller-System
+    const dateien = a.dateien as unknown as Record<string, { key: string; drive?: string; groesse: number }>;
+    expect(dateien.mp4.drive).toBeTruthy();
+    expect(dateien.mp4.key.startsWith("drive:")).toBe(true);
+    const ordner = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id);
+    expect(existsSync(path.join(ordner, "video.mp4"))).toBe(false);
+    for (const art of ["thumbnail", "skript", "quellen", "untertitel"]) expect(dateien[art].drive, art).toBeTruthy();
+    expect(existsSync(path.join(ordner, "thumbnail.png"))).toBe(true);
+    const drv = (await (await fetch(`${TD}/__drive`)).json()) as { id: string; name: string; pfad: string; groesse: number }[];
+    const mp4 = drv.find((d) => d.id === dateien.mp4.drive)!;
+    expect(mp4.name).toBe("video.mp4");
+    expect(mp4.pfad).toBe(`Seller-System Videos/${KANAL2}/${new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date())} Testthema Drive-Ablage für die Abnahme`);
+    expect(mp4.groesse).toBe(dateien.mp4.groesse);
+    // Seite: Vorschau aus Drive, Link öffnet Drive
+    await page.goto(`/marken/video?kanal=${(await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL2]))[0].id}`);
+    const karte = page.getByTestId("vd-auftrag").first();
+    await expect(karte.getByTestId("vd-drive-link")).toHaveAttribute("href", new RegExp(dateien.mp4.drive!));
+    await expect(karte.getByTestId("vd-drive-player")).toBeVisible();
+    const weiter = await page.request.get(`/api/video/${a.id}/mp4`, { maxRedirects: 0 });
+    expect(weiter.status()).toBe(302);
+    expect(weiter.headers().location).toContain(`/file/d/${dateien.mp4.drive}/`);
+    // Worker räumt auf (Projekt am PC weg) – danach „Privat hochladen“: Video kommt aus Drive, Upload privat
+    const slug = (await sql<{ slug: string }>("select slug from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL2]))[0].slug;
+    await expect.poll(() => existsSync(path.join(arbeit, "projekte", slug, a.id)), { timeout: 20_000 }).toBe(false);
+    await Promise.all([aktion(page), karte.getByTestId("vd-hochladen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Upload gestartet");
+    for (const bis = Date.now() + 120_000; !(a.youtube_id || a.status === "fehler") && Date.now() < bis; a = await auftrag2()) await new Promise((r) => setTimeout(r, 300));
+    expect(a.youtube_status, log.slice(-2000)).toBe("privat");
+    const yt = (await nachbau()).youtube.at(-1)!;
+    expect(yt.sichtbarkeit).toBe("private");
+    expect((yt as unknown as { groesse: number }).groesse).toBe(dateien.mp4.groesse);
+    await workerStoppen();
   });
 });

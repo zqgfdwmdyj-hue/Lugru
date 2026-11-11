@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { VideoFreigabe } from "@/db/tables/video";
 import { requireArea } from "@/lib/auth/session";
-import type { VideoPreise } from "@/lib/video/logic";
+import { istVideoModell, type VideoPreise } from "@/lib/video/logic";
 
 // B36 Seite „Video“: Kanäle, neues Video, Freigaben, „Schritt wiederholen“, „Privat hochladen“, Worker-Token, Preise.
 // Zugangsdaten (Claude, ElevenLabs, OpenAI, Google-App) nur unter Anbindungen – nie hier, nie im Chat.
@@ -194,4 +194,40 @@ export async function preiseAction(fd: FormData) {
     await videoEinstellungenSpeichern(s, { preise, serverReserveGb: zahl("serverReserveGb") ?? 2 });
     return "Preise gespeichert – gelten für neue Schätzungen und Kosten ab jetzt.";
   }, null, "#preise");
+}
+
+/** Claude-Modell und Ablage (Google Drive / Seller-Server) – nur Inhaber. */
+export async function ablageAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { videoEinstellungen, videoEinstellungenSpeichern, VideoFehler } = await import("@/lib/video/service");
+    const modell = txt(fd, "modell", 40);
+    if (!istVideoModell(modell)) throw new VideoFehler("Unbekanntes Modell.");
+    const ablage = fd.get("ablage") === "drive" ? "drive" : "server";
+    const cfg = await videoEinstellungen(s.tenantId);
+    if (ablage === "drive" && !cfg.drive) throw new VideoFehler("Zuerst „Google Drive verbinden“.");
+    await videoEinstellungenSpeichern(s, { modell, ablage });
+    return `Gespeichert: ${modell === "claude-opus-5-5" ? "Claude Opus 5.5" : "Claude Sonnet 5.5"}, Ablage ${ablage === "drive" ? "Google Drive" : "Seller-Server"} – gilt für neue Schritte.`;
+  }, null, "#ablage");
+}
+
+export async function driveTrennenAction() {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { videoDriveSetzen, VideoFehler } = await import("@/lib/video/service");
+    if (s.role !== "owner" || s.readOnly) throw new VideoFehler("Nur der Inhaber.");
+    await videoDriveSetzen(s.tenantId, null);
+    return "Google Drive getrennt – neue Videos landen auf dem Seller-Server. Dateien in Drive bleiben dort.";
+  }, null, "#ablage");
+}
+
+export async function driveEinfuegenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { VideoFehler } = await import("@/lib/video/service");
+    if (s.role !== "owner" || s.readOnly) throw new VideoFehler("Nur der Inhaber verbindet Google Drive.");
+    const { videoDriveEinfuegen } = await import("@/lib/video/youtube-verbinden");
+    await videoDriveEinfuegen(s.tenantId, txt(fd, "adresse", 4000));
+    return "Google Drive verbunden – fertige Videos landen im Ordner „Seller-System Videos“.";
+  }, null, "#ablage");
 }

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, bildTreffer, claudeNutzung, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, slugAus, startAbAus, titelTreffer, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, slugAus, startAbAus, titelTreffer, TYPISCH, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -55,18 +55,27 @@ describe("Kosten (B36.3)", () => {
   it("Schätzung nennt fehlende Preise; mit Preisen alle Posten", () => {
     const s = kostenSchaetzung(VIDEO_PREISE_STANDARD);
     expect(s.fehlend).toEqual(["Sprache (ElevenLabs)", "Bilder (gpt-image-1)"]);
-    const voll = kostenSchaetzung({ ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 });
-    expect(voll.fehlend).toEqual([]);
-    expect(voll.summe).toBeCloseTo(0.12 + 0.15 + 0.06 + 1.89 + 1.04, 2);
+    const p = { ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 };
+    const sonnet = kostenSchaetzung(p, TYPISCH, "claude-sonnet-5-5");
+    expect(sonnet.fehlend).toEqual([]);
+    expect(sonnet.summe).toBeCloseTo(0.12 + 0.15 + 0.06 + 1.89 + 1.04, 2);
+    // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
+    expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
+    expect(kostenSchaetzung(p).summe).toBeCloseTo(0.24 + 0.3 + 0.06 + 1.89 + 1.04, 2);
   });
   it("Nutzung aus JSON- und Stream-Antworten (inkl. Websuchen), Posten und Summe", () => {
     expect(claudeNutzung(JSON.stringify({ usage: { input_tokens: 1000, cache_read_input_tokens: 500, output_tokens: 200, server_tool_use: { web_search_requests: 3 } } }))).toEqual({ eingabe: 1500, ausgabe: 200, websuchen: 3 });
     const sse = ['event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":9000,"output_tokens":1}}}', 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}', 'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":2500,"server_tool_use":{"web_search_requests":4}}}'].join("\n\n");
     const n = claudeNutzung(sse);
     expect(n).toEqual({ eingabe: 9000, ausgabe: 2500, websuchen: 4 });
-    const pos = kostenPosition("anthropic", VIDEO_PREISE_STANDARD, { eingabe: n.eingabe, ausgabe: n.ausgabe, websuchen: n.websuchen });
-    expect(pos.map((p) => p.art)).toEqual(["Tokens", "Websuche"]);
+    const pos = kostenPosition("anthropic", VIDEO_PREISE_STANDARD, { eingabe: n.eingabe, ausgabe: n.ausgabe, websuchen: n.websuchen, modell: "claude-sonnet-5-5" });
+    expect(pos.map((p) => p.art)).toEqual(["Tokens (Claude Sonnet 5.5)", "Websuche"]);
     expect(kostenSumme(pos)).toBeCloseTo(0.018 + 0.025 + 0.04, 4);
+    const opus = kostenPosition("anthropic", VIDEO_PREISE_STANDARD, { eingabe: n.eingabe, ausgabe: n.ausgabe, modell: "claude-opus-5-5" });
+    expect(kostenSumme(opus)).toBeCloseTo(0.036 + 0.05, 4);
+    // eingetragener Preis gilt vor dem Listenpreis; unbekanntes Modell → Opus-Preis (lieber zu hoch)
+    expect(claudePreis({ ...VIDEO_PREISE_STANDARD, claudeEingabeJeMio: 3 }, "claude-sonnet-5-5")).toEqual({ eingabe: 3, ausgabe: 10 });
+    expect(claudePreis(VIDEO_PREISE_STANDARD, "claude-irgendwas")).toEqual({ eingabe: 4, ausgabe: 20 });
     expect(kostenPosition("elevenlabs", VIDEO_PREISE_STANDARD, { zeichen: 1000 })[0].betrag).toBeNull();
     expect(kostenPosition("openai", { ...VIDEO_PREISE_STANDARD, bildJeStueck: 0.04 }, { bilder: 2 })[0].betrag).toBe(0.08);
   });

@@ -1,5 +1,5 @@
 import { appUrl, verifyState } from "@/lib/oauth/state";
-import { youtubeVerbinden } from "@/lib/video/youtube-verbinden";
+import { videoDriveVerbinden, youtubeVerbinden } from "@/lib/video/youtube-verbinden";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,15 @@ export async function GET(request: Request) {
   const u = new URL(request.url);
   const state = verifyState(u.searchParams.get("state"));
   const code = u.searchParams.get("code");
+  if (state?.p === "video-drive") {
+    if (!code) return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent(`Google Drive: ${u.searchParams.get("error_description") ?? u.searchParams.get("error") ?? "Anmeldung abgebrochen"}`)}#ablage`);
+    try {
+      await videoDriveVerbinden(state.t, code, `${base}/api/oauth/youtube/callback`);
+      return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent("Google Drive verbunden – fertige Videos landen im Ordner „Seller-System Videos“.")}#ablage`);
+    } catch (e) {
+      return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent(e instanceof Error ? e.message : String(e))}#ablage`);
+    }
+  }
   const kanalId = state?.p.startsWith("youtube:") ? state.p.slice(8) : null;
   if (!state || !kanalId || !code) return Response.redirect(`${base}/marken/video?meldung=${encodeURIComponent(`YouTube: ${u.searchParams.get("error_description") ?? u.searchParams.get("error") ?? "Anmeldung abgebrochen"}`)}`);
   try {

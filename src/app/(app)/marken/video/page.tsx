@@ -5,9 +5,9 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, SCHRITT_TEXT, SCHRITTE, usd, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, SCHRITT_TEXT, SCHRITTE, TYPISCH, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
-import { abbrechenAction, auftragAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, neuAction, preiseAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, neuAction, preiseAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
 
 export const metadata: Metadata = { title: "Video – Seller-System" };
@@ -66,7 +66,8 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
   const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
   const ws = worker?.stand ?? workerStand(null);
   const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
-  const schaetzung = kostenSchaetzung(cfg.preise);
+  const schaetzung = kostenSchaetzung(cfg.preise, TYPISCH, cfg.modell);
+  const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, TYPISCH, m).summe }));
   const fehlend = [!claude?.apiKey && "Claude (KI)", !eleven?.apiKey && "ElevenLabs", !openai?.apiKey && "OpenAI (Bilder)"].filter(Boolean) as string[];
 
   return (
@@ -119,7 +120,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
               </div>
             </details>
             <div className="row between" style={{ gap: 8, flexWrap: "wrap" }}>
-              <span className="muted" data-testid="vd-schaetzung">Kosten-Schätzung je Video: ca. {usd(schaetzung.summe)}{schaetzung.fehlend.length ? ` (ohne ${schaetzung.fehlend.join(", ")} – Preis unten eintragen)` : ""}</span>
+              <span className="muted" data-testid="vd-schaetzung">Kosten-Schätzung je Video ({VIDEO_MODELLE[cfg.modell].name}): ca. {usd(schaetzung.summe)}{schaetzung.fehlend.length ? ` (ohne ${schaetzung.fehlend.join(", ")} – Preis unten eintragen)` : ""}</span>
               <button className="btn btn-primary" type="submit" disabled={s.readOnly || !kanal.aktiv} data-testid="vd-start">Video starten</button>
             </div>
           </form>
@@ -206,7 +207,14 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                 {/* Freigabe 3: Vorschau-Video + Thumbnail + Titel */}
                 {(offen === "vorschau" || a.status === "fertig") && a.dateien.mp4 && (
                   <div className="stack" style={{ gap: 6 }} data-testid="vd-vorschau">
-                    <video src={`/api/video/${a.id}/mp4`} controls preload="metadata" style={{ width: "100%", maxWidth: 720, borderRadius: 8, background: "#000" }} data-testid="vd-player" />
+                    {a.dateien.mp4.drive && !a.dateien.mp4.key.startsWith(a.id) ? (
+                      <>
+                        <iframe src={`https://drive.google.com/file/d/${encodeURIComponent(a.dateien.mp4.drive)}/preview`} title="Vorschau-Video in Google Drive" allow="autoplay; fullscreen" style={{ width: "100%", maxWidth: 720, aspectRatio: "16 / 9", border: 0, borderRadius: 8, background: "#000" }} data-testid="vd-drive-player" />
+                        <a className="small" href={a.dateien.mp4.link ?? `https://drive.google.com/file/d/${encodeURIComponent(a.dateien.mp4.drive)}/view`} target="_blank" rel="noreferrer noopener" data-testid="vd-drive-link">Video in Google Drive öffnen</a>
+                      </>
+                    ) : (
+                      <video src={`/api/video/${a.id}/mp4`} controls preload="metadata" style={{ width: "100%", maxWidth: 720, borderRadius: 8, background: "#000" }} data-testid="vd-player" />
+                    )}
                     {a.dateien.thumbnail && <img src={`/api/video/${a.id}/thumbnail`} alt="Thumbnail" style={{ width: 320, maxWidth: "100%", borderRadius: 6 }} data-testid="vd-thumbnail" />}
                   </div>
                 )}
@@ -269,7 +277,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                   <summary className="small">Mehr (Dateien, Kostenposten, vidIQ, Abbrechen)</summary>
                   <div className="stack small" style={{ gap: 8, marginTop: 6 }}>
                     <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                      {DATEIEN.filter(([k]) => a.dateien[k]).map(([k, n]) => <a key={k} href={`/api/video/${a.id}/${k}?download=1`} data-testid={`vd-datei-${k}`}>{n} ({Math.max(1, Math.round((a.dateien[k]?.groesse ?? 0) / 1024 / 1024))} MB)</a>)}
+                      {DATEIEN.filter(([k]) => a.dateien[k]).map(([k, n]) => <a key={k} href={`/api/video/${a.id}/${k}?download=1`} data-testid={`vd-datei-${k}`}>{n} ({Math.max(1, Math.round((a.dateien[k]?.groesse ?? 0) / 1024 / 1024))} MB{a.dateien[k]?.drive ? ", auch in Drive" : ""})</a>)}
                       {!DATEIEN.some(([k]) => a.dateien[k]) && <span className="muted">Noch keine Dateien.</span>}
                     </div>
                     {a.kostenPositionen.length > 0 && (
@@ -365,6 +373,45 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         )}
       </section>
 
+      <section className="card card-pad stack" style={{ gap: 8 }} id="ablage" data-testid="vd-ablage">
+        <h2 style={{ margin: 0 }}>Modell und Ablage</h2>
+        <form action={ablageAction} className="stack small" style={{ gap: 8 }}>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+            {(Object.entries(VIDEO_MODELLE) as [keyof typeof VIDEO_MODELLE, (typeof VIDEO_MODELLE)[keyof typeof VIDEO_MODELLE]][]).map(([m, d]) => (
+              <label key={m}><input type="radio" name="modell" value={m} defaultChecked={cfg.modell === m} data-testid={`vd-modell-${m}`} /> {d.name} – {d.hinweis} (ca. {usd(andereModelle.find((x) => x.m === m)?.summe)} je Video)</label>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span>Fertige Videos ablegen in:</span>
+            <label><input type="radio" name="ablage" value="drive" defaultChecked={cfg.ablage === "drive"} disabled={!cfg.drive} data-testid="vd-ablage-drive" /> Google Drive{cfg.drive ? "" : " (erst verbinden)"}</label>
+            <label><input type="radio" name="ablage" value="server" defaultChecked={cfg.ablage === "server"} /> Seller-Server</label>
+            <button className="btn btn-sm" type="submit" disabled={!inhaber} data-testid="vd-ablage-speichern">Speichern</button>
+          </div>
+        </form>
+        <div className="stack small" style={{ gap: 6 }} data-testid="vd-drive">
+          {cfg.drive ? (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span data-testid="vd-drive-verbunden">Google Drive verbunden seit {zeit(cfg.drive.verbundenAm)} – Ordner „Seller-System Videos“ (je Kanal und Video ein Unterordner).</span>
+              {inhaber && <form action={driveTrennenAction}><button className="btn btn-sm" type="submit">Trennen</button></form>}
+            </div>
+          ) : inhaber ? (
+            <>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <a className="btn btn-sm" href="/api/oauth/youtube/start?drive=1" data-testid="vd-drive-verbinden">Google Drive verbinden</a>
+                <a className="btn btn-sm" href="/api/oauth/youtube/start?drive=1&modus=einfuegen">… ohne https (Adresse einfügen)</a>
+              </div>
+              <form action={driveEinfuegenAction} className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                <input className="input" name="adresse" placeholder="http://localhost/?code=…&state=… nach der Anmeldung hier einfügen" style={{ flex: 1, minWidth: 240 }} />
+                <button className="btn btn-sm" type="submit">Übernehmen</button>
+              </form>
+            </>
+          ) : (
+            <span className="muted">Nicht verbunden (verbindet der Inhaber).</span>
+          )}
+          <span className="muted">Mit Drive lädt der Worker MP4, Thumbnail, Skript, Quellen und Untertitel direkt in deinen Drive-Ordner; der Seller-Server behält nur die kleinen Dateien (Thumbnail, Skript, Quellen, Untertitel). Zugriff nur auf selbst angelegte Dateien (drive.file).</span>
+        </div>
+      </section>
+
       <section className="card card-pad stack" style={{ gap: 8 }} id="kosten" data-testid="vd-kosten-monat">
         <h2 style={{ margin: 0 }}>Kosten</h2>
         {kosten.jeKanal.length === 0 ? (
@@ -380,15 +427,16 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         )}
         <p className="small muted" style={{ margin: 0 }}>Gezählt werden die Aufrufe über das Seller-System (Claude-Tokens und Websuchen, ElevenLabs-Zeichen, OpenAI-Bilder) mit den Preisen unten. Die Zeile erscheint auch im Wochenrückblick (Feierabend).</p>
         <form action={preiseAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} id="preise" data-testid="vd-preise">
-          <label className="stack" style={{ gap: 2 }}>Claude Eingabe $/Mio. Tokens<input className="input" name="claudeEingabeJeMio" defaultValue={cfg.preise.claudeEingabeJeMio ?? ""} style={{ width: 90 }} /></label>
-          <label className="stack" style={{ gap: 2 }}>Claude Ausgabe $/Mio.<input className="input" name="claudeAusgabeJeMio" defaultValue={cfg.preise.claudeAusgabeJeMio ?? ""} style={{ width: 90 }} /></label>
+          <label className="stack" style={{ gap: 2 }}>Claude Eingabe $/Mio. Tokens<input className="input" name="claudeEingabeJeMio" defaultValue={cfg.preise.claudeEingabeJeMio ?? ""} placeholder={`Liste ${claudePreis({ ...cfg.preise, claudeEingabeJeMio: null }, cfg.modell).eingabe}`} style={{ width: 90 }} /></label>
+          <label className="stack" style={{ gap: 2 }}>Claude Ausgabe $/Mio.<input className="input" name="claudeAusgabeJeMio" defaultValue={cfg.preise.claudeAusgabeJeMio ?? ""} placeholder={`Liste ${claudePreis({ ...cfg.preise, claudeAusgabeJeMio: null }, cfg.modell).ausgabe}`} style={{ width: 90 }} /></label>
           <label className="stack" style={{ gap: 2 }}>Websuche $/1000<input className="input" name="websucheJe1000" defaultValue={cfg.preise.websucheJe1000 ?? ""} style={{ width: 80 }} /></label>
           <label className="stack" style={{ gap: 2 }}>ElevenLabs $/1000 Zeichen<input className="input" name="elevenlabsJe1000Zeichen" defaultValue={cfg.preise.elevenlabsJe1000Zeichen ?? ""} style={{ width: 90 }} data-testid="vd-preis-eleven" /></label>
           <label className="stack" style={{ gap: 2 }}>OpenAI $/Bild<input className="input" name="bildJeStueck" defaultValue={cfg.preise.bildJeStueck ?? ""} style={{ width: 80 }} data-testid="vd-preis-bild" /></label>
           <label className="stack" style={{ gap: 2 }}>Reserve Server GB<input className="input" name="serverReserveGb" defaultValue={cfg.serverReserveGb} style={{ width: 70 }} /></label>
           <button className="btn btn-sm" type="submit" disabled={!inhaber}>Preise speichern</button>
         </form>
-        <p className="small muted" style={{ margin: 0 }} data-testid="vd-server-platz">Seller-Server: {serverFrei === null ? "freier Platz unbekannt" : `${serverFrei.toLocaleString("de-DE")} GB frei`} – er speichert nur fertige Dateien (ca. 0,5–1 GB je Video). Ist zu wenig frei, lehnt er den Upload ab und der Auftrag zeigt den Fehler.</p>
+        <p className="small muted" style={{ margin: 0 }}>Claude-Preise leer lassen = Listenpreis des gewählten Modells.</p>
+        <p className="small muted" style={{ margin: 0 }} data-testid="vd-server-platz">Seller-Server: {serverFrei === null ? "freier Platz unbekannt" : `${serverFrei.toLocaleString("de-DE")} GB frei`} – {cfg.ablage === "drive" ? "mit Ablage Google Drive kommen nur die kleinen Dateien hierher." : "er speichert die fertigen Dateien (ca. 0,5–1 GB je Video). Ist zu wenig frei, lehnt er den Upload ab und der Auftrag zeigt den Fehler."}</p>
       </section>
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="worker" data-testid="vd-worker">

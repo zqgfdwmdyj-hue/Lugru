@@ -52,6 +52,8 @@ export const E2E_ENV: Record<string, string> = {
   YOUTUBE_TOKEN_URL: `${TD}/youtube-oauth/token`,
   YOUTUBE_API_BASE_URL: `${TD}/youtube-api`,
   YOUTUBE_UPLOAD_BASE_URL: `${TD}/youtube-upload`,
+  // B36 Ablage Google Drive (resumable Upload) gegen den Drive-Nachbau
+  DRIVE_UPLOAD_BASE_URL: `${TD}/drive-upload/drive/v3`,
   DISCORD_API_BASE_URL: `${TD}/discord-api`,
   TESLA_BASE_URL: `${TD}/tesla`,
   TWILIO_BASE_URL: `${TD}/twilio`,

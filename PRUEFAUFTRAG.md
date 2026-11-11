@@ -1664,7 +1664,8 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | B36.5 Jeder Schritt einzeln startbar/wiederaufnehmbar, bezahlte Dateien nie doppelt | ❌ | ✅ `state.json` je Projekt; Sprache/Bilder mit Inhalts-Hash (nur Geändertes kostet), atomar geschrieben; Schritt wiederholen setzt nur diesen und spätere zurück | `udd/projekt.py`, `ausfuehren()` |
 | B36.6 Platz am PC (mind. 5 GB empfohlen, < 3 GB kein Lauf, Meldung im System) | ❌ | ✅ Worker meldet freien Platz; < 3 GB: Worker startet nichts und das Seller-System gibt keinen Auftrag heraus („Zu wenig freier Speicher …“); < 5 GB Warnung | `naechsterAuftrag`, `frei_gb`, Seite „GB frei am PC“ |
 | B36.6 Zwischenclips nach dem Render löschen, Projekt nach Bestätigung/14 Tagen | ❌ | ✅ siehe oben | `zwischendateien_loeschen`, `aufraeumen` |
-| B36.6 Seller-Server nimmt nur fertige Dateien; vorher Platz schaffen oder Google Drive | ❌ | 🟡 nur fertige Dateien, Platz-Prüfung mit Reserve (507 + Fehlertext am Auftrag); **Ablage in Google Drive nicht gebaut** (offen, siehe To-do) | `dateiSpeichern`, `serverFreiGb` |
+| B36.6 Seller-Server nimmt nur fertige Dateien; vorher Platz schaffen oder Google Drive | ❌ | ✅ Ablage wählbar (Entscheidung 11.11.: Drive). **Google Drive**: einmal „Google Drive verbinden“ (Bereich drive.file, Refresh-Token verschlüsselt); der Worker lädt MP4, Thumbnail, Skript, Quellen und Untertitel per resumable Upload direkt nach „Seller-System Videos/<Kanal>/<Datum Thema>“ – kein Video läuft über den Seller-Server, dort nur die kleinen Dateien; Vorschau und Download öffnen Drive; der YouTube-Upload holt das Video bei Bedarf aus Drive. **Seller-Server**: wie bisher mit Platz-Prüfung und Reserve | `driveZugangFuerWorker`, `driveDateiMerken`, `udd/schritte.py › _dateien_sichern`, `_video_holen` |
+| Claude-Modell (Rückfrage 11.11.) | – | ✅ wählbar auf der Seite (Modell und Ablage); Standard **Opus 5.5**, Sonnet 5.5 als günstigere Wahl; Kosten je Aufruf nach Listenpreis des Modells (oder eingetragenem Preis), Schätzung nennt das Modell | `VIDEO_MODELLE`, `claudePreis`, `Lauf.modell` |
 | B36.6 Nur ein Render gleichzeitig (Warteschlange) | ❌ | ✅ ein Auftrag je Mandant gleichzeitig, Rest wartet der Reihe nach | `naechsterAuftrag` |
 | B36.6 Filter für Bildideen und Titel, Ersatzbild bzw. Rückfrage | ❌ | ✅ gemeinsame Wortliste `filter.json` (Seller + Worker); Bildidee mit Treffer → ruhiges Ersatzmotiv (streng zusätzlich Bett/Kuss/Berührung); Titel mit Treffer → neuer Versuch, sonst Warnung bei der Vorschau-Freigabe; Anbieter lehnt ab → Ersatzmotiv, sonst lokales Ersatzbild | `filter.json`, `bild_treffer`, `titelTreffer` |
 | B36.8 vidIQ Stufe 1: Felder „Keywords/Ideen“ und „Titelvorschläge“, Claude trägt ein | ❌ | ✅ Felder beim Anlegen und je Auftrag; Werkzeug `video_vidiq_eintragen`; Seller-System und Worker rufen vidIQ nie auf | `vidiqEintragen`, `tools/video.ts` |
@@ -1681,23 +1682,27 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | 6. Kosten pro Video in der Liste | ✅ automatisch: Ist > 0 mit Posten Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick |
 | 7. Worker auf dem Arbeits-PC; Seller-System unbelastet; Worker aus → „wartet“ + Warnung | ✅ automatisch: vor dem Start „wartet“ + Warnung; nach 11 Min. ohne Meldung „wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Render nur im Worker (kein ffmpeg im Seller-System); < 3 GB frei → kein Auftrag |
 | 8. OpenAI gpt-image-1 erzeugt die Bilder; bei Ablehnung greift ein Ersatzbild | ✅ automatisch: alle Bilder gpt-image-1/1536×1024/medium; abgelehnte Bildidee → Ersatzmotiv; „Bett“ (Sicherheitsstufe streng) erreicht den Anbieter gar nicht |
+| B36.6 Ablage Google Drive (Nachtrag 11.11.) | ✅ automatisch (zweiter Test): Drive verbinden (Nachbau), Kanal ohne Freigaben → MP4 nur in Drive im Ordner „Seller-System Videos/<Kanal>/<Datum Thema>“ (gleiche Größe), kleine Dateien zusätzlich im Seller-System, kein MP4 auf dem Server; Vorschau/Download leiten nach Drive; nach dem Aufräumen am PC holt „Privat hochladen“ das Video aus Drive → privat auf YouTube; Claude lief mit Opus 5.5 |
 
 Unit-Tests: `tests/b36-video.test.ts` (neu, 11 Tests: Schrittfolge/Freigaben, Worker-Stand, „heute Nacht“, Kosten aus
-JSON und Stream, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (12 Tests: Filter, state.json, Aufräumen, Untertitel,
+JSON und Stream je Modell, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (12 Tests: Filter, state.json, Aufräumen, Untertitel,
 Kapitel, Skript-Prüfung, Bilder, ffmpeg-Clip), `tests/nav.test.ts` (89 Einträge). Migration: `0149_b36_video`.
 Testdienste: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG, Ablehnung), YouTube (Anmeldung,
 resumable Upload, Sichtbarkeit, Thumbnail), Claude-Antworten für Recherche/Skript/Paket (auch als Stream). GitHub-Prüfung
 installiert dafür Python 3.12 + ffmpeg und führt die Worker-Tests aus.
 
-**Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand)
+**Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand,
+Claude-Modell, Ablage)
 und `video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage). `notifications/tools/list_changed` nötig – geht
 beim Verbinden raus.
 
-**Offene Fragen an Ludwig:** (1) Zeitlux: Themenbereich, Stimme (ElevenLabs-Voice-ID), Bildstil – und Schreibweise.
-(2) vidIQ: reichen 170 Credits/Monat, gibt es eine API für den Tarif (sonst bleibt es bei Stufe 1)? (3) Docker Desktop
-auf dem Arbeits-PC vorhanden, oder lieber Python direkt? (4) Fertige Videos in Google Drive statt auf dem Seller-Server
-ablegen (dann baue ich die Ablage nach)? (5) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
-Kostenanzeige). (6) Claude-Modell für die Videos: Standard ist Sonnet 5.5 (günstiger); auf Wunsch Opus.
+**Geklärt (11.11.):** Ablage in **Google Drive** (gebaut, s. o.); Claude-Modell **Opus 5.5** (Standard, umschaltbar);
+Zeitlux-Kanal auf YouTube ist Ludwig bekannt – angelegt wird er auf der Seite Video (nicht im Code).
+
+**Offene Fragen an Ludwig:** (1) Zeitlux: Themenbereich, Stimme (ElevenLabs-Voice-ID), Bildstil. (2) vidIQ: reichen
+170 Credits/Monat, gibt es eine API für den Tarif (sonst bleibt es bei Stufe 1)? (3) Docker Desktop auf dem Arbeits-PC
+vorhanden, oder lieber Python direkt? (4) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
+Kostenanzeige).
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
@@ -2713,10 +2718,12 @@ nie in Chats oder Mails.
      der Seller-Server speichert je Video ca. 0,5–1 GB; die Seite Video zeigt den freien Platz.
 169. **Zugänge über Anbindungen** (nie im Chat): Claude (vorhanden), ElevenLabs-API-Key, OpenAI-API-Key (API-Konto mit
      Guthaben, getrennt vom ChatGPT-Abo, Monatslimit setzen); Google-App: „YouTube Data API v3“ aktivieren, Bereiche
-     youtube.upload + youtube.readonly, Weiterleitungs-URI `<Adresse>/api/oauth/youtube/callback`.
+     youtube.upload + youtube.readonly + drive.file, „Google Drive API“ aktivieren, Weiterleitungs-URI
+     `<Adresse>/api/oauth/youtube/callback` (gilt für YouTube und Drive).
 170. **Kanäle anlegen** unter Marken & Content → Video (Unter der Decke: Sicherheitsstufe streng; Zeitlux nach Klärung),
      Stimme (ElevenLabs-Voice-ID), Bildstil, Freigaben; dann je Kanal „Mit YouTube verbinden“.
-171. **Preise eintragen** auf der Seite Video unter „Kosten“ (ElevenLabs je 1.000 Zeichen, OpenAI je Bild).
+171. **Preise eintragen** auf der Seite Video unter „Kosten“ (ElevenLabs je 1.000 Zeichen, OpenAI je Bild). Unter
+     „Modell und Ablage“ einmal **„Google Drive verbinden“** – danach landen die Videos im Ordner „Seller-System Videos“.
 172. **Worker am Arbeits-PC einrichten**: auf der Seite Video „Worker anlegen“ (Token nur einmal sichtbar), dann
      `unter-der-decke/README.md` (Docker Desktop oder Python 3.12 + ffmpeg, Autostart). Mind. 5 GB frei halten.
 173. **Musik** (lizenzfrei bzw. mit YouTube-Lizenz) in den Musikordner des Workers legen und den Dateinamen im Kanal

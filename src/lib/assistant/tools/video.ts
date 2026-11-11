@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import { anzeigeStatus, FREIGABE_TEXT, fortschrittProzent, SCHRITT_TEXT } from "@/lib/video/logic";
-import { auftraege, auftragLesen, kanaele, kostenUebersicht, vidiqEintragen, workerZuletzt } from "@/lib/video/service";
+import { anzeigeStatus, FREIGABE_TEXT, fortschrittProzent, SCHRITT_TEXT, VIDEO_MODELLE } from "@/lib/video/logic";
+import { auftraege, auftragLesen, kanaele, kostenUebersicht, videoEinstellungen, vidiqEintragen, workerZuletzt } from "@/lib/video/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, uuid } from "./common";
 
@@ -14,7 +14,7 @@ export const videoAuftraegeTool = defineTool({
   name: "video_auftraege",
   title: "Video: Aufträge",
   description:
-    "Video-Aufträge der YouTube-Pipeline (neueste zuerst): Kanal, Thema, Status (wartet/läuft/Freigabe/fertig/Fehler; „wartet (Worker aus)“, wenn der Arbeits-PC sich seit 10 Min. nicht gemeldet hat), aktueller Schritt, offene Freigabe, Fortschritt in %, Wörter, Länge, Kosten (Schätzung/Ist in $), YouTube-Status (immer privat), dazu Worker-Stand und Kosten je Kanal im Monat. Filter: kanal (Name), status. Freigeben, „Schritt wiederholen“ und „Privat hochladen“ nur auf der Seite Video.",
+    "Video-Aufträge der YouTube-Pipeline (neueste zuerst): Kanal, Thema, Status (wartet/läuft/Freigabe/fertig/Fehler; „wartet (Worker aus)“, wenn der Arbeits-PC sich seit 10 Min. nicht gemeldet hat), aktueller Schritt, offene Freigabe, Fortschritt in %, Wörter, Länge, Kosten (Schätzung/Ist in $), YouTube-Status (immer privat), dazu Worker-Stand, Claude-Modell, Ablage (Google Drive/Seller-Server) und Kosten je Kanal im Monat. Filter: kanal (Name), status. Freigeben, „Schritt wiederholen“ und „Privat hochladen“ nur auf der Seite Video.",
   area: "marken",
   write: false,
   quelle: QUELLE,
@@ -25,11 +25,12 @@ export const videoAuftraegeTool = defineTool({
   }),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;
-    const [liste, kosten, worker, kl] = await Promise.all([auftraege(t, null, 100), kostenUebersicht(t), workerZuletzt(t), kanaele(t)]);
+    const [liste, kosten, worker, kl, cfg] = await Promise.all([auftraege(t, null, 100), kostenUebersicht(t), workerZuletzt(t), kanaele(t), videoEinstellungen(t)]);
     const online = worker?.stand.online ?? false;
     const gefiltert = liste.filter(({ a, kanal }) => (!i.kanal || kanal.toLowerCase().includes(i.kanal.toLowerCase())) && (!i.status || a.status === i.status)).slice(0, i.limit);
     return json({
       worker: worker ? { text: worker.stand.text, online, frei_gb: worker.freiGb } : { text: "Noch kein Worker angelegt" },
+      einstellungen: { claude_modell: VIDEO_MODELLE[cfg.modell].name, ablage: cfg.ablage === "drive" ? "Google Drive (Ordner „Seller-System Videos“)" : "Seller-Server" },
       kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken })),
       auftraege: gefiltert.map(({ a, kanal }) => ({
         id: a.id,
