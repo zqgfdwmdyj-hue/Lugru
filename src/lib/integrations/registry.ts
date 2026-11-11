@@ -126,8 +126,8 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
   {
     provider: "google",
-    name: "Google (Gmail-Postfächer)",
-    purpose: "Nur nötig für „Mit Google anmelden“ – einfacher geht es mit App-Passwort unter Posteingang → Postfach verbinden.",
+    name: "Google (Gmail-Postfächer, YouTube)",
+    purpose: "Nur nötig für „Mit Google anmelden“ (Postfächer – einfacher geht es mit App-Passwort unter Posteingang → Postfach verbinden) und für den privaten YouTube-Upload der Video-Pipeline.",
     fields: [
       { key: "clientId", label: "OAuth Client-ID" },
       { key: "clientSecret", label: "OAuth Client-Secret", secret: true },
@@ -137,6 +137,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "OAuth-Zustimmungsbildschirm: bei Google Workspace Typ „Intern“ (dann keine Prüfung nötig), sonst „Extern“ mit dir als Testnutzer und danach „In Produktion“ (sonst laufen Logins nach 7 Tagen ab).",
       "Anmeldedaten → OAuth-Client-ID (Webanwendung) → autorisierte Weiterleitungs-URI: http://localhost (und, falls die App über https erreichbar ist, zusätzlich <deine Adresse>/api/oauth/google/callback).",
       "Client-ID und -Secret hier eintragen, dann unter Posteingang → Postfach verbinden → „Mit Google anmelden“ (Link einfügen wie bei eBay).",
+      "YouTube (Video-Pipeline): im selben Projekt „YouTube Data API v3“ aktivieren, beim Zustimmungsbildschirm die Bereiche youtube.upload und youtube.readonly hinzufügen und die Weiterleitungs-URI <deine Adresse>/api/oauth/youtube/callback eintragen. Dann unter Marken & Content → Video beim Kanal „Mit YouTube verbinden“. Hochgeladen wird immer privat.",
     ],
   },
   {
@@ -577,6 +578,28 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "twilio.com → Konto (Region Irland/EU wählen) → Nummer mit SMS kaufen → Account SID, Auth-Token und Nummer hier eintragen.",
       "Bei der Nummer unter „Messaging → A message comes in“ den Webhook https://<deine Adresse>/api/sms/antwort (POST) eintragen.",
       "Deine Handynummer und das Tageslimit stehen unter Einstellungen → Handy & Tesla. Keine Kunden- oder Privatdaten in SMS.",
+    ],
+  },
+  {
+    provider: "elevenlabs",
+    name: "ElevenLabs (Sprache für Videos)",
+    purpose: "Sprecherstimme je Szene für die Video-Pipeline (Marken & Content → Video). Der Worker am Arbeits-PC ruft ElevenLabs über das Seller-System auf – der Schlüssel bleibt hier.",
+    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "sk_…" }],
+    setup: [
+      "elevenlabs.io → Profil → API Keys → neuen Schlüssel anlegen (Berechtigung „Text to Speech“ genügt) und hier eintragen.",
+      "Die Stimme (Voice-ID) steht im Kanalprofil unter Marken & Content → Video.",
+      "Den Preis je 1000 Zeichen deines Tarifs auf der Seite Video unter „Kosten“ eintragen – dann stimmen die Kosten je Video.",
+    ],
+  },
+  {
+    provider: "openai",
+    name: "OpenAI (Bilder für Videos)",
+    purpose: "Symbolbilder je Szene für die Video-Pipeline (gpt-image-1, 1536×1024, Qualität „medium“). Getrennt vom ChatGPT-Abo: API-Konto mit Guthaben nötig.",
+    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-…" }],
+    setup: [
+      "platform.openai.com → Billing: Guthaben aufladen (getrennt vom ChatGPT-Abo) → API keys → neuen Schlüssel anlegen und hier eintragen.",
+      "Unter Settings → Limits ein Monatslimit setzen. Den Preis je Bild auf der Seite Video unter „Kosten“ eintragen.",
+      "Lehnt OpenAI ein Bild ab, nimmt der Worker ein ruhiges Ersatzmotiv.",
     ],
   },
   {

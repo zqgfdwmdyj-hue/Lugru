@@ -1,0 +1,2 @@
+Hier MP3-Dateien für die Hintergrundmusik ablegen (nur lizenzfreie Musik oder Musik mit Lizenz für YouTube).
+Im Seller-System beim Kanal unter „Musik“ den Dateinamen eintragen, z. B. ruhig-01.mp3. Leer = ohne Musik.

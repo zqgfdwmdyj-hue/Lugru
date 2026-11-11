@@ -1,0 +1,6 @@
+arbeit/
+__pycache__/
+*.pyc
+.env
+musik/*
+!musik/LIESMICH.txt

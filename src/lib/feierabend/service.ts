@@ -100,7 +100,9 @@ export async function wochenrueckblick(session: Session, heute: string, mitPriva
     const wer = r.assigneeId ? (namen.get(r.assigneeId) ?? "andere Person") : r.extern ? `${r.extern} (extern)` : session.role === "owner" ? (namen.get(session.userId) ?? "ich") : "ohne Zuständigen";
     je.set(wer, (je.get(wer) ?? 0) + 1);
   }
-  const geschaeft = { zeitraum: { von, bis: heute }, erledigtJePerson: [...je.entries()].map(([person, anzahl]) => ({ person, anzahl })).sort((a, b) => b.anzahl - a.anzahl), erledigtGesamt: rows.length };
+  // B36: Video-Pipeline (Aufträge, Kosten Monat) – nur, wenn etwas los war.
+  const video = await import("@/lib/video/service").then((m) => m.videoWochenZeile(t)).catch(() => null);
+  const geschaeft = { zeitraum: { von, bis: heute }, erledigtJePerson: [...je.entries()].map(([person, anzahl]) => ({ person, anzahl })).sort((a, b) => b.anzahl - a.anzahl), erledigtGesamt: rows.length, video };
   if (!mitPrivat || !session.privateAccess || session.privateScope !== "voll") return { geschaeft, privat: null };
   const [pc, ps] = await Promise.all([privateCalendar(session, von, heute, heute), privateSettings(t)]);
   const ich = myPartner(ps, session);

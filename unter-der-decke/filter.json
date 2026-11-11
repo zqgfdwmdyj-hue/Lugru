@@ -1,0 +1,7 @@
+{
+  "_hinweis": "B36.6 Filter für Bildideen und Titel – gemeinsam für Worker (Python) und Seller-System (TypeScript). Wortanfänge, Kleinschreibung, Umlaute als ae/oe/ue/ss.",
+  "titel": ["porno", "porn", "xxx", "nackt", "nude", "naked", "nudes", "orgasm", "penis", "vagina", "titten", "brueste", "ficken", "fick", "blowjob", "masturb", "onlyfans", "escort"],
+  "bild": ["sex", "nackt", "nackte", "nacktheit", "nude", "naked", "erotik", "erotisch", "erotic", "sexy", "porno", "porn", "dessous", "unterwaesche", "lingerie", "bikini", "oben ohne", "topless", "intim", "orgasm", "penis", "vagina", "brust", "brueste", "busen"],
+  "bild_streng": ["kuss", "kuess", "bett", "schlafzimmer", "bettdecke", "umarm", "liegen", "streichel", "beruehr", "zaertlich", "romantisch", "dusche", "bad "],
+  "ersatz_bildidee": "Symbolbild: zwei leere Kaffeetassen auf einem Holztisch im warmen Morgenlicht, ruhige Stimmung, keine Personen"
+}

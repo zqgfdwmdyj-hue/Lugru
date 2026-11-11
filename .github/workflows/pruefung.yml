@@ -31,6 +31,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # B36 Video-Worker (Python 3.12 + ffmpeg): eigene Unit-Tests und für die Ablaufprüfung der Video-Pipeline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: ffmpeg und Worker-Pakete
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          python -m pip install -r unter-der-decke/requirements.txt pytest
+      - name: Worker-Tests (Python)
+        run: python -m pytest unter-der-decke/tests -q
       - name: Typprüfung
         run: npx tsc --noEmit
       - name: Unit-Tests

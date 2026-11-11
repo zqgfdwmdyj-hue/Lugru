@@ -1621,6 +1621,84 @@ Google-Places-Speicherregeln, LUCID)? (4) Welcher Briefanbieter, welcher Preis? 
 ausschließen (Vorschlag ja – unter Schutzregeln eintragen)? (6) Lebensmittel/Wein/Kosmetik für AdelPrep überhaupt
 anbieten?
 
+## B36 Video-Pipeline (YouTube) (11.11.) – nur als Pull Request
+
+Umsetzung auf dem Branch `b36-video-pipeline` mit Pull Request – kein Push nach main. Das Seller-System steuert nur
+(Kanäle, Aufträge, Freigaben, Kosten, Dateien); Recherche, Skript, Sprache, Bilder, Render und Paket macht der **Worker
+`unter-der-decke/`** (Python 3.12 + ffmpeg, Dockerfile) auf dem **Arbeits-PC**. Er holt sich die Aufträge selbst ab
+(Token `vw_…`, alle ~30 s) – keine offenen Ports am PC. Claude, ElevenLabs und OpenAI ruft der Worker über die
+**Anbieter-Brücke** des Seller-Systems auf: die Schlüssel bleiben verschlüsselt unter Anbindungen, der PC kennt nur sein
+Token, und die Kosten werden je Auftrag gezählt. Der YouTube-Zugang (Refresh-Token) bleibt verschlüsselt im
+Seller-System; der Worker bekommt nur ein kurzlebiges Upload-Token. **Upload immer privat** (fest im Code, im System
+nicht änderbar; das Seller-System prüft die Sichtbarkeit danach). Keine echten Kanalnamen, Handles oder Stimmen im Code –
+Kanäle legt Ludwig auf der Seite an.
+
+**Widerspruch im Auftrag (umgesetzt nach der Entscheidung vom 11.11.):** B36.2 nennt noch „Worker bietet eine
+HTTP-Schnittstelle, Seller-System ruft sie auf“ und die Umsetzungshinweise „Worker-Container in Coolify, Limit 1 CPU/
+1,2 GB“. Beides gehört zum alten Plan (Worker auf dem Server). Gebaut ist der Abhol-Weg (Worker fragt an, keine offenen
+Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setzt man dort mit `--cpus/--memory`
+(README).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B36.2 Aufteilung: Seller-System nur Steuerung, kein ffmpeg/Python im Seller-Container | ❌ | ✅ Seller-System: Tabellen, Seite, Schnittstelle, Brücke; kein ffmpeg/Python. Worker: eigenes Projekt mit Dockerfile (python:3.12-slim + ffmpeg) | `src/lib/video/*`, `unter-der-decke/Dockerfile` |
+| B36.2 Worker auf dem Arbeits-PC, holt Aufträge selbst (Token, ~30 s), keine Ports | ❌ | ✅ `worker.py` fragt `GET /api/video-worker/auftrag` ab, Lebenszeichen alle 30 s (auch während des Renders), Token als Bearer; Caddy-Freigabe für `/api/video-worker/*` | `worker.py`, `src/app/api/video-worker/*`, `deploy/claude-oeffentlich.sh` |
+| B36.2 Fertige Dateien ins Seller-System, danach Arbeitsdateien löschen nach Bestätigung | ❌ | ✅ MP4, Thumbnail, Skript, Quellen, Untertitel als Strom hochgeladen (Platz-Prüfung, Reserve); Ordner am PC wird gelöscht, sobald das Seller-System ihn freigibt (fertig/abgebrochen), spätestens nach 14 Tagen | `dateiSpeichern`, `workerMelden`, `udd/projekt.py › aufraeumen` |
+| B36.2 PC aus → „wartet“, „Worker zuletzt gesehen: …“, Warnung nach 10 Min. | ❌ | ✅ Hinweis oben auf der Seite; Aufträge eines schweigenden Workers zeigen „wartet (Worker aus)“; nach 10 Min. darf ein anderer Worker übernehmen | `workerStand`, `anzeigeStatus`, `naechsterAuftrag` |
+| B36.2 Später auf einen Server: nur Token + Startort | ❌ | ✅ Worker braucht keine eingehende Verbindung; Token je Gerät, deaktivierbar | README „Später auf einen Server umziehen“ |
+| B36.3 Seite „Video“ mobil: Kanalauswahl, „Neues Video“ mit Zeitpunkt („heute Nacht“) | ❌ | ✅ Marken & Content → Video: Kanal-Reiter, Thema, Start sofort/heute Nacht (23 Uhr)/Zeitpunkt, vidIQ-Felder, Kosten-Schätzung | `src/app/(app)/marken/video` |
+| B36.3 Auftragsliste: Status je Schritt, Fortschritt je Szene, Fehler mit „Schritt wiederholen“ | ❌ | ✅ Schritt-Chips (research … upload) mit „n/m“ je Szene, Fortschrittsbalken, Fehlertext + „Schritt wiederholen“ (bezahlte Dateien werden weiterverwendet), Seite lädt sich während des Laufs neu | `SchrittChips`, `schrittWiederholen` |
+| B36.3 Freigaben (Gliederung+Quellen, Skript, Vorschau+Thumbnail+Titel), je Kanal einstellbar | ❌ | ✅ drei Freigabe-Punkte mit Anmerkung, „Neu recherchieren“/„Skript neu schreiben“, Titelwahl bei der Vorschau; je Kanal an/aus | `freigeben`, `neuMachen`, `nachSchritt` |
+| B36.3 Quellenliste (URL, Studie, Jahr), keine Aussage ohne Quelle | ❌ | ✅ Quellen mit ID, Jahr, Art, Link; Warnung, wenn eine Quelle nicht aus den Suchtreffern stammt; Skript-Prüfung: jede Punkt-Szene mit Quelle, nur IDs aus der Liste (sonst ein zweiter Versuch, danach Hinweis) | `udd/schritte.py › skript_pruefen` |
+| B36.3 Kosten je Video (Schätzung vorab, Ist danach), Summe je Monat/Kanal, Wochenbericht | ❌ | ✅ Schätzung beim Anlegen, Ist aus der Brücke (Claude-Tokens + Websuchen aus der Antwort bzw. dem Stream, ElevenLabs-Zeichen, Bilder), Posten je Anbieter, Monatssumme je Kanal, Zeile im Wochenrückblick (Feierabend); Preise auf der Seite einstellbar | `anbieter.ts`, `kostenUebersicht`, `videoWochenZeile` |
+| B36.3 „Privat hochladen“ je Video, öffentlich nicht einstellbar | ❌ | ✅ Schalter je Auftrag (Standard aus); Sichtbarkeit fest `private`; Seller-System prüft nach dem Upload „private“ – sonst Fehler mit Hinweis | `hochladenSchalten`, `PRIVAT`, `youtubeBestaetigen` |
+| B36.3 Zugangsdaten nur über das sichere Formular | ❌ | ✅ Anbindungen „ElevenLabs“ und „OpenAI (Bilder)“ neu, Claude wie bisher, Google-App mit YouTube-Bereichen; YouTube je Kanal per Anmeldung (Refresh-Token verschlüsselt); Worker-Token nur einmal angezeigt (nur Prüfsumme gespeichert) | `registry.ts`, `api/oauth/youtube/*`, `workerAnlegen` |
+| B36.4 Kanalprofil (Name, Handle, Sprache, Themenbereich, Stimme, Bildstil, Sicherheitsstufe, Musik, YouTube) | ❌ | ✅ im Seller-System editierbar; der Worker legt je Kanal `kanal.json` ab (zum Nachsehen) | Tabelle `video_kanaele`, `Lauf.__init__` |
+| B36.5 research: Gliederung + Quellen (Websuche) | ❌ | ✅ Claude mit Websuche (`web_search_20260209`), „pause_turn“ wird fortgesetzt; vidIQ-Keywords und Anmerkung fließen ein | `research()` |
+| B36.5 script: Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA, 1.500–1.700 Wörter, JSON je Szene | ❌ | ✅ strukturierte Ausgabe (JSON-Schema) je Szene {abschnitt, text, bildidee, einblendung, quelle_ids}; Prüfung Wörter/Punkte/Quellen | `script()`, `SKRIPT_SCHEMA` |
+| B36.5 voice: ElevenLabs je Szene | ❌ | ✅ je Szene über die Brücke (Stimme aus dem Kanalprofil, eleven_multilingual_v2, MP3) | `voice()` |
+| B36.5 visuals: Symbolbilder, OpenAI gpt-image-1, 1536×1024, medium, Anbieter austauschbar | ❌ | ✅ wie gefordert; Anbieter-Aufruf an einer Stelle (`_bild_holen`) | `visuals()` |
+| B36.5 render: ffmpeg + Pillow, Untertitel, Musik | ❌ | ✅ Szenenbild 1920×1080 mit Einblendung (Pillow), Clip je Szene mit eingebrannten Untertiteln, Zusammenfügen, Musik leise unterlegt (optional); Prüfung 1920×1080 und 10–12 Min. | `render()`, `udd/medien.py` |
+| B36.5 package: Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln, Tags | ❌ | ✅ Kapitel aus den Szenenlängen (YouTube-Regeln: 0:00, ≥ 3, ≥ 10 s), Quellen in der Beschreibung, Tags ≤ 480 Zeichen | `package()`, `medien.kapitel` |
+| B36.5 upload: YouTube Data API, privat | ❌ | ✅ resumable Upload (Fortsetzen nach Abbruch), Thumbnail setzen, danach Sichtbarkeits-Prüfung durchs Seller-System | `upload()` |
+| B36.5 Jeder Schritt einzeln startbar/wiederaufnehmbar, bezahlte Dateien nie doppelt | ❌ | ✅ `state.json` je Projekt; Sprache/Bilder mit Inhalts-Hash (nur Geändertes kostet), atomar geschrieben; Schritt wiederholen setzt nur diesen und spätere zurück | `udd/projekt.py`, `ausfuehren()` |
+| B36.6 Platz am PC (mind. 5 GB empfohlen, < 3 GB kein Lauf, Meldung im System) | ❌ | ✅ Worker meldet freien Platz; < 3 GB: Worker startet nichts und das Seller-System gibt keinen Auftrag heraus („Zu wenig freier Speicher …“); < 5 GB Warnung | `naechsterAuftrag`, `frei_gb`, Seite „GB frei am PC“ |
+| B36.6 Zwischenclips nach dem Render löschen, Projekt nach Bestätigung/14 Tagen | ❌ | ✅ siehe oben | `zwischendateien_loeschen`, `aufraeumen` |
+| B36.6 Seller-Server nimmt nur fertige Dateien; vorher Platz schaffen oder Google Drive | ❌ | 🟡 nur fertige Dateien, Platz-Prüfung mit Reserve (507 + Fehlertext am Auftrag); **Ablage in Google Drive nicht gebaut** (offen, siehe To-do) | `dateiSpeichern`, `serverFreiGb` |
+| B36.6 Nur ein Render gleichzeitig (Warteschlange) | ❌ | ✅ ein Auftrag je Mandant gleichzeitig, Rest wartet der Reihe nach | `naechsterAuftrag` |
+| B36.6 Filter für Bildideen und Titel, Ersatzbild bzw. Rückfrage | ❌ | ✅ gemeinsame Wortliste `filter.json` (Seller + Worker); Bildidee mit Treffer → ruhiges Ersatzmotiv (streng zusätzlich Bett/Kuss/Berührung); Titel mit Treffer → neuer Versuch, sonst Warnung bei der Vorschau-Freigabe; Anbieter lehnt ab → Ersatzmotiv, sonst lokales Ersatzbild | `filter.json`, `bild_treffer`, `titelTreffer` |
+| B36.8 vidIQ Stufe 1: Felder „Keywords/Ideen“ und „Titelvorschläge“, Claude trägt ein | ❌ | ✅ Felder beim Anlegen und je Auftrag; Werkzeug `video_vidiq_eintragen`; Seller-System und Worker rufen vidIQ nie auf | `vidiqEintragen`, `tools/video.ts` |
+| B36.8 Stufe 2 (eigene vidIQ-API) | ❌ | ❌ nicht gebaut – nur falls vidIQ eine offizielle API für den Tarif bietet | – |
+| B36.1 Später je Video 3 Shorts | ❌ | ❌ nicht Teil dieses Auftrags („später“) | – |
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. Kanal wählen, Thema „Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht“ → Gliederung mit Quellen zur Freigabe | ✅ automatisch (`b36-video.spec.ts`, echter Python-Worker gegen die Nachbauten): 5 Punkte, 6 Quellen, Websuche angefragt, vidIQ-Keywords in der Recherche |
+| 2. Skript 5–7 Punkte, 1.500–1.700 Wörter, alle Studien in der Quellenliste | ✅ automatisch: 1.600 Wörter, 5 Punkte, jede Punkt-Szene mit Quelle, alle IDs in der Liste |
+| 3. Nach den Freigaben MP4 (10–12 Min., 1920×1080) mit Untertiteln; Thumbnail, 5 Titel, Beschreibung mit Kapiteln, Tags | ✅ automatisch: ffprobe 1920×1080 und 10–12 Min., Untertitel-Datei, Thumbnail 1280×720, 5 Titel, „Kapitel: 0:00 Intro …“, Quellen, Tags; Video im Player (Range-Abruf 206) |
+| 4. Abbruch mitten im Lauf → Neustart setzt fort, ohne Sprache/Bilder neu zu bezahlen | ✅ automatisch: Worker während „Sprache“ hart beendet, neu gestartet: jede Szene genau einmal bei ElevenLabs (höchstens die beim Abbruch laufende doppelt), Bilder je Szene einmal |
+| 5. Upload erzeugt ein privates Video | ✅ automatisch: YouTube-Anmeldung (Nachbau), „Privat hochladen“ an, Vorschau freigegeben → Nachbau meldet `private`, gewählter Titel, Thumbnail gesetzt; Seller-System prüft „privat“ |
+| 6. Kosten pro Video in der Liste | ✅ automatisch: Ist > 0 mit Posten Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick |
+| 7. Worker auf dem Arbeits-PC; Seller-System unbelastet; Worker aus → „wartet“ + Warnung | ✅ automatisch: vor dem Start „wartet“ + Warnung; nach 11 Min. ohne Meldung „wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Render nur im Worker (kein ffmpeg im Seller-System); < 3 GB frei → kein Auftrag |
+| 8. OpenAI gpt-image-1 erzeugt die Bilder; bei Ablehnung greift ein Ersatzbild | ✅ automatisch: alle Bilder gpt-image-1/1536×1024/medium; abgelehnte Bildidee → Ersatzmotiv; „Bett“ (Sicherheitsstufe streng) erreicht den Anbieter gar nicht |
+
+Unit-Tests: `tests/b36-video.test.ts` (neu, 11 Tests: Schrittfolge/Freigaben, Worker-Stand, „heute Nacht“, Kosten aus
+JSON und Stream, Filter, kein Render im Seller-System), `unter-der-decke/tests/test_worker.py` (12 Tests: Filter, state.json, Aufräumen, Untertitel,
+Kapitel, Skript-Prüfung, Bilder, ffmpeg-Clip), `tests/nav.test.ts` (89 Einträge). Migration: `0149_b36_video`.
+Testdienste: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG, Ablehnung), YouTube (Anmeldung,
+resumable Upload, Sichtbarkeit, Thumbnail), Claude-Antworten für Recherche/Skript/Paket (auch als Stream). GitHub-Prüfung
+installiert dafür Python 3.12 + ffmpeg und führt die Worker-Tests aus.
+
+**Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand)
+und `video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage). `notifications/tools/list_changed` nötig – geht
+beim Verbinden raus.
+
+**Offene Fragen an Ludwig:** (1) Zeitlux: Themenbereich, Stimme (ElevenLabs-Voice-ID), Bildstil – und Schreibweise.
+(2) vidIQ: reichen 170 Credits/Monat, gibt es eine API für den Tarif (sonst bleibt es bei Stufe 1)? (3) Docker Desktop
+auf dem Arbeits-PC vorhanden, oder lieber Python direkt? (4) Fertige Videos in Google Drive statt auf dem Seller-Server
+ablegen (dann baue ich die Ablage nach)? (5) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
+Kostenanzeige). (6) Claude-Modell für die Videos: Standard ist Sonnet 5.5 (günstiger); auf Wunsch Opus.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2054,6 +2132,11 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (56) und `notifications/tools/list_changed`
+
+B36 (11.11., Video-Pipeline): **zwei neue Werkzeuge** – `video_auftraege` (lesend, Bereich Marken: Aufträge mit
+Status je Schritt, offener Freigabe, Fortschritt, Kosten Schätzung/Ist, YouTube-Status, Worker-Stand, Kosten je Kanal im
+Monat) und `video_vidiq_eintragen` (ändernd, Stufe grün: vidIQ-Keywords/Titelvorschläge in einen Auftrag; Rückgängig
+stellt die alten Werte her). `notifications/tools/list_changed` nötig – geht beim Verbinden raus.
 
 B33 (08.11.): **keine neuen Werkzeuge**. Geändert: `bqool_export_vorschau` (Beschreibung + Felder `min_reset`,
 `stufe_text`, `effektiver_min_text`, `gebuehren`). `notifications/tools/list_changed` nötig – geht beim Verbinden raus.
@@ -2625,3 +2708,19 @@ nie in Chats oder Mails.
      Monatslimit setzen; Budget je Lauf/Monat und Places-Preis je Abruf unter Leads → Quellen.
 165. **Lager-Standort** (Breite/Länge) unter Abverkauf eintragen – sonst keine Entfernung, kein Umkreis, keine Karte.
 166. **Erste Charge**: „Charge vorbereiten“ mit kleiner Zahl, Entwürfe lesen, Testbrief, dann Freigabe.
+167. **B36 Pull Request prüfen** (Branch `b36-video-pipeline`) und nach dem Mergen das Update ausführen.
+168. **Server vorher**: Neustart („System restart required“) und Platte aufräumen (Stand 11.11.: 7 GB frei bei 81 %) –
+     der Seller-Server speichert je Video ca. 0,5–1 GB; die Seite Video zeigt den freien Platz.
+169. **Zugänge über Anbindungen** (nie im Chat): Claude (vorhanden), ElevenLabs-API-Key, OpenAI-API-Key (API-Konto mit
+     Guthaben, getrennt vom ChatGPT-Abo, Monatslimit setzen); Google-App: „YouTube Data API v3“ aktivieren, Bereiche
+     youtube.upload + youtube.readonly, Weiterleitungs-URI `<Adresse>/api/oauth/youtube/callback`.
+170. **Kanäle anlegen** unter Marken & Content → Video (Unter der Decke: Sicherheitsstufe streng; Zeitlux nach Klärung),
+     Stimme (ElevenLabs-Voice-ID), Bildstil, Freigaben; dann je Kanal „Mit YouTube verbinden“.
+171. **Preise eintragen** auf der Seite Video unter „Kosten“ (ElevenLabs je 1.000 Zeichen, OpenAI je Bild).
+172. **Worker am Arbeits-PC einrichten**: auf der Seite Video „Worker anlegen“ (Token nur einmal sichtbar), dann
+     `unter-der-decke/README.md` (Docker Desktop oder Python 3.12 + ffmpeg, Autostart). Mind. 5 GB frei halten.
+173. **Musik** (lizenzfrei bzw. mit YouTube-Lizenz) in den Musikordner des Workers legen und den Dateinamen im Kanal
+     eintragen – sonst ohne Musik.
+174. **Zeitlux in vidIQ verbinden**; vidIQ-Daten bei Bedarf über Claude eintragen lassen („video_vidiq_eintragen“).
+175. **Erstes Video**: Thema anlegen, Gliederung/Skript lesen und freigeben, Vorschau ansehen, dann „Privat hochladen“
+     – öffentlich stellst du es selbst in YouTube Studio.

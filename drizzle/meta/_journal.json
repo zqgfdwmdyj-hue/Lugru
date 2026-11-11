@@ -1044,6 +1044,13 @@
       "when": 1794393074576,
       "tag": "0148_b35_lead_maschine",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1794429314304,
+      "tag": "0149_b36_video",
+      "breakpoints": true
     }
   ]
 }

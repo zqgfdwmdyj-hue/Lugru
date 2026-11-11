@@ -28,7 +28,7 @@ MODE="${1:-}"
 ARG="${2:-}"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 TS_PORT="${CLAUDE_PORT:-8443}"
-PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil /api/deal-eingang /api/public/lugru-deals /api/import/upload /api/druckagent)
+PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil /api/deal-eingang /api/public/lugru-deals /api/import/upload /api/druckagent /api/video-worker)
 BEGIN="# seller-system-claude BEGIN"
 END="# seller-system-claude END"
 
@@ -80,7 +80,7 @@ caddy_block() {
   printf '\n%s – Freigabe für den Claude-Konnektor und die Handy-Endpunkte (deploy/claude-oeffentlich.sh), nur diese Pfade\n' "$BEGIN"
   printf '%s {\n' "$domain"
   printf '\tencode gzip\n'
-  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/* /api/deal-eingang /api/public/lugru-deals/* /api/import/upload/* /api/druckagent/*\n'
+  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/* /api/deal-eingang /api/public/lugru-deals/* /api/import/upload/* /api/druckagent/* /api/video-worker/*\n'
   printf '\thandle @frei {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$APP_PORT"
   printf '\t@api path /api/*\n'
   printf '\thandle @api {\n'
@@ -179,7 +179,7 @@ case "$MODE" in
       PUBLIC="https://$DOMAIN"
       code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC/api/mobil/erfassen" || true)"
       if [ "$code" = "401" ]; then echo "    ok – Handy-Endpunkte erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC/api/mobil/erfassen antwortet mit $code statt 401."; fi
-      for p in /api/deal-eingang /api/public/lugru-deals/deals /api/druckagent/heartbeat; do
+      for p in /api/deal-eingang /api/public/lugru-deals/deals /api/druckagent/heartbeat /api/video-worker/melden; do
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC$p" || true)"
         if [ "$code" = "401" ]; then echo "    ok – $p erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC$p antwortet mit $code statt 401."; fi
       done

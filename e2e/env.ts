@@ -45,6 +45,13 @@ export const E2E_ENV: Record<string, string> = {
   LEAD_WEB_BASE_URL: `${TD}/leadweb`,
   LEAD_PAUSE_MS: "300",
   APIFY_POLL_MS: "100",
+  // B36 Video-Pipeline: ElevenLabs, OpenAI-Bilder, YouTube (Anmeldung, Upload, Sichtbarkeit) gegen den Nachbau
+  ELEVENLABS_BASE_URL: `${TD}/elevenlabs`,
+  OPENAI_BASE_URL: `${TD}/openai`,
+  YOUTUBE_AUTH_URL: `${TD}/youtube-auth`,
+  YOUTUBE_TOKEN_URL: `${TD}/youtube-oauth/token`,
+  YOUTUBE_API_BASE_URL: `${TD}/youtube-api`,
+  YOUTUBE_UPLOAD_BASE_URL: `${TD}/youtube-upload`,
   DISCORD_API_BASE_URL: `${TD}/discord-api`,
   TESLA_BASE_URL: `${TD}/tesla`,
   TWILIO_BASE_URL: `${TD}/twilio`,

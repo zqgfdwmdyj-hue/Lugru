@@ -54,6 +54,12 @@ services:
       GOOGLE_PLACES_BASE_URL: http://testdienste:4010/places
       LEAD_WEB_BASE_URL: http://testdienste:4010/leadweb
       DISCORD_API_BASE_URL: http://testdienste:4010/discord-api
+      ELEVENLABS_BASE_URL: http://testdienste:4010/elevenlabs
+      OPENAI_BASE_URL: http://testdienste:4010/openai
+      YOUTUBE_AUTH_URL: http://testdienste:4010/youtube-auth
+      YOUTUBE_TOKEN_URL: http://testdienste:4010/youtube-oauth/token
+      YOUTUBE_API_BASE_URL: http://testdienste:4010/youtube-api
+      YOUTUBE_UPLOAD_BASE_URL: http://testdienste:4010/youtube-upload
       MEDIA_DIR: /medien
     volumes:
       - medien_test:/medien

@@ -184,6 +184,14 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Rechtliche Prüfung (Stufe 2, Art.-14-Hinweis, Google-Places-Speicherregeln, LUCID) – erst danach Datum eintragen", "Echte Apify-Actor-Eingabe und Places-Preise je Abruf – beim ersten Lauf mit kleinem Budget prüfen", "Wöchentlicher Lauf (Zeitplan) nur live – im Test von Hand gestartet"],
   },
+  "/marken/video": {
+    abläufe: [
+      { ablauf: "B36.7 Abnahme 1–3: Kanal (streng) anlegen, Worker-Token, Thema „Kein Sex mehr in der Beziehung? 5 Gründe …“ mit vidIQ-Keywords, echter Python-Worker; Gliederung, Skript, Vorschau freigeben", erwartet: "Gliederung mit 5 Punkten und 6 Quellen zur Freigabe (Websuche, vidIQ in der Recherche); Skript 1.600 Wörter, 5 Punkte, alle Quellen-IDs in der Liste; MP4 1920×1080, 10–12 Min., Untertitel, Thumbnail 1280×720, 5 Titel, Beschreibung mit Kapiteln (0:00 Intro) und Quellen, Tags; Video im Player", tests: ["b36-video.spec.ts › Abnahme B36.7 1–8"] },
+      { ablauf: "B36.7 Abnahme 4/7/8: Worker während „Sprache“ hart beenden, 11 Min. Stille, Neustart; Bildidee „Bett“ (streng) und abgelehnte Bildidee", erwartet: "„wartet (Worker aus)“ + „seit 11 Min. keine Meldung“; Neustart macht weiter, jede Szene genau einmal bei ElevenLabs (höchstens die beim Abbruch laufende doppelt), Bilder einmal; gpt-image-1/1536×1024/medium; Ablehnung → Ersatzmotiv; „Bett“ erreicht den Anbieter nicht; < 3 GB frei → kein Auftrag", tests: ["b36-video.spec.ts › Abnahme B36.7 1–8"] },
+      { ablauf: "B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten", erwartet: "Refresh-Token verschlüsselt; Upload mit Sichtbarkeit private, gewähltem Titel, Thumbnail; Seller-System bestätigt „privat“; Kosten Ist > 0 mit Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick; Projektordner am PC danach aufgeräumt", tests: ["b36-video.spec.ts › Abnahme B36.7 1–8"] },
+    ],
+    offen: ["Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload) – erstes Video mit echten Zugängen prüfen", "Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC", "Ablage fertiger Videos in Google Drive – nicht gebaut (Rückfrage)", "vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags"],
+  },
   "/repricer": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },

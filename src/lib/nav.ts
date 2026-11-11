@@ -179,6 +179,7 @@ export const NAV: NavSection[] = [
       { href: "/marken/shop", label: "Shop-Analyse" },
       { href: "/marken/profile", label: "Markenprofile" },
       { href: "/marken/uhren", label: "Uhren: Buy & Flip" },
+      { href: "/marken/video", label: "Video (YouTube)", short: "Video" },
     ],
   },
   {

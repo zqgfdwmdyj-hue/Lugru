@@ -67,7 +67,8 @@ export const config = {
   // api/deal-eingang: iPhone-Kurzbefehl mit Geräte-Schlüssel bzw. Sitzung – prüft beides selbst.
   // api/mobil: Handy-Endpunkte (Schnellerfassung, Widget, Fahrt, Scan) – nur mit Geräte-Schlüssel (mk_…).
   // api/druckagent: Druckagent im Lager – nur mit Gerätetoken (da_…), prüft selbst.
+  // api/video-worker: Video-Worker am Arbeits-PC (B36) – nur mit Worker-Token (vw_…), prüft selbst; große Uploads ohne Proxy.
   // api/sellerboard/callback: Rücksprung landet am Handy oft in einem Fenster ohne Anmeldung; geschützt durch
   // signierten state + serverseitigen PKCE-Prüfwert.
-  matcher: ["/((?!login|sendung/|anfrage/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/rechnungsstation|api/deal-eingang|api/mobil|api/druckagent|api/sms|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|sendung/|anfrage/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/rechnungsstation|api/deal-eingang|api/mobil|api/druckagent|api/video-worker|api/sms|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };

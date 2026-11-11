@@ -1,0 +1,418 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import type { SchrittStand, VideoFreigabe, VideoSchritt } from "@/db/tables/video";
+import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
+import { ConfirmButton } from "@/components/confirm-button";
+import { requireArea } from "@/lib/auth/session";
+import { getIntegration } from "@/lib/integrations/store";
+import { anzeigeStatus, dauerText, FREIGABE_TEXT, fortschrittProzent, kapitelZeile, kostenSchaetzung, SCHRITT_TEXT, SCHRITTE, usd, workerStand } from "@/lib/video/logic";
+import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
+import { abbrechenAction, auftragAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, neuAction, preiseAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
+import { WorkerAnlegen } from "./worker-anlegen";
+
+export const metadata: Metadata = { title: "Video – Seller-System" };
+export const dynamic = "force-dynamic";
+
+// B36 Video-Pipeline: Kanal wählen, Thema eingeben → der Worker am Arbeits-PC macht Recherche, Skript, Sprache, Bilder,
+// Render und Paket. Freigaben (je Kanal einstellbar), Kosten je Video, Upload auf YouTube nur privat.
+
+type Such = { meldung?: string; kanal?: string; neu?: string };
+const zeit = (d: Date | string | null | undefined) => (d ? new Date(d).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–");
+const host = (u: string) => {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return u.slice(0, 40);
+  }
+};
+const STAND_FARBE: Record<string, string> = { fertig: "tag-ok", laeuft: "tag-info", fehler: "tag-danger", offen: "" };
+const DATEIEN: [string, string][] = [["mp4", "Video (MP4)"], ["thumbnail", "Thumbnail"], ["skript", "Skript"], ["quellen", "Quellen"], ["untertitel", "Untertitel (SRT)"]];
+
+function SchrittChips({ schritte, aktuell, mitUpload }: { schritte: Partial<Record<VideoSchritt, SchrittStand>>; aktuell: VideoSchritt; mitUpload: boolean }) {
+  return (
+    <div className="row" style={{ gap: 4, flexWrap: "wrap" }} data-testid="vd-schritte">
+      {SCHRITTE.filter((x) => x !== "upload" || mitUpload).map((x) => {
+        const st = schritte[x];
+        const f = st?.fortschritt;
+        return (
+          <span key={x} className={`tag ${STAND_FARBE[st?.status ?? "offen"] ?? ""}`} style={{ fontWeight: x === aktuell ? 700 : 400 }} data-testid={`vd-schritt-${x}`} data-status={st?.status ?? "offen"} title={st?.fehler ?? undefined}>
+            {SCHRITT_TEXT[x]}
+            {st?.status === "laeuft" && f ? ` ${f.fertig}/${f.gesamt}` : st?.status === "fertig" ? " ✓" : st?.status === "fehler" ? " ✗" : ""}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+export default async function VideoPage({ searchParams }: { searchParams: Promise<Such> }) {
+  const s = await requireArea("marken");
+  const sp = await searchParams;
+  const inhaber = s.role === "owner" && !s.readOnly;
+  const [kanalListe, cfg, kosten, worker, workerAlle, serverFrei, claude, eleven, openai, google] = await Promise.all([
+    kanaele(s.tenantId),
+    videoEinstellungen(s.tenantId),
+    kostenUebersicht(s.tenantId),
+    workerZuletzt(s.tenantId),
+    workerListe(s.tenantId),
+    serverFreiGb(),
+    getIntegration(s.tenantId, "anthropic"),
+    getIntegration(s.tenantId, "elevenlabs"),
+    getIntegration(s.tenantId, "openai"),
+    getIntegration(s.tenantId, "google"),
+  ]);
+  const neuerKanal = sp.neu === "1" || kanalListe.length === 0;
+  const kanal = neuerKanal ? null : (kanalListe.find((k) => k.id === sp.kanal) ?? kanalListe[0] ?? null);
+  const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
+  const ws = worker?.stand ?? workerStand(null);
+  const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
+  const schaetzung = kostenSchaetzung(cfg.preise);
+  const fehlend = [!claude?.apiKey && "Claude (KI)", !eleven?.apiKey && "ElevenLabs", !openai?.apiKey && "OpenAI (Bilder)"].filter(Boolean) as string[];
+
+  return (
+    <div className="stack" style={{ maxWidth: 1100 }} data-testid="video">
+      <AutoRefresh active={laeuftWas} everyMs={8000} />
+      <div className="page-head">
+        <div><div className="crumb">Marken &amp; Content</div><h1>Video</h1></div>
+        <div className="row" style={{ gap: 6 }}><Link className="btn" href="#worker">Worker</Link><Link className="btn" href="#kosten">Kosten</Link></div>
+      </div>
+      {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="vd-meldung">{sp.meldung}</div>}
+
+      <div className={`notice small ${ws.warnung || !worker ? "notice-warn" : "notice-ok"}`} data-testid="vd-worker-stand" data-online={ws.online ? "1" : "0"}>
+        {worker ? ws.text : "Noch kein Worker angelegt – unten unter „Worker“ ein Token erzeugen und am Arbeits-PC eintragen."}
+        {worker?.freiGb !== null && worker?.freiGb !== undefined && (
+          <span data-testid="vd-worker-platz"> · {worker.freiGb.toLocaleString("de-DE")} GB frei am PC{worker.freiGb < 3 ? " – unter 3 GB: kein Lauf!" : worker.freiGb < 5 ? " – knapp (empfohlen mind. 5 GB)" : ""}</span>
+        )}
+      </div>
+      {fehlend.length > 0 && (
+        <div className="notice notice-warn small" data-testid="vd-schluessel-fehlen">
+          Zugang fehlt: {fehlend.join(", ")} – bitte unter <Link href="/anbindungen">Anbindungen</Link> über das sichere Formular eintragen (nie im Chat).
+        </div>
+      )}
+
+      <nav className="row" style={{ gap: 6, flexWrap: "wrap" }} aria-label="Kanäle" data-testid="vd-kanaele">
+        {kanalListe.map((k) => (
+          <Link key={k.id} href={`/marken/video?kanal=${k.id}`} className={`btn btn-sm ${kanal?.id === k.id ? "btn-primary" : ""}`} aria-current={kanal?.id === k.id ? "page" : undefined}>
+            {k.name}{!k.aktiv ? " (aus)" : ""}
+          </Link>
+        ))}
+        {!s.readOnly && <Link href="/marken/video?neu=1#kanal" className={`btn btn-sm ${neuerKanal ? "btn-primary" : ""}`} data-testid="vd-kanal-neu">+ Kanal</Link>}
+      </nav>
+
+      {kanal && (
+        <section className="card card-pad stack" style={{ gap: 8 }} id="neu" data-testid="vd-neu">
+          <h2 style={{ margin: 0 }}>Neues Video · {kanal.name}</h2>
+          <form action={auftragAction} className="stack small" style={{ gap: 8 }}>
+            <input type="hidden" name="kanalId" value={kanal.id} />
+            <label className="stack" style={{ gap: 2 }}>Thema<input className="input" name="thema" required minLength={5} maxLength={300} placeholder="z. B. 5 Gründe, warum …" data-testid="vd-thema" /></label>
+            <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <label><input type="radio" name="start" value="sofort" defaultChecked /> sofort</label>
+              <label><input type="radio" name="start" value="nacht" data-testid="vd-start-nacht" /> heute Nacht (23 Uhr)</label>
+              <label className="row" style={{ gap: 4 }}><input type="radio" name="start" value="zeitpunkt" /> ab <input className="input" type="datetime-local" name="zeitpunkt" style={{ width: 200 }} /></label>
+            </div>
+            <details>
+              <summary>vidIQ (optional)</summary>
+              <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+                <label className="stack" style={{ gap: 2 }}>Keywords/Ideen aus vidIQ<textarea className="input" name="vidiqKeywords" rows={3} data-testid="vd-vidiq-keywords" /></label>
+                <label className="stack" style={{ gap: 2 }}>Titelvorschläge aus vidIQ<textarea className="input" name="vidiqTitel" rows={3} data-testid="vd-vidiq-titel" /></label>
+                <span className="muted">Seller-System und Worker fragen vidIQ nicht selbst ab. Claude trägt die Daten auf Anfrage ein (Werkzeug „video_vidiq_eintragen“).</span>
+              </div>
+            </details>
+            <div className="row between" style={{ gap: 8, flexWrap: "wrap" }}>
+              <span className="muted" data-testid="vd-schaetzung">Kosten-Schätzung je Video: ca. {usd(schaetzung.summe)}{schaetzung.fehlend.length ? ` (ohne ${schaetzung.fehlend.join(", ")} – Preis unten eintragen)` : ""}</span>
+              <button className="btn btn-primary" type="submit" disabled={s.readOnly || !kanal.aktiv} data-testid="vd-start">Video starten</button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      {kanal && (
+        <section className="stack" style={{ gap: 10 }} id="auftraege" data-testid="vd-auftraege">
+          <h2 style={{ margin: 0 }}>Aufträge</h2>
+          {liste.length === 0 && <p className="small muted">Noch keine Videos für diesen Kanal.</p>}
+          {liste.map(({ a }) => {
+            const offen = a.freigabeOffen as VideoFreigabe | null;
+            const stand = a.schritte[a.schritt];
+            const hinweise = SCHRITTE.flatMap((x) => (a.schritte[x]?.hinweise ?? []).map((h) => `${SCHRITT_TEXT[x]}: ${h}`));
+            const quellenIds = new Set(a.quellen.map((q) => q.id));
+            return (
+              <article key={a.id} id={`a-${a.id}`} className="card card-pad stack" style={{ gap: 8 }} data-testid="vd-auftrag" data-status={a.status} data-schritt={a.schritt}>
+                <div className="between" style={{ gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+                  <strong style={{ fontSize: "1.05em" }}>{a.thema}</strong>
+                  <span className={`tag ${a.status === "fehler" ? "tag-danger" : a.status === "fertig" ? "tag-ok" : a.status === "freigabe" ? "tag-warn" : "tag-info"}`} data-testid="vd-status">
+                    {anzeigeStatus(a.status, ws.online)}{offen ? `: ${FREIGABE_TEXT[offen]}` : ""}
+                  </span>
+                </div>
+                <div className="small muted">
+                  angelegt {zeit(a.createdAt)}{a.startAb && a.status === "wartet" ? ` · Start ab ${zeit(a.startAb)}` : ""}{a.woerter ? ` · ${a.woerter} Wörter` : ""}{a.dauerSek ? ` · ${dauerText(a.dauerSek)} Min.` : ""}
+                </div>
+                <SchrittChips schritte={a.schritte} aktuell={a.schritt} mitUpload={a.hochladen || !!a.youtubeId} />
+                <div style={{ height: 6, background: "var(--surface-2, #eee)", borderRadius: 3 }} aria-label="Fortschritt"><div style={{ width: `${fortschrittProzent(a.schritte, a.hochladen)}%`, height: 6, background: "var(--accent, #2563eb)", borderRadius: 3 }} /></div>
+                {a.status === "fehler" && (
+                  <div className="notice notice-warn small" data-testid="vd-fehler">
+                    Fehler in „{SCHRITT_TEXT[a.schritt]}“: {stand?.fehler ?? "unbekannt"}
+                    {!s.readOnly && (
+                      <form action={wiederholenAction} style={{ display: "inline", marginLeft: 8 }}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="kanal" value={kanal.id} /><button className="btn btn-sm" type="submit" data-testid="vd-wiederholen">Schritt wiederholen</button></form>
+                    )}
+                  </div>
+                )}
+                {hinweise.length > 0 && <ul className="small" style={{ margin: 0, paddingLeft: 18, color: "var(--warn-text, #8a5a00)" }} data-testid="vd-hinweise">{hinweise.slice(0, 8).map((h, i) => <li key={i}>{h}</li>)}</ul>}
+
+                {/* Freigabe 1: Gliederung + Quellen */}
+                {(offen === "gliederung" || (a.gliederung && !offen)) && a.gliederung && (
+                  <details open={offen === "gliederung"} data-testid="vd-gliederung">
+                    <summary><strong>Gliederung</strong> ({a.gliederung.punkte.length} Punkte)</summary>
+                    <div className="small stack" style={{ gap: 4, marginTop: 6 }}>
+                      {a.gliederung.hook && <div><em>Hook:</em> {a.gliederung.hook}</div>}
+                      {a.gliederung.angst && <div><em>Fear Activation:</em> {a.gliederung.angst}</div>}
+                      <ol style={{ margin: 0, paddingLeft: 18 }}>
+                        {a.gliederung.punkte.map((p, i) => <li key={i} data-testid="vd-punkt"><strong>{p.titel}</strong>{p.kern ? ` – ${p.kern}` : ""} <span className="muted">[{(p.quelle_ids ?? []).join(", ") || "ohne Quelle!"}]</span></li>)}
+                      </ol>
+                      {a.gliederung.fazit && <div><em>Zusammenfassung:</em> {a.gliederung.fazit}</div>}
+                      {a.gliederung.cta && <div><em>CTA:</em> {a.gliederung.cta}</div>}
+                    </div>
+                  </details>
+                )}
+                {a.quellen.length > 0 && (
+                  <details open={offen === "gliederung"} data-testid="vd-quellen">
+                    <summary><strong>Quellen</strong> ({a.quellen.length})</summary>
+                    <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {a.quellen.map((q) => (
+                        <li key={q.id} data-testid="vd-quelle">
+                          <strong>{q.id}</strong> {q.titel}{q.jahr ? ` (${q.jahr})` : ""}{q.art ? ` · ${q.art}` : ""}{q.autoren ? ` · ${q.autoren}` : ""}
+                          {q.url && <> · <a href={q.url} target="_blank" rel="noreferrer noopener">{host(q.url)}</a></>}
+                          {q.gefunden === false && <span className="tag tag-warn" style={{ marginLeft: 4 }}>nicht aus Suchtreffer – prüfen</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+
+                {/* Freigabe 2: Skript */}
+                {a.skript && a.skript.length > 0 && (
+                  <details open={offen === "skript"} data-testid="vd-skript">
+                    <summary><strong>Skript</strong> ({a.skript.length} Szenen, {a.woerter ?? "?"} Wörter, {new Set(a.skript.filter((x) => x.abschnitt.startsWith("punkt-")).map((x) => x.abschnitt)).size} Punkte)</summary>
+                    <ol className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {a.skript.map((x) => (
+                        <li key={x.nr} style={{ marginBottom: 6 }}>
+                          <span className="muted">[{x.abschnitt}{x.dauer ? ` · ${dauerText(x.dauer)}` : ""}]</span> {x.text}
+                          <div className="muted">Bild: {x.bildidee}{x.ersatzbild ? " (Ersatzbild)" : ""}{x.einblendung ? ` · Einblendung: „${x.einblendung}“` : ""}{x.quelle_ids.length ? ` · Quellen: ${x.quelle_ids.map((q) => (quellenIds.has(q) ? q : `${q}?`)).join(", ")}` : ""}</div>
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+
+                {/* Freigabe 3: Vorschau-Video + Thumbnail + Titel */}
+                {(offen === "vorschau" || a.status === "fertig") && a.dateien.mp4 && (
+                  <div className="stack" style={{ gap: 6 }} data-testid="vd-vorschau">
+                    <video src={`/api/video/${a.id}/mp4`} controls preload="metadata" style={{ width: "100%", maxWidth: 720, borderRadius: 8, background: "#000" }} data-testid="vd-player" />
+                    {a.dateien.thumbnail && <img src={`/api/video/${a.id}/thumbnail`} alt="Thumbnail" style={{ width: 320, maxWidth: "100%", borderRadius: 6 }} data-testid="vd-thumbnail" />}
+                  </div>
+                )}
+                {a.paket && (
+                  <details open={offen === "vorschau"} data-testid="vd-paket">
+                    <summary><strong>Titel, Beschreibung, Kapitel, Tags</strong></summary>
+                    <div className="small stack" style={{ gap: 6, marginTop: 6 }}>
+                      {(a.paket.warnungen ?? []).length > 0 && <div className="notice notice-warn">{a.paket.warnungen!.join(" · ")}</div>}
+                      <ol style={{ margin: 0, paddingLeft: 18 }} data-testid="vd-titel">{a.paket.titel.map((t, i) => <li key={i} style={{ fontWeight: i === (a.paket!.titelGewaehlt ?? 0) ? 700 : 400 }}>{t}</li>)}</ol>
+                      {a.paket.thumbnailText && <div>Thumbnail-Text: „{a.paket.thumbnailText}“</div>}
+                      <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }} data-testid="vd-beschreibung">{a.paket.beschreibung}</pre>
+                      {a.paket.kapitel.length > 0 && <div data-testid="vd-kapitel">Kapitel: {a.paket.kapitel.map(kapitelZeile).join(" · ")}</div>}
+                      <div data-testid="vd-tags">Tags: {a.paket.tags.join(", ")}</div>
+                    </div>
+                  </details>
+                )}
+
+                {offen && !s.readOnly && (
+                  <form action={freigebenAction} className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-freigabe-form">
+                    <input type="hidden" name="id" value={a.id} />
+                    <input type="hidden" name="kanal" value={kanal.id} />
+                    <input type="hidden" name="freigabe" value={offen} />
+                    {offen === "vorschau" && a.paket && (
+                      <label className="stack" style={{ gap: 2 }}>Titel für YouTube
+                        <select className="input" name="titelWahl" defaultValue={String(a.paket.titelGewaehlt ?? 0)}>{a.paket.titel.map((t, i) => <option key={i} value={i}>{t}</option>)}</select>
+                      </label>
+                    )}
+                    {offen !== "vorschau" && <label className="stack" style={{ gap: 2 }}>Anmerkung für den nächsten Schritt (optional)<input className="input" name="hinweis" maxLength={2000} /></label>}
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      <button className="btn btn-primary" type="submit" data-testid="vd-freigeben">{FREIGABE_TEXT[offen]} freigeben</button>
+                    </div>
+                  </form>
+                )}
+                {(offen === "gliederung" || offen === "skript") && !s.readOnly && (
+                  <form action={neuAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "end" }}>
+                    <input type="hidden" name="id" value={a.id} />
+                    <input type="hidden" name="kanal" value={kanal.id} />
+                    <input type="hidden" name="schritt" value={offen === "gliederung" ? "research" : "script"} />
+                    <label className="stack" style={{ gap: 2, flex: 1, minWidth: 200 }}>Was soll anders werden?<input className="input" name="hinweis" maxLength={2000} required /></label>
+                    <button className="btn btn-sm" type="submit" data-testid="vd-neu-machen">{offen === "gliederung" ? "Neu recherchieren" : "Skript neu schreiben"}</button>
+                  </form>
+                )}
+
+                <div className="row small" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <span data-testid="vd-kosten">Kosten: Schätzung {usd(a.kostenSchaetzung)} · Ist <strong>{usd(a.kostenIst)}</strong>{a.kostenPositionen.some((k) => k.betrag === null) ? " (ohne Posten ohne Preis)" : ""}</span>
+                  {a.youtubeId ? (
+                    <span data-testid="vd-youtube">YouTube: <strong>{a.youtubeStatus}</strong> · <a href={`https://studio.youtube.com/video/${a.youtubeId}/edit`} target="_blank" rel="noreferrer noopener">in YouTube Studio öffnen</a></span>
+                  ) : (
+                    !s.readOnly && a.status !== "abgebrochen" && (
+                      <form action={hochladenAction} className="row" style={{ gap: 4 }}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <input type="hidden" name="kanal" value={kanal.id} />
+                        <input type="hidden" name="an" value={a.hochladen ? "0" : "1"} />
+                        <button className={`btn btn-sm ${a.hochladen ? "btn-primary" : ""}`} type="submit" role="switch" aria-checked={a.hochladen} data-testid="vd-hochladen" data-an={a.hochladen ? "1" : "0"}>Privat hochladen: {a.hochladen ? "an" : "aus"}</button>
+                      </form>
+                    )
+                  )}
+                </div>
+                <details>
+                  <summary className="small">Mehr (Dateien, Kostenposten, vidIQ, Abbrechen)</summary>
+                  <div className="stack small" style={{ gap: 8, marginTop: 6 }}>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                      {DATEIEN.filter(([k]) => a.dateien[k]).map(([k, n]) => <a key={k} href={`/api/video/${a.id}/${k}?download=1`} data-testid={`vd-datei-${k}`}>{n} ({Math.max(1, Math.round((a.dateien[k]?.groesse ?? 0) / 1024 / 1024))} MB)</a>)}
+                      {!DATEIEN.some(([k]) => a.dateien[k]) && <span className="muted">Noch keine Dateien.</span>}
+                    </div>
+                    {a.kostenPositionen.length > 0 && (
+                      <table className="table" data-testid="vd-kostenposten">
+                        <thead><tr><th>Anbieter</th><th>Art</th><th>Menge</th><th>Betrag</th></tr></thead>
+                        <tbody>
+                          {Object.values(a.kostenPositionen.reduce<Record<string, { anbieter: string; art: string; menge: number; einheit: string; betrag: number | null }>>((acc, k) => {
+                            const key = `${k.anbieter}|${k.art}`;
+                            const v = (acc[key] ??= { anbieter: k.anbieter, art: k.art, menge: 0, einheit: k.einheit, betrag: 0 });
+                            v.menge += k.menge;
+                            v.betrag = v.betrag === null || k.betrag === null ? null : v.betrag + k.betrag;
+                            return acc;
+                          }, {})).map((k) => <tr key={`${k.anbieter}${k.art}`}><td>{k.anbieter}</td><td>{k.art}</td><td>{k.menge.toLocaleString("de-DE")} {k.einheit}</td><td>{k.betrag === null ? "Preis fehlt" : usd(k.betrag)}</td></tr>)}
+                        </tbody>
+                      </table>
+                    )}
+                    {!s.readOnly && (
+                      <form action={vidiqAction} className="stack" style={{ gap: 4 }}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <input type="hidden" name="kanal" value={kanal.id} />
+                        <label className="stack" style={{ gap: 2 }}>Keywords/Ideen aus vidIQ<textarea className="input" name="vidiqKeywords" rows={2} defaultValue={a.vidiqKeywords ?? ""} /></label>
+                        <label className="stack" style={{ gap: 2 }}>Titelvorschläge aus vidIQ<textarea className="input" name="vidiqTitel" rows={2} defaultValue={a.vidiqTitel ?? ""} /></label>
+                        <div><button className="btn btn-sm" type="submit">vidIQ-Daten speichern</button></div>
+                      </form>
+                    )}
+                    <div className="row" style={{ gap: 6 }}>
+                      {!s.readOnly && a.status !== "fertig" && a.status !== "abgebrochen" && (
+                        <form action={abbrechenAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="kanal" value={kanal.id} /><ConfirmButton confirm="Auftrag abbrechen? Der Worker hört nach dem laufenden Teilschritt auf." className="btn btn-sm" testid="vd-abbrechen">Abbrechen</ConfirmButton></form>
+                      )}
+                      {inhaber && (
+                        <form action={loeschenAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="kanal" value={kanal.id} /><ConfirmButton confirm="Auftrag mit allen Dateien im Seller-System löschen? (Ein privates YouTube-Video bleibt bestehen.)" className="btn btn-sm">Löschen</ConfirmButton></form>
+                      )}
+                    </div>
+                  </div>
+                </details>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="kanal" data-testid="vd-kanalprofil">
+        <h2 style={{ margin: 0 }}>{kanal ? `Kanalprofil: ${kanal.name}` : "Neuer Kanal"}</h2>
+        <form action={kanalSpeichernAction} className="stack small" style={{ gap: 8 }} key={kanal?.id ?? "neu"}>
+          {kanal && <input type="hidden" name="kanalId" value={kanal.id} />}
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Name<input className="input" name="name" required defaultValue={kanal?.name ?? ""} data-testid="vd-k-name" /></label>
+            <label className="stack" style={{ gap: 2, width: 160 }}>Handle<input className="input" name="handle" defaultValue={kanal?.handle ?? ""} placeholder="@…" /></label>
+            <label className="stack" style={{ gap: 2, width: 80 }}>Sprache<input className="input" name="sprache" defaultValue={kanal?.sprache ?? "de"} /></label>
+          </div>
+          <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Stimme (ElevenLabs-Voice-ID)<input className="input" name="stimmeId" defaultValue={kanal?.stimmeId ?? ""} data-testid="vd-k-stimme" /></label>
+            <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Musik (Dateiname im Musikordner des Workers)<input className="input" name="musik" defaultValue={kanal?.musik ?? ""} placeholder="leer = ohne Musik" /></label>
+          </div>
+          <label className="stack" style={{ gap: 2 }}>Bildstil<input className="input" name="bildstil" defaultValue={kanal?.bildstil ?? ""} placeholder="z. B. Flache Illustration, warme Farben, ruhig" /></label>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label>Sicherheitsstufe <select className="input" name="sicherheitsstufe" defaultValue={kanal?.sicherheitsstufe ?? "normal"} data-testid="vd-k-stufe"><option value="normal">normal</option><option value="streng">streng (keine Bett-/Kuss-/Berührungsmotive)</option></select></label>
+            <span>Freigaben:</span>
+            <label><input type="checkbox" name="f_gliederung" value="1" defaultChecked={kanal?.freigaben.gliederung ?? true} /> Gliederung + Quellen</label>
+            <label><input type="checkbox" name="f_skript" value="1" defaultChecked={kanal?.freigaben.skript ?? true} /> Skript</label>
+            <label><input type="checkbox" name="f_vorschau" value="1" defaultChecked={kanal?.freigaben.vorschau ?? true} /> Vorschau</label>
+            {kanal && <label><select className="input" name="aktiv" defaultValue={kanal.aktiv ? "1" : "0"}><option value="1">aktiv</option><option value="0">ausgeschaltet</option></select></label>}
+          </div>
+          <div><button className="btn btn-primary btn-sm" type="submit" disabled={s.readOnly} data-testid="vd-k-speichern">{kanal ? "Kanalprofil speichern" : "Kanal anlegen"}</button></div>
+        </form>
+        {kanal && (
+          <div className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-youtube-zugang">
+            <strong>YouTube-Zugang</strong>
+            {kanal.youtubeToken ? (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span data-testid="vd-yt-verbunden">verbunden{kanal.youtubeKanal ? ` mit „${kanal.youtubeKanal}“` : ""} seit {zeit(kanal.youtubeVerbundenAm)} – Uploads immer privat.</span>
+                {inhaber && <form action={youtubeTrennenAction}><input type="hidden" name="kanalId" value={kanal.id} /><button className="btn btn-sm" type="submit">Trennen</button></form>}
+              </div>
+            ) : inhaber ? (
+              <>
+                {!google?.clientId && <span className="muted">Zuerst unter <Link href="/anbindungen?p=google#google">Anbindungen → Google</Link> die Google-App eintragen und dort „YouTube Data API v3“ aktivieren.</span>}
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                  <a className="btn btn-sm" href={`/api/oauth/youtube/start?kanal=${kanal.id}`} data-testid="vd-yt-verbinden">Mit YouTube verbinden</a>
+                  <a className="btn btn-sm" href={`/api/oauth/youtube/start?kanal=${kanal.id}&modus=einfuegen`}>… ohne https (Adresse einfügen)</a>
+                </div>
+                <form action={youtubeEinfuegenAction} className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <input type="hidden" name="kanalId" value={kanal.id} />
+                  <input className="input" name="adresse" placeholder="http://localhost/?code=…&state=… nach der Anmeldung hier einfügen" style={{ flex: 1, minWidth: 240 }} />
+                  <button className="btn btn-sm" type="submit">Übernehmen</button>
+                </form>
+              </>
+            ) : (
+              <span className="muted">Nicht verbunden (verbindet der Inhaber).</span>
+            )}
+            <span className="muted">Sichtbarkeit wird immer „privat“ gesetzt und lässt sich hier nicht ändern. Öffentlich stellst du das Video selbst in YouTube Studio.</span>
+          </div>
+        )}
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="kosten" data-testid="vd-kosten-monat">
+        <h2 style={{ margin: 0 }}>Kosten</h2>
+        {kosten.jeKanal.length === 0 ? (
+          <p className="small muted" style={{ margin: 0 }}>Diesen Monat noch keine Videos.</p>
+        ) : (
+          <table className="table small">
+            <thead><tr><th>Kanal</th><th>Videos (Monat)</th><th>Kosten (Ist)</th></tr></thead>
+            <tbody>
+              {kosten.jeKanal.map((k) => <tr key={k.kanal}><td>{k.kanal}</td><td>{k.videos}</td><td>{usd(k.kosten)}</td></tr>)}
+              <tr><td><strong>Summe</strong></td><td>{kosten.jeKanal.reduce((n, k) => n + k.videos, 0)}</td><td><strong data-testid="vd-kosten-summe">{usd(kosten.monatSumme)}</strong></td></tr>
+            </tbody>
+          </table>
+        )}
+        <p className="small muted" style={{ margin: 0 }}>Gezählt werden die Aufrufe über das Seller-System (Claude-Tokens und Websuchen, ElevenLabs-Zeichen, OpenAI-Bilder) mit den Preisen unten. Die Zeile erscheint auch im Wochenrückblick (Feierabend).</p>
+        <form action={preiseAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} id="preise" data-testid="vd-preise">
+          <label className="stack" style={{ gap: 2 }}>Claude Eingabe $/Mio. Tokens<input className="input" name="claudeEingabeJeMio" defaultValue={cfg.preise.claudeEingabeJeMio ?? ""} style={{ width: 90 }} /></label>
+          <label className="stack" style={{ gap: 2 }}>Claude Ausgabe $/Mio.<input className="input" name="claudeAusgabeJeMio" defaultValue={cfg.preise.claudeAusgabeJeMio ?? ""} style={{ width: 90 }} /></label>
+          <label className="stack" style={{ gap: 2 }}>Websuche $/1000<input className="input" name="websucheJe1000" defaultValue={cfg.preise.websucheJe1000 ?? ""} style={{ width: 80 }} /></label>
+          <label className="stack" style={{ gap: 2 }}>ElevenLabs $/1000 Zeichen<input className="input" name="elevenlabsJe1000Zeichen" defaultValue={cfg.preise.elevenlabsJe1000Zeichen ?? ""} style={{ width: 90 }} data-testid="vd-preis-eleven" /></label>
+          <label className="stack" style={{ gap: 2 }}>OpenAI $/Bild<input className="input" name="bildJeStueck" defaultValue={cfg.preise.bildJeStueck ?? ""} style={{ width: 80 }} data-testid="vd-preis-bild" /></label>
+          <label className="stack" style={{ gap: 2 }}>Reserve Server GB<input className="input" name="serverReserveGb" defaultValue={cfg.serverReserveGb} style={{ width: 70 }} /></label>
+          <button className="btn btn-sm" type="submit" disabled={!inhaber}>Preise speichern</button>
+        </form>
+        <p className="small muted" style={{ margin: 0 }} data-testid="vd-server-platz">Seller-Server: {serverFrei === null ? "freier Platz unbekannt" : `${serverFrei.toLocaleString("de-DE")} GB frei`} – er speichert nur fertige Dateien (ca. 0,5–1 GB je Video). Ist zu wenig frei, lehnt er den Upload ab und der Auftrag zeigt den Fehler.</p>
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="worker" data-testid="vd-worker">
+        <h2 style={{ margin: 0 }}>Worker (Arbeits-PC)</h2>
+        <p className="small muted" style={{ margin: 0 }}>Der Worker holt sich die Aufträge selbst ab (alle ~30 s) – keine offenen Ports am PC. Einrichtung unter Windows: Ordner <code>unter-der-decke/</code> im Repository, Anleitung in dessen README (Docker Desktop oder Python 3.12 + ffmpeg).</p>
+        {workerAlle.length > 0 && (
+          <table className="table small" data-testid="vd-worker-liste">
+            <thead><tr><th>Name</th><th>Token</th><th>Zuletzt gesehen</th><th>System</th><th>Frei</th><th /></tr></thead>
+            <tbody>
+              {workerAlle.map((w) => (
+                <tr key={w.id}>
+                  <td>{w.name}</td>
+                  <td><code>{w.tokenAnfang}…</code></td>
+                  <td>{workerStand(w.zuletztGesehen).text.replace("Worker zuletzt gesehen: ", "")}</td>
+                  <td>{[w.info.os, w.info.python && `Python ${w.info.python}`, w.info.ffmpeg?.split(" ").slice(0, 3).join(" "), w.version && `v${w.version}`].filter(Boolean).join(" · ") || "–"}</td>
+                  <td>{w.freiGb !== null ? `${w.freiGb.toLocaleString("de-DE")} GB` : "–"}</td>
+                  <td>{inhaber && <form action={workerDeaktivierenAction}><input type="hidden" name="id" value={w.id} /><ConfirmButton confirm="Worker deaktivieren? Sein Token gilt dann nicht mehr." className="btn btn-sm">Deaktivieren</ConfirmButton></form>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {inhaber ? <WorkerAnlegen /> : <p className="small muted" style={{ margin: 0 }}>Worker legt der Inhaber an.</p>}
+      </section>
+    </div>
+  );
+}

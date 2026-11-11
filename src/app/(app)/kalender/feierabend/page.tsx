@@ -93,6 +93,7 @@ export default async function FeierabendPage({ searchParams }: { searchParams: P
           </div>
           <p className="small muted">{f.rueckblick.geschaeft.zeitraum.von.split("-").reverse().join(".")} – {f.rueckblick.geschaeft.zeitraum.bis.split("-").reverse().join(".")}: {f.rueckblick.geschaeft.erledigtGesamt} Aufgaben erledigt.</p>
           <ul className="small" style={{ paddingLeft: 18 }}>{f.rueckblick.geschaeft.erledigtJePerson.map((p) => <li key={p.person}>{p.person}: {p.anzahl}</li>)}</ul>
+          {f.rueckblick.geschaeft.video && <p className="small" data-testid="fa-video"><Link href="/marken/video">{f.rueckblick.geschaeft.video}</Link></p>}
           {f.rueckblick.privat ? (
             <PrivatWoche p={f.rueckblick.privat} />
           ) : (

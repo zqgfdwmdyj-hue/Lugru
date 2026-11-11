@@ -1,0 +1,104 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { anzeigeStatus, bildTreffer, claudeNutzung, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, slugAus, startAbAus, titelTreffer, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+
+// B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
+// Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
+
+const alle = { gliederung: true, skript: true, vorschau: true };
+
+describe("Schrittfolge und Freigaben (B36.3)", () => {
+  it("nach research/script/package wartet der Auftrag auf die jeweilige Freigabe", () => {
+    expect(nachSchritt("research", { freigaben: alle, freigegeben: {}, hochladen: false })).toEqual({ status: "freigabe", schritt: "script", freigabeOffen: "gliederung" });
+    expect(nachSchritt("script", { freigaben: alle, freigegeben: { gliederung: "x" }, hochladen: false })).toEqual({ status: "freigabe", schritt: "voice", freigabeOffen: "skript" });
+    expect(nachSchritt("package", { freigaben: alle, freigegeben: { gliederung: "x", skript: "x" }, hochladen: true })).toEqual({ status: "freigabe", schritt: "upload", freigabeOffen: "vorschau" });
+  });
+  it("abgeschaltete Freigaben werden übersprungen; Upload nur mit „Privat hochladen“", () => {
+    const ohne = { gliederung: false, skript: false, vorschau: false };
+    expect(nachSchritt("research", { freigaben: ohne, freigegeben: {}, hochladen: false })).toEqual({ status: "laeuft", schritt: "script", freigabeOffen: null });
+    expect(nachSchritt("package", { freigaben: ohne, freigegeben: {}, hochladen: false })).toEqual({ status: "fertig", schritt: "upload", freigabeOffen: null });
+    expect(nachSchritt("package", { freigaben: ohne, freigegeben: {}, hochladen: true })).toEqual({ status: "laeuft", schritt: "upload", freigabeOffen: null });
+    expect(nachSchritt("upload", { freigaben: ohne, freigegeben: {}, hochladen: true }).status).toBe("fertig");
+    expect(nachSchritt("voice", { freigaben: alle, freigegeben: {}, hochladen: false })).toEqual({ status: "laeuft", schritt: "visuals", freigabeOffen: null });
+  });
+  it("Fortschritt in Prozent (ohne Upload, wenn der Schalter aus ist)", () => {
+    expect(fortschrittProzent({ research: { status: "fertig" }, script: { status: "fertig" }, voice: { status: "laeuft", fortschritt: { fertig: 13, gesamt: 26 } } }, false)).toBe(Math.round((2.5 / 6) * 100));
+    expect(fortschrittProzent({}, true)).toBe(0);
+  });
+});
+
+describe("Worker-Stand (B36.2/B36.7)", () => {
+  const jetzt = new Date("2026-11-11T12:00:00Z");
+  it("online bis 10 Min., danach Warnung und „wartet (Worker aus)“", () => {
+    expect(workerStand(new Date("2026-11-11T11:55:00Z"), jetzt)).toMatchObject({ online: true, warnung: false });
+    const aus = workerStand(new Date("2026-11-11T11:49:00Z"), jetzt);
+    expect(aus).toMatchObject({ online: false, warnung: true, minuten: 11 });
+    expect(aus.text).toContain("seit 11 Min. keine Meldung");
+    expect(workerStand(null, jetzt)).toMatchObject({ online: false, warnung: true });
+    expect(anzeigeStatus("laeuft", false)).toBe("wartet (Worker aus)");
+    expect(anzeigeStatus("laeuft", true)).toBe("läuft");
+    expect(anzeigeStatus("freigabe", false)).toBe("Freigabe nötig");
+  });
+});
+
+describe("Start „heute Nacht“", () => {
+  it("23:00 Berlin (Winterzeit = 22:00 UTC); nach 23 Uhr sofort", () => {
+    expect(startAbAus("nacht", null, new Date("2026-11-11T10:00:00Z"))?.toISOString()).toBe("2026-11-11T22:00:00.000Z");
+    expect(startAbAus("nacht", null, new Date("2026-11-11T22:30:00Z"))).toBeNull();
+    expect(startAbAus("zeitpunkt", "2026-11-12T06:30", new Date("2026-11-11T10:00:00Z"))?.toISOString()).toBe("2026-11-12T05:30:00.000Z");
+    expect(startAbAus("sofort", null)).toBeNull();
+  });
+});
+
+describe("Kosten (B36.3)", () => {
+  it("Schätzung nennt fehlende Preise; mit Preisen alle Posten", () => {
+    const s = kostenSchaetzung(VIDEO_PREISE_STANDARD);
+    expect(s.fehlend).toEqual(["Sprache (ElevenLabs)", "Bilder (gpt-image-1)"]);
+    const voll = kostenSchaetzung({ ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 });
+    expect(voll.fehlend).toEqual([]);
+    expect(voll.summe).toBeCloseTo(0.12 + 0.15 + 0.06 + 1.89 + 1.04, 2);
+  });
+  it("Nutzung aus JSON- und Stream-Antworten (inkl. Websuchen), Posten und Summe", () => {
+    expect(claudeNutzung(JSON.stringify({ usage: { input_tokens: 1000, cache_read_input_tokens: 500, output_tokens: 200, server_tool_use: { web_search_requests: 3 } } }))).toEqual({ eingabe: 1500, ausgabe: 200, websuchen: 3 });
+    const sse = ['event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":9000,"output_tokens":1}}}', 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"x"}}', 'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":2500,"server_tool_use":{"web_search_requests":4}}}'].join("\n\n");
+    const n = claudeNutzung(sse);
+    expect(n).toEqual({ eingabe: 9000, ausgabe: 2500, websuchen: 4 });
+    const pos = kostenPosition("anthropic", VIDEO_PREISE_STANDARD, { eingabe: n.eingabe, ausgabe: n.ausgabe, websuchen: n.websuchen });
+    expect(pos.map((p) => p.art)).toEqual(["Tokens", "Websuche"]);
+    expect(kostenSumme(pos)).toBeCloseTo(0.018 + 0.025 + 0.04, 4);
+    expect(kostenPosition("elevenlabs", VIDEO_PREISE_STANDARD, { zeichen: 1000 })[0].betrag).toBeNull();
+    expect(kostenPosition("openai", { ...VIDEO_PREISE_STANDARD, bildJeStueck: 0.04 }, { bilder: 2 })[0].betrag).toBe(0.08);
+  });
+});
+
+describe("Filter (B36.6) – dieselbe Liste wie der Worker", () => {
+  it("„Sex“ als Thema erlaubt, explizite Begriffe nicht; streng sperrt Bett/Kuss/Berührung", () => {
+    expect(titelTreffer("Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht")).toBeNull();
+    expect(titelTreffer("Nackt-Yoga im Test")).toBe("nackt");
+    expect(bildTreffer("Leeres Bett im Morgenlicht", false)).toBeNull();
+    expect(bildTreffer("Leeres Bett im Morgenlicht", true)).toBe("bett");
+    expect(bildTreffer("Paar beim Kuss", true)).toBe("kuss");
+    expect(bildTreffer("Frau in Unterwäsche", false)).toBe("unterwaesche");
+    expect(bildTreffer(ERSATZ_BILDIDEE, true)).toBeNull();
+  });
+  it("filter.json wird vom Python-Worker mitbenutzt (eine Quelle)", () => {
+    const py = readFileSync("unter-der-decke/udd/filter.py", "utf8");
+    expect(py).toContain('"filter.json"');
+    expect(py).toContain('_FILTER["bild_streng"]');
+  });
+  it("Kanal-Kurzname ohne Umlaute/Sonderzeichen", () => {
+    expect(slugAus("Testkanal Über Nacht!")).toBe("testkanal-ueber-nacht");
+    expect(slugAus("***")).toBe("kanal");
+  });
+});
+
+describe("Seller-System rechnet nicht (B36.2/Abnahme 7)", () => {
+  it("kein ffmpeg/Python/Kindprozess im Video-Code des Seller-Systems", () => {
+    const dateien = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? dateien(path.join(d, e.name)) : [path.join(d, e.name)]));
+    for (const f of [...dateien("src/lib/video"), ...dateien("src/app/api/video-worker"), ...dateien("src/app/api/video")]) {
+      const t = readFileSync(f, "utf8");
+      expect(t, f).not.toMatch(/child_process|spawn\(|execFile|fluent-ffmpeg/);
+    }
+  });
+});

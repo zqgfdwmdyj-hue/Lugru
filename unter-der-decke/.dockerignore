@@ -1,0 +1,6 @@
+arbeit/
+musik/
+tests/
+__pycache__/
+*.pyc
+.env

@@ -54,6 +54,13 @@ function kiAnswer(req, b) {
   const results = parts.filter((p) => p.type === "tool_result");
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
+  // B36 Video-Pipeline (Worker über die Anbieter-Brücke): feste erfundene Gliederung/Skript/Paket, auf Wunsch als Stream.
+  const video = /^\[video:(research|script|package)\]/.test(text) ? videoAntwort(text) : null;
+  if (video) {
+    if (b.stream) return [200, videoSse(b, video), "text/event-stream"];
+    const content = [...(video.suche ? [{ type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: { query: "Studie" } }, { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: video.suche.map((x) => ({ type: "web_search_result", url: x.url, title: x.title, encrypted_content: "test", page_age: null })) }] : []), { type: "text", text: video.text }];
+    return [200, { id: `msg_test_${++n}`, type: "message", role: "assistant", model: b.model, content, stop_reason: "end_turn", stop_sequence: null, usage: video.usage }];
+  }
   // Retouren-Station: Etikett, Lieferschein, Produktabgleich, Code, Falltext – feste erfundene JSON-Antworten.
   // B2B: Spalten einer Preisliste zuordnen (erfundene, aber nachvollziehbare Regeln wie eine KI)
   if (/Ordne die Spalten einer Großhändler-Preisliste zu/.test(text) && !stale) {
@@ -784,6 +791,10 @@ async function route(req, url, body) {
   if (p.startsWith("/drive/v3/") || p === "/drive/v3/files" || p === "/google-oauth/token") return driveRoute(req, url, p, parsed());
   if (p.startsWith("/letterxpress/v3/")) return letterxpress(req, p, parsed());
   if (p.startsWith("/ebrief/")) return ebrief(req, p, parsed());
+  // B36 Video: ElevenLabs, OpenAI-Bilder, YouTube
+  if (p.startsWith("/elevenlabs/v1/text-to-speech/") && req.method === "POST") return elevenNb(req, p, parsed());
+  if (p === "/openai/v1/images/generations" && req.method === "POST") return openaiBildNb(req, parsed());
+  if (p.startsWith("/youtube")) return youtubeNb(req, url, p, body);
   // Claude
   if (p.startsWith("/anthropic/")) return p.endsWith("/v1/messages") ? kiAnswer(req, parsed()) : [404, { type: "error", error: { type: "not_found_error", message: "nicht nachgebildet" } }];
   // Deutsche Post INTERNETMARKE
@@ -1460,7 +1471,7 @@ ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
   return true;
 }
 
-const dienstOf = (p) => (p.startsWith("/apify") ? "Apify" : p.startsWith("/places") ? "Google Places" : p.startsWith("/leadweb") ? "Firmenwebsite (Impressum)" : p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
+const dienstOf = (p) => (p.startsWith("/elevenlabs") ? "ElevenLabs" : p.startsWith("/openai") ? "OpenAI" : p.startsWith("/youtube") ? "YouTube" : p.startsWith("/apify") ? "Apify" : p.startsWith("/places") ? "Google Places" : p.startsWith("/leadweb") ? "Firmenwebsite (Impressum)" : p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -1699,6 +1710,17 @@ http
     }
     if (url.pathname === "/__briefe") return send(200, [...briefe.jobs.values()].map((j) => ({ id: j.id, anbieter: j.anbieter, mode: j.mode, status: j.status, seiten: j.seiten, amount: j.amount })));
     if (url.pathname === "/__gesund") return send(200, { ok: true });
+    if (url.pathname === "/__video" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], sitzungen: new Map(), n: 0 });
+      if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube });
+    if (url.pathname.startsWith("/youtube") && youtubeRoh(req, res, url, body)) {
+      remember(log, { at: new Date().toISOString(), dienst: "YouTube", method: req.method, path: url.pathname, status: res.statusCode, simuliert: req.method !== "GET" });
+      return;
+    }
     try {
       const [code, data, type] = await route(req, url, body);
       const write = req.method !== "GET" && !url.pathname.startsWith("/anthropic") && !/token|\/user$|identity|lwa/.test(url.pathname);
@@ -1721,3 +1743,215 @@ http
     wsSenden(sock, { op: 10, d: { heartbeat_interval: 41250 } });
   })
   .listen(PORT, () => console.log(`Testdienste bereit auf Port ${PORT}`));
+
+// ---------------------------------------------------------------------------------------------------------
+// B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
+// „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
+// Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
+var videoNb = { eleven: [], bilder: [], youtube: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0 };
+
+function crc32(buf) {
+  let c;
+  const t = (crc32.t ??= Array.from({ length: 256 }, (_, n) => {
+    c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  }));
+  let crc = 0xffffffff;
+  for (const b of buf) crc = t[(crc ^ b) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const pngCache = new Map();
+async function testPng(farbe) {
+  if (pngCache.has(farbe)) return pngCache.get(farbe);
+  const { deflateSync } = await import("node:zlib");
+  const [w, h] = [1536, 1024];
+  const zeile = Buffer.alloc(1 + w * 3);
+  for (let x = 0; x < w; x++) zeile.set(farbe, 1 + x * 3);
+  const roh = Buffer.concat(Array.from({ length: h }, () => zeile));
+  const chunk = (typ, daten) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(daten.length);
+    const td = Buffer.concat([Buffer.from(typ), daten]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(roh, { level: 1 })), chunk("IEND", Buffer.alloc(0))]);
+  pngCache.set(farbe, png);
+  return png;
+}
+
+/** Stille MP3 (MPEG-1 Layer III, 128 kbit/s, 44,1 kHz): ein Rahmen = 417 Byte = 26,12 ms. */
+function stilleMp3(sekunden) {
+  const rahmen = Buffer.alloc(417);
+  rahmen.set([0xff, 0xfb, 0x90, 0x64], 0);
+  const n = Math.max(1, Math.ceil(sekunden / (1152 / 44100)));
+  return Buffer.concat(Array.from({ length: n }, () => rahmen));
+}
+
+const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function elevenNb(req, p, b) {
+  if (!req.headers["xi-api-key"]) return [401, { detail: { status: "invalid_api_key", message: "Invalid API key" } }];
+  const stimme = p.split("/").pop();
+  const text = String(b.text ?? "");
+  if (!text) return [422, { detail: { message: "text fehlt" } }];
+  videoNb.eleven.push({ at: new Date().toISOString(), stimme, zeichen: text.length, hash: createHash("sha256").update(text).digest("hex").slice(0, 12) });
+  if (videoNb.verzoegerungMs) await warte(videoNb.verzoegerungMs);
+  const woerter = text.split(/\s+/).filter(Boolean).length;
+  return [200, stilleMp3(woerter / 2.6), "audio/mpeg"];
+}
+
+async function openaiBildNb(req, b) {
+  if (!String(req.headers.authorization ?? "").startsWith("Bearer ")) return [401, { error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } }];
+  const prompt = String(b.prompt ?? "");
+  const abgelehnt = prompt.includes("TESTABLEHNUNG");
+  videoNb.bilder.push({ at: new Date().toISOString(), model: b.model, size: b.size, quality: b.quality, prompt: prompt.slice(0, 300), abgelehnt });
+  if (videoNb.verzoegerungMs) await warte(Math.round(videoNb.verzoegerungMs / 2));
+  if (abgelehnt) return [400, { error: { message: "Your request was rejected as a result of our safety system.", type: "image_generation_user_error", code: "moderation_blocked" } }];
+  const h = createHash("sha256").update(prompt).digest();
+  const png = await testPng([40 + (h[0] % 120), 60 + (h[1] % 120), 80 + (h[2] % 120)]);
+  return [200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: png.toString("base64") }], usage: { total_tokens: 1000 } }];
+}
+
+/** YouTube-Pfade, die eigene Kopfzeilen brauchen (Weiterleitung, Location, 308). Liefert true, wenn beantwortet. */
+function youtubeRoh(req, res, url, body) {
+  const p = url.pathname;
+  if (p === "/youtube-auth") {
+    const ziel = new URL(url.searchParams.get("redirect_uri") ?? "http://localhost");
+    ziel.searchParams.set("code", "yt-test-code");
+    ziel.searchParams.set("state", url.searchParams.get("state") ?? "");
+    res.writeHead(302, { Location: ziel.toString() });
+    res.end();
+    return true;
+  }
+  if (p === "/youtube-upload/youtube/v3/videos" && req.method === "POST") {
+    if (!String(req.headers.authorization ?? "").startsWith("Bearer yt-access")) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { code: 401, message: "Invalid Credentials" } }));
+      return true;
+    }
+    const n = ++videoNb.n;
+    let meta = {};
+    try {
+      meta = JSON.parse(body || "{}");
+    } catch {}
+    videoNb.sitzungen.set(String(n), { meta, groesse: Number(req.headers["x-upload-content-length"] ?? 0), fertig: null });
+    res.writeHead(200, { Location: `${SELF}/youtube-upload/sitzung/${n}`, "Content-Type": "application/json" });
+    res.end("{}");
+    return true;
+  }
+  const m = /^\/youtube-upload\/sitzung\/(\d+)$/.exec(p);
+  if (m && req.method === "PUT") {
+    const s = videoNb.sitzungen.get(m[1]);
+    if (!s) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { code: 404, message: "Upload-Sitzung unbekannt" } }));
+      return true;
+    }
+    const range = String(req.headers["content-range"] ?? "");
+    if (range.startsWith("bytes */") && !s.fertig) {
+      res.writeHead(308, {});
+      res.end();
+      return true;
+    }
+    if (!s.fertig) {
+      const id = `ytTEST${m[1]}`;
+      s.fertig = { id, snippet: s.meta.snippet ?? {}, status: { privacyStatus: s.meta.status?.privacyStatus ?? "public", uploadStatus: "uploaded" } };
+      videoNb.youtube.push({ at: new Date().toISOString(), id, titel: s.meta.snippet?.title, sichtbarkeit: s.fertig.status.privacyStatus, beschreibung: String(s.meta.snippet?.description ?? "").slice(0, 2000), tags: s.meta.snippet?.tags ?? [], groesse: Number(req.headers["content-length"] ?? 0), thumbnail: false });
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ kind: "youtube#video", ...s.fertig }));
+    return true;
+  }
+  return false;
+}
+
+function youtubeNb(req, url, p, body) {
+  if (p === "/youtube-oauth/token") {
+    const f = new URLSearchParams(body);
+    if (!f.get("client_id") || !f.get("client_secret")) return [401, { error: "invalid_client" }];
+    if (f.get("grant_type") === "authorization_code") return f.get("code") === "yt-test-code" ? [200, { access_token: "yt-access-1", refresh_token: "yt-refresh-test", expires_in: 3599, token_type: "Bearer" }] : [400, { error: "invalid_grant" }];
+    if (f.get("grant_type") === "refresh_token") return f.get("refresh_token") === "yt-refresh-test" ? [200, { access_token: "yt-access-2", expires_in: 3599, token_type: "Bearer" }] : [400, { error: "invalid_grant", error_description: "Token has been expired or revoked." }];
+    return [400, { error: "unsupported_grant_type" }];
+  }
+  if (!String(req.headers.authorization ?? "").startsWith("Bearer yt-access")) return [401, { error: { code: 401, message: "Invalid Credentials" } }];
+  if (p === "/youtube-api/youtube/v3/channels") return [200, { items: [{ id: "UCtest", snippet: { title: "Testkanal (Nachbau)" } }] }];
+  if (p === "/youtube-api/youtube/v3/videos") {
+    const v = videoNb.youtube.find((x) => x.id === url.searchParams.get("id"));
+    return [200, { items: v ? [{ id: v.id, status: { privacyStatus: v.sichtbarkeit } }] : [] }];
+  }
+  if (p === "/youtube-upload/youtube/v3/thumbnails/set") {
+    const v = videoNb.youtube.find((x) => x.id === url.searchParams.get("videoId"));
+    if (v) v.thumbnail = true;
+    return v ? [200, { items: [{ default: { url: "https://example.invalid/thumb.png" } }] }] : [404, { error: { code: 404, message: "videoNotFound" } }];
+  }
+  return [404, { error: { code: 404, message: "nicht nachgebildet" } }];
+}
+
+// Claude-Antworten für die Video-Pipeline ----------------------------------------------------------------------
+
+const SATZ = ["Viele Paare kennen diese Situation besser, als sie zugeben möchten", "Studien zeigen, dass Alltagsstress die Nähe leise und unbemerkt verdrängt", "Wer offen darüber spricht, findet meistens schneller wieder zueinander", "Kleine Rituale im Alltag helfen dabei, wieder Verbindung herzustellen", "Wichtig ist, ohne Vorwürfe zu beginnen und gut zuzuhören", "Forscher haben dazu mehrere tausend Paare über Jahre hinweg begleitet", "Das Ergebnis überrascht viele, ist aber gut belegt und nachvollziehbar", "Am Ende geht es um Vertrauen, Zeit und echte Aufmerksamkeit füreinander"];
+function fuelltext(n, start) {
+  const w = [];
+  for (let i = start; w.length < n; i++) w.push(...SATZ[i % SATZ.length].split(" ").map((x, j, a) => (j === a.length - 1 ? `${x}.` : x)));
+  const t = w.slice(0, n);
+  t[t.length - 1] = t[t.length - 1].replace(/[.,]?$/, ".");
+  return t.join(" ");
+}
+
+function videoAntwort(text) {
+  const thema = (/Thema: (.*)/.exec(text)?.[1] ?? "Testthema").trim();
+  if (text.startsWith("[video:research]")) {
+    const quellen = Array.from({ length: 6 }, (_, i) => ({ id: `Q${i + 1}`, titel: `Teststudie ${i + 1} zu Beziehung und Alltag`, url: `https://example.com/studie-${i + 1}`, jahr: 2014 + i, art: "Studie", autoren: `Testautor ${i + 1} et al.` }));
+    const punkte = ["Stress im Alltag", "Unausgesprochene Konflikte", "Müdigkeit und Schlaf", "Routine statt Neugier", "Körperbild und Selbstwert"].map((titel, i) => ({ titel, kern: `Kernaussage ${i + 1} mit Studie`, quelle_ids: [`Q${i + 1}`] }));
+    const json = { hook: `Warum ${thema.split("?")[0]} so viele betrifft`, angst: "Wer das Thema ignoriert, riskiert Distanz in der Beziehung.", punkte, fazit: "Fünf Gründe, ein Weg: reden.", cta: "Abonniere den Kanal für mehr fundierte Themen.", quellen };
+    return { text: "Hier ist die Gliederung:\n```json\n" + JSON.stringify(json) + "\n```", usage: { input_tokens: 9000, output_tokens: 2500, server_tool_use: { web_search_requests: 4 } }, suche: quellen.map((q) => ({ url: q.url, title: q.titel })) };
+  }
+  if (text.startsWith("[video:script]")) {
+    const plan = [["hook", 2], ["angst", 2], ["punkt-1", 4], ["punkt-2", 4], ["punkt-3", 4], ["punkt-4", 4], ["punkt-5", 4], ["zusammenfassung", 2], ["cta", 1]];
+    const szenen = [];
+    let nr = 0;
+    for (const [abschnitt, anzahl] of plan) {
+      for (let k = 0; k < anzahl; k++) {
+        nr++;
+        const n = nr <= 7 ? 60 : 59; // 27 Szenen = 1.600 Wörter
+        const punkt = /punkt-(\d)/.exec(abschnitt)?.[1];
+        const bildidee = nr === 5 ? "Leeres Bett im Morgenlicht, Symbolbild" : nr === 9 ? "TESTABLEHNUNG Kalender an der Wand, Symbolbild" : `Symbolbild ${nr}: zwei Kaffeetassen, Pflanze und Licht`;
+        szenen.push({ abschnitt, text: fuelltext(n, nr), bildidee, einblendung: punkt && k === 0 ? `Studie Q${punkt} (${2013 + Number(punkt)})` : "", quelle_ids: punkt ? [`Q${punkt}`] : [] });
+      }
+    }
+    return { text: JSON.stringify({ szenen }), usage: { input_tokens: 6000, output_tokens: 4500 } };
+  }
+  if (text.startsWith("[video:package]")) {
+    const json = { titel: ["5 Gründe, über die keiner spricht", "Warum die Nähe verschwindet – und was hilft", "Das sagen Studien über Nähe im Alltag", "Kein Thema? Doch! 5 ehrliche Gründe", "Nähe zurückgewinnen: 5 Gründe verstehen"], beschreibung: "In diesem Video schauen wir uns fünf Gründe an, die Studien immer wieder finden.\n\nOhne Vorwürfe, mit konkreten Tipps für den Alltag.", tags: ["Beziehung", "Partnerschaft", "Nähe", "Studien", "Paare", "Alltag", "Kommunikation", "Stress", "Tipps", "Psychologie", "Liebe", "Vertrauen"], thumbnail_text: "5 Gründe keiner spricht" };
+    return { text: JSON.stringify(json), usage: { input_tokens: 4000, output_tokens: 800 } };
+  }
+  return null;
+}
+
+function videoSse(b, antwort) {
+  const ev = (typ, daten) => `event: ${typ}\ndata: ${JSON.stringify({ type: typ, ...daten })}\n\n`;
+  const u = antwort.usage;
+  let out = ev("message_start", { message: { id: `msg_test_${++n}`, type: "message", role: "assistant", model: b.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: u.input_tokens, output_tokens: 1 } } });
+  let i = 0;
+  if (antwort.suche) {
+    out += ev("content_block_start", { index: i, content_block: { type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: {} } });
+    out += ev("content_block_delta", { index: i, delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "Studie Beziehung Alltag" }) } });
+    out += ev("content_block_stop", { index: i++ });
+    out += ev("content_block_start", { index: i, content_block: { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: antwort.suche.map((s) => ({ type: "web_search_result", url: s.url, title: s.title, encrypted_content: "test", page_age: null })) } });
+    out += ev("content_block_stop", { index: i++ });
+  }
+  out += ev("content_block_start", { index: i, content_block: { type: "text", text: "" } });
+  for (let k = 0; k < antwort.text.length; k += 4000) out += ev("content_block_delta", { index: i, delta: { type: "text_delta", text: antwort.text.slice(k, k + 4000) } });
+  out += ev("content_block_stop", { index: i });
+  out += ev("message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: u.output_tokens, ...(u.server_tool_use ? { server_tool_use: u.server_tool_use } : {}) } });
+  out += ev("message_stop", {});
+  return out;
+}
