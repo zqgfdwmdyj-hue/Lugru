@@ -7,7 +7,7 @@ import type { Session } from "@/lib/auth/session";
 import { openPii, sealPii } from "@/lib/pii";
 import { adelprepAbsender } from "./briefe";
 import { leadImFilter, mhdNorm, mhdPruefen, nachfassFaellig, ustIdFormat, ZIELGRUPPEN, type Zielgruppe } from "./kampagne-logic";
-import { datenschutzHinweis, preisPosition } from "./logic";
+import { datenschutzHinweis, preisPosition, quelleSperre } from "./logic";
 import { absender, AbverkaufFehler, einstellungen, entwuerfeErstellen } from "./service";
 
 // B34.3b Kampagnen: Zielgruppe + Produktauswahl aus dem Bestand (MHD/Charge, Mindestrestlaufzeit) + Preise (Einstand +
@@ -127,9 +127,12 @@ export async function positionenSetzen(s: Session, id: string, eingaben: { sku: 
 export async function leadsFuerKampagne(tenantId: string, k: Kampagne) {
   const cfg = await einstellungen(tenantId);
   const lager = cfg.lager.lat !== null && cfg.lager.lng !== null ? { lat: cfg.lager.lat, lng: cfg.lager.lng } : null;
-  const leads = await db.select({ id: L.id, firma: L.firma, plz: L.plz, ort: L.ort, kategorie: L.kategorie, lat: L.lat, lng: L.lng, groesse: L.groesse, status: L.status, adelprep: L.adelprep }).from(L).where(eq(L.tenantId, tenantId)).orderBy(L.firma).limit(2000);
+  const leads = await db.select({ id: L.id, firma: L.firma, plz: L.plz, ort: L.ort, kategorie: L.kategorie, lat: L.lat, lng: L.lng, groesse: L.groesse, status: L.status, adelprep: L.adelprep, quelleTyp: L.quelleTyp }).from(L).where(eq(L.tenantId, tenantId)).orderBy(L.firma).limit(2000);
   const schon = new Set((await db.select({ l: A.leadId }).from(A).where(and(eq(A.tenantId, tenantId), eq(A.kampagneId, k.id)))).map((x) => x.l));
-  return leads.map((l) => ({ ...l, ...leadImFilter(l, k.filter, lager), angeschrieben: schon.has(l.id) }));
+  return leads.map((l) => {
+    const qs = quelleSperre(l, cfg.leadQuellen);
+    return { ...l, ...(qs ? { ok: false, km: null, grund: "Quelle LUCID – Nutzung noch nicht geklärt" } : leadImFilter(l, k.filter, lager)), angeschrieben: schon.has(l.id) };
+  });
 }
 
 /** Entwürfe für die ausgewählten Leads im Filter (höchstens 20) – Brief mit QR-Code; nichts wird verschickt. */

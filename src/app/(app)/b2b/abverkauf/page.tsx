@@ -3,9 +3,10 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { beilageProbleme } from "@/lib/abverkauf/briefe";
 import { beilageLint } from "@/lib/abverkauf/kampagne-logic";
-import { CHARGE_MAX, mailErlaubt } from "@/lib/abverkauf/logic";
-import { anschreibenListe, einstellungen, erfolgJeCharge, kandidaten, leadsListe, letztePreislisten, loeschfaellig } from "@/lib/abverkauf/service";
-import { adelprepAction, anschreibenAction, beilageAction, briefversandAction, einstellungenAction, entwuerfeAction, freigebenAction, lagerAction, leadAction, leadAdelprepAction, leadsImportAction, preislisteAction, verschicktAction } from "./actions";
+import { CHARGE_MAX, QUELLE_NAME, mailErlaubt, quelleSperre, type LeadQuelleTyp } from "@/lib/abverkauf/logic";
+import { adelprepVorschlaege, anschreibenListe, einstellungen, erfolgJeCharge, kandidaten, leadsListe, letztePreislisten, loeschfaellig } from "@/lib/abverkauf/service";
+import { getIntegration } from "@/lib/integrations/store";
+import { adelprepAction, adelprepVorschlagAction, anschreibenAction, beilageAction, briefversandAction, einstellungenAction, entwuerfeAction, freigebenAction, lagerAction, leadAction, leadAdelprepAction, leadMailAction, leadQuellenAction, leadsImportAction, preislisteAction, verschicktAction } from "./actions";
 
 export const metadata: Metadata = { title: "Abverkauf an Händler – Seller-System" };
 export const dynamic = "force-dynamic";
@@ -16,12 +17,22 @@ export const dynamic = "force-dynamic";
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toLocaleString("de-DE", { style: "currency", currency: "EUR" }));
 const datum = (iso: string) => iso.split("-").reverse().join(".");
+/** Website aus der CSV nur als http(s)-Link anzeigen. */
+const webUrl = (w: string | null) => {
+  if (!w?.trim()) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(w.trim()) ? w.trim() : `https://${w.trim()}`);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+};
 const STATUS: Record<string, string> = { entwurf: "Entwurf", freigegeben: "freigegeben (Brief drucken)", versendet: "verschickt", beantwortet: "beantwortet", gesperrt: "gesperrt" };
 
 export default async function AbverkaufPage({ searchParams }: { searchParams: Promise<{ meldung?: string; pl?: string; adelprep?: string }> }) {
   const s = await requireArea("b2b");
   const sp = await searchParams;
-  const [cfg, kand, listen, leads, anschreiben, erfolg, faellig] = await Promise.all([einstellungen(s.tenantId), kandidaten(s.tenantId).catch(() => []), letztePreislisten(s.tenantId), leadsListe(s.tenantId), anschreibenListe(s.tenantId), erfolgJeCharge(s.tenantId), loeschfaellig(s.tenantId)]);
+  const [cfg, kand, listen, leads, anschreiben, erfolg, faellig, vorschlaege] = await Promise.all([einstellungen(s.tenantId), kandidaten(s.tenantId).catch(() => []), letztePreislisten(s.tenantId), leadsListe(s.tenantId), anschreibenListe(s.tenantId), erfolgJeCharge(s.tenantId), loeschfaellig(s.tenantId), adelprepVorschlaege(s.tenantId)]);
   const inhaber = s.role === "owner" && !s.readOnly;
   const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
   const entwuerfe = anschreiben.filter((x) => x.a.status === "entwurf");
@@ -31,6 +42,8 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
   const beilageFehler = beilageProbleme(cfg);
   const lint = beilageLint(ap.text, ap.bestaetigt);
   const bv = cfg.briefversand;
+  const bvZugang = await getIntegration(s.tenantId, bv.anbieter).then((z) => !!z).catch(() => false);
+  const bvPreis = bv.preise[bv.anbieter];
   return (
     <div className="stack" style={{ maxWidth: 1200 }} data-testid="abverkauf">
       <div className="page-head"><div><div className="crumb">B2B</div><h1>Abverkauf an Händler (Ladenhüter)</h1></div><div className="row" style={{ gap: 6 }}><Link href="/b2b/abverkauf/kampagnen" className="btn btn-primary" data-testid="av-kampagnen-link">Kampagnen</Link><Link href="/b2b/bilanz" className="btn">B2B-Bilanz</Link></div></div>
@@ -69,7 +82,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
             <label><input type="checkbox" name="standard" defaultChecked={ap.standardBeilegen} disabled={!inhaber} /> bei Zielgruppe AdelPrep standardmäßig beilegen</label>
             <span className="muted">Nach Rückfrage belegt:</span>
             <label><input type="checkbox" name="b_flaeche" defaultChecked={ap.bestaetigt.flaeche} disabled={!inhaber} /> Fläche/Stellplätze</label>
-            <label><input type="checkbox" name="b_zaehlung" defaultChecked={ap.bestaetigt.zaehlung} disabled={!inhaber} /> kostenlose Zählung</label>
+            <span className="muted" data-testid="av-ap-zaehlung">„Kostenlose Zählung“ gibt es nicht – wird immer abgelehnt.</span>
             <label><input type="checkbox" name="b_nda" defaultChecked={ap.bestaetigt.nda} disabled={!inhaber} /> NDA</label>
             <label><input type="checkbox" name="b_gefahrgut" defaultChecked={ap.bestaetigt.gefahrgut} disabled={!inhaber} /> Gefahrgut/LQ</label>
           </div>
@@ -83,6 +96,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="briefversand">
         <h2 style={{ margin: 0 }}>Briefversand per Anbieter</h2>
+        <div className="small" data-testid="av-bv-stand" data-zugang={bvZugang ? "1" : "0"}>Aktuell: <strong>{bv.anbieter === "ebrief" ? "eBrief" : bv.anbieter === "letterxpress" ? "LetterXpress" : "E-POST"}</strong> · Zugang {bvZugang ? "hinterlegt" : "fehlt (Anbindungen)"} · Preis {bvPreis.grund !== null ? `${eur(bvPreis.grund)} 1. Blatt${bvPreis.jeWeitereSeite !== null ? `, ${eur(bvPreis.jeWeitereSeite)} je weitere Seite` : ""} netto` : "fehlt – bitte unten eintragen"} · {bv.live ? "live" : "Testmodus"}{bv.live && !bv.avVertrag ? " (gesperrt: AV-Vertrag fehlt)" : ""}</div>
         <p className="small muted" style={{ margin: 0 }}>Austauschbarer Anbieter (eBrief – Vorschlag, noch zu bestätigen –, LetterXpress, E-POST vorbereitet). Zugangsdaten verschlüsselt unter <Link href="/einstellungen/anbindungen">Anbindungen</Link>. Preise je Brief hier eintragen (laut Preisseite des Anbieters). Live nur mit AV-Vertrag und nach einem Testbrief; jede Charge braucht deine Freigabe.</p>
         <form action={briefversandAction} className="stack small" style={{ gap: 6 }} data-testid="av-bv-form">
           <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
@@ -158,11 +172,11 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
         </div>
         <form action={leadsImportAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} data-testid="av-import">
           <label className="stack" style={{ gap: 2 }}>CSV/Excel (Firma, Anschrift/PLZ/Ort, Kategorie, E-Mail + E-Mail-Quelle, Website)<input type="file" name="datei" accept=".csv,.xlsx,.xls,text/csv" /></label>
-          <label className="stack" style={{ gap: 2 }}>Quelle (Pflicht)<input className="input" name="quelle" placeholder="z. B. Apify Google Maps, Suche …" style={{ width: 260 }} /></label>
-          <label className="stack" style={{ gap: 2 }}>Datum der Quelle<input className="input" type="date" name="datum" defaultValue={heute} /></label>
+          <label className="stack" style={{ gap: 2 }}>Quelle (leer = automatisch)<input className="input" name="quelle" placeholder="z. B. Apify Google Maps, Suche …" style={{ width: 260 }} data-testid="av-import-quelle" /></label>
+          <label className="stack" style={{ gap: 2 }}>Datum der Quelle (leer = aus der Datei, sonst heute)<input className="input" type="date" name="datum" max={heute} data-testid="av-import-datum" /></label>
           <button className="btn btn-sm" type="submit" disabled={s.readOnly} data-testid="av-import-los">Importieren</button>
         </form>
-        <p className="small muted" style={{ margin: 0 }}>E-Mail nur, wenn die Spalte „E-Mail-Quelle“ das Impressum nennt. Je Lead: Quelle, Datum, Zweck, Rechtsgrundlage, Löschfrist. Sperrliste verhindert erneuten Import.</p>
+        <p className="small muted" style={{ margin: 0 }}>Apify-, LUCID-, Keepa- und Helium-10-Exporte werden erkannt; Quelle und Datum trägt das System ein. Das Seller-System scrapt nicht selbst. E-Mails nur aus dem Impressum (Spalte „E-Mail-Quelle“ oder Apify-Export) – gespeichert nur für Antworten, nie für Werbe-E-Mails (UWG § 7). Je Lead: Quelle, Datum, Zweck, Rechtsgrundlage, Löschfrist. Sperrliste verhindert erneuten Import.</p>
         {leads.length > 0 && (
           <>
             <form id="entwurf-form" action={entwuerfeAction} className="row small" style={{ gap: 8, alignItems: "center" }}>
@@ -171,17 +185,35 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
               <span className="muted">Nichts wird verschickt – erst nach Freigabe.</span>
             </form>
             <table className="table small" data-testid="av-leads">
-              <thead><tr><th></th><th>Firma</th><th>Ort</th><th>Kategorie</th><th>AdelPrep</th><th>Kontaktweg</th><th>Quelle / Datum</th><th>Löschen am</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th></th><th>Firma</th><th>Ort</th><th>Kategorie</th><th>AdelPrep</th><th>E-Mail</th><th>Kontaktweg</th><th>Quelle / Datum</th><th>Löschen am</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {leadsSicht.map((l) => {
-                  const m = mailErlaubt({ bestandskunde: l.bestandskunde, einwilligung: l.einwilligung, email: l.email }, cfg.rechtlichGeprueft);
+                  const m = mailErlaubt({ bestandskunde: l.bestandskunde, einwilligung: l.einwilligung, email: l.email, status: l.status }, cfg.rechtlichGeprueft);
+                  const qs = quelleSperre(l, cfg.leadQuellen);
+                  const web = webUrl(l.website);
                   return (
                     <tr key={l.id} data-testid="av-lead" data-firma={l.firma} data-status={l.status}>
                       <td>{l.status !== "gesperrt" && <input type="checkbox" name="lead" value={l.id} form="entwurf-form" />}</td>
-                      <td>{l.firma}<div className="muted">{l.rechtsgrundlage}</div></td>
+                      <td>{l.firma}<div className="muted">{l.rechtsgrundlage}</div>{l.stueckJeArtikel !== null && <div className="muted" data-testid="av-lead-stueck">ca. {l.stueckJeArtikel.toLocaleString("de-DE")} Stück je Artikel</div>}</td>
                       <td>{[l.plz, l.ort].filter(Boolean).join(" ")}</td>
                       <td>{l.kategorie ?? "–"}</td>
                       <td><form action={leadAdelprepAction}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="adelprep" value={l.adelprep ? "0" : "1"} /><button className={`btn btn-sm ${l.adelprep ? "btn-primary" : ""}`} type="submit" disabled={s.readOnly} data-testid="av-lead-adelprep" data-an={l.adelprep ? "1" : "0"}>{l.adelprep ? "ja" : "nein"}</button></form></td>
+                      <td data-testid="av-lead-email" data-email={l.email ? "1" : "0"} data-mail={m.erlaubt ? "erlaubt" : "gesperrt"}>
+                        {l.email ? (
+                          <>
+                            {l.email}
+                            <div className="muted">{l.emailQuelle ?? "Quelle unbekannt"} · {m.erlaubt ? `Mail erlaubt: ${m.grund}` : "nur für Antworten – keine Werbe-E-Mail"}</div>
+                            <form action={leadMailAction}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="email" value="" /><button className="btn btn-sm" type="submit" disabled={s.readOnly}>entfernen</button></form>
+                          </>
+                        ) : (
+                          <form action={leadMailAction} className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                            <input type="hidden" name="id" value={l.id} />
+                            <input className="input" name="email" type="email" placeholder="E-Mail aus dem Impressum" style={{ width: 150 }} data-testid="av-lead-mail-feld" />
+                            <button className="btn btn-sm" type="submit" disabled={s.readOnly} data-testid="av-lead-mail-speichern">Mail speichern</button>
+                            {web && <a className="small" href={web} target="_blank" rel="noopener noreferrer nofollow">Website öffnen</a>}
+                          </form>
+                        )}
+                      </td>
                       <td>
                         <form action={leadAction} className="row" style={{ gap: 4, flexWrap: "wrap" }}>
                           <input type="hidden" name="id" value={l.id} />
@@ -193,7 +225,7 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
                         </form>
                         {l.kontaktweg === "email" && <div className={m.erlaubt ? "muted" : "small"} style={{ color: m.erlaubt ? undefined : "var(--danger)" }} data-testid="av-mail-status">{m.erlaubt ? `E-Mail erlaubt: ${m.grund}` : `E-Mail gesperrt: ${m.grund}`}</div>}
                       </td>
-                      <td>{l.quelle}<div className="muted">{datum(l.quelleDatum)}</div></td>
+                      <td data-testid="av-lead-quelle" data-typ={l.quelleTyp ?? ""}>{l.quelle}<div className="muted">{datum(l.quelleDatum)}</div>{qs && <div className="small" style={{ color: "var(--danger)" }} data-testid="av-lead-quelle-sperre">{qs}</div>}</td>
                       <td>{datum(l.loeschenAm)}</td>
                       <td>{l.status}</td>
                       <td>{l.status !== "gesperrt" && <form action={leadAction}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="was" value="sperren" /><button className="btn btn-sm" type="submit" disabled={s.readOnly} data-testid="av-sperren">Sperren</button></form>}</td>
@@ -204,6 +236,32 @@ export default async function AbverkaufPage({ searchParams }: { searchParams: Pr
             </table>
           </>
         )}
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="adelprep-vorschlaege" data-testid="av-ap-vorschlaege">
+        <h2 style={{ margin: 0 }}>Vorschläge „Zielgruppe AdelPrep“ ({vorschlaege.length})</h2>
+        <p className="small muted" style={{ margin: 0 }}>Leads mit großen Stückzahlen je Artikel (ab {cfg.leadQuellen.adelprepAbStueck} Stück, Spalte „Stück je Artikel“/„Units“ aus LUCID-, Keepa- oder Helium-10-Export). Nichts wird automatisch gesetzt – Auswahl übernehmen.</p>
+        {vorschlaege.length > 0 && (
+          <form action={adelprepVorschlagAction} className="stack small" style={{ gap: 4 }}>
+            {vorschlaege.map((v) => (
+              <label key={v.id} className="row" style={{ gap: 6 }} data-testid="av-ap-vorschlag" data-firma={v.firma}>
+                <input type="checkbox" name="lead" value={v.id} defaultChecked /> {v.firma} – {[v.plz, v.ort].filter(Boolean).join(" ")} <span className="muted">{v.grund} · {v.quelle}</span>
+              </label>
+            ))}
+            <div><button className="btn btn-sm" type="submit" disabled={s.readOnly} data-testid="av-ap-uebernehmen">Auswahl als Zielgruppe AdelPrep markieren</button></div>
+          </form>
+        )}
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8 }} id="lead-quellen" data-testid="av-lead-quellen">
+        <h2 style={{ margin: 0 }}>Lead-Quellen (Stufe 1)</h2>
+        <p className="small muted" style={{ margin: 0 }}>Leads nur per Datei-Import (Apify, LUCID, Keepa, Helium 10, eigene CSV). Briefe werden vorbereitet, verschickt wird nur nach Freigabe (Tageslimit, Budget). Stufe 2 (automatischer Apify-Lauf mit Monatslimit) ist nicht eingerichtet – erst nach rechtlicher Prüfung.</p>
+        <form action={leadQuellenAction} className="row small" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <label><input type="checkbox" name="lucid" defaultChecked={cfg.leadQuellen.lucidGeklaert} disabled={!inhaber} data-testid="av-lucid" /> LUCID-Daten für Werbung rechtlich geklärt</label>
+          <label>AdelPrep-Vorschlag ab <input className="input" name="ab" defaultValue={cfg.leadQuellen.adelprepAbStueck} style={{ width: 70 }} disabled={!inhaber} data-testid="av-ap-ab" /> Stück je Artikel</label>
+          {inhaber && <button className="btn btn-sm" type="submit" data-testid="av-lead-quellen-speichern">Speichern</button>}
+        </form>
+        <div className="small muted">Erkannte Quellen: {(["apify", "lucid", "keepa", "helium10", "csv"] as LeadQuelleTyp[]).map((t) => `${QUELLE_NAME[t]} (${leads.filter((l) => (l.quelleTyp ?? "csv") === t).length})`).join(" · ")}. LUCID-Leads bleiben ohne Entwurf und ohne Brief, bis der Haken gesetzt ist. Keine Rechtsberatung.</div>
       </section>
 
       <section className="card card-pad stack" style={{ gap: 8 }} id="anschreiben">

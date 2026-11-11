@@ -62,7 +62,7 @@ export const ZIELGRUPPEN: Record<Zielgruppe, ZielgruppeDef> = {
     hinweise: [
       "Eigener Brief der Logistik-Firma: eigener Absender, eigenes Impressum, eigener Datenschutzhinweis – nicht mit dem Restposten-Brief mischen.",
       "Vor dem Versand klären: Kapazität, Versicherung, Gefahrgut, Mindestmenge, AGB (Liste unten).",
-      "Keine unbelegten Angaben (Fläche, Stellplätze, kostenlose Zählung, NDA, Gefahrgut) – erst nach Rückfrage.",
+      "Keine unbelegten Angaben (Fläche, Stellplätze, NDA, Gefahrgut) – erst nach Rückfrage. „Kostenlose Zählung“ gibt es nicht – nie verwenden.",
       HINWEIS_DSGVO,
     ],
     textVorlage: "Sie suchen Lagerfläche oder einen Dienstleister für Wareneingang, Lagerung und Versand? Wir lagern Ihre Ware auf Paletten ein und übernehmen auf Wunsch die Vorbereitung für Amazon FBA. Preise netto zzgl. USt. – gern erstellen wir Ihnen ein Angebot.",
@@ -225,19 +225,22 @@ export function lagerkosten(o: { paletten: number; preisJePaletteMonat: number |
 
 // ---- AdelPrep-Beilage: Textprüfung -------------------------------------------------------------------------------------
 
-export type BeilageBestaetigt = { flaeche: boolean; zaehlung: boolean; nda: boolean; gefahrgut: boolean };
+/** `zaehlung` ist veraltet (11.11.: kostenlose Zählung gibt es nicht) und wird nicht mehr ausgewertet. */
+export type BeilageBestaetigt = { flaeche: boolean; nda: boolean; gefahrgut: boolean; zaehlung?: boolean };
 
-const UNBELEGT: { key: keyof BeilageBestaetigt; re: RegExp; text: string }[] = [
+/** „Zählung/EAN-Prüfung kostenlos“ in allen Varianten (auch mit Wörtern dazwischen, z. B. „… bei direktem FBA-Versand kostenlos“). */
+const KOSTENLOSE_ZAEHLUNG = /(kostenlos|kostenfrei|gratis|umsonst|ohne\s+aufpreis|inklusive|inkl\.)[^.!?\n]{0,60}z(ä|ae)hl|z(ä|ae)hl\w*[^.!?\n]{0,80}(kostenlos|kostenfrei|gratis|umsonst|ohne\s+aufpreis|inklusive|inkl\.)/i;
+
+const UNBELEGT: { key: "flaeche" | "nda" | "gefahrgut"; re: RegExp; text: string }[] = [
   { key: "flaeche", re: /\b\d[\d.]*\s?(?:m²|qm\b|m2\b|quadratmeter)|\b\d[\d.]*\s?(?:paletten(?:stell)?pl(?:ä|ae)tze|paletten\b)/i, text: "Fläche/Palettenplätze" },
-  { key: "zaehlung", re: /kostenlos\w*\s+(bestands)?z(ä|ae)hlung|z(ä|ae)hlung\s+(ist\s+)?kostenlos|gratis\s+z(ä|ae)hlung/i, text: "kostenlose Zählung" },
   { key: "nda", re: /\bNDA\b|geheimhaltungsvereinbarung|verschwiegenheitsvereinbarung/i, text: "NDA" },
   { key: "gefahrgut", re: /gefahrgut|\bLQ\b|limited\s+quantit/i, text: "Gefahrgut/LQ" },
 ];
 
 /**
  * Prüft den Beilagen-Text: keine „all-in“-/„Komplettpreis“-Formulierung, Preise netto und je Artikel; unbelegte
- * Angaben (Fläche, kostenlose Zählung, NDA, Gefahrgut) nur, wenn sie nach Rückfrage bestätigt sind. Fehler = die
- * Beilage wird nicht beigelegt.
+ * Angaben (Fläche, NDA, Gefahrgut) nur, wenn sie nach Rückfrage bestätigt sind; „kostenlose Zählung“ nie (gibt es
+ * nicht, Ludwig 11.11.). Fehler = die Beilage wird nicht beigelegt.
  */
 export function beilageLint(text: string, bestaetigt: BeilageBestaetigt): { fehler: string[]; hinweise: string[] } {
   const fehler: string[] = [];
@@ -248,6 +251,7 @@ export function beilageLint(text: string, bestaetigt: BeilageBestaetigt): { fehl
   if (preis && !/netto/i.test(text)) fehler.push("Preise als netto kennzeichnen (zzgl. USt.)");
   if (preis && !/je\s+artikel|pro\s+artikel|je\s+stück|pro\s+stück/i.test(text)) hinweise.push("Preis „je Artikel“ angeben");
   for (const u of UNBELEGT) if (u.re.test(text) && !bestaetigt[u.key]) fehler.push(`Angabe „${u.text}“ nicht belegt – erst nach Rückfrage verwenden (in den Einstellungen bestätigen)`);
+  if (KOSTENLOSE_ZAEHLUNG.test(text)) fehler.push("„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen");
   return { fehler, hinweise };
 }
 

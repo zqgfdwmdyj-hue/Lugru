@@ -56,6 +56,10 @@ export const abverkaufLeads = pgTable(
     lat: numeric("lat", { precision: 9, scale: 6, mode: "number" }),
     lng: numeric("lng", { precision: 9, scale: 6, mode: "number" }),
     groesse: text("groesse"),
+    /** B34.3c Herkunft der Datei (apify/lucid/keepa/helium10/csv/manuell) – LUCID erst nach rechtlicher Klärung. */
+    quelleTyp: text("quelle_typ"),
+    /** B34.3c Stückzahl je Artikel (aus der CSV) – Vorschlag „Zielgruppe AdelPrep“ ab Schwelle. */
+    stueckJeArtikel: integer("stueck_je_artikel"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("abverkauf_leads_schluessel").on(t.tenantId, t.schluessel), index("abverkauf_leads_status").on(t.tenantId, t.status)],

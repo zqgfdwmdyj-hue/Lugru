@@ -6,7 +6,7 @@ import { ANBIETER_NAME, briefAnbieter, type BriefAnbieterName } from "@/lib/inte
 import { getIntegration } from "@/lib/integrations/store";
 import { briefeBauen, type BriefZeile } from "./briefe";
 import { adressePruefen, anschriftSchluessel, briefKosten, kostenVorschau, limitPruefen } from "./kampagne-logic";
-import { CHARGE_MAX } from "./logic";
+import { CHARGE_MAX, quelleSperre } from "./logic";
 import { absender, AbverkaufFehler, einstellungen } from "./service";
 
 // B34.3a Briefversand über einen Anbieter: PDF je Lead → Vorschau (Adressprüfung, Seiten) → Kostenvorschau →
@@ -66,6 +66,8 @@ export async function versandVorschau(tenantId: string, chargeId: string): Promi
     const seiten = 1 + (g.brief.beilage ? 1 : 0);
     const key = anschriftSchluessel({ firma: z.l.firma, strasse: g.adresse.strasse, plz: z.l.plz });
     const pr = adressePruefen({ firma: z.l.firma, strasse: g.adresse.strasse, plz: z.l.plz, ort: z.l.ort, land: z.l.land, status: z.l.status, rechtsgrundlage: z.l.rechtsgrundlage }, { gesperrt: gesperrt.has(z.l.schluessel), dublette: gesehen.has(key) });
+    const qs = quelleSperre(z.l, cfg.leadQuellen);
+    if (qs) pr.fehler.push(qs), (pr.ok = false);
     gesehen.add(key);
     const u = schon.find((x) => x.id === z.a.id && (x.modus === modus || x.modus === "live"));
     return { anschreibenId: z.a.id, firma: z.l.firma, ort: [z.l.plz, z.l.ort].filter(Boolean).join(" "), seiten, kosten: briefKosten(seiten, preis), ok: pr.ok && !u, fehler: pr.fehler, hinweis: g.hinweis, uebergeben: u ? `${u.modus === "test" ? "Testmodus" : "live"}: ${u.status}` : null };

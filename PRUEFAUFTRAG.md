@@ -1531,6 +1531,35 @@ Migration: `0146_b34_drive_brief_kampagnen`.
 4. Absender und Text der AdelPrep-Beilage: bitte selbst eintragen und prüfen (Firmendaten, Impressum, Preis „ab … € netto je Artikel“); unbelegte Angaben bleiben gesperrt, bis du sie bestätigst.
 5. eBrief als erster Anbieter bestätigen? – Annahme: ja, Preis laut Preisseite selbst eintragen; LetterXpress ist gleichwertig angebunden.
 
+### B34.3c Lead-Beschaffung in Stufen + Zählung (11.11.) – nur als Pull Request
+
+Umsetzung auf dem Branch `b34-3c-lead-stufen` mit Pull Request gegen main (kein Push nach main). Keine Zugangsdaten
+im Chat; Stufe 2 (automatischer Apify-Lauf) ist **nicht** gebaut – erst nach rechtlicher Prüfung.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B34.3.6 „Kostenlose Zählung“ gibt es nicht (Ludwig 11.11.) | 🟡 nur nach Rückfrage erlaubt (Haken) | ✅ Textprüfung lehnt die Aussage in allen Varianten immer ab („… bei direktem FBA-Versand kostenlos“, „kostenfreie Mengenzählung“, „inklusive Zählung“); Haken entfernt; Hinweis bei der Lager-Zielgruppe angepasst | `beilageLint` (`KOSTENLOSE_ZAEHLUNG`), `ZIELGRUPPEN.adelprep_lager.hinweise` |
+| B34.3c.1 Apify-Export per CSV, Quelle und Datum automatisch, Sperrliste | 🟡 Quelle/Datum von Hand (Pflicht) | ✅ Apify-, LUCID-, Keepa-, Helium-10-Export an Spalten/Dateiname erkannt; Quelle „Apify-Export (Datei)“, Datum aus `scrapedAt`/„Datum“, sonst heute; Apify-Spalten (`title`, `postalCode`, `emails/0`, `location/lat` …) gelesen; Sperrliste wie bisher | `quelleErkennen`, `quelleDatumAus`, `leadsImportieren` |
+| B34.3c.2 E-Mail (Website/Impressum) nur speichern, Quelle „Impressum“, keine Werbe-E-Mail, nur Antworten | 🟡 nur mit Spalte „E-Mail-Quelle“ | ✅ Apify-Mails mit Quelle „Impressum (Website, Apify-Export)“, Eingabe von Hand („Impressum (von Hand)“, Link „Website öffnen“ – das System ruft keine Websites ab); Mail-Weg für gefundene Adressen immer gesperrt (auch mit „Rechtlich geprüft“), erlaubt nur für Antworten (Status geantwortet/Kunde), Bestandskunden oder dokumentierte Einwilligung | `mailErlaubt`, `impressumMailSetzen`, Spalte „E-Mail“ |
+| B34.3c.3 Vorschläge „Zielgruppe AdelPrep“ (ab 80 Stück je Artikel) aus LUCID/Keepa/Helium 10; LUCID vorher klären | ❌ | ✅ Spalte „Stück je Artikel“/„Units“ aus der Datei; Liste „Vorschläge“ mit Übernahme von Hand (Schwelle einstellbar); LUCID-Leads ohne Entwurf/Brief und aus Kampagnen-Filtern raus, bis „LUCID geklärt“ gesetzt ist | `adelprepVorschlag`, `adelprepVorschlaege`, `quelleSperre` |
+| B34.3c.4 Briefe automatisch vorbereitet, Versand nur nach Freigabe, Tageslimit/Budget | ✅ | ✅ unverändert (B34.3/B34.3a) | `entwuerfeErstellen`, `chargeVersenden` |
+| B34.3c.5 Stufe 2: automatischer Apify-Lauf mit Monatslimit | ❌ | ⏸ nicht gebaut – erst nach rechtlicher Prüfung (Hinweis auf der Seite) | – |
+| Briefanbieter: welcher angebunden, was kostet ein Brief | 🟡 Einstellungen ohne Übersicht | ✅ Zeile „Aktuell: Anbieter · Zugang hinterlegt/fehlt · Preis · Testmodus/live“ | `av-bv-stand` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Stufe 1: CSV-Import eines Apify-Exports → Leads mit Quelle/Datum, E-Mail gespeichert aber im Versandweg „Mail“ gesperrt, Brief nur nach Freigabe | ✅ automatisch (`b34-lead-quellen.spec.ts`), dazu Antwort erlaubt nach Rückmeldung, Impressum-Mail von Hand, AdelPrep-Vorschlag, LUCID-Sperre |
+| „Kostenlose Zählung“ immer abgelehnt | ✅ Unit-Tests (`tests/b34-kampagnen.test.ts`) |
+
+Unit-Tests: `tests/b34-lead-quellen.test.ts` (neu), `tests/b34-kampagnen.test.ts` (erweitert). Migration: `0147_b34_3c_lead_quellen`.
+
+**Werkzeuge:** keine neuen und keine geänderten Claude-Werkzeuge → kein `notifications/tools/list_changed` nötig.
+
+**Offene Fragen an Ludwig:** (1) LUCID für Werbung zulässig? (2) Welcher Briefanbieter ist aktuell angebunden und
+was kostet ein Brief? (3) Stufe 2 (automatischer Apify-Lauf) erst nach rechtlicher Prüfung – Bescheid geben, wenn
+freigegeben. (4) Widerspruch auf der Website (Zählung „Pflicht“ vs. „dazubuchbar“, FAQ „Komplettpreis“) vor dem
+Brief klären.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2516,3 +2545,9 @@ nie in Chats oder Mails.
 155. **Kampagnen**: Kosmetik nur mit MHD und Charge je Position; Vertriebsbeschränkungen der Marken und
      Kennzeichnung/CE/GPSR vor dem Versand prüfen (keine Rechtsberatung). Lager-Kampagne: offene Punkte
      (Kapazität, Versicherung, Gefahrgut, Mindestmenge, AGB) vorher klären.
+156. **B34.3c Pull Request prüfen** (Branch `b34-3c-lead-stufen`, nicht automatisch nach main): Lead-Quellen,
+     Impressum-Mail nur für Antworten, Vorschläge „Zielgruppe AdelPrep“, LUCID-Sperre, „kostenlose Zählung“ gesperrt.
+157. **LUCID klären**: darf das Verpackungsregister für Werbebriefe genutzt werden? Erst danach unter Abverkauf →
+     Lead-Quellen „LUCID geklärt“ setzen (vorher kein Entwurf, kein Brief für LUCID-Leads).
+158. **Briefanbieter festlegen**: welcher Anbieter angebunden wird (eBrief oder LetterXpress), Preis je Brief unter
+     Abverkauf → Briefversand eintragen; die Zeile „Aktuell: …“ zeigt Anbieter, Zugang, Preis und Modus.

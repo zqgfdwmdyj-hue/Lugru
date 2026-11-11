@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireArea } from "@/lib/auth/session";
-import { AbverkaufFehler, chargeVerschickt, einstellungenSpeichern, entwuerfeErstellen, freigeben, leadAendern, leadLoeschen, leadSperren, leadsImportieren, preislisteErzeugen, anschreibenAendern } from "@/lib/abverkauf/service";
+import { AbverkaufFehler, adelprepUebernehmen, chargeVerschickt, einstellungenSpeichern, entwuerfeErstellen, freigeben, leadAendern, leadLoeschen, leadSperren, leadsImportieren, preislisteErzeugen, anschreibenAendern } from "@/lib/abverkauf/service";
 
 const PFAD = "/b2b/abverkauf";
 const zurueck = (meldung: string, anker = ""): never => redirect(`${PFAD}?meldung=${encodeURIComponent(meldung)}${anker}`);
@@ -61,7 +61,7 @@ export async function leadsImportAction(fd: FormData) {
   const datei = f as File;
   await mitFehler(async () => {
     const r = await leadsImportieren(s, { name: datei.name, bytes: new Uint8Array(await datei.arrayBuffer()), quelle: String(fd.get("quelle") ?? ""), quelleDatum: String(fd.get("datum") ?? "") });
-    return `${r.neu} Leads neu, ${r.doppelt} schon vorhanden, ${r.gesperrt} auf der Sperrliste${r.ohneMail ? `, ${r.ohneMail} E-Mail(s) verworfen (Quelle nicht Impressum)` : ""}${r.verworfen.length ? ` · ${r.verworfen.length} Zeilen verworfen: ${r.verworfen.slice(0, 3).join("; ")}` : ""}.`;
+    return `${r.neu} Leads neu, ${r.doppelt} schon vorhanden, ${r.gesperrt} auf der Sperrliste${r.ohneMail ? `, ${r.ohneMail} E-Mail(s) verworfen (Quelle nicht Impressum)` : ""} · Quelle: ${r.quelle}, Stand ${r.quelleDatum.split("-").reverse().join(".")}${r.mitMail ? ` · ${r.mitMail} E-Mail(s) gespeichert – nur für Antworten, keine Werbe-E-Mail` : ""}${r.verworfen.length ? ` · ${r.verworfen.length} Zeilen verworfen: ${r.verworfen.slice(0, 3).join("; ")}` : ""}.`;
   }, "#leads");
 }
 
@@ -127,7 +127,7 @@ export async function adelprepAction(fd: FormData) {
       adelprep: {
         firma: txt(fd, "firma", 120), strasse: txt(fd, "strasse", 120), plz: txt(fd, "plz", 10), ort: txt(fd, "ort", 80), email: txt(fd, "email", 120), telefon: txt(fd, "telefon", 40), web: txt(fd, "web", 120),
         impressum: txt(fd, "impressum", 1500), datenschutz: txt(fd, "datenschutz", 3000), text: txt(fd, "text", 3000), standardBeilegen: fd.get("standard") === "on",
-        bestaetigt: { flaeche: fd.get("b_flaeche") === "on", zaehlung: fd.get("b_zaehlung") === "on", nda: fd.get("b_nda") === "on", gefahrgut: fd.get("b_gefahrgut") === "on" },
+        bestaetigt: { flaeche: fd.get("b_flaeche") === "on", nda: fd.get("b_nda") === "on", gefahrgut: fd.get("b_gefahrgut") === "on" },
       },
     });
     return "Beilage (AdelPrep) gespeichert.";
@@ -187,4 +187,33 @@ export async function beilageAction(fd: FormData) {
     await anschreibenAendern(s, String(fd.get("id") ?? ""), { adelprepBeilage: fd.get("beilage") === "1" });
     return fd.get("beilage") === "1" ? "Beilage für diesen Brief zugewählt." : "Beilage für diesen Brief abgewählt.";
   }, "#anschreiben");
+}
+
+/** B34.3c E-Mail aus dem Impressum von Hand eintragen (nur für Antworten). */
+export async function leadMailAction(fd: FormData) {
+  const s = await requireArea("b2b");
+  await mitFehler(async () => {
+    const mail = String(fd.get("email") ?? "");
+    await leadAendern(s, String(fd.get("id") ?? ""), { emailImpressum: mail });
+    return mail.trim() ? "E-Mail aus dem Impressum gespeichert – nur für Antworten, keine Werbe-E-Mail." : "E-Mail entfernt.";
+  }, "#leads");
+}
+
+/** B34.3c Vorschläge „Zielgruppe AdelPrep“ von Hand übernehmen. */
+export async function adelprepVorschlagAction(fd: FormData) {
+  const s = await requireArea("b2b");
+  await mitFehler(async () => {
+    const n = await adelprepUebernehmen(s, fd.getAll("lead").map(String));
+    return `${n} ${n === 1 ? "Lead" : "Leads"} als Zielgruppe AdelPrep markiert.`;
+  }, "#adelprep-vorschlaege");
+}
+
+/** B34.3c Lead-Quellen: LUCID geklärt, Schwelle für AdelPrep-Vorschläge (nur Inhaber). */
+export async function leadQuellenAction(fd: FormData) {
+  const s = await requireArea("b2b");
+  await mitFehler(async () => {
+    const ab = Math.round(zahl(fd.get("ab")));
+    await einstellungenSpeichern(s, { leadQuellen: { lucidGeklaert: fd.get("lucid") === "on", adelprepAbStueck: Number.isFinite(ab) && ab > 0 ? Math.min(ab, 1_000_000) : 80 } });
+    return "Lead-Quellen gespeichert.";
+  }, "#lead-quellen");
 }

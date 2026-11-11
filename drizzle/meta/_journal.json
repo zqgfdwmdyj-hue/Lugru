@@ -1030,6 +1030,13 @@
       "when": 1794347020857,
       "tag": "0146_b34_drive_brief_kampagnen",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1794379912387,
+      "tag": "0147_b34_3c_lead_quellen",
+      "breakpoints": true
     }
   ]
 }

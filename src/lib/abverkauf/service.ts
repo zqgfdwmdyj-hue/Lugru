@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { openPii, sealPii } from "@/lib/pii";
-import { ABVERKAUF_STANDARD, CHARGE_MAX, RECHTSGRUNDLAGE_BRIEF, ZWECK, anschreibenVorlage, kampagneAnschreiben, chargeErfolg, codeAus, datenschutzHinweis, istAbmeldung, istKandidat, kiAuftrag, leadSchluessel, leadsAusTabelle, mailErlaubt, mailSchluessel, preisPosition, tagesRest, type Absender, type AbverkaufEinstellungen } from "./logic";
+import { ABVERKAUF_STANDARD, CHARGE_MAX, EMAIL_QUELLE_HAND, RECHTSGRUNDLAGE_BRIEF, ZWECK, adelprepVorschlag, anschreibenVorlage, quelleDatumAus, quelleErkennen, quelleSperre, kampagneAnschreiben, chargeErfolg, codeAus, datenschutzHinweis, istAbmeldung, istKandidat, kiAuftrag, leadSchluessel, leadsAusTabelle, mailErlaubt, mailSchluessel, preisPosition, tagesRest, type Absender, type AbverkaufEinstellungen } from "./logic";
 
 // B34.3 B2B-Abverkauf von Ladenhütern. Nichts wird automatisch verschickt: Entwürfe → Freigabe (einzeln oder Charge
 // bis 20, Tageslimit) → Brief als PDF zum Drucken bzw. E-Mail nur, wenn erlaubt. Das Seller-System scrapt nicht –
@@ -34,6 +34,7 @@ export async function einstellungen(tenantId: string): Promise<AbverkaufEinstell
     adelprep: { ...d.adelprep, ...(roh.adelprep ?? {}), bestaetigt: { ...d.adelprep.bestaetigt, ...(roh.adelprep?.bestaetigt ?? {}) } },
     briefversand: { ...d.briefversand, ...(bv ?? {}), preise: { ebrief: { ...d.briefversand.preise.ebrief, ...(bv?.preise?.ebrief ?? {}) }, letterxpress: { ...d.briefversand.preise.letterxpress, ...(bv?.preise?.letterxpress ?? {}) }, epost: { ...d.briefversand.preise.epost, ...(bv?.preise?.epost ?? {}) } } },
     lager: { ...d.lager, ...(roh.lager ?? {}) },
+    leadQuellen: { ...d.leadQuellen, ...(roh.leadQuellen ?? {}) },
   };
 }
 
@@ -108,13 +109,19 @@ export async function preislisteDatei(tenantId: string, id: string, format: "pdf
 
 // ---- 2. Leads --------------------------------------------------------------------------------------------------
 
+/**
+ * Leads aus CSV/Excel. B34.3c: Quelle und Datum werden automatisch eingetragen, wenn nichts angegeben ist (Apify-,
+ * LUCID-, Keepa-, Helium-10-Export erkannt; Datum aus „scrapedAt“/„Datum“, sonst heute). Sperrliste greift immer.
+ */
 export async function leadsImportieren(s: Session, o: { name: string; bytes: Uint8Array; quelle: string; quelleDatum: string }) {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
-  if (!o.quelle.trim()) throw new AbverkaufFehler("Bitte die Quelle angeben (z. B. „Apify Google Maps, Suche Spielwaren München“).");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.quelleDatum)) throw new AbverkaufFehler("Bitte das Datum der Quelle angeben.");
+  if (o.quelleDatum.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(o.quelleDatum.trim())) throw new AbverkaufFehler("Datum der Quelle bitte als Datum angeben (oder leer lassen).");
   const { readTable } = await import("@/lib/tabular");
   const t = readTable(o.bytes);
-  const r = leadsAusTabelle(t.headers, t.rows);
+  const erkannt = quelleErkennen(t.headers, o.name);
+  const quelle = o.quelle.trim() || erkannt.name;
+  const quelleDatum = o.quelleDatum.trim() || quelleDatumAus(t.headers, t.rows) || heute();
+  const r = leadsAusTabelle(t.headers, t.rows, { typ: erkannt.typ });
   const cfg = await einstellungen(s.tenantId);
   const gesperrt = new Set((await db.select({ k: SP.schluessel }).from(SP).where(eq(SP.tenantId, s.tenantId))).map((x) => x.k));
   let neu = 0;
@@ -129,13 +136,14 @@ export async function leadsImportieren(s: Session, o: { name: string; bytes: Uin
     }
     const ins = await db
       .insert(L)
-      .values({ tenantId: s.tenantId, firma: l.firma, strasse: l.strasse ? sealPii(l.strasse) : null, plz: l.plz, ort: l.ort, land: l.land, kategorie: l.kategorie, email: l.email ? sealPii(l.email) : null, emailQuelle: l.emailQuelle, website: l.website, quelle: o.quelle.trim().slice(0, 200), quelleDatum: o.quelleDatum, kontaktweg: "brief", rechtsgrundlage: RECHTSGRUNDLAGE_BRIEF, zweck: ZWECK, loeschenAm, schluessel: key, importName: o.name.slice(0, 200), adelprep: l.adelprep, lat: l.lat, lng: l.lng, groesse: l.groesse })
+      .values({ tenantId: s.tenantId, firma: l.firma, strasse: l.strasse ? sealPii(l.strasse) : null, plz: l.plz, ort: l.ort, land: l.land, kategorie: l.kategorie, email: l.email ? sealPii(l.email) : null, emailQuelle: l.emailQuelle, website: l.website, quelle: quelle.slice(0, 200), quelleDatum, quelleTyp: erkannt.typ, stueckJeArtikel: l.stueckJeArtikel, kontaktweg: "brief", rechtsgrundlage: RECHTSGRUNDLAGE_BRIEF, zweck: ZWECK, loeschenAm, schluessel: key, importName: o.name.slice(0, 200), adelprep: l.adelprep, lat: l.lat, lng: l.lng, groesse: l.groesse })
       .onConflictDoNothing()
       .returning({ id: L.id });
     if (ins.length) neu++;
     else doppelt++;
   }
-  return { neu, doppelt, gesperrt: sperre, verworfen: r.verworfen, ohneMail: r.ohneMail };
+  const mitMail = r.leads.filter((l) => l.email).length;
+  return { neu, doppelt, gesperrt: sperre, verworfen: r.verworfen, ohneMail: r.ohneMail, quelle, quelleDatum, typ: erkannt.typ, mitMail };
 }
 
 export type LeadZeile = Omit<typeof L.$inferSelect, "strasse" | "email"> & { strasse: string | null; email: string | null };
@@ -145,9 +153,42 @@ export async function leadsListe(tenantId: string, limit = 300): Promise<LeadZei
   return (await db.select().from(L).where(eq(L.tenantId, tenantId)).orderBy(desc(L.createdAt)).limit(limit)).map(offen);
 }
 
-export async function leadAendern(s: Session, id: string, o: { kontaktweg?: "brief" | "email"; einwilligung?: string | null; bestandskunde?: boolean; status?: (typeof L.$inferSelect)["status"]; adelprep?: boolean }) {
+export async function leadAendern(s: Session, id: string, o: { kontaktweg?: "brief" | "email"; einwilligung?: string | null; bestandskunde?: boolean; status?: (typeof L.$inferSelect)["status"]; adelprep?: boolean; emailImpressum?: string | null }) {
   if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
+  if (o.emailImpressum !== undefined) await impressumMailSetzen(s.tenantId, id, o.emailImpressum);
+  if ([o.adelprep, o.kontaktweg, o.einwilligung, o.bestandskunde, o.status].every((v) => v === undefined)) return; // nur die E-Mail geändert
   await db.update(L).set({ ...(o.adelprep !== undefined ? { adelprep: o.adelprep } : {}), ...(o.kontaktweg ? { kontaktweg: o.kontaktweg } : {}), ...(o.einwilligung !== undefined ? { einwilligung: o.einwilligung?.trim().slice(0, 300) || null } : {}), ...(o.bestandskunde !== undefined ? { bestandskunde: o.bestandskunde } : {}), ...(o.status ? { status: o.status } : {}) }).where(and(eq(L.tenantId, s.tenantId), eq(L.id, id)));
+}
+
+/**
+ * B34.3c E-Mail aus dem Impressum von Hand speichern (Quelle „Impressum (von Hand)“) – nur für Antworten, nie für
+ * Werbe-E-Mails. Das System ruft keine Websites ab (kein Scraping). Leer = Adresse entfernen.
+ */
+async function impressumMailSetzen(tenantId: string, id: string, roh: string | null) {
+  const mail = (roh ?? "").trim().toLowerCase();
+  if (!mail) {
+    await db.update(L).set({ email: null, emailQuelle: null, kontaktweg: "brief" }).where(and(eq(L.tenantId, tenantId), eq(L.id, id)));
+    return;
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) || mail.length > 200) throw new AbverkaufFehler("Bitte eine gültige E-Mail-Adresse eintragen.");
+  const [sperre] = await db.select({ id: SP.id }).from(SP).where(and(eq(SP.tenantId, tenantId), eq(SP.schluessel, mailSchluessel(mail)))).limit(1);
+  if (sperre) throw new AbverkaufFehler("Diese E-Mail-Adresse steht auf der Sperrliste.");
+  await db.update(L).set({ email: sealPii(mail), emailQuelle: EMAIL_QUELLE_HAND }).where(and(eq(L.tenantId, tenantId), eq(L.id, id)));
+}
+
+/** B34.3c Vorschläge „Zielgruppe AdelPrep“ (Stück je Artikel ab Schwelle) – nichts wird automatisch gesetzt. */
+export async function adelprepVorschlaege(tenantId: string) {
+  const cfg = await einstellungen(tenantId);
+  const zeilen = await db.select({ id: L.id, firma: L.firma, ort: L.ort, plz: L.plz, quelle: L.quelle, adelprep: L.adelprep, status: L.status, stueckJeArtikel: L.stueckJeArtikel }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.adelprep, false), sql`${L.stueckJeArtikel} is not null`)).orderBy(desc(L.stueckJeArtikel)).limit(200);
+  return zeilen.map((l) => ({ ...l, grund: adelprepVorschlag(l, cfg.leadQuellen.adelprepAbStueck) })).filter((l) => l.grund);
+}
+
+export async function adelprepUebernehmen(s: Session, ids: string[]) {
+  if (s.readOnly) throw new AbverkaufFehler("Nur ansehen – nichts geändert.");
+  const wahl = [...new Set(ids)].slice(0, 200);
+  if (!wahl.length) throw new AbverkaufFehler("Bitte mindestens einen Vorschlag auswählen.");
+  const r = await db.update(L).set({ adelprep: true }).where(and(eq(L.tenantId, s.tenantId), inArray(L.id, wahl), sql`${L.status} <> 'gesperrt'`)).returning({ id: L.id });
+  return r.length;
 }
 
 /** Sperren (Widerspruch/Abmeldung): Lead gesperrt, offene Entwürfe gestoppt, Prüfsummen auf die Sperrliste. */
@@ -188,8 +229,14 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
   const { getIntegration } = await import("@/lib/integrations/store");
   const ai = await getIntegration(s.tenantId, "anthropic");
   let neu = 0;
+  const quelleGesperrt: string[] = [];
   for (const l of leads) {
     if (l.status === "gesperrt") continue;
+    const qs = quelleSperre(l, cfg.leadQuellen);
+    if (qs) {
+      quelleGesperrt.push(l.firma);
+      continue;
+    }
     const [schon] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, s.tenantId), eq(A.leadId, l.id), eq(A.status, "entwurf"))).limit(1);
     if (schon) continue;
     const code = neuerCode();
@@ -212,7 +259,8 @@ export async function entwuerfeErstellen(s: Session, leadIds: string[], preislis
     await db.insert(A).values({ tenantId: s.tenantId, leadId: l.id, preislisteId: liste?.id ?? null, kanal: kampagne ? "brief" : l.kontaktweg, code, betreff: v.betreff, text: text.slice(0, 6000), ki, kampagneId: kampagne?.id ?? null, adelprepBeilage: l.adelprep && cfg.adelprep.standardBeilegen && !kampagne?.absender });
     neu++;
   }
-  return { neu, text: `${neu} ${neu === 1 ? "Entwurf" : "Entwürfe"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.` };
+  const lucid = quelleGesperrt.length ? ` · ${quelleGesperrt.length} ohne Entwurf (Quelle LUCID – Nutzung für Werbung noch nicht geklärt)` : "";
+  return { neu, text: `${neu} ${neu === 1 ? "Entwurf" : "Entwürfe"} angelegt${leadIds.length > CHARGE_MAX ? ` (höchstens ${CHARGE_MAX} auf einmal)` : ""} – nichts verschickt, erst nach Freigabe.${lucid}` };
 }
 
 export async function anschreibenListe(tenantId: string, limit = 200) {
@@ -253,7 +301,7 @@ export async function freigeben(s: Session, ids: string[]): Promise<{ chargeId: 
       continue;
     }
     if (z.a.kanal === "email") {
-      const m = mailErlaubt({ bestandskunde: z.l.bestandskunde, einwilligung: z.l.einwilligung, email: z.l.email ? openPii(z.l.email) : null }, cfg.rechtlichGeprueft);
+      const m = mailErlaubt({ bestandskunde: z.l.bestandskunde, einwilligung: z.l.einwilligung, email: z.l.email ? openPii(z.l.email) : null, status: z.l.status }, cfg.rechtlichGeprueft);
       if (!m.erlaubt) {
         gesperrt.push(`${z.l.firma}: ${m.grund}`);
         await db.update(A).set({ fehler: m.grund }).where(eq(A.id, z.a.id));

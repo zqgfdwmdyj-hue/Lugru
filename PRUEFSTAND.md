@@ -87,7 +87,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Finanzen › Rechnungen | Kunden `/rechnungen/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Deals `/b2b` | ○ 0/6 Abläufe | – | 5 |
 | B2B | Preislisten je Land `/b2b/preislisten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/3 Abläufe | – | 3 |
+| B2B | Abverkauf an Händler (Ladenhüter) `/b2b/abverkauf` | ○ 0/4 Abläufe | – | 3 |
 | B2B | B2B-Kunden `/b2b/kunden` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Lieferanten-Freigaben `/b2b/lieferanten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | B2B | Bilanz `/b2b/bilanz` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -506,6 +506,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an | Preisliste ohne EK/Break-even/interne Gründe, Preis über Break-even; 10 Leads (E-Mail nur mit Quelle Impressum, verschlüsselt); E-Mail gesperrt, keine Mail raus; Brief mit Anschrift und Datenschutzhinweis Art. 14 DSGVO (Quelle, Rechtsgrundlage, Löschfrist, Widerspruch, Abmelden); Antwort → Aufgabe, Abmeldung → Sperrliste, Import blockiert; Erfolg je Charge (Rücklauf, Umsatz, Marge) auch in der B2B-Bilanz; E-Mail erst mit Einwilligung + „Rechtlich geprüft“, mit Datenschutzhinweis | ○ im letzten Lauf nicht gelaufen | `b34-abverkauf.spec.ts` |
 | B34.3a/3.6 Abnahme: Beilage der Logistik-Firma (Textprüfung), 3 Test-Leads, Charge, Briefversand über den LetterXpress-Nachbau im Testmodus, Testbrief, Status, AV-Haken, live | Beilage als eigenes Blatt mit eigenem Impressum, „all-in“/unbelegte Fläche gesperrt; Kostenvorschau 2,80 € = Kosten laut Anbieter; ohne Testbrief und ohne bestätigte Freigabe nichts beim Anbieter; Status gedruckt/zugestellt kommt zurück; live ohne AV-Haken gesperrt; Kosten je Charge und je Rücklauf | ○ im letzten Lauf nicht gelaufen | `b34-briefversand.spec.ts` |
 | B34.3b Abnahme: Kampagne „Friseure“ mit 2 Testprodukten (MHD 06/2028 und 01/2027), Leads mit Koordinaten, Brief-PDF, Anfrageseite ohne Anmeldung | MHD unter 6 Monaten nicht angeboten; Umkreis 50 km zeigt nur Leads im Radius (Gründe für die anderen); Brief mit QR-Code, Kurzlink und Kampagnen-ID; falsche USt-ID abgelehnt, Anfrage → Aufgabe + Eintrag im Posteingang, Anschreiben beantwortet; Lagerkostenrechner 10 Paletten = 14,4 m³ | ○ im letzten Lauf nicht gelaufen | `b34-kampagnen.spec.ts`, `b34-kampagnen.spec.ts` |
+| B34.3c Abnahme Stufe 1: Apify-Export (Google Maps) per CSV ohne Angabe von Quelle/Datum, „Rechtlich geprüft“ an, Entwurf per Mail und per Brief, Freigabe; Keepa-Export mit Stückzahl; Impressum-Mail von Hand; LUCID-Export | Quelle „Apify-Export (Datei)“ und Datum aus scrapedAt automatisch; E-Mail verschlüsselt gespeichert (Quelle Impressum), Mail-Weg gesperrt – Brief erst nach Freigabe, keine Mail raus; Antwort erlaubt, wenn sich der Händler meldet; Vorschlag „Zielgruppe AdelPrep“ ab 80 Stück, Übernahme von Hand; LUCID ohne Entwurf, bis „geklärt“ gesetzt ist | ○ im letzten Lauf nicht gelaufen | `b34-lead-quellen.spec.ts` |
 
 - – Offen: Vor E-Mail-Versand an Fremdkontakte rechtlich prüfen lassen (keine Rechtsberatung im System)
 - – Offen: Echte Leads (z. B. Apify-CSV): Spaltennamen beim ersten Import prüfen
@@ -708,7 +709,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (171 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 171 nicht gelaufen.
+**Automatisch** (172 Abläufe + Oberfläche auf 119 Seiten): 0 bestanden, 0 fehlgeschlagen, 172 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -818,6 +819,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Abverkauf an Händler (Ladenhüter): B34.3 Abnahme: Ladenhüter (Kapital > 300 €, keine Verkäufe) → Preisliste PDF + Excel; 10 Test-Leads per CSV; E-Mail ohne „Rechtlich geprüft“; Serienbrief-PDF; Antwort im Posteingang; erneuter Import; „Rechtlich geprüft“ an – im letzten Lauf nicht gelaufen
 - ○ Abverkauf an Händler (Ladenhüter): B34.3a/3.6 Abnahme: Beilage der Logistik-Firma (Textprüfung), 3 Test-Leads, Charge, Briefversand über den LetterXpress-Nachbau im Testmodus, Testbrief, Status, AV-Haken, live – im letzten Lauf nicht gelaufen
 - ○ Abverkauf an Händler (Ladenhüter): B34.3b Abnahme: Kampagne „Friseure“ mit 2 Testprodukten (MHD 06/2028 und 01/2027), Leads mit Koordinaten, Brief-PDF, Anfrageseite ohne Anmeldung – im letzten Lauf nicht gelaufen
+- ○ Abverkauf an Händler (Ladenhüter): B34.3c Abnahme Stufe 1: Apify-Export (Google Maps) per CSV ohne Angabe von Quelle/Datum, „Rechtlich geprüft“ an, Entwurf per Mail und per Brief, Freigabe; Keepa-Export mit Stückzahl; Impressum-Mail von Hand; LUCID-Export – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip: Übungs-Deal – im letzten Lauf nicht gelaufen
 - ○ Uhren: Buy & Flip › Deals: Pflichtfeld-Fehler → Eingaben bleiben → speichern → neu laden → Status ändern → nochmals speichern – im letzten Lauf nicht gelaufen

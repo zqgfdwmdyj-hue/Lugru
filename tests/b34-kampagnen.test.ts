@@ -4,7 +4,7 @@ import { kampagneAnschreiben, leadsAusTabelle } from "@/lib/abverkauf/logic";
 
 // B34.3.6/3a/3b – nur erfundene Werte (Testfirmen, example.invalid, DE00…).
 
-const ohne = { flaeche: false, zaehlung: false, nda: false, gefahrgut: false };
+const ohne = { flaeche: false, nda: false, gefahrgut: false };
 
 describe("B34.3.6 AdelPrep-Beilage: Textprüfung", () => {
   it("„all-in“/„Komplettpreis“ sperren, Preise netto, Hinweis „je Artikel“", () => {
@@ -18,9 +18,21 @@ describe("B34.3.6 AdelPrep-Beilage: Textprüfung", () => {
     const f = beilageLint(t, ohne).fehler;
     expect(f).toHaveLength(4);
     expect(f[0]).toContain("Fläche/Palettenplätze");
-    expect(beilageLint(t, { flaeche: true, zaehlung: true, nda: true, gefahrgut: true }).fehler).toEqual([]);
+    // Fläche/NDA/Gefahrgut nach Rückfrage erlaubt – „kostenlose Zählung“ bleibt immer gesperrt (gibt es nicht, 11.11.)
+    expect(beilageLint(t, { flaeche: true, zaehlung: true, nda: true, gefahrgut: true }).fehler).toEqual(["„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen"]);
+    expect(beilageLint("Lager mit 500 m², NDA möglich, Gefahrgut (LQ) auf Anfrage.", { flaeche: true, nda: true, gefahrgut: true }).fehler).toEqual([]);
     // „m²“ allein (ohne Palettenplätze) wird erkannt
     expect(beilageLint("FBA-Prep, 500 m² Lagerfläche.", ohne).fehler).toEqual(["Angabe „Fläche/Palettenplätze“ nicht belegt – erst nach Rückfrage verwenden (in den Einstellungen bestätigen)"]);
+  });
+  it("„kostenlose Zählung“ in allen Varianten gesperrt, normale Zählung erlaubt", () => {
+    for (const t of [
+      "Zählung und EAN-Prüfung bei direktem FBA-Versand kostenlos.",
+      "Kostenfreie Mengenzählung bei Einlagerung.",
+      "Inklusive Zählung der Ware.",
+      "Die Zählung ist gratis.",
+    ]) expect(beilageLint(t, ohne).fehler, t).toContain("„kostenlose Zählung“ gibt es nicht – Zählung und EAN-Prüfung werden berechnet; Aussage streichen");
+    expect(beilageLint("Mengenzählung bei Einlagerung (Pflicht), Preis auf Anfrage.", ohne).fehler).toEqual([]);
+    expect(beilageLint("Keine Mindestlaufzeit, kostenlose Beratung.", ohne).fehler).toEqual([]);
   });
   it("eigener Brief braucht Firma, Anschrift, Kontakt, Impressum, Text", () => {
     expect(beilageVollstaendig({ firma: "", strasse: "", plz: "", ort: "", email: "", telefon: "", web: "", impressum: "", datenschutz: "" }, "")).toEqual(["Firmenname", "Anschrift", "Kontakt (E-Mail oder Telefon)", "Impressum", "Textbaustein"]);
