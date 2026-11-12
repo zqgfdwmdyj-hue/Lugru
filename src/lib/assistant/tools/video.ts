@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import { anzeigeStatus, FREIGABE_TEXT, fortschrittProzent, SCHRITT_TEXT, VIDEO_MODELLE } from "@/lib/video/logic";
-import { auftraege, auftragLesen, kanaele, kostenUebersicht, videoEinstellungen, vidiqEintragen, workerZuletzt } from "@/lib/video/service";
+import { anzeigeStatus, FREIGABE_TEXT, freigabeAktiv, fortschrittProzent, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, startAbAus, typischFuer, VIDEO_MODELLE, VIDEO_STILE } from "@/lib/video/logic";
+import { abbrechen, auftraege, auftragAnlegen, auftragLesen, auftragLoeschen, kanaele, kostenUebersicht, VideoFehler, videoEinstellungen, vidiqEintragen, VORLAGE_MAX, workerZuletzt } from "@/lib/video/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, uuid } from "./common";
 
@@ -97,4 +97,98 @@ export const videoVidiqEintragenTool = defineTool({
   },
 });
 
-export const VIDEO = [videoAuftraegeTool, videoVidiqEintragenTool];
+const auftragEingabe = z.object({
+  kanal: z.string().trim().min(2).max(80).describe("Kanalname (Teil reicht, muss eindeutig sein)"),
+  thema: z.string().trim().min(5).max(300).describe("Thema/Arbeitstitel des Videos"),
+  vorlage: z.string().max(VORLAGE_MAX).optional().describe("Optional: englische Vorlage (Transkript/Gliederung eines erfolgreichen Videos) oder eigenes Skript – vollständiger Text"),
+  vorlage_art: z.enum(["vorlage", "skript"]).optional().describe("„vorlage“ = nur Muster für Aufbau/Hook/Spannungsbogen, nicht übersetzen (Standard); „skript“ = eigenes Skript, wird möglichst wörtlich übernommen"),
+  start: z.string().trim().max(30).optional().describe("„sofort“ (Standard), „nacht“ (heute 23 Uhr) oder Zeitpunkt „JJJJ-MM-TTTHH:MM“ (deutsche Zeit)"),
+  vidiq_keywords: z.string().trim().max(2000).optional().describe("Optional: Keywords/Ideen aus vidIQ"),
+  vidiq_titel: z.string().trim().max(2000).optional().describe("Optional: Titelvorschläge aus vidIQ"),
+  bestaetigt: z.boolean().optional().describe("Erst weglassen: liefert Zusammenfassung mit Kanal, Länge, Stil, Freigaben und Kostenschätzung für die Rückfrage. Erst nach ausdrücklichem Ja mit true erneut aufrufen – dann wird der Auftrag angelegt (er kostet Geld)."),
+});
+
+function startWahl(start?: string): { wahl: string; zeitpunkt: string | null } | null {
+  const t = (start ?? "sofort").trim().toLowerCase();
+  if (!t || t === "sofort" || t === "jetzt") return { wahl: "sofort", zeitpunkt: null };
+  if (t === "nacht" || t === "heute nacht") return { wahl: "nacht", zeitpunkt: null };
+  return /^\d{4}-\d{2}-\d{2}t\d{2}:\d{2}$/.test(t) ? { wahl: "zeitpunkt", zeitpunkt: start!.trim().replace("t", "T") } : null;
+}
+
+async function auftragPlan(tenantId: string, i: z.infer<typeof auftragEingabe>) {
+  const kl = (await kanaele(tenantId)).filter((k) => k.aktiv);
+  const passend = kl.filter((k) => k.name.toLowerCase() === i.kanal.toLowerCase());
+  const treffer = passend.length ? passend : kl.filter((k) => k.name.toLowerCase().includes(i.kanal.toLowerCase()));
+  if (treffer.length !== 1) return { fehler: treffer.length ? `Kanal nicht eindeutig: ${treffer.map((k) => k.name).join(", ")}` : `Kanal „${i.kanal}“ nicht gefunden. Aktive Kanäle: ${kl.map((k) => k.name).join(", ") || "keine"}` } as const;
+  const k = treffer[0];
+  const st = startWahl(i.start);
+  if (!st) return { fehler: "start: „sofort“, „nacht“ oder „JJJJ-MM-TTTHH:MM“." } as const;
+  const vorlage = i.vorlage?.trim() || null;
+  if (vorlage && vorlage.length < 200) return { fehler: "Vorlage/Skript ist sehr kurz – bitte den ganzen Text mitschicken (oder weglassen)." } as const;
+  const cfg = await videoEinstellungen(tenantId);
+  const ziel = laengeZiel(k.laengeMin, k.laengeMax);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(k.laengeMin, k.laengeMax, k.stil), cfg.modell);
+  const worker = await workerZuletzt(tenantId);
+  const startAb = startAbAus(st.wahl, st.zeitpunkt);
+  const zusammenfassung = [
+    `Kanal „${k.name}“ (${VIDEO_STILE[k.stil].name}, ${ziel.minuten[0]}–${ziel.minuten[1]} Min.${k.zielgruppe ? `, Zielgruppe ${k.zielgruppe}` : ""})`,
+    `Thema „${i.thema}“`,
+    vorlage ? `${i.vorlage_art === "skript" ? "eigenes Skript" : "Vorlage"} (${vorlage.length.toLocaleString("de-DE")} Zeichen)` : null,
+    `Start ${st.wahl === "sofort" ? "sofort" : startAb ? berlinDateTime(startAb) : "sofort"}`,
+    `Kosten-Schätzung ca. ${schaetzung.summe.toFixed(2).replace(".", ",")} $${schaetzung.fehlend.length ? ` (ohne ${schaetzung.fehlend.join(", ")})` : ""}`,
+  ].filter(Boolean).join(" · ");
+  const freigaben = (["gliederung", "skript", "szenen", "vorschau"] as const).filter((f) => freigabeAktiv(k.freigaben, f)).map((f) => FREIGABE_TEXT[f]);
+  return { k, st, vorlage, zusammenfassung, freigaben, worker: worker?.stand.text ?? "Noch kein Worker angelegt", schaetzung } as const;
+}
+
+export const videoAuftragAnlegenTool = defineTool({
+  name: "video_auftrag_anlegen",
+  title: "Video: neuen Auftrag anlegen",
+  description:
+    "Legt ein neues Video in der YouTube-Pipeline an – mit Thema und optional englischer Vorlage (nur Muster für Aufbau, nicht übersetzen) oder eigenem Skript (wird möglichst wörtlich übernommen), Startzeit und vidIQ-Daten. Nur auf ausdrücklichen Wunsch. Ablauf: 1) ohne „bestaetigt“ aufrufen → Zusammenfassung (Kanal, Stil, Länge, Zielgruppe, Freigaben, Kostenschätzung, Worker-Stand) zeigen und fragen „Soll ich das Video so anlegen?“; 2) nur nach ausdrücklichem Ja mit bestaetigt=true erneut aufrufen. Der Worker am Arbeits-PC holt den Auftrag ab; Freigaben (Gliederung, Skript, Szenen, Vorschau) laufen wie gewohnt über die Seite Video, der Upload bleibt immer privat.",
+  area: "marken",
+  write: true,
+  stufe: "gelb",
+  input: auftragEingabe,
+  summary: (i) => `Video anlegen: ${i.kanal} – „${i.thema}“${i.vorlage ? (i.vorlage_art === "skript" ? " (eigenes Skript)" : " (mit Vorlage)") : ""}`,
+  vorschau: async (ctx, i) => {
+    const p = await auftragPlan(ctx.session.tenantId, i);
+    return "fehler" in p ? { anzahl: 0, beispiele: [], ausgeschlossen: { anzahl: 1, grund: p.fehler ?? "", beispiele: [i.thema] } } : { anzahl: 1, beispiele: [p.zusammenfassung, `Freigaben: ${p.freigaben.join(", ") || "keine"}`, p.worker] };
+  },
+  run: async (ctx, i) => {
+    const t = ctx.session.tenantId;
+    const p = await auftragPlan(t, i);
+    if ("fehler" in p) return { text: json({ angelegt: false, fehler: p.fehler, link: abs(ctx, "/marken/video") }), isError: true };
+    // Im Fragefeld bestätigt die Person vorher in der Oberfläche (Vorschau) – dort direkt anlegen.
+    if (!i.bestaetigt && ctx.channel !== "app") {
+      return json({ angelegt: false, rueckfrage: `Soll ich das Video so anlegen? ${p.zusammenfassung}`, zusammenfassung: p.zusammenfassung, freigaben: p.freigaben, worker: p.worker, naechster_schritt: "Nach ausdrücklichem Ja mit denselben Angaben und bestaetigt=true aufrufen." });
+    }
+    try {
+      const id = await auftragAnlegen(ctx.session, { kanalId: p.k.id, thema: i.thema, startWahl: p.st.wahl, zeitpunkt: p.st.zeitpunkt, vidiqKeywords: i.vidiq_keywords ?? null, vidiqTitel: i.vidiq_titel ?? null, vorlage: p.vorlage, vorlageArt: i.vorlage_art ?? "vorlage" });
+      return {
+        text: json({ angelegt: true, id, zusammenfassung: p.zusammenfassung, freigaben: p.freigaben, worker: p.worker, hinweis: "Der Worker holt den Auftrag ab. Freigaben und „Privat hochladen“ auf der Seite Video.", link: abs(ctx, `/marken/video?kanal=${p.k.id}#a-${id}`) }),
+        ids: [id],
+        undo: { id },
+      };
+    } catch (e) {
+      if (e instanceof VideoFehler) return { text: json({ angelegt: false, fehler: e.message }), isError: true };
+      throw e;
+    }
+  },
+  undo: async (ctx, daten) => {
+    const id = (daten as { id?: string })?.id;
+    if (!id) return "Nichts zum Rückgängigmachen.";
+    const r = await auftragLesen(ctx.session.tenantId, id);
+    if (!r) return "Auftrag gibt es nicht mehr.";
+    // Noch nichts gelaufen (keine Kosten) → ganz löschen, sonst abbrechen (Kosten bleiben stehen)
+    if (r.a.status === "wartet" && r.a.kostenIst === 0 && ctx.session.role === "owner") {
+      await auftragLoeschen(ctx.session, id);
+      return `Video „${r.a.thema}“ gelöscht.`;
+    }
+    if (r.a.status === "fertig" || r.a.status === "abgebrochen") return `Video „${r.a.thema}“ ist schon ${r.a.status} – nichts geändert.`;
+    await abbrechen(ctx.session, id);
+    return `Video „${r.a.thema}“ abgebrochen (bisherige Kosten bleiben stehen).`;
+  },
+});
+
+export const VIDEO = [videoAuftraegeTool, videoVidiqEintragenTool, videoAuftragAnlegenTool];

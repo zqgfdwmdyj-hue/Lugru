@@ -1673,6 +1673,7 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | B36.6 Filter für Bildideen und Titel, Ersatzbild bzw. Rückfrage | ❌ | ✅ gemeinsame Wortliste `filter.json` (Seller + Worker); Bildidee mit Treffer → ruhiges Ersatzmotiv (streng zusätzlich Bett/Kuss/Berührung); Titel mit Treffer → neuer Versuch, sonst Warnung bei der Vorschau-Freigabe; Anbieter lehnt ab → Ersatzmotiv, sonst lokales Ersatzbild | `filter.json`, `bild_treffer`, `titelTreffer` |
 | B36.8 vidIQ Stufe 1: Felder „Keywords/Ideen“ und „Titelvorschläge“, Claude trägt ein | ❌ | ✅ Felder beim Anlegen und je Auftrag; Werkzeug `video_vidiq_eintragen`; Seller-System und Worker rufen vidIQ nie auf | `vidiqEintragen`, `tools/video.ts` |
 | B36.8 Stufe 2 (eigene vidIQ-API) | ❌ | ❌ nicht gebaut – nur falls vidIQ eine offizielle API für den Tarif bietet | – |
+| Video aus dem claude.ai-Chat anlegen (Rückfrage 11.11., „Ja“ 12.11.) | ❌ | ✅ ändernde Werkzeug `video_auftrag_anlegen` (Stufe gelb): Kanal per Name, Thema, optional englische Vorlage oder eigenes Skript (ab 200 Zeichen, bis 40.000), Start sofort/nacht/Zeitpunkt, vidIQ-Daten; erst Rückfrage mit Zusammenfassung (Kanal, Stil, Länge, Zielgruppe, Start, Kostenschätzung, Freigaben, Worker), angelegt erst mit `bestaetigt=true`; ohne Änderungsrecht nicht sichtbar; Protokoll im Assistent-Verlauf | `tools/video.ts › videoAuftragAnlegenTool`, `auftragAnlegen` |
 | B36.1 Später je Video 3 Shorts | ❌ | ❌ nicht Teil dieses Auftrags („später“) | – |
 
 | Abnahme | Ergebnis |
@@ -1694,10 +1695,12 @@ Testdienste: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (
 resumable Upload, Sichtbarkeit, Thumbnail), Claude-Antworten für Recherche/Skript/Paket (auch als Stream). GitHub-Prüfung
 installiert dafür Python 3.12 + ffmpeg und führt die Worker-Tests aus.
 
-**Werkzeuge:** zwei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand,
-Claude-Modell, Ablage, je Kanal Zielgruppe, Länge und Stil, je Auftrag Vorlage/eigenes Skript)
-und `video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage). `notifications/tools/list_changed` nötig – geht
-beim Verbinden raus.
+**Werkzeuge:** drei neue – `video_auftraege` (lesend: Status je Auftrag, Freigaben, Fortschritt, Kosten, Worker-Stand,
+Claude-Modell, Ablage, je Kanal Zielgruppe, Länge und Stil, je Auftrag Vorlage/eigenes Skript),
+`video_vidiq_eintragen` (ändernd, Stufe grün, Rückgängig 7 Tage) und `video_auftrag_anlegen` (ändernd, Stufe gelb,
+Nachtrag 12.11.: neues Video aus dem claude.ai-Chat mit Thema, optional englischer Vorlage oder eigenem Skript, Startzeit
+und vidIQ-Daten; erst Rückfrage mit Zusammenfassung, angelegt erst nach „Ja“). `notifications/tools/list_changed`
+nötig – geht beim Verbinden raus.
 
 **Geklärt (11.11.):** Ablage in **Google Drive** (gebaut, s. o.); Claude-Modell **Opus 5.5** (Standard, umschaltbar);
 Zeitlux-Kanal auf YouTube ist Ludwig bekannt – angelegt wird er auf der Seite Video (nicht im Code). Zielgruppe
@@ -1707,8 +1710,8 @@ Erstes echtes Video: Thema „Mit 60, 70 oder 80: Warum manche Männer lange kö
 **Offene Fragen an Ludwig:** (1) Zeitlux: Themenbereich, Stimme (ElevenLabs-Voice-ID), Bildstil. (2) vidIQ: reichen
 170 Credits/Monat, gibt es eine API für den Tarif (sonst bleibt es bei Stufe 1)? (3) Docker Desktop auf dem Arbeits-PC
 vorhanden, oder lieber Python direkt? (4) ElevenLabs-Tarif und Preis je 1.000 Zeichen, OpenAI-Preis je Bild (für die
-Kostenanzeige). (5) Neues Video aus dem claude.ai-Chat anlegen (Thema, englische Vorlage, eigenes Skript) – dafür
-wäre ein ändernder Werkzeug-Aufruf nötig (`video_auftrag_anlegen`); bisher nur über die Seite (Text einfügen).
+Kostenanzeige). ~~(5) Neues Video aus dem claude.ai-Chat anlegen~~ – geklärt 12.11.: ja, gebaut als
+`video_auftrag_anlegen` (s. u.).
 
 ### B36.9 Stilprofil „Whiteboard-Collage“ (Nachtrag 11.11., nach Bildschirmfotos aus dem Kanal)
 
@@ -2162,7 +2165,16 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | B15.3 Bestand −144 (8U-P4IG-LL5O) | 🟡 Reparatur gebaut, wartet auf Klick | Seit B15 bucht das Prep Center nicht mehr vom eigenen Lager; alte Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (Bestand → Kachel „Eigenes Lager“ → „Zurückbuchen“, `prepAbbuchungenZurueck`). Zeigt der Vorschlag 0 Aufträge, liegt die Ursache woanders (z. B. Auftrag nicht als „Prep Center“ markiert) – dann bitte melden |
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
-## Neue Claude-Werkzeuge (56) und `notifications/tools/list_changed`
+## Neue Claude-Werkzeuge (57) und `notifications/tools/list_changed`
+
+B36 Nachtrag (12.11.): **ein neues ändernde Werkzeug** – `video_auftrag_anlegen` (Bereich Marken, Stufe gelb): legt ein
+Video in der Pipeline an (Kanal per Name, Thema, optional englische Vorlage = nur Muster oder eigenes Skript = wörtlich,
+Start „sofort“/„nacht“/Zeitpunkt, vidIQ-Keywords/Titel). Ohne `bestaetigt` nur Rückfrage „Soll ich das Video so
+anlegen?“ mit Kanal, Stil, Länge, Zielgruppe, Startzeit, Kostenschätzung, aktiven Freigaben und Worker-Stand; erst nach
+ausdrücklichem Ja mit `bestaetigt=true` angelegt. Protokoll im Assistent-Verlauf; Abbrechen/Löschen über die Seite
+Video (als gelbe Aktion kein Ein-Klick-Rückgängig; steht die Stufe in den Einstellungen auf grün: wartender Auftrag ohne
+Kosten wird gelöscht, sonst abgebrochen). Freigaben und Upload (immer privat) bleiben auf der Seite Video.
+`notifications/tools/list_changed` nötig – geht beim Verbinden raus.
 
 B36 (11.11., Video-Pipeline): **zwei neue Werkzeuge** – `video_auftraege` (lesend, Bereich Marken: Aufträge mit
 Status je Schritt, offener Freigabe, Fortschritt, Kosten Schätzung/Ist, YouTube-Status, Worker-Stand, Kosten je Kanal im
@@ -2768,3 +2780,6 @@ nie in Chats oder Mails.
      einmal **neu verbinden** – sonst wird das Video hochgeladen, aber die Untertitel nicht (Hinweis am Auftrag).
 178. **Abnahme B36.9**: erstes Testvideo neben das Referenzvideo legen (Hintergrund, Schrift, Farben, Collage, Hand,
      blasser Hintergrund) und Rückmeldung geben – Größen, Abstände und Tempo lassen sich danach nachschärfen.
+179. **Video aus dem Chat**: in claude.ai den Seller-Konnektor einmal neu verbinden (Änderungen erlauben), dann z. B.
+     „Lege im Kanal Unter der Decke ein Video an: Thema …, hier meine englische Vorlage: …“ – Claude zeigt erst die
+     Zusammenfassung mit Kostenschätzung und legt erst nach deinem Ja an.

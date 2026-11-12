@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { E2E_ENV, E2E_PORT, TD } from "./env";
-import { aktion, anmelden, expect, marke, sql, test } from "./helfer";
+import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
 
 function versiegeln(plain: string) {
   const key = createHash("sha256").update(`integrations:${E2E_ENV.APP_SECRET}`).digest();
@@ -65,7 +65,7 @@ test.describe("B36 Video-Pipeline", () => {
     mkdirSync(path.dirname(logDatei), { recursive: true });
     writeFileSync(logDatei, log);
     if (T) {
-      const namen = [KANAL, `Testkanal Drive ${m}`, `Testkanal Whiteboard ${m}`];
+      const namen = [KANAL, `Testkanal Drive ${m}`, `Testkanal Whiteboard ${m}`, `Testkanal Chat ${m}`];
       const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = any($2)", [T, namen]);
       for (const { id } of ids) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, id), { recursive: true, force: true });
       const kanaeleIds = await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
@@ -491,5 +491,59 @@ test.describe("B36 Video-Pipeline", () => {
     expect(ut[0]).toMatchObject({ videoId: a.youtube_id, sprache: "de", entwurf: false });
     expect(ut[0].zeilen).toBeGreaterThan(20);
     await workerStoppen();
+  });
+
+  test("Werkzeug video_auftrag_anlegen: Claude legt aus dem Chat ein Video an – erst Rückfrage mit Zusammenfassung, nach Ja angelegt (eigenes Skript, Startzeit); ohne Änderungsrecht nicht sichtbar", async ({ browser, baseURL }) => {
+    test.setTimeout(120_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL4 = `Testkanal Chat ${m}`;
+    const [{ id: kanalId }] = await sql<{ id: string }>("insert into video_kanaele (tenant_id, slug, name, zielgruppe, laenge_min, laenge_max, stil, freigaben) values ($1, $2, $3, 'Testpublikum 55+', 16, 20, 'whiteboard', $4::jsonb) returning id", [T, `testkanal-chat-${m}`.toLowerCase(), KANAL4, JSON.stringify({ gliederung: true, skript: true, szenen: true, vorschau: true })]);
+    const anzahl = async () => (await sql("select 1 from video_auftraege where tenant_id = $1 and kanal_id = $2", [T, kanalId])).length;
+
+    // Ohne Änderungsrecht: Werkzeug nicht in der Liste (lesen geht)
+    const lesen = await mcpVerbinden(browser, baseURL!, "inhaber");
+    const nurLesen = await lesen.tools();
+    expect(nurLesen).toContain("video_auftraege");
+    expect(nurLesen).not.toContain("video_auftrag_anlegen");
+
+    const c = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
+    expect(await c.tools()).toContain("video_auftrag_anlegen");
+    const skript = "Hello and welcome. Today we talk about something most men never discuss openly. ".repeat(4) + "This is a fictional test script for the video pipeline. It only exists for automated checks and contains no real content.";
+    const wunsch = { kanal: `Chat ${m}`, thema: "Testthema: Warum manche länger durchhalten (erfunden)", vorlage: skript, vorlage_art: "skript", start: "2030-01-01T06:30" };
+
+    // 1) ohne Bestätigung: nur Rückfrage mit Kanal, Stil, Länge, Zielgruppe, Kosten und Freigaben – nichts angelegt
+    const r1 = JSON.parse(await c.call("video_auftrag_anlegen", wunsch));
+    expect(r1.angelegt).toBe(false);
+    expect(r1.rueckfrage).toContain("Soll ich das Video so anlegen?");
+    expect(r1.zusammenfassung).toContain(`Kanal „${KANAL4}“ (Whiteboard-Collage, 16–20 Min., Zielgruppe Testpublikum 55+)`);
+    expect(r1.zusammenfassung).toContain(`eigenes Skript (${skript.length.toLocaleString("de-DE")} Zeichen)`);
+    expect(r1.zusammenfassung).toContain("Start 01.01.2030, 06:30");
+    expect(r1.zusammenfassung).toMatch(/Kosten-Schätzung ca\. \d+,\d\d \$/);
+    expect(r1.freigaben).toEqual(["Gliederung + Quellen", "Skript", "Szenen-Übersicht (Motive)", "Vorschau-Video + Thumbnail + Titel"]);
+    expect(await anzahl()).toBe(0);
+
+    // Fehler werden klar gemeldet (Kanal unbekannt, Vorlage zu kurz, Startzeit falsch)
+    expect(await c.call("video_auftrag_anlegen", { ...wunsch, kanal: "Gibt es nicht 4711" })).toContain("nicht gefunden");
+    expect(await c.call("video_auftrag_anlegen", { ...wunsch, vorlage: "zu kurz" })).toContain("sehr kurz");
+    expect(await c.call("video_auftrag_anlegen", { ...wunsch, start: "morgen früh" })).toContain("JJJJ-MM-TTTHH:MM");
+    expect(await anzahl()).toBe(0);
+
+    // 2) nach „Ja“: Auftrag angelegt – Thema, eigenes Skript, Startzeit, wartet auf den Worker
+    const r2 = JSON.parse(await c.call("video_auftrag_anlegen", { ...wunsch, bestaetigt: true }));
+    expect(r2.angelegt).toBe(true);
+    expect(r2.link).toContain(`/marken/video?kanal=${kanalId}#a-${r2.id}`);
+    const [a] = await sql<{ thema: string; vorlage: string; vorlage_art: string; start_ab: Date; status: string }>("select thema, vorlage, vorlage_art, start_ab, status from video_auftraege where tenant_id = $1 and id = $2", [T, r2.id]);
+    expect(a).toMatchObject({ thema: wunsch.thema, vorlage: skript, vorlage_art: "skript", status: "wartet" });
+    expect(new Date(a.start_ab).toISOString()).toBe("2030-01-01T05:30:00.000Z");
+    expect(await anzahl()).toBe(1);
+
+    // Protokoll: ändernde Aktion mit Stufe gelb und Datensatz
+    const [log] = await sql<{ stufe: string; ids: string[]; summary: string }>("select stufe, ids, summary from assistant_log where tenant_id = $1 and tool = 'video_auftrag_anlegen' and ok order by created_at desc limit 1", [T]);
+    expect(log.stufe).toBe("gelb");
+    expect(log.ids).toEqual([r2.id]);
+    expect(log.summary).not.toContain(wunsch.thema); // Protokolltext liegt verschlüsselt in der Datenbank
+
+    // Lesewerkzeug zeigt den neuen Auftrag mit Vorlage-Art
+    expect(await c.call("video_auftraege", { kanal: KANAL4 })).toContain(wunsch.thema);
   });
 });
