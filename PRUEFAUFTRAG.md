@@ -1748,6 +1748,7 @@ Länge im Kanalprofil). Schlüssel unverändert.
 | 4. Abbruch, Timeout, 429, 5xx: bis zu 4 Wiederholungen nach 2, 4, 8, 16 s, dann Fehler mit Abschnittsname | 🟡 SDK 2 Versuche (nicht bei Abbruch mitten im Stream), Brücke 3 Versuche à 5/10/15 s | ✅ ein Muster für alle: `mit_wiederholung` (5 Versuche, 2/4/8/16 s; 400/401/Ablehnung nicht wiederholt). Fehler z. B. „Skript – Punkt 3: nach 5 Versuchen nicht geklappt (peer closed connection …)“ | `udd/netz.py` |
 | 5. Gleiches Muster für Recherche und alle Aufrufe an Claude, ElevenLabs, OpenAI | ❌ | ✅ Recherche: erst Gliederung (kleine Websuche), dann je Punkt ein Aufruf für die Quellen (bis 3 Suchen), IDs Q1… beim Zusammenführen, gleiche URL nur einmal. Paket, Sprache je Szene, Bilder/Motive je Szene mit Namen („Sprache – Szene 7“, „Motiv „banane“ (Szene 3)“). Brücke im Seller-System: abgebrochene Anbieter-Antwort → 502 (wird wiederholt) | `research`, `Seller.anbieter`, `anbieter.ts` |
 | 6. Zusammenführen und prüfen: 1.500–1.700 Wörter, 5–7 Punkte, jede Studie in der Quellenliste | 🟡 Prüfung Wörter/Punkte/IDs, Korrektur = ganzes Skript neu | ✅ Prüfung zusätzlich „Szene nennt eine Studie ohne Quelle“; Nachbesserung höchstens 2 Runden und **nur der betroffenen Abschnitte** (zu kurz: bis 3 Punkte verlängern, zu lang: die längsten kürzen, fremde/fehlende Quelle: dieser Abschnitt). Was danach bleibt, steht als Hinweis an der Skript-Freigabe | `skript_pruefen`, `_korrekturen` |
+| Hinweis „Worker veraltet“ (Nachtrag 12.11. abends: Fehler kam weiter vom alten Worker am PC) | – | ✅ Worker meldet v1.1.0; meldet er eine ältere Version, zeigt die Seite Video oben „Der Worker am PC ist veraltet (v…, aktuell v1.1.0)“ mit Verweis auf README „Aktualisieren“ | `WORKER_VERSION_AKTUELL`, `workerVeraltet`, `vd-worker-alt` |
 | Länge fest 1.500–1.700 Wörter | – | ✅ Seller-System: eine Quelle `laengeZiel()` (10–12 Min., 15–34 Szenen) für Seite, Schätzung, Claude-Werkzeuge und Worker; im Kanalprofil statt „Länge von/bis“ der Hinweis „fest 1.500–1.700 Wörter“. Schätzung neu: ≈ 112k/15k Tokens, 12 Websuchen, 10.600 Zeichen, 25 Bilder (Whiteboard ≤ 100 Motive) | `SKRIPT_WOERTER`, `laengeZiel`, `typischFuer` |
 
 | Abnahme | Ergebnis |
@@ -2810,7 +2811,8 @@ nie in Chats oder Mails.
 179. **Video aus dem Chat**: in claude.ai den Seller-Konnektor einmal neu verbinden (Änderungen erlauben), dann z. B.
      „Lege im Kanal Unter der Decke ein Video an: Thema …, hier meine englische Vorlage: …“ – Claude zeigt erst die
      Zusammenfassung mit Kostenschätzung und legt erst nach deinem Ja an.
-180. **Worker am Arbeits-PC aktualisieren** (Nachtrag 12.11.): `git pull` im Ordner unter-der-decke, mit Docker
-     `docker compose up -d --build` (ohne Docker: `pip install -r requirements.txt`), Worker neu starten. Dann den
-     fehlgeschlagenen Auftrag mit „Schritt wiederholen“ fortsetzen – Recherche und Skript laufen jetzt in Abschnitten,
-     Abbrüche werden bis zu 4-mal wiederholt.
+180. **Worker am Arbeits-PC aktualisieren** (Nachtrag 12.11., Version 1.1.0): neuen Ordner `unter-der-decke` holen
+     (GitHub → Code → Download ZIP, über `C:\video\unter-der-decke` kopieren), dann in PowerShell `docker stop
+     video-worker; docker rm video-worker; docker build -t video-worker .` und `docker run …` wie im README („Aktualisieren“).
+     Auf der Seite Video steht danach unter „Worker“ `v1.1.0`; solange ein älterer Worker läuft, zeigt die Seite oben
+     „Der Worker am PC ist veraltet“. Dann beim fehlgeschlagenen Video „Schritt wiederholen“.

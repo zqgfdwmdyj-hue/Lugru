@@ -108,6 +108,31 @@ Seller-System → **Marken & Content → Video** → Abschnitt „Worker“ → 
    `C:\video\unter-der-decke\.venv\Scripts\pythonw.exe`, Argument `worker.py`, „Starten in“ = der Ordner.
    Die beiden Variablen dauerhaft setzen: Systemsteuerung → „Umgebungsvariablen für dieses Konto bearbeiten“.
 
+## Aktualisieren (neue Version)
+
+Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.1.0`). Ist der Worker älter als das
+Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
+
+**Mit Docker Desktop** (Ordner wurde nach `C:\video\unter-der-decke` kopiert):
+
+1. Neuen Stand holen: GitHub → Repository → **Code → Download ZIP**, entpacken und den Ordner `unter-der-decke`
+   über `C:\video\unter-der-decke` kopieren (alles ersetzen). `worker.env`, `arbeit` und `musik` liegen daneben und
+   bleiben unverändert. Wer `git` nutzt: im Repository-Ordner `git pull`.
+2. In PowerShell neu bauen und den Container ersetzen:
+   ```powershell
+   cd C:\video\unter-der-decke
+   docker stop video-worker; docker rm video-worker
+   docker build -t video-worker .
+   docker run -d --name video-worker --restart unless-stopped --env-file ..\worker.env `
+     -v C:\video\arbeit:/arbeit -v C:\video\musik:/musik --cpus 2 --memory 3g video-worker
+   ```
+3. Prüfen: `docker logs -f video-worker` – oben steht die Version; auf der Seite Video erscheint sie nach ~30 s.
+
+**Ohne Docker:** Ordner wie oben ersetzen, dann `.venv\Scripts\pip install -r requirements.txt` und den Worker neu
+starten (Aufgabenplanung: Aufgabe beenden und erneut ausführen).
+
+Halb fertige Aufträge laufen danach mit „Schritt wiederholen“ auf der Seite Video weiter.
+
 ## Einstellungen (Umgebungsvariablen)
 
 | Variable | Bedeutung | Vorgabe |

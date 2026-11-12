@@ -140,6 +140,7 @@ test.describe("B36 Video-Pipeline", () => {
     await warteAuf("Freigabe Gliederung", (a) => a.freigabe_offen === "gliederung");
     await page.reload();
     await expect(page.getByTestId("vd-worker-stand")).toHaveAttribute("data-online", "1");
+    await expect(page.getByTestId("vd-worker-alt")).toHaveCount(0); // aktueller Worker: kein Hinweis „veraltet“
     await expect(karte.getByTestId("vd-status")).toContainText("Gliederung + Quellen");
     await expect(karte.getByTestId("vd-punkt")).toHaveCount(5);
     await expect(karte.getByTestId("vd-quelle")).toHaveCount(6);
@@ -205,6 +206,10 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(page.getByTestId("vd-worker-stand")).toContainText("seit 11 Min. keine Meldung");
     await expect(page.getByTestId("vd-worker-stand")).toHaveClass(/notice-warn/);
     await expect(karte.getByTestId("vd-status")).toContainText("wartet (Worker aus)");
+    // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
+    await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
+    await page.reload();
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.1.0)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);

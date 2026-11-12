@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -89,6 +89,14 @@ describe("Kosten (B36.3)", () => {
     // ohne eigenen Motivpreis gilt der Bildpreis
     expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(4.0, 2);
     expect(kostenPosition("openai", { ...p, motivJeStueck: 0.02 }, { bilder: 1, motiv: true }, new Date(0))[0]).toMatchObject({ art: "Motiv", einheit: "Motive", betrag: 0.02 });
+  });
+  it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
+    expect(WORKER_VERSION_AKTUELL).toBe("1.1.0");
+    expect(workerVeraltet("1.0.0")).toBe(true);
+    expect(workerVeraltet(null)).toBe(true);
+    expect(workerVeraltet("1.1.0")).toBe(false);
+    expect(workerVeraltet("1.2.0")).toBe(false);
+    expect(workerVeraltet("2.0")).toBe(false);
   });
   it("Länge fest für alle Kanäle: 1.500–1.700 Wörter ≈ 10–12 Min., 15–34 Szenen", () => {
     expect(SKRIPT_WOERTER).toEqual([1500, 1700]);

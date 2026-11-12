@@ -40,6 +40,16 @@ export function figurenAus(text: string | null | undefined): { key: string; besc
 
 /** Mindestens frei auf dem Worker, sonst kein Lauf (B36.6); Warnung, wenn der Worker so lange schweigt. */
 export const WORKER_MIN_FREI_GB = 3;
+/** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ältere Worker wiederholen abgebrochene Aufrufe nicht. */
+export const WORKER_VERSION_AKTUELL = "1.1.0";
+/** true, wenn der Worker eine ältere Version meldet (oder gar keine). */
+export function workerVeraltet(version: string | null | undefined): boolean {
+  const teile = (v: string) => v.split(".").map((x) => Number.parseInt(x, 10) || 0);
+  if (!version) return true;
+  const [a, b] = [teile(version), teile(WORKER_VERSION_AKTUELL)];
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+  return false;
+}
 export const WORKER_STILL_MIN = 10;
 
 export const naechsterNach = (s: VideoSchritt): VideoSchritt | null => SCHRITTE[SCHRITTE.indexOf(s) + 1] ?? null;

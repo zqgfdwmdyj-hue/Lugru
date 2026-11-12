@@ -5,7 +5,7 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -88,6 +88,11 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
           <span data-testid="vd-worker-platz"> · {worker.freiGb.toLocaleString("de-DE")} GB frei am PC{worker.freiGb < 3 ? " – unter 3 GB: kein Lauf!" : worker.freiGb < 5 ? " – knapp (empfohlen mind. 5 GB)" : ""}</span>
         )}
       </div>
+      {worker && worker.zuletztGesehen && workerVeraltet(worker.version) && (
+        <div className="notice notice-warn small" data-testid="vd-worker-alt">
+          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): Er schreibt das Skript noch in einem langen Aufruf und wiederholt abgebrochene Verbindungen nicht. Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
+        </div>
+      )}
       {fehlend.length > 0 && (
         <div className="notice notice-warn small" data-testid="vd-schluessel-fehlen">
           Zugang fehlt: {fehlend.join(", ")} – bitte unter <Link href="/anbindungen">Anbindungen</Link> über das sichere Formular eintragen (nie im Chat).
