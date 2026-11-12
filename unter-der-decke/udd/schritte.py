@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 import requests
 
-from . import ki, medien
+from . import ki, medien, netz
 from . import whiteboard as wb
 from .filter import ERSATZ_BILDIDEE, bild_treffer, titel_treffer
 from .konfig import Konfig
@@ -27,8 +27,12 @@ MODELL_STANDARD = "claude-opus-5-5"
 PAUSE_S = 0.4  # kurze Pause nach jeder Szene
 PRIVAT = "private"  # Sichtbarkeit beim Upload – fest, im System nicht änderbar
 ABSCHNITTE = ["hook", "angst"] + [f"punkt-{i}" for i in range(1, 8)] + ["zusammenfassung", "cta"]
-# Ziel-Länge kommt vom Seller-System (Kanalprofil, Standard 16–20 Min.); nur falls es fehlt (ältere Version), diese Werte
-LAENGE_STANDARD = {"minuten": [16, 20], "sekunden": [960, 1200], "woerter": [2300, 2900], "szenen": [27, 45], "szenenJePunkt": [3, 6]}
+# Skriptlänge fest für alle Kanäle: 1.500–1.700 Wörter (Entscheidung 12.11.; ≈ 10–12 Min. bei 145 Wörtern/Min.).
+# Das Seller-System schickt dieselben Werte mit; diese hier gelten nur, falls sie fehlen (ältere Version).
+SKRIPT_WOERTER = [1500, 1700]
+LAENGE_STANDARD = {"minuten": [10, 12], "sekunden": [621, 703], "woerter": SKRIPT_WOERTER, "szenen": [15, 34], "szenenJePunkt": [2, 4]}
+# Wörter, die eine Studie/Erhebung ankündigen – solche Szenen brauchen eine Quelle aus der Quellenliste
+STUDIE = re.compile(r"\b(Studie|Studien|Untersuchung|Untersuchungen|Forscher\w*|Wissenschaftler\w*|Umfrage\w*|Befragung\w*|Meta-?[Aa]nalyse\w*|Erhebung\w*)\b")
 
 
 def zahl(n: int) -> str:
@@ -149,51 +153,144 @@ class Lauf:
         return f"Anmerkung von Ludwig (unbedingt umsetzen):\n{h}" if h else ""
 
 
+# ---- Abschnitte: je Abschnitt ein kurzer Aufruf, sofort im Projektordner gespeichert --------------------------------
+
+
+class Ablage:
+    """Fertige Abschnitte als Dateien: <projekt>/<art>/<eingabe-hash>/<abschnitt>.json.
+
+    Bricht ein Lauf ab, werden beim nächsten Versuch nur die fehlenden Abschnitte neu geholt. Ändert sich die Eingabe
+    (Gliederung, Anmerkung, Vorlage, Modell …), entsteht ein neuer Ordner – alte Abschnitte werden dann nicht benutzt."""
+
+    def __init__(self, p: Projekt, art: str, eingabe: str):
+        self.ordner = p.ordner / art / kurz_hash(eingabe)
+
+    def lesen(self, name: str) -> dict | None:
+        pfad = self.ordner / f"{name}.json"
+        try:
+            return json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else None
+        except (ValueError, OSError):
+            return None  # halbe/kaputte Datei: Abschnitt neu holen
+
+    def schreiben(self, name: str, daten: dict) -> None:
+        schreiben_atomar(self.ordner / f"{name}.json", json.dumps(daten, ensure_ascii=False, indent=1).encode("utf-8"))
+
+
+# Ordner der gespeicherten Abschnitte je Schritt (Wiederaufnahme)
+ABSCHNITT_ORDNER = {"research": "recherche", "script": "skript"}
+ABSCHNITT_NAME = {"hook": "Hook", "angst": "Fear Activation", "zusammenfassung": "Zusammenfassung", "cta": "Call-to-Action", "gliederung": "Gliederung"}
+# Anteil am Skript; die übrigen 70 % teilen sich die Punkte gleichmäßig
+ANTEIL = {"hook": 0.07, "angst": 0.10, "zusammenfassung": 0.08, "cta": 0.05}
+
+
+def abschnitt_name(a: str) -> str:
+    return ABSCHNITT_NAME.get(a) or (f"Punkt {a.split('-', 1)[1]}" if a.startswith("punkt-") else a)
+
+
+def abschnitte(n_punkte: int) -> list[str]:
+    return ["hook", "angst"] + [f"punkt-{i}" for i in range(1, n_punkte + 1)] + ["zusammenfassung", "cta"]
+
+
+def abschnitt_ziele(n_punkte: int, woerter_ziel: list[int] | None = None) -> dict[str, tuple[int, int]]:
+    """Wörter je Abschnitt so, dass die Summe genau die Gesamtspanne ergibt (Standard 1.500–1.700)."""
+    lo, hi = woerter_ziel or SKRIPT_WOERTER
+    rest = (1 - sum(ANTEIL.values())) / max(1, n_punkte)
+    return {a: (round(lo * ANTEIL.get(a, rest)), round(hi * ANTEIL.get(a, rest))) for a in abschnitte(n_punkte)}
+
+
+def _url(u: str | None) -> str:
+    return str(u or "").strip().rstrip("/").lower()
+
+
+def _verbinden(*teile: str) -> str:
+    return "\n\n".join(t for t in teile if t)
+
+
 # ---- 1 research -----------------------------------------------------------------------------------------------------
 
 
 def research(l: Lauf) -> tuple[dict, list[str]]:
+    """Erst die Gliederung (kurz, mit kleiner Websuche), dann je Punkt die Quellen – jeder Teil ein eigener Aufruf."""
     if l.p.erledigt("research"):
         e = l.p.state["schritte"]["research"]
         return {"gliederung": e["gliederung"], "quellen": e["quellen"]}, e.get("hinweise", [])
-    prompt = "\n\n".join(
-        x
-        for x in [
-            "[video:research]",
-            f"Du recherchierst für ein YouTube-Video ({l.minuten()}) mit konkretem Nutzen für die Zuschauer.",
+    thema = l.a["thema"]
+    ab = Ablage(l.p, "recherche", json.dumps([l.modell, thema, l.kopf(), l.vorlage_text("research"), l.vidiq(), l.anmerkung()], ensure_ascii=False))
+    g = ab.lesen("gliederung")
+    if not g:
+        prompt = _verbinden(
+            "[video:research:gliederung]",
+            f"Du planst ein YouTube-Video ({l.minuten()}) mit konkretem Nutzen für die Zuschauer.",
             l.kopf(),
-            f"Thema: {l.a['thema']}",
+            f"Thema: {thema}",
             l.vorlage_text("research"),
             l.vidiq(),
             l.anmerkung(),
-            "Aufgabe: Suche im Web nach belastbaren Quellen (Studien, Fachartikel, Statistiken; bevorzugt begutachtete Studien mit Jahr) "
-            "und erstelle die Gliederung: Hook → Fear Activation (warum es den Zuschauer betrifft) → 5–7 Punkte, jeder mit mindestens einer Studie → Zusammenfassung → Call-to-Action.",
-            "Regeln: Keine Aussage ohne Quelle. Nur Quellen, die du in der Suche wirklich gefunden hast, mit URL. Keine erfundenen Studien, Autoren oder Zahlen.",
-            'Antworte am Ende NUR mit JSON in diesem Format: {"hook": "…", "angst": "…", "punkte": [{"titel": "…", "kern": "…", "quelle_ids": ["Q1"]}], '
-            '"fazit": "…", "cta": "…", "quellen": [{"id": "Q1", "titel": "…", "url": "https://…", "jahr": 2021, "art": "Studie", "autoren": "…"}]}',
-        ]
-        if x
-    )
-    text, urls = ki.fragen(l.claude, l.modell, prompt, websuche=8, max_tokens=16000)
-    d = ki.json_aus(text)
-    quellen = [q for q in d.get("quellen", []) if isinstance(q, dict) and q.get("id")]
-    gefunden = {u.rstrip("/").lower() for u in urls}
-    for q in quellen:
-        q["gefunden"] = bool(q.get("url")) and str(q["url"]).rstrip("/").lower() in gefunden
-    ids = {q["id"] for q in quellen}
-    punkte = [p for p in d.get("punkte", []) if isinstance(p, dict) and p.get("titel")]
+            "Aufgabe: Verschaffe dir mit einer kurzen Websuche einen Überblick über die Studienlage und erstelle NUR die Gliederung: "
+            "Hook → Fear Activation (warum es den Zuschauer betrifft) → 5–7 Punkte → Zusammenfassung → Call-to-Action. "
+            "Wähle Punkte, zu denen es belastbare Studien gibt – die Quellen je Punkt suchst du im nächsten Schritt.",
+            'Antworte am Ende NUR mit JSON in diesem Format: {"hook": "…", "angst": "…", "punkte": [{"titel": "…", "kern": "…"}], "fazit": "…", "cta": "…"}',
+        )
+        text, _ = ki.fragen(l.claude, l.modell, prompt, was="Recherche – Gliederung", websuche=3, max_tokens=3000)
+        d = ki.json_aus(text)
+        punkte = [{"titel": str(p["titel"]).strip(), "kern": str(p.get("kern") or "").strip()} for p in d.get("punkte", []) if isinstance(p, dict) and p.get("titel")]
+        if not punkte:
+            raise RuntimeError("Recherche – Gliederung: Antwort ohne Punkte")
+        g = {"hook": d.get("hook"), "angst": d.get("angst"), "punkte": punkte, "fazit": d.get("fazit"), "cta": d.get("cta")}
+        ab.schreiben("gliederung", g)
+    gesamt = len(g["punkte"]) + 1
+    l.fortschritt("research", 1, gesamt)
+    for i, p in enumerate(g["punkte"], 1):
+        name = f"punkt-{i}"
+        if not ab.lesen(name):
+            prompt = _verbinden(
+                f"[video:research:{name}]",
+                f"Recherche für ein YouTube-Video zum Thema „{thema}“.",
+                l.kopf(),
+                f"Gliederung (zur Einordnung):\n{json.dumps(g, ensure_ascii=False)}",
+                f"Aufgabe: Suche im Web 1–3 belastbare Quellen NUR für Punkt {i} „{p['titel']}“ ({p['kern']}). "
+                "Bevorzugt begutachtete Studien mit Jahr; Statistiken oder Fachartikel nur, wenn es keine passende Studie gibt.",
+                "Regeln: Nur Quellen, die du in der Suche wirklich gefunden hast, mit URL. Keine erfundenen Studien, Autoren oder Zahlen. "
+                "Findest du keine, gib eine leere Liste zurück und schreibe das in „kern“ („ohne Quelle: …“).",
+                'Antworte am Ende NUR mit JSON in diesem Format: {"kern": "Kernaussage des Punktes mit den wichtigsten Zahlen", '
+                '"quellen": [{"titel": "…", "url": "https://…", "jahr": 2021, "art": "Studie", "autoren": "…"}]}',
+            )
+            text, urls = ki.fragen(l.claude, l.modell, prompt, was=f"Recherche – Quellen {abschnitt_name(name)}", websuche=3, max_tokens=3000)
+            d = ki.json_aus(text)
+            gefunden = {_url(u) for u in urls}
+            quellen = [
+                {"titel": str(q.get("titel") or q["url"]).strip(), "url": str(q["url"]).strip(), "jahr": q.get("jahr"), "art": q.get("art"), "autoren": q.get("autoren"), "gefunden": _url(q["url"]) in gefunden}
+                for q in d.get("quellen", [])
+                if isinstance(q, dict) and q.get("url")
+            ]
+            ab.schreiben(name, {"kern": str(d.get("kern") or "").strip(), "quellen": quellen, "suche": bool(urls)})
+        l.fortschritt("research", i + 1, gesamt)
+    # Zusammenführen: Quellen-IDs Q1, Q2 … in der Reihenfolge der Punkte, gleiche URL nur einmal
+    quellen: list[dict] = []
+    id_je_url: dict[str, str] = {}
+    punkte: list[dict] = []
     hinweise: list[str] = []
-    if not 5 <= len(punkte) <= 7:
-        hinweise.append(f"Gliederung hat {len(punkte)} Punkte (Ziel 5–7).")
-    for i, p in enumerate(punkte, 1):
-        p["quelle_ids"] = [q for q in p.get("quelle_ids", []) if q in ids]
-        if not p["quelle_ids"]:
+    ohne_treffer: list[str] = []
+    for i, p in enumerate(g["punkte"], 1):
+        e = ab.lesen(f"punkt-{i}") or {"kern": "", "quellen": [], "suche": False}
+        ids: list[str] = []
+        for q in e["quellen"]:
+            k = _url(q["url"])
+            if k not in id_je_url:
+                id_je_url[k] = f"Q{len(quellen) + 1}"
+                quellen.append({"id": id_je_url[k], **{x: q.get(x) for x in ("titel", "url", "jahr", "art", "autoren", "gefunden")}})
+                if e.get("suche") and not q.get("gefunden"):
+                    ohne_treffer.append(id_je_url[k])
+            if id_je_url[k] not in ids:
+                ids.append(id_je_url[k])
+        punkte.append({"titel": p["titel"], "kern": e.get("kern") or p["kern"], "quelle_ids": ids})
+        if not ids:
             hinweise.append(f"Punkt {i} „{p['titel']}“ hat keine Quelle.")
-    if urls:
-        ohne = [q["id"] for q in quellen if not q["gefunden"]]
-        if ohne:
-            hinweise.append(f"Quellen {', '.join(ohne)} stammen nicht direkt aus den Suchtreffern – bitte prüfen.")
-    gliederung = {"hook": d.get("hook"), "angst": d.get("angst"), "punkte": punkte, "fazit": d.get("fazit"), "cta": d.get("cta")}
+    if not 5 <= len(punkte) <= 7:
+        hinweise.insert(0, f"Gliederung hat {len(punkte)} Punkte (Ziel 5–7).")
+    if ohne_treffer:
+        hinweise.append(f"Quellen {', '.join(ohne_treffer)} stammen nicht direkt aus den Suchtreffern – bitte prüfen.")
+    gliederung = {"hook": g.get("hook"), "angst": g.get("angst"), "punkte": punkte, "fazit": g.get("fazit"), "cta": g.get("cta")}
     l.p.markieren("research", gliederung=gliederung, quellen=quellen, hinweise=hinweise)
     return {"gliederung": gliederung, "quellen": quellen}, hinweise
 
@@ -297,10 +394,11 @@ def wb_aufbereiten(szenen: list[dict], figuren: dict[str, str]) -> None:
 
 
 def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | None = None) -> list[str]:
+    """Endprüfung des zusammengeführten Skripts: Wortzahl, 5–7 Punkte, jede Studie mit Quelle aus der Quellenliste."""
     ids = {q["id"] for q in quellen}
     probleme: list[str] = []
     n = sum(woerter(s["text"]) for s in szenen)
-    lo, hi = ziel or LAENGE_STANDARD["woerter"]
+    lo, hi = ziel or SKRIPT_WOERTER
     if not lo <= n <= hi:
         probleme.append(f"Das Skript hat {zahl(n)} Wörter – nötig sind {zahl(lo)}–{zahl(hi)}.")
     punkte = sorted({s["abschnitt"] for s in szenen if s["abschnitt"].startswith("punkt-")})
@@ -312,7 +410,99 @@ def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | No
     ohne = [i + 1 for i, s in enumerate(szenen) if s["abschnitt"].startswith("punkt-") and not s.get("quelle_ids")]
     if ohne:
         probleme.append(f"Szenen {', '.join(map(str, ohne))} (Punkte) haben keine Quelle.")
+    studie = [i + 1 for i, s in enumerate(szenen) if not s.get("quelle_ids") and STUDIE.search(s["text"]) and i + 1 not in ohne]
+    if studie:
+        probleme.append(f"Szenen {', '.join(map(str, studie))} nennen eine Studie ohne Quelle aus der Quellenliste.")
     return probleme
+
+
+def _korrekturen(fertig: dict[str, dict], namen: list[str], ziele: dict[str, tuple[int, int]], quellen: list[dict], ziel: list[int]) -> dict[str, str]:
+    """Welche Abschnitte nachgebessert werden (nur diese werden neu geholt) – je Abschnitt eine kurze Anweisung."""
+    ids = {q["id"] for q in quellen}
+    aufgaben: dict[str, str] = {}
+    for name in namen:
+        sz = fertig[name]["szenen"]
+        fremd = sorted({q for s in sz for q in s.get("quelle_ids", []) if q not in ids})
+        if fremd:
+            aufgaben[name] = f"Die Quellen {', '.join(fremd)} gibt es nicht – nur IDs aus der Quellenliste verwenden."
+        elif name.startswith("punkt-") and not all(s.get("quelle_ids") for s in sz):
+            aufgaben[name] = "Jede Szene dieses Punktes braucht mindestens eine Quelle aus der Quellenliste (Studie im Text nennen, ID in quelle_ids)."
+        elif any(not s.get("quelle_ids") and STUDIE.search(s["text"]) for s in sz):
+            aufgaben[name] = "Eine Szene nennt eine Studie ohne Quelle: entweder die passende ID aus der Quellenliste in quelle_ids eintragen oder die Studie weglassen."
+    n = sum(fertig[x]["woerter"] for x in namen)
+    lo, hi = ziel
+    if not lo <= n <= hi:
+        mitte = (lo + hi) // 2
+        def abweichung(x: str) -> float:
+            z = sum(ziele[x]) / 2
+            return (fertig[x]["woerter"] - z) / z
+        # zu kurz: die Punkte mit dem größten Rückstand verlängern; zu lang: die längsten Abschnitte kürzen
+        kandidaten = sorted([x for x in namen if x.startswith("punkt-")], key=abweichung) if n < lo else sorted(namen, key=abweichung, reverse=True)
+        wahl = kandidaten[:3]
+        je = (mitte - n) / max(1, len(wahl))
+        for x in wahl:
+            neu = max(40, round(fertig[x]["woerter"] + je))
+            richtung = "verlängern" if je > 0 else "kürzen"
+            text = f"Bitte auf ca. {neu} Wörter {richtung} (bisher {fertig[x]['woerter']}) – Inhalt und Quellen behalten" + (", mehr Erklärung und ein Alltagsbeispiel." if je > 0 else ", Wiederholungen streichen.")
+            aufgaben[x] = (aufgaben[x] + " " + text) if x in aufgaben else text
+    return aufgaben
+
+
+def _abschnitt_schreiben(l: Lauf, name: str, ziel_abschnitt: tuple[int, int], g: dict, quellen: list[dict], figuren: dict[str, str], vorher: list[dict], ueberarbeiten: tuple[dict, str] | None = None) -> dict:
+    """Einen Abschnitt schreiben (eigener, kurzer Aufruf). Mit „ueberarbeiten“ = (bisherige Fassung, Anweisung) nachbessern."""
+    punkte = g.get("punkte") or []
+    lo, hi = ziel_abschnitt
+    w = l.laenge["woerter"]
+    if name.startswith("punkt-"):
+        i = int(name.split("-", 1)[1])
+        p = punkte[i - 1] if i <= len(punkte) else {"titel": name, "kern": "", "quelle_ids": []}
+        aufgabe = f"Punkt {i} von {len(punkte)}: „{p['titel']}“ – {p.get('kern') or ''}. Quellen dazu: {', '.join(p.get('quelle_ids') or []) or 'keine'}."
+        quellenregel = "Nenne die Studie im Text (z. B. „Eine Studie aus 2016 mit 2.400 Paaren zeigt …“) und trage ihre ID in quelle_ids ein. Nur IDs aus der Quellenliste, keine Studie ohne ID."
+    else:
+        aufgabe = {
+            "hook": f"Hook – packender Einstieg in den ersten Sekunden, Neugier wecken, sagen, was das Video bringt. Grundlage: {g.get('hook') or ''}",
+            "angst": f"Fear Activation – warum das Thema den Zuschauer persönlich betrifft und was passiert, wenn er es ignoriert. Grundlage: {g.get('angst') or ''}",
+            "zusammenfassung": f"Zusammenfassung – die {len(punkte)} Punkte kurz bündeln. Grundlage: {g.get('fazit') or ''}",
+            "cta": f"Call-to-Action – ehrlich und kurz zum Abonnieren und Kommentieren einladen. Grundlage: {g.get('cta') or ''}",
+        }[name]
+        quellenregel = "Hier keine neuen Studien. Erwähnst du doch eine Studie oder Zahl, dann nur mit ihrer ID aus der Quellenliste in quelle_ids."
+    bisher = "\n\n".join(f"[{abschnitt_name(e['abschnitt'])}]\n" + "\n".join(s["text"] for s in e["szenen"]) for e in vorher)
+    prompt = _verbinden(
+        f"[video:script:{name}]",
+        f"Du schreibst das Sprechskript für ein YouTube-Video ({l.minuten()}, insgesamt {zahl(w[0])}–{zahl(w[1])} Wörter) Abschnitt für Abschnitt.",
+        l.kopf(),
+        f"Thema: {l.a['thema']}",
+        l.vorlage_text("script"),
+        f"Freigegebene Gliederung:\n{json.dumps(g, ensure_ascii=False)}",
+        f"Quellenliste (nur diese IDs verwenden):\n{json.dumps(quellen, ensure_ascii=False)}",
+        l.vidiq(),
+        l.anmerkung(),
+        f"Bisher geschrieben (daran anschließen, nichts wiederholen):\n{bisher}" if bisher else "Das ist der erste Abschnitt des Videos.",
+        f"Schreibe jetzt NUR den Abschnitt „{abschnitt_name(name)}“: {aufgabe}",
+        f"Länge dieses Abschnitts: ca. {(lo + hi) // 2} Wörter ({lo}–{hi}), aufgeteilt in Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
+        quellenregel,
+        _wb_regeln(l, figuren)
+        if l.whiteboard
+        else "bildidee: ruhiges Symbolbild, Illustration oder Infografik – keine erkennbaren realen Personen, keine Nacktheit, nichts Intimes"
+        + (", kein Bett, kein Kuss, keine Berührung" if l.streng else "")
+        + ". einblendung: kurzer Text fürs Bild (höchstens 8 Wörter, z. B. Studie + Jahr) oder leer.",
+        (f"Bisherige Fassung dieses Abschnitts:\n{json.dumps(ueberarbeiten[0]['szenen'], ensure_ascii=False)}\n\nÜberarbeitung: {ueberarbeiten[1]}" if ueberarbeiten else ""),
+    )
+    schema = _ohne_abschnitt(WB_SKRIPT_SCHEMA if l.whiteboard else SKRIPT_SCHEMA)
+    was = f"Skript – {abschnitt_name(name)}"
+    text, _ = ki.fragen(l.claude, l.modell, prompt, was=was, schema=schema, max_tokens=6000 if l.whiteboard else 4000)
+    szenen = [{**s, "abschnitt": name} for s in ki.json_aus(text).get("szenen", []) if str(s.get("text", "")).strip()]
+    if not szenen:
+        raise RuntimeError(f"{was}: Antwort ohne Text")
+    return {"abschnitt": name, "szenen": szenen, "woerter": sum(woerter(s["text"]) for s in szenen)}
+
+
+def _ohne_abschnitt(schema: dict) -> dict:
+    """Schema einer Szene ohne Feld „abschnitt“ (das setzt der Worker je Aufruf selbst)."""
+    item = json.loads(json.dumps(schema["properties"]["szenen"]["items"]))
+    item["properties"].pop("abschnitt", None)
+    item["required"] = [x for x in item["required"] if x != "abschnitt"]
+    return {**schema, "properties": {"szenen": {"type": "array", "items": item}}}
 
 
 def _wb_regeln(l: Lauf, figuren: dict[str, str]) -> str:
@@ -339,47 +529,39 @@ def _wb_regeln(l: Lauf, figuren: dict[str, str]) -> str:
 
 
 def script(l: Lauf) -> tuple[dict, list[str]]:
+    """Abschnittsweise: Hook, Fear Activation, jeder Punkt einzeln, Zusammenfassung, CTA – jeder Abschnitt ein eigener
+    Aufruf, sofort gespeichert. Danach zusammenführen, prüfen und nur die betroffenen Abschnitte nachbessern."""
     if l.p.erledigt("script"):
         e = l.p.state["schritte"]["script"]
         return {"skript": e["skript"], "woerter": e["woerter"]}, e.get("hinweise", [])
     quellen = l.daten.get("quellen") or []
-    w, sz, jp = l.laenge["woerter"], l.laenge["szenen"], l.laenge["szenenJePunkt"]
-    basis = "\n\n".join(
-        x
-        for x in [
-            "[video:script]",
-            f"Schreibe das Sprechskript für ein YouTube-Video ({l.minuten()} Sprechzeit).",
-            l.kopf(),
-            f"Thema: {l.a['thema']}",
-            l.vorlage_text("script"),
-            f"Freigegebene Gliederung:\n{json.dumps(l.daten.get('gliederung'), ensure_ascii=False)}",
-            f"Quellenliste (nur diese IDs verwenden):\n{json.dumps(quellen, ensure_ascii=False)}",
-            l.vidiq(),
-            l.anmerkung(),
-            f"Aufbau: hook → angst (Fear Activation) → punkt-1 … punkt-N (5–7 Punkte, je {jp[0]}–{jp[1]} Szenen) → zusammenfassung → cta.",
-            f"Länge: insgesamt {zahl(w[0])}–{zahl(w[1])} Wörter (zähle mit), {sz[0]}–{sz[1]} Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
-            "Jede Behauptung braucht eine Quelle: in den Punkt-Szenen die Studie im Text nennen (z. B. „Eine Studie aus 2016 mit 2.400 Paaren zeigt …“) und die ID in quelle_ids eintragen.",
-            ""
-            if l.whiteboard
-            else "bildidee: ruhiges Symbolbild, Illustration oder Infografik – keine erkennbaren realen Personen, keine Nacktheit, nichts Intimes"
-            + (", kein Bett, kein Kuss, keine Berührung" if l.streng else "")
-            + ". einblendung: kurzer Text fürs Bild (höchstens 8 Wörter, z. B. Studie + Jahr) oder leer.",
-        ]
-        if x
-    )
+    g = l.daten.get("gliederung") or {}
+    w = l.laenge["woerter"]
     figuren = {f["key"]: f["beschreibung"] for f in (l.kanal.get("figuren") or []) if f.get("key")}
-    if l.whiteboard:
-        basis += "\n\n" + _wb_regeln(l, figuren)
-    prompt = basis
-    szenen: list[dict] = []
-    probleme: list[str] = []
-    for versuch in range(2):
-        text, _ = ki.fragen(l.claude, l.modell, prompt, schema=WB_SKRIPT_SCHEMA if l.whiteboard else SKRIPT_SCHEMA, max_tokens=32000 if l.whiteboard else 24000)
-        szenen = [s for s in ki.json_aus(text).get("szenen", []) if s.get("text", "").strip()]
-        probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen) if l.whiteboard else [])
-        if not probleme:
+    namen = abschnitte(len(g.get("punkte") or []))
+    ziele = abschnitt_ziele(len(g.get("punkte") or []), w)
+    eingabe = [l.modell, l.a["thema"], l.kopf(), l.vorlage_text("script"), g, quellen, l.vidiq(), l.anmerkung(), l.whiteboard, figuren, w, l.streng]
+    ab = Ablage(l.p, "skript", json.dumps(eingabe, ensure_ascii=False))
+    fertig: dict[str, dict] = {}
+    for k, name in enumerate(namen, 1):
+        e = ab.lesen(name)
+        if not e:
+            e = _abschnitt_schreiben(l, name, ziele[name], g, quellen, figuren, [fertig[x] for x in namen[: k - 1]])
+            ab.schreiben(name, e)
+        fertig[name] = e
+        l.fortschritt("script", k, len(namen))
+    # Endprüfung; höchstens zwei Runden Nachbesserung, jeweils nur der betroffenen Abschnitte
+    for runde in range(2):
+        aufgaben = _korrekturen(fertig, namen, ziele, quellen, w)
+        if not aufgaben:
             break
-        prompt = basis + "\n\nKorrektur zum ersten Entwurf: " + " ".join(probleme) + " Bitte das ganze Skript neu und korrekt liefern."
+        for name, anweisung in aufgaben.items():
+            vorher = [fertig[x] for x in namen[: namen.index(name)]]
+            e = _abschnitt_schreiben(l, name, ziele[name], g, quellen, figuren, vorher, ueberarbeiten=(fertig[name], anweisung))
+            ab.schreiben(name, e)
+            fertig[name] = e
+    szenen = [dict(s) for name in namen for s in fertig[name]["szenen"]]
+    probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen) if l.whiteboard else [])
     if l.whiteboard:
         wb_aufbereiten(szenen, figuren)
     for i, s in enumerate(szenen, 1):
@@ -403,7 +585,7 @@ def voice(l: Lauf) -> tuple[dict, list[str]]:
         schluessel = kurz_hash(stimme, modell, s["text"])
         datei = l.p.datei_vorhanden("voice", schluessel)
         if not datei:
-            r = l.seller.anbieter(l.id, "elevenlabs", f"v1/text-to-speech/{stimme}?output_format=mp3_44100_128", {"text": s["text"], "model_id": modell}, timeout=240)
+            r = l.seller.anbieter(l.id, "elevenlabs", f"v1/text-to-speech/{stimme}?output_format=mp3_44100_128", {"text": s["text"], "model_id": modell}, timeout=netz.TIMEOUT_S, was=f"Sprache – Szene {i + 1}")
             if r.status_code != 200:
                 raise RuntimeError(f"ElevenLabs (Szene {i + 1}): {_fehlertext(r)}")
             rel = f"voice/{i + 1:03d}-{schluessel}.mp3"
@@ -420,9 +602,13 @@ def voice(l: Lauf) -> tuple[dict, list[str]]:
 # ---- 4 visuals -----------------------------------------------------------------------------------------------------
 
 
-def _bild_holen(l: Lauf, prompt: str) -> bytes | None:
+# Bilder brauchen beim Anbieter oft länger als Text – Zeitlimit je Aufruf 180 s (statt 120 s)
+BILD_TIMEOUT_S = max(netz.TIMEOUT_S, 180.0)
+
+
+def _bild_holen(l: Lauf, prompt: str, was: str = "Bild") -> bytes | None:
     """Ein Bild bei OpenAI (gpt-image-1, 1536×1024, medium). None = vom Anbieter abgelehnt."""
-    r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1}, timeout=300)
+    r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
     if r.status_code == 200:
         return base64.b64decode(r.json()["data"][0]["b64_json"])
     text = _fehlertext(r)
@@ -445,15 +631,15 @@ def _motiv_prompt(l: Lauf, beschreibung: str) -> str:
     )
 
 
-def _motiv_holen(l: Lauf, prompt: str) -> bytes | None:
+def _motiv_holen(l: Lauf, prompt: str, was: str = "Motiv") -> bytes | None:
     """Ein Motiv (1024×1024, transparent). Mit Stil-Referenzbildern über „edits“, sonst „generations“. None = abgelehnt."""
     q = l.kanal.get("bildQualitaet") or "medium"
     refs = l.referenzen()
     if refs:
         felder = {"model": "gpt-image-1", "prompt": prompt + " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt).", "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
-        r = l.seller.anbieter_datei(l.id, "openai", "v1/images/edits", felder, [("image[]", name, daten, typ) for name, daten, typ in refs])
+        r = l.seller.anbieter_datei(l.id, "openai", "v1/images/edits", felder, [("image[]", name, daten, typ) for name, daten, typ in refs], timeout=BILD_TIMEOUT_S, was=was)
     else:
-        r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=300)
+        r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
     if r.status_code == 200:
         return base64.b64decode(r.json()["data"][0]["b64_json"])
     text = _fehlertext(r)
@@ -466,7 +652,7 @@ def _wb_hand(l: Lauf, hinweise: list[str]):
     """Hand mit Stift: einmal je Kanal erzeugt (Bibliothek „_hand“), sonst gezeichneter Ersatz."""
     if not l.bib.hat("_hand"):
         try:
-            daten = _motiv_holen(l, _motiv_prompt(l, HAND_PROMPT))
+            daten = _motiv_holen(l, _motiv_prompt(l, HAND_PROMPT), "Motiv „Hand mit Stift“")
         except RuntimeError as e:
             daten = None
             hinweise.append(f"Hand mit Stift nicht erzeugt ({e}) – gezeichnete Ersatz-Hand.")
@@ -514,12 +700,12 @@ def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
                 hinweise.append(f"Szene {s.get('nr')}: Motiv „{key}“ enthielt „{treffer}“ – Ersatzmotiv.")
                 key, beschreibung, m["ersatz"] = "ersatz", ERSATZ_BILDIDEE, True
             if not l.bib.hat(key):
-                daten = _motiv_holen(l, _motiv_prompt(l, beschreibung))
+                daten = _motiv_holen(l, _motiv_prompt(l, beschreibung), f"Motiv „{key}“ (Szene {s.get('nr')})")
                 if daten is None:
                     hinweise.append(f"Szene {s.get('nr')}: Bildanbieter hat Motiv „{key}“ abgelehnt – Ersatzmotiv.")
                     key, m["ersatz"] = "ersatz", True
                     if not l.bib.hat(key):
-                        daten = _motiv_holen(l, _motiv_prompt(l, ERSATZ_BILDIDEE)) or wb.ersatz_motiv()
+                        daten = _motiv_holen(l, _motiv_prompt(l, ERSATZ_BILDIDEE), "Ersatzmotiv") or wb.ersatz_motiv()
                 if daten and not l.bib.hat(key):
                     l.bib.merken(key, wb.freistellen(daten), beschreibung)
             m["key"] = key
@@ -556,11 +742,11 @@ def visuals(l: Lauf) -> tuple[dict, list[str]]:
         schluessel = kurz_hash(prompt)
         ersatz = bool(treffer)
         if not l.p.datei_vorhanden("bilder", schluessel):
-            daten = _bild_holen(l, prompt)
+            daten = _bild_holen(l, prompt, f"Bild – Szene {i + 1}")
             if daten is None:
                 hinweise.append(f"Szene {i + 1}: Bildanbieter hat abgelehnt – Ersatzbild.")
                 ersatz = True
-                daten = _bild_holen(l, f"{stil}. {ERSATZ_BILDIDEE}. Symbolbild ohne Text.")
+                daten = _bild_holen(l, f"{stil}. {ERSATZ_BILDIDEE}. Symbolbild ohne Text.", f"Ersatzbild – Szene {i + 1}")
             rel = f"bilder/{i + 1:03d}-{schluessel}.png"
             if daten is None:
                 medien.ersatzbild(s.get("einblendung") or "", l.p.pfad(rel))
@@ -734,7 +920,7 @@ def _paket_erzeugen(l: Lauf) -> dict:
     prompt = basis
     d: dict = {}
     for _ in range(2):
-        text, _u = ki.fragen(l.claude, l.modell, prompt, schema=PAKET_SCHEMA, max_tokens=8000, effort="low")
+        text, _u = ki.fragen(l.claude, l.modell, prompt, was="Paket (Titel, Beschreibung, Tags)", schema=PAKET_SCHEMA, max_tokens=4000, effort="low")
         d = ki.json_aus(text)
         treffer = [t for t in d.get("titel", []) + [d.get("thumbnail_text", "")] if titel_treffer(t)]
         if not treffer:
@@ -990,8 +1176,13 @@ def ausfuehren(k: Konfig, seller: Seller, auftrag: dict[str, Any], log: Callable
     l = Lauf(k, seller, auftrag)
     wdh = auftrag.get("wiederholen")
     if wdh in REIHENFOLGE:
-        # Schritt neu: diesen und alle späteren zurücksetzen – bezahlte Dateien bleiben (Hash), nur Geändertes kostet
+        # Schritt neu: diesen und alle späteren zurücksetzen – bezahlte Dateien bleiben (Hash), nur Geändertes kostet.
+        # War der Schritt schon fertig („Neu recherchieren“, „Skript neu schreiben“), werden auch seine gespeicherten
+        # Abschnitte verworfen. Nach einem Fehler („Schritt wiederholen“) bleiben sie: dann kommen nur die fehlenden neu.
+        neu_schreiben = l.p.erledigt(wdh)
         for s in REIHENFOLGE[REIHENFOLGE.index(wdh) :]:
+            if neu_schreiben and s in ABSCHNITT_ORDNER:
+                shutil.rmtree(l.p.ordner / ABSCHNITT_ORDNER[s], ignore_errors=True)
             l.p.state["schritte"].pop(s, None)
         l.p.speichern()
     schritt: str | None = auftrag["schritt"]

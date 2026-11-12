@@ -3,7 +3,7 @@
 // Daten sind erfunden; kein echter Kanal, kein echter Schlüssel.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { E2E_ENV, E2E_PORT, TD } from "./env";
@@ -17,7 +17,8 @@ function versiegeln(plain: string) {
   return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
 type VideoNb = { eleven: { hash: string; zeichen: number; stimme: string }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
-const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb>);
+const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[] }>);
+const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
 type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
 
 const PY = process.env.VIDEO_WORKER_PYTHON || "python3";
@@ -36,7 +37,7 @@ test.describe("B36 Video-Pipeline", () => {
 
   const workerStarten = () => {
     worker = spawn(PY, [path.join(process.cwd(), "unter-der-decke", "worker.py")], {
-      env: { ...process.env, SELLER_URL: `http://localhost:${E2E_PORT}`, WORKER_TOKEN: token, ARBEITSORDNER: path.join(arbeit, "projekte"), MUSIKORDNER: path.join(arbeit, "musik"), VIDEO_POLL_S: "1", VIDEO_FPS: "2", MIN_FREI_GB: "0.1", WARN_FREI_GB: "0.1", PYTHONUNBUFFERED: "1" },
+      env: { ...process.env, SELLER_URL: `http://localhost:${E2E_PORT}`, WORKER_TOKEN: token, ARBEITSORDNER: path.join(arbeit, "projekte"), MUSIKORDNER: path.join(arbeit, "musik"), VIDEO_POLL_S: "1", VIDEO_FPS: "2", MIN_FREI_GB: "0.1", WARN_FREI_GB: "0.1", PYTHONUNBUFFERED: "1", WIEDERHOLEN_FAKTOR: "0.01" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     worker.stdout?.on("data", (d) => (log += d));
@@ -97,8 +98,7 @@ test.describe("B36 Video-Pipeline", () => {
     await page.getByTestId("vd-k-name").fill(KANAL);
     await page.getByTestId("vd-k-thema").fill("Beziehung, Nähe, Alltag (Testkanal)");
     await page.getByTestId("vd-k-zielgruppe").fill("Männer ab 55");
-    await expect(page.getByTestId("vd-k-laenge-min")).toHaveValue("16"); // Standard 16–20 Min.
-    await expect(page.getByTestId("vd-k-laenge-max")).toHaveValue("20");
+    await expect(page.getByTestId("vd-k-laenge")).toContainText("fest 1.500–1.700 Wörter (≈ 10–12 Min.)"); // fest für alle Kanäle
     await page.getByTestId("vd-k-stimme").fill("testStimme01");
     await page.getByTestId("vd-k-stufe").selectOption("streng");
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
@@ -115,7 +115,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Neues Video (mit vidIQ-Keywords) – Worker noch aus → „wartet“ + Warnung (Abnahme 7)
     await page.goto("/marken/video");
     await page.getByRole("link", { name: KANAL }).click();
-    await expect(page.getByTestId("vd-ziel")).toContainText("16–20 Min. · 2.300–2.900 Wörter");
+    await expect(page.getByTestId("vd-ziel")).toContainText("10–12 Min. · 1.500–1.700 Wörter");
     await expect(page.getByTestId("vd-ziel")).toContainText("Zielgruppe: Männer ab 55");
     await page.getByTestId("vd-thema").fill(THEMA);
     await page.getByTestId("vd-neu").locator("summary", { hasText: "vidIQ" }).click();
@@ -128,6 +128,13 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(page.getByTestId("vd-worker-stand")).toHaveAttribute("data-online", "0");
     await expect(page.getByTestId("vd-worker-stand")).toHaveClass(/notice-warn/);
 
+    // Robustheit (Nachtrag 12.11.): Störungen im Nachbau – Quellen „Punkt 2“ einmal 529, Skript-Hook einmal Abbruch mitten
+    // im Stream (der Fehler aus dem Betrieb), „Punkt 3“ bricht 5-mal ab (alle Versuche), ElevenLabs zweimal Abbruch
+    await stoeren("research:punkt-2", "529", 1);
+    await stoeren("script:hook", "abbruch", 1);
+    await stoeren("script:punkt-3", "abbruch", 5);
+    await stoeren("eleven", "abbruch", 2);
+
     // Abnahme 1: Worker starten → Gliederung mit Quellen erscheint zur Freigabe
     workerStarten();
     await warteAuf("Freigabe Gliederung", (a) => a.freigabe_offen === "gliederung");
@@ -137,19 +144,45 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(karte.getByTestId("vd-punkt")).toHaveCount(5);
     await expect(karte.getByTestId("vd-quelle")).toHaveCount(6);
     const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string; tools: string[] }[];
-    const recherche = ki.filter((k) => k.text.startsWith("[video:research]")).at(-1)!;
+    const recherche = ki.filter((k) => k.text.startsWith("[video:research:gliederung]")).at(-1)!;
     expect(recherche.tools).toContain("web_search");
+    // Recherche abschnittsweise: Gliederung + je Punkt ein eigener Aufruf mit Websuche; „Punkt 2“ nach 529 wiederholt
+    expect(ki.filter((k) => /^\[video:research:punkt-\d\]/.test(k.text) && k.tools.includes("web_search")).length).toBeGreaterThanOrEqual(5);
+    expect((await nachbau()).claude.filter((x) => x === "research:punkt-2")).toHaveLength(2);
     expect(recherche.text).toContain("beziehung ohne nähe"); // vidIQ fließt in die Recherche
     expect(recherche.text).toContain("Zielgruppe: Männer ab 55"); // Zielgruppe aus dem Kanalprofil
-    expect(recherche.text).toContain("(16–20 Minuten)");
+    expect(recherche.text).toContain("(10–12 Minuten)");
     await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
 
-    // Abnahme 2: Skript mit 5–7 Punkten, Länge passend zu 16–20 Min. (2.300–2.900 Wörter), alle Studien in der Quellenliste
-    let a = await warteAuf("Freigabe Skript", (x) => x.freigabe_offen === "skript");
-    expect(a.woerter).toBeGreaterThanOrEqual(2300);
-    expect(a.woerter).toBeLessThanOrEqual(2900);
-    const skriptPrompt = ((await (await fetch(`${TD}/__ki`)).json()) as { text: string }[]).filter((k) => k.text.startsWith("[video:script]")).at(-1)!;
-    expect(skriptPrompt.text).toContain("insgesamt 2.300–2.900 Wörter");
+    // Skript abschnittsweise: „Punkt 3“ scheitert 5-mal → Schritt-Fehler mit Abschnittsname; fertige Abschnitte liegen als
+    // Dateien im Projektordner; der Hook wurde nach einem Abbruch mitten im Stream automatisch neu geholt
+    let a = await auftrag();
+    for (const bis = Date.now() + 120_000; a.status !== "fehler" && Date.now() < bis; a = await auftrag()) await new Promise((r) => setTimeout(r, 250));
+    expect(a.status, log.slice(-2000)).toBe("fehler");
+    expect(a.schritt).toBe("script");
+    expect(a.schritte.script?.fehler).toContain("Skript – Punkt 3: nach 5 Versuchen nicht geklappt");
+    let abschnitte = (await nachbau()).claude;
+    const anzahl = (k: string) => abschnitte.filter((x) => x === k).length;
+    expect([anzahl("script:hook"), anzahl("script:angst"), anzahl("script:punkt-1"), anzahl("script:punkt-3"), anzahl("script:punkt-4")]).toEqual([2, 1, 1, 5, 0]);
+    expect(log).toContain("Skript – Hook:");
+    expect(log).toContain("neuer Versuch in 2 s");
+    const slug1 = (await sql<{ slug: string }>("select slug from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL]))[0].slug;
+    const skriptOrdner = path.join(arbeit, "projekte", slug1, a.id, "skript");
+    expect(readdirSync(skriptOrdner).flatMap((h) => readdirSync(path.join(skriptOrdner, h))).sort()).toEqual(["angst.json", "hook.json", "punkt-1.json", "punkt-2.json"]);
+    await page.reload();
+    await expect(karte.getByTestId("vd-fehler")).toContainText("Skript – Punkt 3");
+    // „Schritt wiederholen“: nur der fehlende Abschnitt und die danach werden geholt
+    await Promise.all([aktion(page), karte.getByTestId("vd-wiederholen").click()]);
+
+    // Abnahme 2: Skript mit 5–7 Punkten, Länge fest 1.500–1.700 Wörter, alle Studien in der Quellenliste
+    a = await warteAuf("Freigabe Skript", (x) => x.freigabe_offen === "skript");
+    abschnitte = (await nachbau()).claude;
+    expect([anzahl("script:hook"), anzahl("script:angst"), anzahl("script:punkt-1"), anzahl("script:punkt-3"), anzahl("script:punkt-4"), anzahl("script:cta")]).toEqual([2, 1, 1, 6, 1, 1]);
+    expect(a.woerter).toBeGreaterThanOrEqual(1500);
+    expect(a.woerter).toBeLessThanOrEqual(1700);
+    const skriptPrompt = ((await (await fetch(`${TD}/__ki`)).json()) as { text: string }[]).filter((k) => k.text.startsWith("[video:script:punkt-1]")).at(-1)!;
+    expect(skriptPrompt.text).toContain("insgesamt 1.500–1.700 Wörter");
+    expect(skriptPrompt.text).toContain("Schreibe jetzt NUR den Abschnitt „Punkt 1“");
     const punkte = new Set(a.skript!.filter((s) => s.abschnitt.startsWith("punkt-")).map((s) => s.abschnitt));
     expect(punkte.size).toBeGreaterThanOrEqual(5);
     expect(punkte.size).toBeLessThanOrEqual(7);
@@ -180,6 +213,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect(verschieden.size).toBe(szenen);
     expect(nb.eleven.length).toBeLessThanOrEqual(szenen + 1); // höchstens die eine Szene, die beim Abbruch unterwegs war
     expect(nb.eleven.every((e) => e.stimme === "testStimme01")).toBe(true);
+    expect(log).toContain("Sprache – Szene"); // ElevenLabs-Abbruch → neuer Versuch, ohne doppelte Kosten
 
     // Abnahme 8: OpenAI gpt-image-1 1536×1024 medium; Ablehnung → Ersatzbild; strenger Filter vor dem Aufruf
     expect(nb.bilder.every((b) => b.model === "gpt-image-1" && b.size === "1536x1024" && b.quality === "medium")).toBe(true);
@@ -188,13 +222,13 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.bilder.some((b) => /\bbett\b/i.test(b.prompt))).toBe(false);
     expect(a.skript!.filter((s) => s.ersatzbild).length).toBeGreaterThanOrEqual(2); // abgelehnt + Filter „Bett“
 
-    // Abnahme 3: MP4 16–20 Min., 1920×1080, Untertitel; Thumbnail 1280×720; 5 Titel, Beschreibung mit Kapiteln, Tags
+    // Abnahme 3: MP4 ≈ 10–12 Min. (Nachbau spricht 156 Wörter/Min.), 1920×1080, Untertitel; Thumbnail 1280×720; 5 Titel, Beschreibung mit Kapiteln, Tags
     for (const art of ["mp4", "thumbnail", "skript", "quellen", "untertitel"]) expect(a.dateien[art]?.groesse, art).toBeGreaterThan(0);
     const ordner = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id);
     const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", path.join(ordner, "video.mp4")]).toString()) as { streams: { width: number; height: number }[]; format: { duration: string } };
     expect([probe.streams[0].width, probe.streams[0].height]).toEqual([1920, 1080]);
-    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(960);
-    expect(Number(probe.format.duration)).toBeLessThanOrEqual(1200);
+    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(570);
+    expect(Number(probe.format.duration)).toBeLessThanOrEqual(720);
     const thumb = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path.join(ordner, "thumbnail.png")]).toString()) as { streams: { width: number; height: number }[] };
     expect([thumb.streams[0].width, thumb.streams[0].height]).toEqual([1280, 720]);
     const srt = readFileSync(path.join(ordner, "untertitel.srt"), "utf8");
@@ -284,8 +318,6 @@ test.describe("B36 Video-Pipeline", () => {
     await page.getByTestId("vd-k-name").fill(KANAL2);
     await page.getByTestId("vd-k-stimme").fill("testStimme02");
     await page.getByTestId("vd-k-zielgruppe").fill("Männer ab 55");
-    await page.getByTestId("vd-k-laenge-min").fill("12");
-    await page.getByTestId("vd-k-laenge-max").fill("14");
     for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
     await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
@@ -296,7 +328,7 @@ test.describe("B36 Video-Pipeline", () => {
       await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
       token = (await page.getByTestId("vw-token").innerText()).trim();
     }
-    await expect(page.getByTestId("vd-ziel")).toContainText("12–14 Min. · 1.750–2.050 Wörter");
+    await expect(page.getByTestId("vd-ziel")).toContainText("10–12 Min. · 1.500–1.700 Wörter");
     await page.getByTestId("vd-thema").fill(THEMA2);
     // Englische Vorlage (erfundener Text): nur Muster für den Aufbau
     await page.getByTestId("vd-vorlage-bereich").locator("summary").click();
@@ -311,15 +343,16 @@ test.describe("B36 Video-Pipeline", () => {
     let a = await auftrag2();
     for (const bis = Date.now() + 240_000; !(a.status === "fertig" || a.status === "fehler") && Date.now() < bis; a = await auftrag2()) await new Promise((r) => setTimeout(r, 300));
     expect(a.status, `${a.schritte[a.schritt]?.fehler ?? ""}\n${log.slice(-2000)}`).toBe("fertig");
-    // Länge 12–14 Min. und Vorlage kamen im Prompt an; Skript in der Spanne
-    expect(a.woerter).toBeGreaterThanOrEqual(1750);
-    expect(a.woerter).toBeLessThanOrEqual(2050);
+    // Länge (fest) und Vorlage kamen im Prompt an; Skript in der Spanne
+    expect(a.woerter).toBeGreaterThanOrEqual(1500);
+    expect(a.woerter).toBeLessThanOrEqual(1700);
     const prompts = ((await (await fetch(`${TD}/__ki`)).json()) as { text: string }[]).filter((k) => k.text.includes(THEMA2));
-    const rp = prompts.find((k) => k.text.startsWith("[video:research]"))!;
-    expect(rp.text).toContain("(12–14 Minuten)");
+    const rp = prompts.find((k) => k.text.startsWith("[video:research:gliederung]"))!;
+    expect(rp.text).toContain("(10–12 Minuten)");
     expect(rp.text).toContain("Nicht übersetzen");
     expect(rp.text).toContain("five reasons why some men");
-    expect(prompts.find((k) => k.text.startsWith("[video:script]"))!.text).toContain("insgesamt 1.750–2.050 Wörter");
+    expect(prompts.find((k) => k.text.startsWith("[video:script:hook]"))!.text).toContain("insgesamt 1.500–1.700 Wörter");
+    expect(prompts.find((k) => k.text.startsWith("[video:script:hook]"))!.text).toContain("five reasons why some men"); // Vorlage in jedem Abschnitt
     // Claude lief mit Opus 5.5 (Kosten je Modell gebucht)
     expect(a.kosten_positionen.some((k) => k.anbieter === "Claude" && /Opus 5\.5/.test((k as unknown as { art: string }).art))).toBe(true);
     // MP4 nur in Drive, kleine Dateien zusätzlich im Seller-System
@@ -356,7 +389,7 @@ test.describe("B36 Video-Pipeline", () => {
     await workerStoppen();
   });
   test("B36.9 Whiteboard-Collage: Motive einzeln mit Referenzbild, Bibliothek, Szenen-Übersicht mit „neu erzeugen“, Aufdeck-Render ohne eingebrannte Untertitel, YouTube-Untertitel", async ({ page }) => {
-    test.setTimeout(420_000);
+    test.setTimeout(600_000);
     if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
     const KANAL3 = `Testkanal Whiteboard ${m}`;
     const THEMA3 = "Testthema Whiteboard für die Abnahme";
@@ -372,15 +405,13 @@ test.describe("B36 Video-Pipeline", () => {
     await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0 }) });
     await anmelden(page, "inhaber");
 
-    // Kanal im Stil Whiteboard: feste Figur, nur Freigabe „Szenen-Übersicht“, kurze Länge (3–4 Min.), Qualität niedrig
+    // Kanal im Stil Whiteboard: feste Figur, nur Freigabe „Szenen-Übersicht“, Qualität niedrig (Nachbau: eine Szene je Abschnitt)
     await page.goto("/marken/video?neu=1");
     await page.getByTestId("vd-k-name").fill(KANAL3);
     await page.getByTestId("vd-k-stimme").fill("testStimme03");
     await page.getByTestId("vd-k-stil").selectOption("whiteboard");
     await page.getByTestId("vd-k-qualitaet").selectOption("low");
     await page.getByTestId("vd-k-figuren").fill("testmann: Mann um die 60 mit Hut (erfunden)");
-    await page.getByTestId("vd-k-laenge-min").fill("3");
-    await page.getByTestId("vd-k-laenge-max").fill("4");
     for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
     await page.getByTestId("vd-k-f-szenen").check();
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
@@ -421,7 +452,7 @@ test.describe("B36 Video-Pipeline", () => {
     const keys = szenen.flatMap((x) => x.motive.map((mm) => mm.key));
     // Prompt fürs Skript: Whiteboard-Regeln + feste Figur
     const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string }[];
-    const skriptPrompt = ki.filter((k) => k.text.startsWith("[video:script]") && k.text.includes(THEMA3)).at(-1)!;
+    const skriptPrompt = ki.filter((k) => k.text.startsWith("[video:script:") && k.text.includes(THEMA3)).at(-1)!;
     expect(skriptPrompt.text).toContain("STIL WHITEBOARD-COLLAGE");
     expect(skriptPrompt.text).toContain("testmann: Mann um die 60 mit Hut (erfunden)");
     // Motive einzeln: 1024×1024, transparent, Qualität niedrig, mit dem Referenzbild (edits); jede Motiv-Art nur einmal bezahlt
@@ -459,8 +490,8 @@ test.describe("B36 Video-Pipeline", () => {
     const mp4 = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id, "video.mp4");
     const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=width,height", "-of", "json", mp4]).toString()) as { format: { duration: string }; streams: { width?: number; height?: number }[] };
     expect(probe.streams.find((x) => x.width)).toMatchObject({ width: 1920, height: 1080 });
-    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(180);
-    expect(Number(probe.format.duration)).toBeLessThanOrEqual(240);
+    expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(570);
+    expect(Number(probe.format.duration)).toBeLessThanOrEqual(720);
     const bild = (t: number) => {
       const roh = execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]);
       const px = (x: number, y: number) => [roh[(y * 192 + x) * 3], roh[(y * 192 + x) * 3 + 1], roh[(y * 192 + x) * 3 + 2]];
@@ -515,7 +546,7 @@ test.describe("B36 Video-Pipeline", () => {
     const r1 = JSON.parse(await c.call("video_auftrag_anlegen", wunsch));
     expect(r1.angelegt).toBe(false);
     expect(r1.rueckfrage).toContain("Soll ich das Video so anlegen?");
-    expect(r1.zusammenfassung).toContain(`Kanal „${KANAL4}“ (Whiteboard-Collage, 16–20 Min., Zielgruppe Testpublikum 55+)`);
+    expect(r1.zusammenfassung).toContain(`Kanal „${KANAL4}“ (Whiteboard-Collage, 10–12 Min., Zielgruppe Testpublikum 55+)`);
     expect(r1.zusammenfassung).toContain(`eigenes Skript (${skript.length.toLocaleString("de-DE")} Zeichen)`);
     expect(r1.zusammenfassung).toContain("Start 01.01.2030, 06:30");
     expect(r1.zusammenfassung).toMatch(/Kosten-Schätzung ca\. \d+,\d\d \$/);

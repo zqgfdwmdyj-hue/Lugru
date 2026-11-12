@@ -42,8 +42,6 @@ export async function kanalSpeichernAction(fd: FormData) {
       sprache: txt(fd, "sprache", 10) || "de",
       themenbereich: txt(fd, "themenbereich") || null,
       zielgruppe: txt(fd, "zielgruppe", 300) || null,
-      laengeMin: Number(txt(fd, "laengeMin", 3)) || null,
-      laengeMax: Number(txt(fd, "laengeMax", 3)) || null,
       stimmeId: txt(fd, "stimmeId", 80) || null,
       bildstil: txt(fd, "bildstil") || null,
       sicherheitsstufe: fd.get("sicherheitsstufe") === "streng" ? "streng" : "normal",

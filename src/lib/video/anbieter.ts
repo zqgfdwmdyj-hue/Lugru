@@ -116,7 +116,13 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
     return new Response(res.body.pipeThrough(mitlesen), { status: res.status, headers: kopf });
   }
 
-  const daten = new Uint8Array(await res.arrayBuffer());
+  let daten: ArrayBuffer;
+  try {
+    daten = await res.arrayBuffer();
+  } catch (e) {
+    // Verbindung zum Anbieter mitten in der Antwort abgebrochen – der Worker wiederholt bei 502 von selbst
+    return fehler(502, `Antwort des Anbieters abgebrochen: ${e instanceof Error ? e.message : "Fehler"}`);
+  }
   if (res.ok) {
     const pos = z.anbieter === "elevenlabs" ? kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }) : kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1, motiv: body.size === "1024x1024" });
     await kostenBuchen(w.tenantId, auftragId, pos);

@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/6 Abläufe | – | 4 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/7 Abläufe | – | 4 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -552,6 +552,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten | Refresh-Token verschlüsselt; Upload mit Sichtbarkeit private, gewähltem Titel, Thumbnail; Seller-System bestätigt „privat“; Kosten Ist > 0 mit Claude/ElevenLabs/OpenAI, Monatssumme je Kanal, Zeile im Wochenrückblick; Projektordner am PC danach aufgeräumt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36.6 Ablage Google Drive: Drive verbinden, Kanal ohne Freigaben (Länge 12–14 Min.), Thema des ersten Durchlaufs mit englischer Vorlage, Video bis „fertig“, danach „Privat hochladen“; Modell Opus 5.5 | Prompt verlangt 1.750–2.050 Wörter, Skript in der Spanne; Vorlage + „Nicht übersetzen“ in der Recherche; MP4 nur in Drive („Seller-System Videos/<Kanal>/<Datum Thema>“, gleiche Größe), kleine Dateien auch im Seller-System, kein MP4 auf dem Server; Vorschau/Download leiten nach Drive; Upload holt das Video aus Drive und ist privat; Claude-Kosten mit Opus 5.5 | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36.9 Whiteboard-Collage: Kanal im Stil Whiteboard (Figur, Referenzbild, Freigabe Szenen-Übersicht), Video bis zur Übersicht, ein Motiv „neu erzeugen“, freigeben, „Privat hochladen“ | Motive einzeln 1024×1024 transparent mit Referenzbild, jede Motiv-Art einmal bezahlt, Hand einmal, Figur aus dem Profil, Ablehnung → Ersatzmotiv; Übersicht als Bild, „neu erzeugen“ kostet genau 1 Bild; Video 1920×1080 beginnt leer, weißer Hintergrund, keine eingebrannten Untertitel, roter Balken; Kosten je Motiv; privater Upload mit Untertitel-Spur „Deutsch“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ | Abbrüche/529 nach 2, 4, 8, 16 s wiederholt (Log „neuer Versuch“); nach 5 Fehlversuchen Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“; fertige Abschnitte als Dateien im Projektordner; Wiederholen holt nur Punkt 3 bis CTA; Skript 1.500–1.700 Wörter, 5 Punkte, alle Studien in der Quellenliste; Sprache je Szene genau einmal bezahlt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Video aus dem claude.ai-Chat anlegen (video_auftrag_anlegen): Kanal, Thema, eigenes Skript, Startzeit – erst ohne, dann mit Bestätigung | Erst Rückfrage „Soll ich das Video so anlegen?“ mit Kanal, Stil, Länge, Zielgruppe, Start, Kostenschätzung und Freigaben, nichts angelegt; klare Fehler (Kanal unbekannt, Skript zu kurz, Startzeit); nach Ja Auftrag mit Skript und Startzeit (wartet), Protokoll Stufe gelb; ohne Änderungsrecht nicht in der Werkzeugliste | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 
 - – Offen: Echte Anbieter (Claude-Websuche, ElevenLabs-Stimme, gpt-image-1, YouTube-Upload, Google Drive) – erstes Video mit echten Zugängen prüfen
@@ -739,7 +740,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (181 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 181 nicht gelaufen.
+**Automatisch** (182 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 182 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -862,6 +863,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): B36.7 Abnahme 5/6: Mit YouTube verbinden (Nachbau), „Privat hochladen“ an, Vorschau mit Titel 2 freigeben; Kosten – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36.6 Ablage Google Drive: Drive verbinden, Kanal ohne Freigaben (Länge 12–14 Min.), Thema des ersten Durchlaufs mit englischer Vorlage, Video bis „fertig“, danach „Privat hochladen“; Modell Opus 5.5 – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36.9 Whiteboard-Collage: Kanal im Stil Whiteboard (Figur, Referenzbild, Freigabe Szenen-Übersicht), Video bis zur Übersicht, ein Motiv „neu erzeugen“, freigeben, „Privat hochladen“ – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Video aus dem claude.ai-Chat anlegen (video_auftrag_anlegen): Kanal, Thema, eigenes Skript, Startzeit – erst ohne, dann mit Bestätigung – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: Aufgabe an die VA über Discord: Thread mit Anleitung und Datei, ✅ erledigt, Rechnungsfrage automatisch beantwortet, Rückfrage → Antwort im Thread – im letzten Lauf nicht gelaufen
 - ○ VA & Delegation: B18: Anspruch mit Frist in 8 Tagen, Frist rückt auf 7/5/3/1 Tage, VA antwortet „case 12345678901“, Anspruch mit Frist heute, dann abgelaufen; Claude va_aufgaben/ueberblick – im letzten Lauf nicht gelaufen

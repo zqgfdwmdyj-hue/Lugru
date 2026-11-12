@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, LAENGE_STANDARD, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -74,32 +74,25 @@ describe("Kosten (B36.3)", () => {
     const p = { ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 };
     const sonnet = kostenSchaetzung(p, TYPISCH, "claude-sonnet-5-5");
     expect(sonnet.fehlend).toEqual([]);
-    // Standardlänge 16–20 Min.: 66k/21k Tokens, 6 Suchen, 17.200 Zeichen, 40 Bilder
-    expect(TYPISCH).toEqual({ zeichen: 17_200, bilder: 40, motive: 0, websuchen: 6, eingabeTokens: 66_000, ausgabeTokens: 21_000 });
-    expect(sonnet.summe).toBeCloseTo(0.132 + 0.21 + 0.06 + 3.096 + 1.6, 2);
+    // Fest 1.500–1.700 Wörter, abschnittsweise: 112k/15k Tokens, 12 Suchen (Gliederung + je Punkt), 10.600 Zeichen, 25 Bilder
+    expect(TYPISCH).toEqual({ zeichen: 10_600, bilder: 25, motive: 0, websuchen: 12, eingabeTokens: 112_000, ausgabeTokens: 15_000 });
+    expect(sonnet.summe).toBeCloseTo(0.224 + 0.15 + 0.12 + 1.908 + 1.0, 2);
     // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
     expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
-    expect(kostenSchaetzung(p).summe).toBeCloseTo(0.264 + 0.42 + 0.06 + 3.096 + 1.6, 2);
-    // Kurzer Kanal (10–12 Min.) wie vorher: ~1.600 Wörter
-    expect(typischFuer(10, 12)).toEqual({ zeichen: 10_600, bilder: 25, motive: 0, websuchen: 6, eingabeTokens: 60_000, ausgabeTokens: 15_000 });
-    // Whiteboard: statt 40 Bildern bis zu 160 Einzelmotive (ohne Wiederverwendung = Obergrenze), eigener Preis je Motiv
-    const wb = typischFuer(16, 20, "whiteboard");
-    expect(wb).toMatchObject({ bilder: 0, motive: 40 * MOTIVE_JE_SZENE });
+    expect(kostenSchaetzung(p).summe).toBeCloseTo(0.448 + 0.3 + 0.12 + 1.908 + 1.0, 2);
+    // Whiteboard: statt 25 Bildern bis zu 100 Einzelmotive (ohne Wiederverwendung = Obergrenze), eigener Preis je Motiv
+    const wb = typischFuer("whiteboard");
+    expect(wb).toMatchObject({ bilder: 0, motive: 25 * MOTIVE_JE_SZENE });
     const mitMotivpreis = kostenSchaetzung({ ...p, motivJeStueck: 0.02 }, wb, "claude-opus-5-5");
-    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (gpt-image-1, höchstens 160)"]);
-    expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(3.2, 2);
+    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (gpt-image-1, höchstens 100)"]);
+    expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(2.0, 2);
     // ohne eigenen Motivpreis gilt der Bildpreis
-    expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(6.4, 2);
+    expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(4.0, 2);
     expect(kostenPosition("openai", { ...p, motivJeStueck: 0.02 }, { bilder: 1, motiv: true }, new Date(0))[0]).toMatchObject({ art: "Motiv", einheit: "Motive", betrag: 0.02 });
   });
-  it("Länge je Kanal: Wörter, Szenen, Sekunden; Grenzen", () => {
-    expect(LAENGE_STANDARD).toEqual({ von: 16, bis: 20 });
-    expect(laengeZiel()).toEqual({ minuten: [16, 20], sekunden: [960, 1200], woerter: [2300, 2900], szenen: [27, 45], szenenJePunkt: [3, 6] });
-    expect(laengeZiel(10, 12)).toMatchObject({ woerter: [1450, 1750], szenen: [17, 27], szenenJePunkt: [2, 4] });
-    expect(laengeZiel(12, 14)).toMatchObject({ woerter: [1750, 2050] });
-    // bis < von → bis = von; außerhalb 3–60 begrenzt
-    expect(laengeZiel(18, 10).minuten).toEqual([18, 18]);
-    expect(laengeZiel(1, 200).minuten).toEqual([3, 60]);
+  it("Länge fest für alle Kanäle: 1.500–1.700 Wörter ≈ 10–12 Min., 15–34 Szenen", () => {
+    expect(SKRIPT_WOERTER).toEqual([1500, 1700]);
+    expect(laengeZiel()).toEqual({ minuten: [10, 12], sekunden: [621, 703], woerter: [1500, 1700], szenen: [15, 34], szenenJePunkt: [2, 4] });
   });
   it("Nutzung aus JSON- und Stream-Antworten (inkl. Websuchen), Posten und Summe", () => {
     expect(claudeNutzung(JSON.stringify({ usage: { input_tokens: 1000, cache_read_input_tokens: 500, output_tokens: 200, server_tool_use: { web_search_requests: 3 } } }))).toEqual({ eingabe: 1500, ausgabe: 200, websuchen: 3 });

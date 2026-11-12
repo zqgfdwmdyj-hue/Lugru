@@ -97,10 +97,14 @@ def test_skript_pruefen():
     text = " ".join(["Wort"] * 64)
     szenen = [{"abschnitt": "hook", "text": text, "quelle_ids": []}] + [{"abschnitt": f"punkt-{i % 5 + 1}", "text": text, "quelle_ids": ["Q1"]} for i in range(23)]
     assert woerter(text) == 64
-    ziel_kurz = [1450, 1750]  # Kanal mit 10–12 Min.
+    ziel_kurz = [1450, 1750]
     assert skript_pruefen(szenen, quellen, ziel_kurz) == []
-    # Standard 16–20 Min. (2.300–2.900 Wörter): 1.536 Wörter sind zu wenig
-    assert any("2.300–2.900" in p for p in skript_pruefen(szenen, quellen))
+    # Standard fest 1.500–1.700 Wörter: 1.536 passen; 2.300–2.900 wären zu wenig
+    assert skript_pruefen(szenen, quellen) == []
+    assert any("2.300–2.900" in p for p in skript_pruefen(szenen, quellen, [2300, 2900]))
+    # Studie ohne Quelle (auch außerhalb der Punkte) fällt auf
+    mit_studie = [dict(szenen[0], text=text + " Eine Studie zeigt das.")] + szenen[1:]
+    assert any("Studie ohne Quelle" in p and "1" in p for p in skript_pruefen(mit_studie, quellen))
     szenen[3]["quelle_ids"] = ["Q9"]
     assert any("Q9" in p for p in skript_pruefen(szenen, quellen, ziel_kurz))
     kurz = szenen[:5]
@@ -119,7 +123,7 @@ def _lauf(kanal: dict, vorlage: dict | None = None, laenge: dict | None = None) 
 def test_zielgruppe_laenge_vorlage_im_prompt():
     l = _lauf({"name": "Testkanal", "sprache": "de", "zielgruppe": "Männer ab 55"})
     assert "Zielgruppe: Männer ab 55" in l.kopf()
-    assert l.minuten() == "16–20 Minuten"
+    assert l.minuten() == "10–12 Minuten"  # Skriptlänge fest 1.500–1.700 Wörter
     assert l.vorlage_text("research") == ""
     assert "Zielgruppe" not in _lauf({"name": "Testkanal"}).kopf()
     v = _lauf({"name": "Testkanal"}, {"art": "vorlage", "text": "Hook. Then five reasons ..."})
@@ -128,7 +132,7 @@ def test_zielgruppe_laenge_vorlage_im_prompt():
     s = _lauf({"name": "Testkanal"}, {"art": "skript", "text": "Mein Skript ..."})
     assert "möglichst wörtlich" in s.vorlage_text("script")
     assert "Quellen" in s.vorlage_text("research")
-    assert _lauf({"name": "K"}, laenge={"minuten": [10, 12]}).minuten() == "10–12 Minuten"
+    assert _lauf({"name": "K"}, laenge={"minuten": [12, 14]}).minuten() == "12–14 Minuten"
 
 
 def test_json_aus_text_mit_codeblock():
@@ -269,3 +273,290 @@ def test_wb_pruefen_und_aufbereiten():
     assert s[0]["balken"] is None and s[0]["schrittText"] == "Schritt 4: Arzt fragen" and "schritt" not in s[0]
     assert s[0]["motive"][0] == {"key": "blonder-mann", "beschreibung": "Mann um die 60, blond"}  # feste Figur
     assert s[0]["motive"][1]["key"] == "sanduhr" and "Sanduhr mit Gesicht" in s[0]["bildidee"]
+
+
+# ---- Robustheit (Nachtrag 12.11.): Wiederholung, Streaming mit Abbruch, Abschnitte mit Wiederaufnahme --------------
+
+import http.server  # noqa: E402
+import threading  # noqa: E402
+
+from udd import netz, schritte  # noqa: E402
+from udd.schritte import Ablage, abschnitt_ziele, abschnitte  # noqa: E402
+
+
+def test_wiederholung_wartet_2_4_8_16_und_nennt_abschnitt():
+    gewartet: list[float] = []
+    versuche = {"n": 0}
+
+    def immer_kaputt():
+        versuche["n"] += 1
+        raise netz.Voruebergehend("HTTP 529: overloaded", 529)
+
+    with pytest.raises(netz.AufrufFehler) as e:
+        netz.mit_wiederholung(immer_kaputt, "Skript – Punkt 3", schlafen=gewartet.append)
+    assert versuche["n"] == 5 and gewartet == [2, 4, 8, 16]
+    assert "Skript – Punkt 3" in str(e.value) and "5 Versuchen" in str(e.value)
+
+    # beim dritten Versuch klappt es
+    n = {"i": 0}
+
+    def zweimal_kaputt():
+        n["i"] += 1
+        if n["i"] < 3:
+            raise netz.Zeitueberschreitung("keine vollständige Antwort nach 120 s")
+        return "ok"
+
+    gewartet.clear()
+    assert netz.mit_wiederholung(zweimal_kaputt, "x", schlafen=gewartet.append) == "ok" and gewartet == [2, 4]
+
+    # 400 (z. B. falsche Anfrage) wird nicht wiederholt
+    def falsch():
+        raise netz.Voruebergehend.__base__("HTTP 400")  # gewöhnliche Exception
+
+    with pytest.raises(Exception, match="HTTP 400"):
+        netz.mit_wiederholung(falsch, "x", schlafen=gewartet.append)
+
+
+def test_voruebergehend_erkennt_abbruch_429_5xx():
+    import anthropic
+
+    try:
+        import httpx2 as hx
+    except ImportError:  # pragma: no cover
+        import httpx as hx
+    assert netz.voruebergehend(hx.RemoteProtocolError("peer closed connection without sending complete message body (incomplete chunked read)"))
+    assert netz.voruebergehend(hx.ReadTimeout("zu langsam"))
+    req = hx.Request("POST", "https://example.invalid/v1/messages")
+    assert netz.voruebergehend(anthropic.APIStatusError("overloaded", response=hx.Response(529, request=req), body=None))
+    assert netz.voruebergehend(anthropic.APIStatusError("rate", response=hx.Response(429, request=req), body=None))
+    assert not netz.voruebergehend(anthropic.APIStatusError("bad", response=hx.Response(400, request=req), body=None))
+    assert not netz.voruebergehend(ValueError("kaputtes JSON"))
+
+
+class _Server:
+    """Kleiner Testserver: antwortet je Anfrage nach Plan („503“, „abbruch“ = Antwort mittendrin abbrechen, „ok“)."""
+
+    def __init__(self, plan: list[str], ok_body: bytes, typ: str = "application/json"):
+        self.plan, self.anfragen = list(plan), 0
+        server = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):  # noqa: D401
+                pass
+
+            def do_POST(self):  # noqa: N802
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                server.anfragen += 1
+                art = server.plan.pop(0) if server.plan else "ok"
+                if art == "503":
+                    body = b'{"error":{"message":"busy"}}'
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", typ)
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                teil = ok_body[: len(ok_body) // 3] if art == "abbruch" else ok_body
+                self.wfile.write(f"{len(teil):X}\r\n".encode() + teil + b"\r\n")
+                if art == "abbruch":  # Verbindung schließen ohne Abschluss-Chunk → „incomplete chunked read“
+                    self.wfile.flush()
+                    self.connection.shutdown(2)
+                    self.close_connection = True
+                    return
+                self.wfile.write(b"0\r\n\r\n")
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.httpd.shutdown()
+
+
+def _sse(text: str) -> bytes:
+    ev = lambda typ, d: f"event: {typ}\ndata: {json.dumps({'type': typ, **d})}\n\n"  # noqa: E731
+    out = ev("message_start", {"message": {"id": "msg_test", "type": "message", "role": "assistant", "model": "claude-opus-5-5", "content": [], "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 10, "output_tokens": 1}}})
+    out += ev("content_block_start", {"index": 0, "content_block": {"type": "text", "text": ""}})
+    for k in range(0, len(text), 40):
+        out += ev("content_block_delta", {"index": 0, "delta": {"type": "text_delta", "text": text[k : k + 40]}})
+    out += ev("content_block_stop", {"index": 0})
+    out += ev("message_delta", {"delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 50}})
+    out += ev("message_stop", {})
+    return out.encode()
+
+
+def test_claude_stream_abbruch_wird_wiederholt(monkeypatch):
+    """Genau der Fehler aus dem Betrieb: Verbindung bricht mitten im Stream ab → neuer Versuch, Ergebnis vollständig."""
+    import anthropic
+
+    from udd import ki
+
+    monkeypatch.setattr(netz, "_FAKTOR", 0.0)
+    antwort = json.dumps({"szenen": [{"text": "Hallo und willkommen. " * 20}]})
+    srv = _Server(["abbruch", "503", "ok"], _sse(antwort), "text/event-stream")
+    try:
+        c = anthropic.Anthropic(api_key="test", base_url=srv.url, max_retries=0, timeout=10)
+        text, _ = ki.fragen(c, "claude-opus-5-5", "[video:script:hook] Test", was="Skript – Hook", log=None)
+        assert json.loads(text) == json.loads(antwort) and srv.anfragen == 3
+        # dauerhaft kaputt → Fehler mit Abschnittsname
+        srv.plan = ["abbruch"] * 5
+        with pytest.raises(netz.AufrufFehler, match="Skript – Punkt 2.*incomplete chunked read"):
+            ki.fragen(c, "claude-opus-5-5", "x", was="Skript – Punkt 2", log=None)
+    finally:
+        srv.stop()
+
+
+def test_brücke_elevenlabs_abbruch_und_503_werden_wiederholt(monkeypatch):
+    from udd.seller import Seller
+
+    monkeypatch.setattr(netz, "_FAKTOR", 0.0)
+    mp3 = b"ID3" + bytes(range(256)) * 40
+    srv = _Server(["503", "abbruch", "ok"], mp3, "audio/mpeg")
+    try:
+        s = Seller(srv.url, "vw_test")
+        s.log = lambda _t: None
+        r = s.anbieter("00000000-0000-0000-0000-000000000000", "elevenlabs", "v1/text-to-speech/x", {"text": "Hallo"}, timeout=10, was="Sprache – Szene 1")
+        assert r.status_code == 200 and r.content == mp3 and srv.anfragen == 3
+    finally:
+        srv.stop()
+
+
+def test_abschnitt_ziele_ergeben_1500_bis_1700():
+    for n in (5, 6, 7):
+        z = abschnitt_ziele(n)
+        assert list(z) == abschnitte(n)
+        assert 1497 <= sum(a for a, _ in z.values()) <= 1503
+        assert 1690 <= sum(b for _, b in z.values()) <= 1700
+
+
+class _FakeLauf:
+    """Nur was script() braucht – Claude-Aufrufe werden ersetzt."""
+
+    def __init__(self, tmp: Path, punkte: int = 5, whiteboard: bool = False):
+        self.p = Projekt(tmp, "testkanal", "auftrag-1")
+        self.laenge = dict(schritte.LAENGE_STANDARD)
+        self.kanal = {"name": "Testkanal", "figuren": []}
+        self.a = {"thema": "Testthema", "hinweis": ""}
+        self.modell, self.whiteboard, self.streng, self.vorlage = "claude-opus-5-5", whiteboard, False, None
+        self.claude = object()
+        self.fortschritte: list[tuple[int, int]] = []
+        self.daten = {
+            "gliederung": {"hook": "H", "angst": "A", "punkte": [{"titel": f"P{i}", "kern": "K", "quelle_ids": [f"Q{i}"]} for i in range(1, punkte + 1)], "fazit": "F", "cta": "C"},
+            "quellen": [{"id": f"Q{i}", "titel": f"Teststudie {i}", "url": f"https://example.com/{i}"} for i in range(1, punkte + 1)],
+        }
+
+    kopf = Lauf.kopf
+    vidiq = Lauf.vidiq
+    anmerkung = Lauf.anmerkung
+    vorlage_text = Lauf.vorlage_text
+    minuten = Lauf.minuten
+
+    def fortschritt(self, schritt, fertig, gesamt):
+        self.fortschritte.append((fertig, gesamt))
+
+
+def _antwort_fuer(prompt: str, faktor: float = 1.0) -> str:
+    import re as _re
+
+    name = _re.search(r"\[video:script:([\w-]+)\]", prompt).group(1)
+    m = _re.search(r"Länge dieses Abschnitts: ca\. (\d+) Wörter", prompt)
+    neu = _re.search(r"Bitte auf ca\. (\d+) Wörter", prompt)
+    n = int(neu.group(1)) if neu else round(int(m.group(1)) * faktor)
+    q = [f"Q{name.split('-')[1]}"] if name.startswith("punkt-") else []
+    return json.dumps({"szenen": [{"text": " ".join(["wort"] * n), "bildidee": "Symbolbild", "einblendung": "", "quelle_ids": q}]})
+
+
+def test_skript_abschnittsweise_mit_wiederaufnahme(tmp_path, monkeypatch):
+    l = _FakeLauf(tmp_path)
+    aufrufe: list[str] = []
+
+    def fragen(_c, _m, prompt, *, was="", **_kw):
+        aufrufe.append(was)
+        if was == "Skript – Punkt 3":
+            raise netz.AufrufFehler("Skript – Punkt 3: nach 5 Versuchen nicht geklappt (peer closed connection)")
+        return _antwort_fuer(prompt), []
+
+    monkeypatch.setattr(schritte.ki, "fragen", fragen)
+    with pytest.raises(netz.AufrufFehler, match="Punkt 3"):
+        schritte.script(l)
+    assert aufrufe == ["Skript – Hook", "Skript – Fear Activation", "Skript – Punkt 1", "Skript – Punkt 2", "Skript – Punkt 3"]
+    gespeichert = sorted(p.name for p in (l.p.ordner / "skript").rglob("*.json"))
+    assert gespeichert == ["angst.json", "hook.json", "punkt-1.json", "punkt-2.json"]
+
+    # Neuer Versuch: nur der fehlende Abschnitt und die danach werden geholt
+    aufrufe.clear()
+    monkeypatch.setattr(schritte.ki, "fragen", lambda _c, _m, prompt, *, was="", **_kw: (aufrufe.append(was), (_antwort_fuer(prompt), []))[1])
+    daten, hinweise = schritte.script(l)
+    assert aufrufe == ["Skript – Punkt 3", "Skript – Punkt 4", "Skript – Punkt 5", "Skript – Zusammenfassung", "Skript – Call-to-Action"]
+    assert hinweise == [] and 1500 <= daten["woerter"] <= 1700
+    assert [s["abschnitt"] for s in daten["skript"]] == abschnitte(5) and [s["nr"] for s in daten["skript"]] == list(range(1, 10))
+    assert l.fortschritte[-1] == (9, 9)
+
+
+def test_skript_endpruefung_bessert_nur_betroffene_abschnitte_nach(tmp_path, monkeypatch):
+    l = _FakeLauf(tmp_path, punkte=6)
+    aufrufe: list[str] = []
+
+    def fragen(_c, _m, prompt, *, was="", **_kw):
+        aufrufe.append(was)
+        if "Überarbeitung:" in prompt:
+            return _antwort_fuer(prompt), []
+        # alle Abschnitte 25 % zu kurz, Punkt 2 nennt eine fremde Quelle
+        text = _antwort_fuer(prompt, 0.75)
+        if was == "Skript – Punkt 2":
+            text = text.replace('"Q2"', '"Q99"')
+        return text, []
+
+    monkeypatch.setattr(schritte.ki, "fragen", fragen)
+    daten, hinweise = schritte.script(l)
+    erste = abschnitte(6)
+    assert len(aufrufe) > len(erste)
+    nachbesserung = aufrufe[len(erste) :]
+    assert "Skript – Punkt 2" in nachbesserung and len(nachbesserung) <= 4  # Quelle + höchstens 3 für die Länge
+    assert "Skript – Hook" not in nachbesserung
+    assert hinweise == [] and 1500 <= daten["woerter"] <= 1700
+    assert all(q != "Q99" for s in daten["skript"] for q in s["quelle_ids"])
+
+
+def test_ablage_neue_eingabe_neuer_ordner(tmp_path):
+    p = Projekt(tmp_path, "k", "a")
+    a1, a2 = Ablage(p, "skript", "eingabe-1"), Ablage(p, "skript", "eingabe-2")
+    a1.schreiben("hook", {"x": 1})
+    assert a1.lesen("hook") == {"x": 1} and a2.lesen("hook") is None
+    (a1.ordner / "angst.json").write_text("{halb", encoding="utf-8")
+    assert a1.lesen("angst") is None  # kaputte Datei → neu holen
+
+
+def test_neu_schreiben_verwirft_abschnitte_nach_fehler_nicht(tmp_path, monkeypatch):
+    """„Skript neu schreiben“ (Schritt war fertig) → Abschnitte weg; „Schritt wiederholen“ nach Fehler → Abschnitte bleiben."""
+    from udd.konfig import Konfig
+
+    gemeldet: list[tuple[str, str]] = []
+
+    class S:
+        def schritt(self, _id, schritt, status, **_kw):
+            gemeldet.append((schritt, status))
+            return {"weiter": False, "status": "angehalten"}
+
+        def referenz_holen(self, *_a):  # pragma: no cover
+            return b""
+
+    k = Konfig(seller_url="http://x", token="vw_x", arbeitsordner=tmp_path, musikordner=tmp_path, poll_s=1, min_frei_gb=0, warn_frei_gb=0, fps=2, claude_modell="", aufbewahren_tage=1, ffmpeg="ffmpeg", ffprobe="ffprobe")
+    auftrag = {"id": "a1", "thema": "T", "schritt": "script", "kanal": {"slug": "k", "name": "K"}, "wiederholen": "script"}
+    p = Projekt(tmp_path, "k", "a1")
+    (p.ordner / "skript" / "h").mkdir(parents=True)
+    (p.ordner / "skript" / "h" / "hook.json").write_text("{}", encoding="utf-8")
+    # nach Fehler: Schritt nicht fertig → Abschnitte bleiben
+    schritte.ausfuehren(k, S(), dict(auftrag), log=lambda _t: None)
+    assert (p.ordner / "skript" / "h" / "hook.json").exists()
+    # neu schreiben: Schritt war fertig → Abschnitte weg
+    p.markieren("script", skript=[], woerter=0)
+    schritte.ausfuehren(k, S(), dict(auftrag), log=lambda _t: None)
+    assert not (p.ordner / "skript").exists()
+    assert not Projekt(tmp_path, "k", "a1").erledigt("script")

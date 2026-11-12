@@ -5,7 +5,7 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, LAENGE_STANDARD, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, workerStand } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -66,9 +66,9 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
   const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
   const ws = worker?.stand ?? workerStand(null);
   const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
-  const typisch = typischFuer(kanal?.laengeMin, kanal?.laengeMax, kanal?.stil);
+  const typisch = typischFuer(kanal?.stil);
   const whiteboard = kanal?.stil === "whiteboard";
-  const ziel = laengeZiel(kanal?.laengeMin, kanal?.laengeMax);
+  const ziel = laengeZiel();
   const schaetzung = kostenSchaetzung(cfg.preise, typisch, cfg.modell);
   const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, typisch, m).summe }));
   const fehlend = [!claude?.apiKey && "Claude (KI)", !eleven?.apiKey && "ElevenLabs", !openai?.apiKey && "OpenAI (Bilder)"].filter(Boolean) as string[];
@@ -380,8 +380,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
           <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>
           <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 220 }}>Zielgruppe<input className="input" name="zielgruppe" maxLength={300} defaultValue={kanal?.zielgruppe ?? ""} placeholder="z. B. Männer ab 55" data-testid="vd-k-zielgruppe" /></label>
-            <label className="stack" style={{ gap: 2, width: 90 }}>Länge von<input className="input" type="number" name="laengeMin" min={3} max={60} defaultValue={kanal?.laengeMin ?? LAENGE_STANDARD.von} data-testid="vd-k-laenge-min" /></label>
-            <label className="stack" style={{ gap: 2, width: 90 }}>bis (Min.)<input className="input" type="number" name="laengeMax" min={3} max={60} defaultValue={kanal?.laengeMax ?? LAENGE_STANDARD.bis} data-testid="vd-k-laenge-max" /></label>
+            <span className="small muted" style={{ paddingBottom: 6 }} data-testid="vd-k-laenge">Länge: fest {laengeZiel().woerter[0].toLocaleString("de-DE")}–{laengeZiel().woerter[1].toLocaleString("de-DE")} Wörter (≈ {laengeZiel().minuten[0]}–{laengeZiel().minuten[1]} Min.) für alle Kanäle</span>
           </div>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 180 }}>Stimme (ElevenLabs-Voice-ID)<input className="input" name="stimmeId" defaultValue={kanal?.stimmeId ?? ""} data-testid="vd-k-stimme" /></label>

@@ -56,7 +56,7 @@ export async function videoEinstellungenSpeichern(s: Session, patch: Partial<Vid
 
 // ---- Kanäle ------------------------------------------------------------------------------------------------------
 
-export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; laengeMin?: number | null; laengeMax?: number | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null };
+export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null };
 
 export const kanaele = (tenantId: string) => db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(asc(K.createdAt));
 
@@ -64,8 +64,7 @@ export async function kanalSpeichern(s: Session, id: string | null, e: KanalEing
   if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
   const name = e.name.trim().slice(0, 80);
   if (!name) throw new VideoFehler("Bitte einen Kanalnamen angeben.");
-  const laenge = laengeZiel(e.laengeMin, e.laengeMax).minuten;
-  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, laengeMin: laenge[0], laengeMax: laenge[1], stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium" } as const;
+  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium" } as const;
   if (id) {
     const [r] = await db.update(K).set(werte).where(and(eq(K.tenantId, s.tenantId), eq(K.id, id))).returning({ id: K.id });
     if (!r) throw new VideoFehler("Kanal nicht gefunden.");
@@ -97,7 +96,7 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.laengeMin, kanal.laengeMax, kanal.stil), cfg.modell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.stil), cfg.modell);
   const vorlage = e.vorlage?.trim() || null;
   if (vorlage && vorlage.length > VORLAGE_MAX) throw new VideoFehler(`Vorlage/Skript ist zu lang (${vorlage.length.toLocaleString("de-DE")} Zeichen, höchstens ${VORLAGE_MAX.toLocaleString("de-DE")}).`);
   if (vorlage && vorlage.length < 200) throw new VideoFehler("Vorlage/Skript ist sehr kurz – bitte den ganzen Text einfügen (oder das Feld leer lassen).");
@@ -302,7 +301,7 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
     vidiq: { keywords: a.vidiqKeywords, titel: a.vidiqTitel },
     vorlage: a.vorlage ? { art: a.vorlageArt ?? "vorlage", text: a.vorlage } : null,
     neuMotive: a.neuMotive,
-    laenge: laengeZiel(k.laengeMin, k.laengeMax),
+    laenge: laengeZiel(),
     kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
     daten: { gliederung: a.gliederung, quellen: a.quellen, skript: a.skript, paket: a.paket },
   };

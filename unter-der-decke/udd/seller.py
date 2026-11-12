@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
-from . import VERSION
+from . import VERSION, netz
 
 
 class SellerFehler(Exception):
@@ -26,6 +26,7 @@ class Seller:
         self.token = token
         self.s = requests.Session()
         self.s.headers.update({"Authorization": f"Bearer {token}", "User-Agent": f"unter-der-decke/{VERSION}"})
+        self.log: Callable[[str], None] = print
 
     # -- intern ---------------------------------------------------------------------------------------------------
     def _antwort(self, r: requests.Response) -> Any:
@@ -116,34 +117,22 @@ class Seller:
             raise SellerFehler(f"Referenzbild {nr}: HTTP {r.status_code}", r.status_code)
         return r.content
 
-    def anbieter_datei(self, auftrag_id: str, anbieter: str, pfad: str, felder: dict[str, str], dateien: list[tuple[str, str, bytes, str]], timeout: float = 300) -> requests.Response:
-        """Anbieter-Brücke mit Dateien (multipart, z. B. Bild mit Referenzbildern) – rohe Antwort."""
-        letzter: Exception | None = None
-        for i in range(3):
-            try:
-                r = self.s.post(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", data=felder, files=[(feld, (name, daten, typ)) for feld, name, daten, typ in dateien], headers={"x-auftrag": auftrag_id}, timeout=timeout)
-                if r.status_code in (429, 500, 502, 503, 504):
-                    letzter = SellerFehler(f"{anbieter}: HTTP {r.status_code}", r.status_code)
-                    time.sleep(5 * (i + 1))
-                    continue
-                return r
-            except (requests.ConnectionError, requests.Timeout) as e:
-                letzter = e
-                time.sleep(5 * (i + 1))
-        raise SellerFehler(f"{anbieter} nicht erreichbar: {letzter}")
+    def anbieter_datei(self, auftrag_id: str, anbieter: str, pfad: str, felder: dict[str, str], dateien: list[tuple[str, str, bytes, str]], timeout: float = 180, was: str | None = None) -> requests.Response:
+        """Anbieter-Brücke mit Dateien (multipart, z. B. Bild mit Referenzbildern) – rohe Antwort.
+        Gestreamt mit Zeitlimit; Abbruch, Zeitüberschreitung, 429 und 5xx bis zu 4 Mal wiederholt (2, 4, 8, 16 s)."""
 
-    def anbieter(self, auftrag_id: str, anbieter: str, pfad: str, body: dict[str, Any], timeout: float = 180) -> requests.Response:
-        """Anbieter-Brücke (ElevenLabs, OpenAI) – liefert die rohe Antwort (Status wird vom Aufrufer geprüft)."""
-        letzter: Exception | None = None
-        for i in range(3):
-            try:
-                r = self.s.post(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", json=body, headers={"x-auftrag": auftrag_id}, timeout=timeout)
-                if r.status_code in (429, 500, 502, 503, 504):
-                    letzter = SellerFehler(f"{anbieter}: HTTP {r.status_code}", r.status_code)
-                    time.sleep(5 * (i + 1))
-                    continue
-                return r
-            except (requests.ConnectionError, requests.Timeout) as e:
-                letzter = e
-                time.sleep(5 * (i + 1))
-        raise SellerFehler(f"{anbieter} nicht erreichbar: {letzter}")
+        def einmal() -> requests.Response:
+            r = self.s.post(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", data=felder, files=[(feld, (name, daten, typ)) for feld, name, daten, typ in dateien], headers={"x-auftrag": auftrag_id}, timeout=(20, timeout), stream=True)
+            return netz.lesen(netz.status_pruefen(r), timeout)
+
+        return netz.mit_wiederholung(einmal, was or f"{anbieter} {pfad}", log=self.log)
+
+    def anbieter(self, auftrag_id: str, anbieter: str, pfad: str, body: dict[str, Any], timeout: float = netz.TIMEOUT_S, was: str | None = None) -> requests.Response:
+        """Anbieter-Brücke (ElevenLabs, OpenAI) – liefert die rohe Antwort (Status 2xx/4xx prüft der Aufrufer).
+        Gestreamt mit Zeitlimit; Abbruch, Zeitüberschreitung, 429 und 5xx bis zu 4 Mal wiederholt (2, 4, 8, 16 s)."""
+
+        def einmal() -> requests.Response:
+            r = self.s.post(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", json=body, headers={"x-auftrag": auftrag_id}, timeout=(20, timeout), stream=True)
+            return netz.lesen(netz.status_pruefen(r), timeout)
+
+        return netz.mit_wiederholung(einmal, was or f"{anbieter} {pfad}", log=self.log)

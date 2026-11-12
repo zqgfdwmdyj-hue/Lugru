@@ -1655,7 +1655,7 @@ Ports), Start per Docker Desktop oder Python am Arbeits-PC; CPU/RAM-Grenzen setz
 | B36.3 Zugangsdaten nur über das sichere Formular | ❌ | ✅ Anbindungen „ElevenLabs“ und „OpenAI (Bilder)“ neu, Claude wie bisher, Google-App mit YouTube-Bereichen; YouTube je Kanal per Anmeldung (Refresh-Token verschlüsselt); Worker-Token nur einmal angezeigt (nur Prüfsumme gespeichert) | `registry.ts`, `api/oauth/youtube/*`, `workerAnlegen` |
 | B36.4 Kanalprofil (Name, Handle, Sprache, Themenbereich, Stimme, Bildstil, Sicherheitsstufe, Musik, YouTube) | ❌ | ✅ im Seller-System editierbar; der Worker legt je Kanal `kanal.json` ab (zum Nachsehen) | Tabelle `video_kanaele`, `Lauf.__init__` |
 | Zielgruppe je Kanal (Nachtrag 11.11.: „Männer 55+, nicht allgemein“) | – | ✅ Feld „Zielgruppe“ im Kanalprofil (Wert nur in der Oberfläche, nicht im Code); steht in jedem Prompt (Recherche, Skript, Paket): Ansprache, Beispiele und Sorgen auf diese Gruppe, Studien mit dieser Altersgruppe bevorzugen | `video_kanaele.zielgruppe`, `Lauf.kopf` |
-| Videolänge 16–20 Min. (Nachtrag 11.11., wie die englischen Vorbilder) | – | ✅ Länge je Kanal (Standard 16–20 Min., einstellbar 3–60); daraus eine Quelle für alle Ziele: 2.300–2.900 Wörter (145 Wörter/Min.), 27–45 Szenen à 50–100 Wörter, 3–6 Szenen je Punkt, Render-Prüfung 16–20 Min., Kostenschätzung (≈ 17.200 Zeichen, ≈ 40 Bilder); Zielzeile über „Neues Video“ | `laengeZiel`, `typischFuer`, `auftragFuerWorker.laenge`, `skript_pruefen(ziel)` |
+| Videolänge 16–20 Min. (Nachtrag 11.11., wie die englischen Vorbilder) – **abgelöst 12.11.: fest 1.500–1.700 Wörter (s. Nachtrag 12.11.)** | – | ✅ Länge je Kanal (Standard 16–20 Min., einstellbar 3–60); daraus eine Quelle für alle Ziele: 2.300–2.900 Wörter (145 Wörter/Min.), 27–45 Szenen à 50–100 Wörter, 3–6 Szenen je Punkt, Render-Prüfung 16–20 Min., Kostenschätzung (≈ 17.200 Zeichen, ≈ 40 Bilder); Zielzeile über „Neues Video“ | `laengeZiel`, `typischFuer`, `auftragFuerWorker.laenge`, `skript_pruefen(ziel)` |
 | Englische Vorlage oder eigenes Skript je Auftrag (Nachtrag 11.11.) | – | ✅ optionales Feld beim Anlegen (bis 40.000 Zeichen). „Vorlage“: nur Muster für Hook, Aufbau, Spannungsbogen – nicht übersetzen, keine Sätze/Zahlen ungeprüft übernehmen, alles neu belegen. „Mein Skript“: wird möglichst wörtlich übernommen, in Szenen geteilt, Quellen werden gesucht; Länge/Sicherheitsstufe gelten trotzdem | `video_auftraege.vorlage/vorlage_art`, `Lauf.vorlage_text` |
 | B36.5 research: Gliederung + Quellen (Websuche) | ❌ | ✅ Claude mit Websuche (`web_search_20260209`), „pause_turn“ wird fortgesetzt; vidIQ-Keywords und Anmerkung fließen ein | `research()` |
 | B36.5 script: Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA, 1.500–1.700 Wörter, JSON je Szene | ❌ | ✅ strukturierte Ausgabe (JSON-Schema) je Szene {abschnitt, text, bildidee, einblendung, quelle_ids}; Prüfung Wörter/Punkte/Quellen. Wortzahl seit Nachtrag 11.11. aus der Kanallänge (Standard 16–20 Min. = 2.300–2.900 Wörter) | `script()`, `SKRIPT_SCHEMA` |
@@ -1716,7 +1716,7 @@ Kostenanzeige). ~~(5) Neues Video aus dem claude.ai-Chat anlegen~~ – geklärt 
 ### B36.9 Stilprofil „Whiteboard-Collage“ (Nachtrag 11.11., nach Bildschirmfotos aus dem Kanal)
 
 Gilt je Kanal (Kanalprofil → „Stil der Bilder: Whiteboard-Collage“); der bisherige Stil „Vollbild“ bleibt für andere
-Kanäle. Länge bleibt 16–20 Min. (Nachtrag 11.11.) – der wiederholte Auftragstext nennt noch 10–12 Min.
+Kanäle. Länge seit 12.11. fest 1.500–1.700 Wörter (≈ 10–12 Min.) für alle Kanäle.
 
 | Punkt | vorher | nachher | Fundstelle |
 |---|---|---|---|
@@ -1732,6 +1732,33 @@ Kanäle. Länge bleibt 16–20 Min. (Nachtrag 11.11.) – der wiederholte Auftra
 | Abnahme | Ergebnis |
 |---|---|
 | Testvideo neben dem Referenzvideo: Hintergrund, Schrift, Farben, Collage-Aufbau, Hand und blasser Hintergrund stimmen sichtbar überein | 🟡 automatisch geprüft (`b36-video.spec.ts › B36.9`, echter Worker, Nachbauten): Motive 1024×1024 transparent mit Referenzbild, jede Motiv-Art nur einmal bezahlt, Hand einmal, feste Figur aus dem Profil, Ablehnung → Ersatzmotiv, Szenen-Übersicht + „neu erzeugen“ (genau 1 neues Bild), Video 1920×1080 beginnt mit leerem Whiteboard, Szene 1 mit Überschrift/Motiven auf Weiß, **keine eingebrannten Untertitel**, roter Balken in Szene 2, Kosten je Motiv, privater Upload mit Untertitel-Spur „Deutsch“. Pixelprüfungen der Bausteine in `test_worker.py` (Balken rot, Kernaussage rot, Weiß, 15 % blass, Hand während des Aufdeckens, keine Hand am Ende, Anton mit Umlauten). **Offen:** der Sichtvergleich mit dem echten Referenzvideo – geht nur mit echten Motiven (To-do 176–178) |
+
+### B36 Nachtrag 12.11.: Robuste Aufrufe, Skript und Recherche abschnittsweise
+
+Anlass: Schritt „Skript“ brach ab mit „peer closed connection without sending complete message body (incomplete chunked
+read)“ – das ganze Skript kam bisher in **einem** Aufruf (bis 32.000 Tokens, mehrere Minuten), und die Verbindung riss
+mittendrin ab. Entscheidung 12.11.: **Skriptlänge fest 1.500–1.700 Wörter für alle Kanäle** (≈ 10–12 Min.; ersetzt die
+Länge im Kanalprofil). Schlüssel unverändert.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| 1. Skript abschnittsweise (Hook, Fear Activation, jeder Punkt einzeln, Zusammenfassung, CTA), kurze Antworten | ❌ ein Aufruf für alles | ✅ je Abschnitt ein Aufruf (max. 4.000 Tokens, Whiteboard 6.000) mit Gliederung, Quellenliste und dem bisher geschriebenen Text als Anschluss; Wortziel je Abschnitt so verteilt, dass die Summe 1.500–1.700 ergibt (Hook 7 %, Fear 10 %, Punkte 70 %, Zusammenfassung 8 %, CTA 5 %) | `udd/schritte.py › script`, `_abschnitt_schreiben`, `abschnitt_ziele` |
+| 2. Fertige Abschnitte sofort speichern, bei Fehler nur den fehlenden neu | ❌ | ✅ `<Projekt>/skript/<Eingabe-Hash>/<abschnitt>.json` (bzw. `recherche/…`) atomar nach jedem Abschnitt; neuer Versuch holt nur fehlende. Andere Eingabe (Gliederung, Anmerkung, Vorlage, Modell) = neuer Ordner. „Skript neu schreiben“/„Neu recherchieren“ (Schritt war fertig) verwirft die Abschnitte, „Schritt wiederholen“ nach Fehler behält sie | `Ablage`, `ausfuehren` (`ABSCHNITT_ORDNER`) |
+| 3. Streaming mit Timeout (120 s je Aufruf) | 🟡 Streaming ohne Gesamtfrist (900 s) | ✅ Claude gestreamt, Gesamtfrist 120 s je Aufruf (mit Websuche 240 s), Lesefrist 120 s; Stream ohne Abschluss gilt als abgebrochen. ElevenLabs/OpenAI ebenfalls gestreamt gelesen, Frist 120 s (Bilder 180 s, weil der Anbieter dafür oft länger braucht) | `udd/ki.py › _einmal`, `udd/netz.py › lesen`; `KI_TIMEOUT_S` |
+| 4. Abbruch, Timeout, 429, 5xx: bis zu 4 Wiederholungen nach 2, 4, 8, 16 s, dann Fehler mit Abschnittsname | 🟡 SDK 2 Versuche (nicht bei Abbruch mitten im Stream), Brücke 3 Versuche à 5/10/15 s | ✅ ein Muster für alle: `mit_wiederholung` (5 Versuche, 2/4/8/16 s; 400/401/Ablehnung nicht wiederholt). Fehler z. B. „Skript – Punkt 3: nach 5 Versuchen nicht geklappt (peer closed connection …)“ | `udd/netz.py` |
+| 5. Gleiches Muster für Recherche und alle Aufrufe an Claude, ElevenLabs, OpenAI | ❌ | ✅ Recherche: erst Gliederung (kleine Websuche), dann je Punkt ein Aufruf für die Quellen (bis 3 Suchen), IDs Q1… beim Zusammenführen, gleiche URL nur einmal. Paket, Sprache je Szene, Bilder/Motive je Szene mit Namen („Sprache – Szene 7“, „Motiv „banane“ (Szene 3)“). Brücke im Seller-System: abgebrochene Anbieter-Antwort → 502 (wird wiederholt) | `research`, `Seller.anbieter`, `anbieter.ts` |
+| 6. Zusammenführen und prüfen: 1.500–1.700 Wörter, 5–7 Punkte, jede Studie in der Quellenliste | 🟡 Prüfung Wörter/Punkte/IDs, Korrektur = ganzes Skript neu | ✅ Prüfung zusätzlich „Szene nennt eine Studie ohne Quelle“; Nachbesserung höchstens 2 Runden und **nur der betroffenen Abschnitte** (zu kurz: bis 3 Punkte verlängern, zu lang: die längsten kürzen, fremde/fehlende Quelle: dieser Abschnitt). Was danach bleibt, steht als Hinweis an der Skript-Freigabe | `skript_pruefen`, `_korrekturen` |
+| Länge fest 1.500–1.700 Wörter | – | ✅ Seller-System: eine Quelle `laengeZiel()` (10–12 Min., 15–34 Szenen) für Seite, Schätzung, Claude-Werkzeuge und Worker; im Kanalprofil statt „Länge von/bis“ der Hinweis „fest 1.500–1.700 Wörter“. Schätzung neu: ≈ 112k/15k Tokens, 12 Websuchen, 10.600 Zeichen, 25 Bilder (Whiteboard ≤ 100 Motive) | `SKRIPT_WOERTER`, `laengeZiel`, `typischFuer` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Abbruch mitten im Stream wird wiederholt (genau der Fehler aus dem Betrieb) | ✅ automatisch: Python-Test mit echtem Abbruch („incomplete chunked read“) und 503 → dritter Versuch liefert vollständig; dauerhaft kaputt → Fehler „Skript – Punkt 2 … incomplete chunked read“. Ablauftest: Hook bricht im Nachbau einmal ab → zweiter Aufruf, Log „neuer Versuch in 2 s“ |
+| Fehler mit Abschnittsname, Wiederaufnahme nur des fehlenden Abschnitts | ✅ automatisch (`b36-video.spec.ts`): „Punkt 3“ bricht 5-mal ab → Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“, im Projektordner liegen hook/angst/punkt-1/punkt-2; „Schritt wiederholen“ → nur Punkt 3–5, Zusammenfassung, CTA werden geholt (Hook, Fear, Punkt 1–2 nicht erneut) |
+| Recherche abschnittsweise, 529 wird wiederholt | ✅ automatisch: Gliederung + 5 Quellen-Aufrufe mit Websuche, „Punkt 2“ nach 529 erneut, 5 Punkte, 6 Quellen |
+| ElevenLabs-Abbruch wird wiederholt, ohne doppelte Kosten | ✅ automatisch: zwei Abbrüche, danach jede Szene genau einmal erzeugt |
+| Endprüfung bessert nur betroffene Abschnitte nach | ✅ automatisch (Python): alle Abschnitte 25 % zu kurz + fremde Quelle in Punkt 2 → höchstens 4 Abschnitte neu, Hook nicht; Ergebnis 1.500–1.700 Wörter, keine fremde ID |
+| Echte Anbieter | offen: erstes Video mit echten Zugängen (Kosten je Abschnitt in der Liste) |
+
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
@@ -2759,7 +2786,7 @@ nie in Chats oder Mails.
      youtube.upload + youtube.readonly + drive.file, „Google Drive API“ aktivieren, Weiterleitungs-URI
      `<Adresse>/api/oauth/youtube/callback` (gilt für YouTube und Drive).
 170. **Kanäle anlegen** unter Marken & Content → Video (Unter der Decke: Sicherheitsstufe streng; Zeitlux nach Klärung),
-     Stimme (ElevenLabs-Voice-ID), Bildstil, **Zielgruppe** (z. B. „Männer ab 55“), Länge (Standard 16–20 Min.),
+     Stimme (ElevenLabs-Voice-ID), Bildstil, **Zielgruppe** (z. B. „Männer ab 55“), (Länge seit 12.11. fest 1.500–1.700 Wörter),
      Freigaben; dann je Kanal „Mit YouTube verbinden“.
 171. **Preise eintragen** auf der Seite Video unter „Kosten“ (ElevenLabs je 1.000 Zeichen, OpenAI je Bild). Unter
      „Modell und Ablage“ einmal **„Google Drive verbinden“** – danach landen die Videos im Ordner „Seller-System Videos“.
@@ -2783,3 +2810,7 @@ nie in Chats oder Mails.
 179. **Video aus dem Chat**: in claude.ai den Seller-Konnektor einmal neu verbinden (Änderungen erlauben), dann z. B.
      „Lege im Kanal Unter der Decke ein Video an: Thema …, hier meine englische Vorlage: …“ – Claude zeigt erst die
      Zusammenfassung mit Kostenschätzung und legt erst nach deinem Ja an.
+180. **Worker am Arbeits-PC aktualisieren** (Nachtrag 12.11.): `git pull` im Ordner unter-der-decke, mit Docker
+     `docker compose up -d --build` (ohne Docker: `pip install -r requirements.txt`), Worker neu starten. Dann den
+     fehlgeschlagenen Auftrag mit „Schritt wiederholen“ fortsetzen – Recherche und Skript laufen jetzt in Abschnitten,
+     Abbrüche werden bis zu 4-mal wiederholt.

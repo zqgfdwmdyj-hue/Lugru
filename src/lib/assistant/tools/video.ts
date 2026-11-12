@@ -31,7 +31,7 @@ export const videoAuftraegeTool = defineTool({
     return json({
       worker: worker ? { text: worker.stand.text, online, frei_gb: worker.freiGb } : { text: "Noch kein Worker angelegt" },
       einstellungen: { claude_modell: VIDEO_MODELLE[cfg.modell].name, ablage: cfg.ablage === "drive" ? "Google Drive (Ordner „Seller-System Videos“)" : "Seller-Server" },
-      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken, zielgruppe: k.zielgruppe ?? undefined, stil: k.stil === "whiteboard" ? "Whiteboard-Collage" : "Vollbild", laenge_min: `${k.laengeMin}–${k.laengeMax}` })),
+      kanaele: kl.map((k) => ({ name: k.name, aktiv: k.aktiv, freigaben: Object.entries(k.freigaben).filter(([, v]) => v).map(([f]) => FREIGABE_TEXT[f as keyof typeof FREIGABE_TEXT]), youtube_verbunden: !!k.youtubeToken, zielgruppe: k.zielgruppe ?? undefined, stil: k.stil === "whiteboard" ? "Whiteboard-Collage" : "Vollbild", laenge: `${laengeZiel().woerter[0]}–${laengeZiel().woerter[1]} Wörter (fest)` })),
       auftraege: gefiltert.map(({ a, kanal }) => ({
         id: a.id,
         kanal,
@@ -126,8 +126,8 @@ async function auftragPlan(tenantId: string, i: z.infer<typeof auftragEingabe>) 
   const vorlage = i.vorlage?.trim() || null;
   if (vorlage && vorlage.length < 200) return { fehler: "Vorlage/Skript ist sehr kurz – bitte den ganzen Text mitschicken (oder weglassen)." } as const;
   const cfg = await videoEinstellungen(tenantId);
-  const ziel = laengeZiel(k.laengeMin, k.laengeMax);
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(k.laengeMin, k.laengeMax, k.stil), cfg.modell);
+  const ziel = laengeZiel();
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(k.stil), cfg.modell);
   const worker = await workerZuletzt(tenantId);
   const startAb = startAbAus(st.wahl, st.zeitpunkt);
   const zusammenfassung = [

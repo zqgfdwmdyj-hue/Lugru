@@ -132,33 +132,31 @@ export function claudePreis(p: VideoPreise, modell?: string | null): { eingabe: 
 
 /** Sprechtempo der Stimme (ElevenLabs, Deutsch): ~145 Wörter je Minute. */
 export const WOERTER_JE_MIN = 145;
-/** Standard-Videolänge je Kanal (wie die erfolgreichen englischen Vorbilder): 16–20 Minuten. */
-export const LAENGE_STANDARD = { von: 16, bis: 20 } as const;
+/** Skriptlänge fest für alle Kanäle (Entscheidung 12.11.): 1.500–1.700 Wörter ≈ 10–12 Min. Sprechzeit. Ersetzt die
+ *  frühere Länge je Kanalprofil (Spalten laenge_min/laenge_max bleiben in der Datenbank, werden aber nicht mehr benutzt). */
+export const SKRIPT_WOERTER = [1500, 1700] as const;
 export type LaengeZiel = { minuten: [number, number]; sekunden: [number, number]; woerter: [number, number]; szenen: [number, number]; szenenJePunkt: [number, number] };
 
-/** Ziele aus der Kanallänge (Minuten von–bis): Wörter, Szenen, Szenen je Punkt, Sekunden. Eine Quelle für Seite, Schätzung und Worker. */
-export function laengeZiel(von?: number | null, bis?: number | null): LaengeZiel {
-  const v = Math.min(60, Math.max(3, Math.round(von ?? LAENGE_STANDARD.von)));
-  const b = Math.min(60, Math.max(v, Math.round(bis ?? LAENGE_STANDARD.bis)));
-  const rund50 = (x: number) => Math.round(x / 50) * 50;
-  const w: [number, number] = [rund50(v * WOERTER_JE_MIN), rund50(b * WOERTER_JE_MIN)];
-  const sz: [number, number] = [Math.max(8, Math.round(w[0] / 85)), Math.max(10, Math.round(w[1] / 65))];
-  const jePunktVon = Math.max(2, Math.round(sz[0] / 9));
-  return { minuten: [v, b], sekunden: [v * 60, b * 60], woerter: w, szenen: sz, szenenJePunkt: [jePunktVon, Math.max(jePunktVon + 1, Math.round(sz[1] / 7))] };
+/** Ziele für jedes Video: Wörter (fest), daraus Minuten, Sekunden, Szenen (50–100 Wörter je Szene). Eine Quelle für Seite, Schätzung und Worker. */
+export function laengeZiel(): LaengeZiel {
+  const w: [number, number] = [SKRIPT_WOERTER[0], SKRIPT_WOERTER[1]];
+  const sek: [number, number] = [Math.round((w[0] / WOERTER_JE_MIN) * 60), Math.round((w[1] / WOERTER_JE_MIN) * 60)];
+  return { minuten: [Math.round(sek[0] / 60), Math.round(sek[1] / 60)], sekunden: sek, woerter: w, szenen: [Math.ceil(w[0] / 100), Math.floor(w[1] / 50)], szenenJePunkt: [2, 4] };
 }
 
-/** Typischer Lauf für eine Länge: Zeichen Sprache (~6,6 je Wort), Bilder (1 je ~65 Wörter), ~6 Websuchen, Tokens.
+/** Typischer Lauf: Zeichen Sprache (~6,6 je Wort), Bilder (1 je ~65 Wörter), Websuchen (Gliederung 3 + je Punkt bis 3),
+ *  Tokens (abschnittsweise: ~12 kurze Aufrufe mit Gliederung/Quellen als Kontext).
  *  Whiteboard: statt eines Bildes je Szene ~4 Einzelmotive (ohne Wiederverwendung gerechnet = Obergrenze). */
-export function typischFuer(von?: number | null, bis?: number | null, stil: string | null = "vollbild") {
-  const z = laengeZiel(von, bis);
+export function typischFuer(stil: string | null = "vollbild") {
+  const z = laengeZiel();
   const w = (z.woerter[0] + z.woerter[1]) / 2;
   const k = (x: number) => Math.round(x / 1000) * 1000;
   const szenen = Math.round(w / 65);
   const wb = stil === "whiteboard";
-  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? szenen * MOTIVE_JE_SZENE : 0, websuchen: 6, eingabeTokens: k(50_000 + w * 6), ausgabeTokens: k(5_000 + w * 6) };
+  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? szenen * MOTIVE_JE_SZENE : 0, websuchen: 12, eingabeTokens: k(80_000 + w * 20), ausgabeTokens: k(5_000 + w * 6) };
 }
 
-/** Typischer Lauf mit Standardlänge (16–20 Min.): ~2.600 Wörter ≈ 17.200 Zeichen Sprache, ~40 Bilder, ~66k/21k Tokens. */
+/** Typischer Lauf (1.500–1.700 Wörter): ~10.600 Zeichen Sprache, ~25 Bilder, ~112k/15k Tokens. */
 export const TYPISCH = typischFuer();
 
 export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typischFuer> = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {

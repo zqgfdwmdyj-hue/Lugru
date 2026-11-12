@@ -15,21 +15,33 @@ Der Worker macht aus einem Thema ein fertiges YouTube-Video (Länge je Kanal, St
 
 | Schritt | Was passiert | Kosten |
 |---|---|---|
-| research | Websuche, Gliederung + Quellen | Claude + Websuche |
-| script | Skript (Hook → Fear Activation → 5–7 Punkte mit Studie → Zusammenfassung → CTA), Wortzahl aus der Kanallänge (16–20 Min. = 2.300–2.900 Wörter, 27–45 Szenen), JSON je Szene | Claude |
+| research | Erst die Gliederung (kleine Websuche), dann je Punkt ein Aufruf für die Quellen | Claude + Websuche |
+| script | Skript abschnittsweise: Hook, Fear Activation, jeder Punkt (5–7) einzeln, Zusammenfassung, CTA – je Abschnitt ein kurzer Aufruf; zusammen fest 1.500–1.700 Wörter (≈ 10–12 Min.), JSON je Szene; Endprüfung (Wörter, 5–7 Punkte, jede Studie in der Quellenliste) mit Nachbesserung nur der betroffenen Abschnitte | Claude |
 | voice | Sprache je Szene (ElevenLabs) | ElevenLabs |
 | visuals | Vollbild: Symbolbild je Szene (gpt-image-1, 1536×1024). Whiteboard: 3–5 Einzelmotive je Szene (1024×1024, transparent, Bibliothek) + Szenen-Übersicht; bei Ablehnung Ersatzmotiv | OpenAI |
 | render | ffmpeg + Pillow: Vollbild mit eingebrannten Untertiteln; Whiteboard mit Aufdeck-Animation, Hand und blassem Vorgänger, ohne eingebrannte Untertitel; optional Musik | – |
 | package | Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln + Quellen, Tags; Dateien ins Seller-System | Claude |
 | upload | YouTube, **privat** (nur mit Schalter „Privat hochladen“ und freigegebener Vorschau) | – |
 
-Zielgruppe und Länge stehen im Kanalprofil (Seller-System); beides fließt in jeden Prompt. Beim Anlegen eines Videos
+Die Zielgruppe steht im Kanalprofil (Seller-System) und fließt in jeden Prompt; die Skriptlänge ist für alle Kanäle fest
+(1.500–1.700 Wörter). Beim Anlegen eines Videos
 kann eine **Vorlage** eingefügt werden (z. B. englisches Transkript eines erfolgreichen Videos – Claude übernimmt nur
 Aufbau, Hook und Spannungsbogen, schreibt eigenen Text und belegt alles neu) oder ein **eigenes Skript** (wird
 möglichst wörtlich übernommen und in Szenen geteilt).
 
 Freigaben (je Kanal einstellbar) gibt es nach research (Gliederung + Quellen), script (Skript) und package
 (Vorschau-Video + Thumbnail + Titel). Weiter geht es erst nach der Freigabe auf der Seite **Video**.
+
+## Robustheit: Abschnitte, Wiederaufnahme, Wiederholung
+
+- Fertige Abschnitte von Recherche und Skript liegen sofort im Projektordner (`recherche/…`, `skript/…`). Bricht ein
+  Lauf ab, holt „Schritt wiederholen“ nur die fehlenden Abschnitte. „Skript neu schreiben“ / „Neu recherchieren“
+  beginnt dagegen neu.
+- Jeder Aufruf an Claude, ElevenLabs und OpenAI wird gestreamt und hat ein Zeitlimit (`KI_TIMEOUT_S`, Standard 120 s;
+  Claude mit Websuche doppelt so lang, Bilder 180 s).
+- Verbindungsabbruch, Zeitüberschreitung, 429 und 5xx werden bis zu 4-mal wiederholt (Wartezeit 2, 4, 8, 16 s). Erst
+  danach meldet der Worker den Schritt als Fehler – mit dem Namen des Abschnitts, z. B. „Skript – Punkt 3: nach 5
+  Versuchen nicht geklappt (…)“. Andere Fehler (falsche Anfrage, abgelehnt) werden nicht wiederholt.
 
 ## Stil „Whiteboard-Collage“ (B36.9)
 
@@ -107,6 +119,7 @@ Seller-System → **Marken & Content → Video** → Abschnitt „Worker“ → 
 | `VIDEO_POLL_S` | Abfrage-Takt in Sekunden | `30` |
 | `MIN_FREI_GB` / `WARN_FREI_GB` | unter 3 GB frei kein Lauf, unter 5 GB Warnung | `3` / `5` |
 | `VIDEO_FPS` | Bilder je Sekunde im Video | `25` |
+| `KI_TIMEOUT_S` | Zeitlimit je Aufruf an Claude/ElevenLabs (Sekunden); mit Websuche doppelt, Bilder mind. 180 | `120` |
 | `CLAUDE_MODELL` | Claude-Modell nur zum Übersteuern (sonst gilt die Wahl auf der Seite Video, Standard Opus 5.5) | leer |
 | `AUFBEWAHREN_TAGE` | Projekte spätestens nach … Tagen löschen | `14` |
 | `FFMPEG` / `FFPROBE` | Pfad, falls nicht im PATH | `ffmpeg` / `ffprobe` |

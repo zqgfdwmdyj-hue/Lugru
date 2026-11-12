@@ -55,7 +55,7 @@ function kiAnswer(req, b) {
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
   // B36 Video-Pipeline (Worker über die Anbieter-Brücke): feste erfundene Gliederung/Skript/Paket, auf Wunsch als Stream.
-  const video = /^\[video:(research|script|package)\]/.test(text) ? videoAntwort(text) : null;
+  const video = /^\[video:(research|script|package)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
   if (video) {
     if (b.stream) return [200, videoSse(b, video), "text/event-stream"];
     const content = [...(video.suche ? [{ type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: { query: "Studie" } }, { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: video.suche.map((x) => ({ type: "web_search_result", url: x.url, title: x.title, encrypted_content: "test", page_age: null })) }] : []), { type: "text", text: video.text }];
@@ -1716,11 +1716,13 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0 });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], stoerungen: {} });
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
+      // Störung für einen Abschnitt (z. B. „script:punkt-3“) oder ElevenLabs („eleven“): art abbruch | 529 | 429 | 503, anzahl Aufrufe
+      if (b.stoerung) videoNb.stoerungen[b.stoerung.schluessel] = { art: b.stoerung.art, anzahl: b.stoerung.anzahl ?? 1 };
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube });
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, stoerungen: videoNb.stoerungen });
     if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
       // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
       const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
@@ -1739,6 +1741,7 @@ http
       return;
     }
     try {
+      if (req.method === "POST" && videoStoerungRoh(req, res, url, body)) return;
       const [code, data, type] = await route(req, url, body);
       const write = req.method !== "GET" && !url.pathname.startsWith("/anthropic") && !/token|\/user$|identity|lwa/.test(url.pathname);
       remember(log, { at: new Date().toISOString(), dienst: dienstOf(url.pathname), method: req.method, path: url.pathname, status: code, simuliert: write });
@@ -1765,7 +1768,42 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0 };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], stoerungen: {} };
+
+/** Video-Pipeline: Claude-Abschnitte mitschreiben und auf Wunsch stören – „abbruch“ (Antwort beginnt, dann wird die
+ *  Verbindung ohne Abschluss geschlossen = „incomplete chunked read“), 529/429/503 als Fehlerantwort. */
+function videoStoerungRoh(req, res, url, body) {
+  let schluessel = null;
+  if (url.pathname === "/anthropic/v1/messages") {
+    let b;
+    try {
+      b = JSON.parse(body || "{}");
+    } catch {
+      return false;
+    }
+    const last = (b.messages ?? []).filter((m) => m.role === "user").at(-1);
+    const text = typeof last?.content === "string" ? last.content : (last?.content ?? []).filter((x) => x.type === "text").map((x) => x.text).join(" ");
+    const m = /^\[video:(research|script|package)(?::([\w-]+))?\]/.exec(text ?? "");
+    if (!m) return false;
+    schluessel = m[2] ? `${m[1]}:${m[2]}` : m[1];
+    videoNb.claude.push(schluessel);
+  } else if (url.pathname.startsWith("/elevenlabs/v1/text-to-speech/")) schluessel = "eleven";
+  else return false;
+  const st = videoNb.stoerungen[schluessel];
+  if (!st || st.anzahl <= 0) return false;
+  st.anzahl--;
+  remember(log, { at: new Date().toISOString(), dienst: dienstOf(url.pathname), method: req.method, path: url.pathname, status: st.art === "abbruch" ? 0 : Number(st.art), simuliert: false, stoerung: `${schluessel}:${st.art}` });
+  if (st.art === "abbruch") {
+    res.writeHead(200, { "Content-Type": schluessel === "eleven" ? "audio/mpeg" : "text/event-stream" });
+    res.write(schluessel === "eleven" ? Buffer.alloc(2048, 1) : `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_test_abbruch", type: "message", role: "assistant", model: "test", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } })}\n\n`);
+    setTimeout(() => res.socket?.destroy(), 30);
+    return true;
+  }
+  const code = Number(st.art) || 500;
+  res.writeHead(code, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(schluessel === "eleven" ? { detail: { status: "busy", message: "Testdienst: vorübergehend nicht verfügbar" } } : { type: "error", error: { type: code === 429 ? "rate_limit_error" : "overloaded_error", message: "Testdienst: vorübergehend überlastet" } }));
+  return true;
+}
 
 function crc32(buf) {
   let c;
@@ -1974,62 +2012,80 @@ function fuelltext(n, start) {
 const WB_LAYOUTS = ["3er", "4er", "figur-liste", "gegenueberstellung", "5er"];
 const WB_MOTIVE = ["sanduhr", "banane", "kirsche", "lineal", "wasserhahn", "wecker", "herz", "glas"];
 
+// Ohne „Studie/Forscher“: Sätze für Hook, Fear Activation, Zusammenfassung und CTA (dort ohne Quelle erlaubt)
+const SATZ_ALLTAG = SATZ.filter((x) => !/Studie|Forscher/.test(x));
+// Feste Szenenzahl je Abschnitt (5 Punkte): Vollbild 22 Szenen, Whiteboard je Abschnitt eine Szene (9) – schneller Render
+const PLAN_VOLL = { hook: 2, angst: 2, zusammenfassung: 2, cta: 1, punkt: 3 };
+function abschnittPlan(wb) {
+  const plan = [["hook"], ["angst"], ...[1, 2, 3, 4, 5].map((p) => [`punkt-${p}`]), ["zusammenfassung"], ["cta"]].map(([a]) => [a, wb ? 1 : PLAN_VOLL[a.startsWith("punkt-") ? "punkt" : a]]);
+  let nr = 0;
+  return Object.fromEntries(plan.map(([a, n]) => [a, { start: (nr += n) - n + 1, anzahl: n }]));
+}
+
 function videoAntwort(text) {
   const thema = (/Thema: (.*)/.exec(text)?.[1] ?? "Testthema").trim();
-  if (text.startsWith("[video:research]")) {
-    const quellen = Array.from({ length: 6 }, (_, i) => ({ id: `Q${i + 1}`, titel: `Teststudie ${i + 1} zu Beziehung und Alltag`, url: `https://example.com/studie-${i + 1}`, jahr: 2014 + i, art: "Studie", autoren: `Testautor ${i + 1} et al.` }));
-    const punkte = ["Stress im Alltag", "Unausgesprochene Konflikte", "Müdigkeit und Schlaf", "Routine statt Neugier", "Körperbild und Selbstwert"].map((titel, i) => ({ titel, kern: `Kernaussage ${i + 1} mit Studie`, quelle_ids: [`Q${i + 1}`] }));
-    const json = { hook: `Warum ${thema.split("?")[0]} so viele betrifft`, angst: "Wer das Thema ignoriert, riskiert Distanz in der Beziehung.", punkte, fazit: "Fünf Gründe, ein Weg: reden.", cta: "Abonniere den Kanal für mehr fundierte Themen.", quellen };
-    return { text: "Hier ist die Gliederung:\n```json\n" + JSON.stringify(json) + "\n```", usage: { input_tokens: 9000, output_tokens: 2500, server_tool_use: { web_search_requests: 4 } }, suche: quellen.map((q) => ({ url: q.url, title: q.titel })) };
+  const titel = ["Stress im Alltag", "Unausgesprochene Konflikte", "Müdigkeit und Schlaf", "Routine statt Neugier", "Körperbild und Selbstwert"];
+  if (text.startsWith("[video:research:gliederung]")) {
+    const json = { hook: `Warum ${thema.split("?")[0]} so viele betrifft`, angst: "Wer das Thema ignoriert, riskiert Distanz in der Beziehung.", punkte: titel.map((t, i) => ({ titel: t, kern: `Kernaussage ${i + 1}` })), fazit: "Fünf Gründe, ein Weg: reden.", cta: "Abonniere den Kanal für mehr fundierte Themen." };
+    return { text: "Gliederung:\n```json\n" + JSON.stringify(json) + "\n```", usage: { input_tokens: 4000, output_tokens: 600, server_tool_use: { web_search_requests: 2 } }, suche: [{ url: "https://example.com/ueberblick", title: "Überblick (Test)" }] };
   }
-  if (text.startsWith("[video:script]")) {
-    // Länge wie verlangt: „insgesamt 2.300–2.900 Wörter …, 27–45 Szenen“ → Mitte der Spanne, ~70 Wörter je Szene
-    const zahl = (x) => Number(String(x).replace(/\./g, ""));
-    const wm = /insgesamt ([\d.]+)–([\d.]+) Wörter/.exec(text);
-    const sm = /(\d+)–(\d+) Szenen mit/.exec(text);
-    const ziel = wm ? Math.round((zahl(wm[1]) + zahl(wm[2])) / 2) : 1600;
-    const anzahlSzenen = Math.min(sm ? Number(sm[2]) : 99, Math.max(sm ? Number(sm[1]) : 12, Math.round(ziel / 70)));
-    const jePunkt = Math.max(2, Math.floor((anzahlSzenen - 7) / 5));
-    const plan = [["hook", 2], ["angst", 2], ...[1, 2, 3, 4, 5].map((p, i) => [`punkt-${p}`, jePunkt + (i < anzahlSzenen - 7 - jePunkt * 5 ? 1 : 0)]), ["zusammenfassung", 2], ["cta", 1]];
-    const gesamt = plan.reduce((a, [, x]) => a + x, 0);
+  const rp = /^\[video:research:punkt-(\d)\]/.exec(text);
+  if (rp) {
+    // Punkt i → Teststudie i; Punkt 5 zusätzlich Teststudie 6 (6 Quellen insgesamt)
+    const i = Number(rp[1]);
+    const quellen = (i === 5 ? [5, 6] : [i]).map((k) => ({ titel: `Teststudie ${k} zu Beziehung und Alltag`, url: `https://example.com/studie-${k}`, jahr: 2014 + k - 1, art: "Studie", autoren: `Testautor ${k} et al.` }));
+    return { text: "```json\n" + JSON.stringify({ kern: `Kernaussage ${i} mit Studie`, quellen }) + "\n```", usage: { input_tokens: 5000, output_tokens: 400, server_tool_use: { web_search_requests: 2 } }, suche: quellen.map((q) => ({ url: q.url, title: q.titel })) };
+  }
+  const rs = /^\[video:script:([\w-]+)\]/.exec(text);
+  if (rs) {
+    // Länge wie verlangt (bei Überarbeitung die neue Zahl), auf die festen Szenen des Abschnitts verteilt
+    const abschnitt = rs[1];
     const wb = text.includes("STIL WHITEBOARD-COLLAGE");
+    const ziel = Number(/Bitte auf ca\. (\d+) Wörter/.exec(text)?.[1] ?? /Länge dieses Abschnitts: ca\. (\d+) Wörter/.exec(text)?.[1] ?? 160);
+    const { start, anzahl } = abschnittPlan(wb)[abschnitt] ?? { start: 1, anzahl: 1 };
+    const punkt = /punkt-(\d)/.exec(abschnitt)?.[1];
     const figur = /Feste Figuren[^\n]*:\n- ([a-z0-9-]+):/.exec(text)?.[1] ?? null;
     const szenen = [];
-    let nr = 0;
-    for (const [abschnitt, anzahl] of plan) {
-      for (let k = 0; k < anzahl; k++) {
-        nr++;
-        const n = Math.floor(ziel / gesamt) + (nr <= ziel % gesamt ? 1 : 0);
-        const punkt = /punkt-(\d)/.exec(abschnitt)?.[1];
-        const bildidee = nr === 5 ? "Leeres Bett im Morgenlicht, Symbolbild" : nr === 9 ? "TESTABLEHNUNG Kalender an der Wand, Symbolbild" : `Symbolbild ${nr}: zwei Kaffeetassen, Pflanze und Licht`;
-        if (wb) {
-          // B36.9 Whiteboard: Layout, Texte, 3–5 Motive (wiederkehrende Schlüssel, Figur aus dem Kanalprofil, eine Ablehnung)
-          const layout = WB_LAYOUTS[(nr - 1) % WB_LAYOUTS.length];
-          const anzahl = { "3er": 3, "4er": 4, "5er": 5, "figur-liste": 1, gegenueberstellung: 2 }[layout];
-          const motive = Array.from({ length: anzahl }, (_, i) => {
-            if (layout === "figur-liste" && figur) return { key: figur, beschreibung: "Figur aus dem Kanalprofil" };
-            if (nr === 2 && i === 0) return { key: "verboten", beschreibung: "TESTABLEHNUNG Motiv" };
-            const key = WB_MOTIVE[(nr + i * 3) % WB_MOTIVE.length];
-            return { key, beschreibung: `Cartoon ${key} mit Comic-Gesicht` };
-          });
-          szenen.push({
-            abschnitt, text: fuelltext(n, nr), quelle_ids: punkt ? [`Q${punkt}`] : [], layout,
-            ueberschrift: nr % 3 === 1 ? `Teil ${nr}: Was hilft` : "", balken: nr % 3 === 2 ? `Studie zeigt klaren Unterschied ${nr}` : "",
-            kernaussage: nr % 2 === 0 ? "Das ist normal" : "", schritt: nr === 4 ? "Schritt 4: Arzt fragen" : "",
-            liste: layout === "figur-liste" ? ["Bewegung", "Schlaf", "Weniger Alkohol"] : [], motive,
-          });
-          continue;
-        }
-        szenen.push({ abschnitt, text: fuelltext(n, nr), bildidee, einblendung: punkt && k === 0 ? `Studie Q${punkt} (${2013 + Number(punkt)})` : "", quelle_ids: punkt ? [`Q${punkt}`] : [] });
+    for (let k = 0; k < anzahl; k++) {
+      const nr = start + k;
+      const n = Math.floor(ziel / anzahl) + (k < ziel % anzahl ? 1 : 0);
+      const satz = punkt ? fuelltext(n, nr) : fuelltextAlltag(n, nr);
+      const bildidee = nr === 5 ? "Leeres Bett im Morgenlicht, Symbolbild" : nr === 9 ? "TESTABLEHNUNG Kalender an der Wand, Symbolbild" : `Symbolbild ${nr}: zwei Kaffeetassen, Pflanze und Licht`;
+      if (wb) {
+        // B36.9 Whiteboard: Layout, Texte, 3–5 Motive (wiederkehrende Schlüssel, Figur aus dem Kanalprofil, eine Ablehnung)
+        const layout = WB_LAYOUTS[(nr - 1) % WB_LAYOUTS.length];
+        const zahl = { "3er": 3, "4er": 4, "5er": 5, "figur-liste": 1, gegenueberstellung: 2 }[layout];
+        const motive = Array.from({ length: zahl }, (_, i) => {
+          if (layout === "figur-liste" && figur) return { key: figur, beschreibung: "Figur aus dem Kanalprofil" };
+          if (nr === 2 && i === 0) return { key: "verboten", beschreibung: "TESTABLEHNUNG Motiv" };
+          const key = WB_MOTIVE[(nr + i * 3) % WB_MOTIVE.length];
+          return { key, beschreibung: `Cartoon ${key} mit Comic-Gesicht` };
+        });
+        szenen.push({
+          text: satz, quelle_ids: punkt ? [`Q${punkt}`] : [], layout,
+          ueberschrift: nr % 3 === 1 ? `Teil ${nr}: Was hilft` : "", balken: nr % 3 === 2 ? `Studie zeigt klaren Unterschied ${nr}` : "",
+          kernaussage: nr % 2 === 0 ? "Das ist normal" : "", schritt: nr === 4 ? "Schritt 4: Arzt fragen" : "",
+          liste: layout === "figur-liste" ? ["Bewegung", "Schlaf", "Weniger Alkohol"] : [], motive,
+        });
+        continue;
       }
+      szenen.push({ text: satz, bildidee, einblendung: punkt && k === 0 ? `Studie Q${punkt} (${2013 + Number(punkt)})` : "", quelle_ids: punkt ? [`Q${punkt}`] : [] });
     }
-    return { text: JSON.stringify({ szenen }), usage: { input_tokens: 6000, output_tokens: 4500 } };
+    return { text: JSON.stringify({ szenen }), usage: { input_tokens: 5000, output_tokens: Math.round(ziel * 1.6) } };
   }
   if (text.startsWith("[video:package]")) {
     const json = { titel: ["5 Gründe, über die keiner spricht", "Warum die Nähe verschwindet – und was hilft", "Das sagen Studien über Nähe im Alltag", "Kein Thema? Doch! 5 ehrliche Gründe", "Nähe zurückgewinnen: 5 Gründe verstehen"], beschreibung: "In diesem Video schauen wir uns fünf Gründe an, die Studien immer wieder finden.\n\nOhne Vorwürfe, mit konkreten Tipps für den Alltag.", tags: ["Beziehung", "Partnerschaft", "Nähe", "Studien", "Paare", "Alltag", "Kommunikation", "Stress", "Tipps", "Psychologie", "Liebe", "Vertrauen"], thumbnail_text: "5 Gründe keiner spricht" };
     return { text: JSON.stringify(json), usage: { input_tokens: 4000, output_tokens: 800 } };
   }
   return null;
+}
+
+function fuelltextAlltag(n, start) {
+  const w = [];
+  for (let i = start; w.length < n; i++) w.push(...SATZ_ALLTAG[i % SATZ_ALLTAG.length].split(" ").map((x, j, a) => (j === a.length - 1 ? `${x}.` : x)));
+  const t = [...w.slice(0, n - 2), "Szene", `${start}.`];
+  t[t.length - 3] = t[t.length - 3].replace(/[.,]?$/, ".");
+  return t.join(" ");
 }
 
 function videoSse(b, antwort) {
