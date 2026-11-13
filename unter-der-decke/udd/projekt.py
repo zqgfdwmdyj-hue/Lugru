@@ -34,7 +34,7 @@ class Projekt:
         self.ordner = basis / kanal_slug / auftrag_id
         self.ordner.mkdir(parents=True, exist_ok=True)
         self.state_pfad = self.ordner / "state.json"
-        self.state: dict[str, Any] = {"auftrag": auftrag_id, "angelegt": time.time(), "schritte": {}, "voice": {}, "bilder": {}, "clips": {}, "stock": {}, "bildplan": {}, "pexels": {}}
+        self.state: dict[str, Any] = {"auftrag": auftrag_id, "angelegt": time.time(), "schritte": {}, "voice": {}, "bilder": {}, "clips": {}, "stock": {}, "bildplan": {}, "pexels": {}, "clipsuche": {}}
         if self.state_pfad.exists():
             try:
                 self.state.update(json.loads(self.state_pfad.read_text(encoding="utf-8")))

@@ -56,7 +56,7 @@ async function warteStoriesFehler<S extends { thema: string; status: string }>(l
 
 // Hautton der Foto-Hand (Ludwigs Hand, B36.10 13.11.): warm, Rot > Grün > Blau mit deutlichem Abstand – auch im Schatten
 const istHaut = (r: number, g: number, b: number) => r > 100 && r < 245 && r - g >= 18 && r - g <= 75 && g - b >= 10 && g - b <= 65;
-const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[]; pexels: { query: string; orientation: string | null; perPage: number }[]; pexelsDateien: number }>);
+const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[]; pexels: { query: string; orientation: string | null; perPage: number }[]; pexelsDateien: number; pixabay: { q: string; perPage: number; safesearch: string | null; videoType: string | null }[]; pixabayDateien: number }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
 type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string; dauer?: number; bilder?: { art: "bild" | "clip"; key?: string | null; clip?: string | null; start: number; dauer: number }[] | null }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
 
@@ -113,7 +113,7 @@ test.describe("B36 Video-Pipeline", () => {
       for (const { id } of kanaeleIds) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, `kanal-${id}`), { recursive: true, force: true });
       await sql("delete from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
       await sql("delete from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
-      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels'${googleNeu ? ", 'google'" : ""}${igNeu ? ", 'instagram'" : ""})`, [T]);
+      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels', 'pixabay'${googleNeu ? ", 'google'" : ""}${igNeu ? ", 'instagram'" : ""})`, [T]);
       await sql("update tenants set settings = settings - 'video' where id = $1", [T]);
     }
     rmSync(arbeit, { recursive: true, force: true });
@@ -123,8 +123,8 @@ test.describe("B36 Video-Pipeline", () => {
     test.setTimeout(600_000);
     [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
     // Zugänge wie über das sichere Formular (verschlüsselt), nur Testwerte. Claude-Schlüssel liegt aus den Testdaten vor.
-    await sql("delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels')", [T]);
-    await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3), ($1, 'pexels', 'Test', '{}'::jsonb, $4)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-pexels-schluessel" }))]);
+    await sql("delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels', 'pixabay')", [T]);
+    await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3), ($1, 'pixabay', 'Test', '{}'::jsonb, $4)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-pixabay-schluessel" }))]); // Pexels vergibt keine Schlüssel – Clips von Pixabay
     if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'google'", [T])).length) {
       googleNeu = true;
       await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'google', 'Test', $2::jsonb, $3)", [T, JSON.stringify({ clientId: "test-google-client.apps.example.invalid" }), versiegeln(JSON.stringify({ clientSecret: "test-google-secret" }))]);
@@ -262,7 +262,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.4.0)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.4.1)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);
@@ -280,7 +280,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.bilder.filter((b) => b.abgelehnt)).toHaveLength(1);
     expect(nb.bilder.some((b) => /\bbett\b/i.test(b.prompt))).toBe(false);
     expect(a.skript!.filter((s) => s.ersatzbild).length).toBeGreaterThanOrEqual(2); // abgelehnt + Filter „Bett“
-    // B36.11 Bildwechsel alle ~6 s statt ein Standbild je Szene: Bildplan (ein Claude-Aufruf), Bilder + Pexels-Clips
+    // B36.11 Bildwechsel alle ~6 s statt ein Standbild je Szene: Bildplan (ein Claude-Aufruf), Bilder + Clips von Pixabay
     const plan = a.skript!.flatMap((s) => s.bilder ?? []);
     const dauerGesamt = a.skript!.reduce((x, s) => x + (s.dauer ?? 0), 0);
     expect(nb.claude.filter((c) => c === "bildplan").length).toBeGreaterThanOrEqual(1);
@@ -289,9 +289,12 @@ test.describe("B36 Video-Pipeline", () => {
     expect(dauerGesamt / plan.length).toBeLessThan(8); // im Schnitt alle 4–8 s ein neues Bild/Clip
     const clips = plan.filter((e) => e.art === "clip");
     expect(clips.length).toBeGreaterThan(plan.length * 0.25);
-    expect(nb.pexels.length).toBeGreaterThanOrEqual(clips.length);
-    expect(nb.pexels.every((q) => q.orientation === "landscape" && q.perPage <= 15)).toBe(true);
-    expect(nb.pexelsDateien).toBe(new Set(clips.map((e) => e.clip)).size); // jeder Clip einmal geladen
+    expect(clips.every((e) => String(e.clip).startsWith("pixabay-"))).toBe(true);
+    expect(nb.pixabay.length).toBeGreaterThanOrEqual(clips.length);
+    expect(nb.pixabay.every((q) => q.perPage >= 3 && q.perPage <= 15 && q.safesearch === "true" && q.videoType === "film")).toBe(true);
+    expect(nb.pixabayDateien).toBe(new Set(clips.map((e) => e.clip)).size); // jeder Clip einmal geladen
+    expect(nb.pexels).toHaveLength(0); // ohne Pexels-Schlüssel fragt die Brücke Pexels gar nicht
+    expect(log).not.toContain("test-pixabay-schluessel"); // Schlüssel nie beim Worker
     const keys = new Set(plan.filter((e) => e.art === "bild").map((e) => e.key));
     expect(nb.bilder.length).toBe(keys.size + 1); // je Bild einmal bezahlt + die eine Ablehnung (Ersatzbild)
     for (const s of a.skript!) {
@@ -321,7 +324,8 @@ test.describe("B36 Video-Pipeline", () => {
     expect(a.paket!.titel).toHaveLength(5);
     expect(a.paket!.beschreibung).toContain("Kapitel:\n0:00 Intro");
     expect(a.paket!.beschreibung).toContain("Quellen:");
-    expect(a.paket!.beschreibung).toMatch(/Videos: Pexels \(pexels\.com\) – Testfilmer \d/); // Filmer der Clips genannt
+    expect(a.paket!.beschreibung).toMatch(/Videos: Pixabay \(pixabay\.com\) – Testfilmer \d/); // Filmer der Clips genannt
+    expect(a.paket!.beschreibung).not.toContain("Pexels");
     expect(a.paket!.kapitel.length).toBeGreaterThanOrEqual(3);
     expect(a.paket!.tags.length).toBeGreaterThanOrEqual(10);
     await page.reload();
@@ -1104,6 +1108,54 @@ test.describe("B36 Video-Pipeline", () => {
     expect((await nachbau()).bilder.at(-1)!.model).toBe("gpt-image-2.5-flare");
   });
 
+
+  test("Pixabay: „Verbindung testen“ und Brücke – gültiger Schlüssel sucht, falscher → klare Meldung ohne Schlüssel, fehlender → 424", async ({ page }) => {
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const schluessel = async (k: string | null) => {
+      await sql("delete from integrations where tenant_id = $1 and provider = 'pixabay'", [T]);
+      if (k) await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'pixabay', 'Test', '{}'::jsonb, $2)", [T, versiegeln(JSON.stringify({ apiKey: k }))]);
+    };
+    await anmelden(page, "inhaber");
+    const testen = async () => {
+      await page.goto("/anbindungen?p=pixabay#pixabay");
+      const karte = page.locator("#pixabay");
+      await karte.getByRole("button", { name: "Verbindung testen" }).click();
+      return karte;
+    };
+    await schluessel("test-pixabay-schluessel");
+    let karte = await testen();
+    await expect(karte).toContainText("Schlüssel gültig. Videosuche funktioniert (500 Treffer");
+    await schluessel("falscher-schluessel");
+    karte = await testen();
+    await expect(karte).toContainText("Schlüssel abgelehnt");
+    await expect(karte).not.toContainText("falscher-schluessel");
+    if (!token) {
+      await page.goto("/marken/video");
+      await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+      await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+      token = (await page.getByTestId("vw-token").innerText()).trim();
+    }
+    const [auftrag] = await sql<{ id: string }>("select id from video_auftraege where tenant_id = $1 and status <> 'abgebrochen' order by created_at desc limit 1", [T]);
+    test.skip(!auftrag, "kein Auftrag aus den Abnahmen vorhanden");
+    const suche = () => page.request.get("/api/video-worker/anbieter/pixabay/videos?query=watch%20closeup&per_page=50", { headers: { authorization: `Bearer ${token}`, "x-auftrag": auftrag.id } });
+    let r = await suche();
+    expect(r.status()).toBe(401);
+    expect(await r.text()).not.toContain("falscher-schluessel");
+    await schluessel(null);
+    expect((await suche()).status()).toBe(424);
+    await schluessel("test-pixabay-schluessel");
+    r = await suche();
+    expect(r.status()).toBe(200);
+    const d = (await r.json()) as { videos: { id: string; quelle: string; user: { name: string }; video_files: { link: string; width: number }[] }[] };
+    expect(d.videos).toHaveLength(2);
+    expect(d.videos[0].id).toMatch(/^pixabay-\d+$/);
+    expect(d.videos[0].quelle).toBe("pixabay");
+    expect(d.videos[0].video_files.map((f) => f.width)).toEqual([1920, 960]); // leere Größe „medium“ fällt weg
+    expect(JSON.stringify(d)).not.toContain("test-pixabay-schluessel");
+    expect((await nachbau()).pixabay.at(-1)!.perPage).toBe(15); // Brücke begrenzt auf 15
+    expect((await page.request.get("/api/video-worker/anbieter/pixabay/irgendwas?query=x", { headers: { authorization: `Bearer ${token}`, "x-auftrag": auftrag.id } })).status()).toBe(404);
+    await schluessel(null);
+  });
   test("Werkzeug video_auftrag_anlegen: Claude legt aus dem Chat ein Video an – erst Rückfrage mit Zusammenfassung, nach Ja angelegt (eigenes Skript, Startzeit); ohne Änderungsrecht nicht sichtbar", async ({ browser, baseURL }) => {
     test.setTimeout(120_000);
     if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");

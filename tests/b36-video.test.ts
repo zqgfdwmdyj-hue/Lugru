@@ -81,7 +81,7 @@ describe("Kosten (B36.3)", () => {
     // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
     expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
     expect(kostenSchaetzung(p).summe).toBeCloseTo(0.472 + 0.38 + 0.12 + 1.908 + 4.28, 2);
-    // mit Pexels-Clips ~40 % weniger Bilder, mit Bildwechsel alle 8 s entsprechend weniger
+    // mit Stock-Clips ~40 % weniger Bilder, mit Bildwechsel alle 8 s entsprechend weniger
     expect(typischFuer("vollbild", { stockClips: true }).bilder).toBe(64);
     expect(typischFuer("vollbild", { bildSek: 8 }).bilder).toBe(80);
     // Whiteboard: statt 25 Bildern Einzelmotive (neue je Video, Rest aus der Bibliothek), eigener Preis je Motiv
@@ -122,14 +122,15 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.4.0");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.4.1");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
     expect(workerVeraltet("1.2.0")).toBe(true); // 1.2.1: mehr Platz für Claude
     expect(workerVeraltet("1.2.1")).toBe(true); // 1.3.0: echtes Zeichnen, Probeszene
     expect(workerVeraltet("1.3.0")).toBe(true); // 1.4.0: Vollbild in Bewegung (Bildwechsel, Kamerafahrt, Pexels)
-    expect(workerVeraltet("1.4.0")).toBe(false);
+    expect(workerVeraltet("1.4.0")).toBe(true); // 1.4.1: Clips von Pixabay (Pexels vergibt keine Schlüssel)
+    expect(workerVeraltet("1.4.1")).toBe(false);
     expect(workerVeraltet("2.0")).toBe(false);
     // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
     expect(workerVeraltet("1.2.0", WORKER_AB_TAKT)).toBe(false);
@@ -278,13 +279,30 @@ describe("Sprechtempo, Wörter/Min, Probeszene (13.11.)", () => {
   });
 });
 
+describe("B36.11 Pixabay als Clip-Quelle (Pexels vergibt keine Schlüssel)", () => {
+  it("Treffer im Pexels-Format: ID mit Vorsilbe, Filmer, nur https-Dateien, leere Größen fallen weg", async () => {
+    const { pixabayAlsVideos, pixabaySchluesselAbgelehnt } = await import("@/lib/video/logic");
+    const v = pixabayAlsVideos([
+      { id: 125, pageURL: "https://pixabay.com/videos/id-125/", duration: 12, user: "Testfilmer", videos: { large: { url: "https://cdn.pixabay.com/video/test/large.mp4", width: 3840, height: 2160 }, medium: { url: "https://cdn.pixabay.com/video/test/medium.mp4", width: 1920, height: 1080 }, small: { url: "", width: 0, height: 0 }, tiny: { url: "http://unsicher.example.invalid/t.mp4", width: 640, height: 360 } } },
+      { id: 7, duration: 5, user: "Ohne Dateien", videos: { large: { url: "" } } },
+    ]);
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ id: "pixabay-125", quelle: "pixabay", duration: 12, url: "https://pixabay.com/videos/id-125/", user: { name: "Testfilmer" } });
+    expect(v[0].video_files.map((f) => f.width)).toEqual([3840, 1920]);
+    expect(pixabayAlsVideos(undefined)).toEqual([]);
+    expect(pixabaySchluesselAbgelehnt(400, "[ERROR 400] Invalid or missing API key")).toBe(true);
+    expect(pixabaySchluesselAbgelehnt(400, "[ERROR 400] per_page is out of valid range")).toBe(false);
+    expect(pixabaySchluesselAbgelehnt(429, "")).toBe(false);
+  });
+});
+
 describe("B36.11 Vollbild in Bewegung (13.11.)", () => {
   it("Bildwechsel alle N s: Anzahl Bilder, Grenzen 4–10 s, Clips sparen Bilder, Worker-Version je Stil", async () => {
     const { bilderVollbild, bildSekAus, BILD_SEK, workerAbProbe, WORKER_AB_BEWEGT, WORKER_AB_PROBE, probeMoeglich } = await import("@/lib/video/logic");
     expect(BILD_SEK.standard).toBe(6);
     expect(bilderVollbild(600)).toBe(100); // 10 Min. → alle 6 s ein Bild
     expect(bilderVollbild(600, 5)).toBe(120);
-    expect(bilderVollbild(600, 6, true)).toBe(60); // ~40 % werden kostenlose Pexels-Clips
+    expect(bilderVollbild(600, 6, true)).toBe(60); // ~40 % werden kostenlose Stock-Clips (Pixabay/Pexels)
     expect(bildSekAus("7,5")).toBe(7.5);
     expect(bildSekAus(2)).toBe(4);
     expect(bildSekAus(30)).toBe(10);

@@ -1,8 +1,8 @@
 import { workerPruefen } from "@/lib/video/api";
-import { pexelsSuche, weiterleiten } from "@/lib/video/anbieter";
+import { pexelsSuche, pixabaySuche, weiterleiten } from "@/lib/video/anbieter";
 
 // Anbieter-Brücke: Claude (/v1/messages), ElevenLabs (/v1/text-to-speech/{stimme}), OpenAI (/v1/images/generations),
-// lesend (GET) die Pexels-Videosuche (/pexels/videos/search, B36.11).
+// lesend (GET) die Videosuche bei Pixabay (/pixabay/videos) und Pexels (/pexels/videos/search, B36.11).
 // Schlüssel bleiben im Seller-System, Kosten werden dem Auftrag (Kopf x-auftrag) zugeordnet.
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ anbi
   const p = await workerPruefen(request);
   if (!p.ok) return p.antwort;
   const { anbieter, pfad } = await params;
+  if (anbieter === "pixabay") return pixabaySuche(p.worker, pfad, request);
   if (anbieter !== "pexels") return Response.json({ type: "error", error: { type: "seller_bruecke", message: "Nur POST" } }, { status: 405 });
   return pexelsSuche(p.worker, pfad, request);
 }

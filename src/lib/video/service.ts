@@ -214,7 +214,7 @@ export async function probeAnfordern(s: Session, id: string, szene: number): Pro
   if (kanal.stil !== "whiteboard") {
     const bilder = Math.ceil(PROBE_SEK / bildSekAus(kanal.bildSek)) + 1;
     const bp = cfg.preise.bildJeStueck;
-    return `Probeszene angefordert (${nr}, ca. ${PROBE_SEK} s) – Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild mit Kamerafahrt${kanal.stockClips ? ", Pexels-Clips" : ""}. Kosten: Sprache${preis != null ? ` ca. ${((zeichen / 1000) * preis).toFixed(2)} $` : ""} + höchstens ${bilder} Bilder${bp != null ? ` (ca. ${(bilder * bp).toFixed(2)} $)` : ""} – beim Neu-Rendern wiederverwendet.`;
+    return `Probeszene angefordert (${nr}, ca. ${PROBE_SEK} s) – Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild mit Kamerafahrt${kanal.stockClips ? ", echte Clips" : ""}. Kosten: Sprache${preis != null ? ` ca. ${((zeichen / 1000) * preis).toFixed(2)} $` : ""} + höchstens ${bilder} Bilder${bp != null ? ` (ca. ${(bilder * bp).toFixed(2)} $)` : ""} – beim Neu-Rendern wiederverwendet.`;
   }
   return `Probeszene angefordert (${nr}, ca. ${PROBE_SEK} s) – Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, echtes Zeichnen, Hand. Kosten nur Sprache${preis != null ? `, ca. ${((zeichen / 1000) * preis).toFixed(2)} $` : ""}.`;
 }
@@ -243,7 +243,7 @@ export async function neuVertonen(s: Session, id: string): Promise<string> {
     hochladen: false, youtubeId: null, youtubeStatus: null, schritte, kostenSchaetzung: Math.round((a.kostenIst + kosten) * 100) / 100,
   });
   if (kanal.stil !== "whiteboard") {
-    return `Wird neu bebildert und gerendert – Skript bleibt, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild${kanal.stockClips ? " (teils Pexels-Clips)" : ""}: ca. ${bilder} neue Bilder${cfg.preise.bildJeStueck != null ? ` (${bildKosten.toFixed(2)} $)` : ""}${preis != null ? `, Sprache ca. ${sprache.toFixed(2)} $ (unverändertes Tempo: nichts)` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
+    return `Wird neu bebildert und gerendert – Skript bleibt, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild${kanal.stockClips ? " (teils echte Clips)" : ""}: ca. ${bilder} neue Bilder${cfg.preise.bildJeStueck != null ? ` (${bildKosten.toFixed(2)} $)` : ""}${preis != null ? `, Sprache ca. ${sprache.toFixed(2)} $ (unverändertes Tempo: nichts)` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
   }
   return `Wird neu vertont und gezeichnet – Skript und Motive bleiben, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}${preis != null ? `, Sprache ca. ${sprache.toFixed(2)} $` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
 }

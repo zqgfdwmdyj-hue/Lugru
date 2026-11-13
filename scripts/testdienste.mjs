@@ -800,6 +800,8 @@ async function route(req, url, body) {
   // B36.11 Pexels: Videosuche (Schlüssel im Kopf „Authorization“) und die Clip-Dateien (CDN-Nachbau, ohne Schlüssel)
   if (p === "/pexels/videos/search" && req.method === "GET") return pexelsSucheNb(req, url);
   if (/^\/pexels-datei\/\d+\.mp4$/.test(p) && req.method === "GET") return pexelsDateiNb();
+  if (p === "/pixabay/api/videos/" && req.method === "GET") return pixabaySucheNb(req, url);
+  if (/^\/pixabay-datei\/\d+\.mp4$/.test(p) && req.method === "GET") return pexelsDateiNb("pixabayDateien");
   if (p === "/openai/v1/models" && req.method === "GET") return openaiModelleNb(req);
   if (p.startsWith("/youtube")) return youtubeNb(req, url, p, body);
   if (p.startsWith("/instagram-api/") || p.startsWith("/instagram-graph/")) return instagramNb(req, url, p, body);
@@ -1723,7 +1725,7 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0 });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0 });
       // Bildmodelle, die es „im Konto nicht gibt“ (zusätzlich zum abgeschalteten gpt-image-1) – prüft das Ausweichen der Brücke
       if (Array.isArray(b.bildModelleGesperrt)) videoNb.bildModelleGesperrt = b.bildModelleGesperrt.map(String);
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
@@ -1731,7 +1733,7 @@ http
       if (b.stoerung) videoNb.stoerungen[b.stoerung.schluessel] = { art: b.stoerung.art, anzahl: b.stoerung.anzahl ?? 1 };
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler, bildplaene: videoNb.bildplaene, pexels: videoNb.pexels, pexelsDateien: videoNb.pexelsDateien });
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler, bildplaene: videoNb.bildplaene, pexels: videoNb.pexels, pexelsDateien: videoNb.pexelsDateien, pixabay: videoNb.pixabay, pixabayDateien: videoNb.pixabayDateien });
     if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
       // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
       const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
@@ -1796,7 +1798,7 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0 };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0 };
 
 /** Video-Pipeline: Claude-Abschnitte mitschreiben und auf Wunsch stören – „abbruch“ (Antwort beginnt, dann wird die
  *  Verbindung ohne Abschluss geschlossen = „incomplete chunked read“), 529/429/503 als Fehlerantwort. */
@@ -2243,7 +2245,7 @@ function pexelsSucheNb(req, url) {
 
 let pexelsClip = null;
 /** Ein kleines Test-Video (Farbbalken mit Bewegung, 4 s) – einmal mit ffmpeg erzeugt, für alle Clip-Abrufe. */
-async function pexelsDateiNb() {
+async function pexelsDateiNb(zaehler = "pexelsDateien") {
   if (!pexelsClip) {
     const { spawnSync } = await import("node:child_process");
     const { tmpdir } = await import("node:os");
@@ -2252,8 +2254,24 @@ async function pexelsDateiNb() {
     spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25", "-t", "4", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", ziel]);
     pexelsClip = readFileSync(ziel);
   }
-  videoNb.pexelsDateien++;
+  videoNb[zaehler]++;
   return [200, pexelsClip, "video/mp4"];
+}
+
+/** B36.11 Pixabay-Videosuche (api/videos): Schlüssel als URL-Parameter, falscher/fehlender Schlüssel → 400 wie das Original.
+ *  Je Suche 2 Treffer (large 1920×1080 + small 960×540), Dateien unter /pixabay-datei/<id>.mp4. */
+function pixabaySucheNb(req, url) {
+  const key = url.searchParams.get("key") ?? "";
+  if (!key || key === "falscher-schluessel") return [400, { error: "[ERROR 400] Invalid or missing API key" }];
+  const q = url.searchParams.get("q") ?? "";
+  videoNb.pixabay.push({ q, perPage: Number(url.searchParams.get("per_page") ?? 0), safesearch: url.searchParams.get("safesearch"), videoType: url.searchParams.get("video_type") });
+  const h = createHash("sha256").update(`pixabay:${q}`).digest();
+  const basis = `http://${req.headers.host}`;
+  const hits = [0, 1].map((k) => {
+    const id = 200000 + ((h[0] << 8) + h[1]) * 2 + k;
+    return { id, pageURL: `https://pixabay.com/videos/test-${id}/`, type: "film", tags: q, duration: 9, user_id: 7, user: `Testfilmer ${(h[2] % 9) + 1}`, videos: { large: { url: `${basis}/pixabay-datei/${id}.mp4`, width: 1920, height: 1080, size: 1000 }, medium: { url: "", width: 0, height: 0, size: 0 }, small: { url: `${basis}/pixabay-datei/${id}.mp4`, width: 960, height: 540, size: 500 } } };
+  });
+  return [200, { total: 4321, totalHits: 500, hits }];
 }
 
 /** B37 Story: kurze Texte je Inhaltsart, nur aus den „Bestätigten Fakten“ des Prompts (erste Zeile mit „€“). Thema mit

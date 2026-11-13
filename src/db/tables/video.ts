@@ -25,7 +25,7 @@ export type VideoSzene = {
   // nur Stil „whiteboard“: Texte setzt die Pipeline selbst (Schrift fest), Motive kommen einzeln vom Bildmodell
   layout?: string | null; ueberschrift?: string | null; balken?: string | null; kernaussage?: string | null; schrittText?: string | null; liste?: string[] | null; motive?: VideoMotiv[] | null;
   takt?: VideoTakt | null;
-  // nur Stil „vollbild“ (B36.11): Bildplan – alle ~6 s ein Bild (Kamerafahrt) oder ein Pexels-Clip, Start beim Schlüsselwort
+  // nur Stil „vollbild“ (B36.11): Bildplan – alle ~6 s ein Bild (Kamerafahrt) oder ein Stock-Clip (Pixabay/Pexels), Start beim Schlüsselwort
   bilder?: VideoBildplan[] | null;
 };
 export type VideoBildplan = { art: "bild" | "clip"; idee?: string | null; suche?: string | null; wort?: string | null; key?: string | null; clip?: string | null; start: number; dauer: number; ersatz?: boolean };
@@ -84,7 +84,7 @@ export const videoKanaele = pgTable(
     motivStil: text("motiv_stil", { enum: ["strich", "farbig"] }).notNull().default("strich"),
     /** B36.11 Stil „Vollbild“: alle N Sekunden ein neues Bild (4–10, Standard 6) – mit Kamerafahrt, statt Standbild je Szene. */
     bildSek: real("bild_sek").notNull().default(6),
-    /** B36.11: echte Videoclips von Pexels zwischen den Bildern (kostenlos, Schlüssel unter Anbindungen → Pexels). */
+    /** B36.11: echte Videoclips zwischen den Bildern (kostenlos, Pixabay und/oder Pexels unter Anbindungen). */
     stockClips: boolean("stock_clips").notNull().default(false),
     /** B37 Instagram: Zeitplan, Inhaltsarten, Farben, Freigabe-Modus, Monatslimit, Fakten, Themenliste. */
     instagram: jsonb("instagram").$type<InstagramProfil>().notNull().default({}),

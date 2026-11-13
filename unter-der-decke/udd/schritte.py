@@ -923,7 +923,7 @@ def _vb_bild(l: Lauf, idee: str, nr: str, einblendung: str, hinweise: list[str],
     return schluessel
 
 
-# ---- 4c Vollbild in Bewegung (B36.11): Bildplan, Bilder alle ~6 s, Pexels-Clips ---------------------------------------
+# ---- 4c Vollbild in Bewegung (B36.11): Bildplan, Bilder alle ~6 s, Stock-Clips (Pixabay/Pexels) ---------------------------------------
 
 BILDPLAN_SCHEMA = {
     "type": "object",
@@ -958,7 +958,13 @@ BILDPLAN_SCHEMA = {
     "additionalProperties": False,
 }
 BILDPLAN_JE_AUFRUF = 25
-CLIP_HOSTS = ("pexels.com", "vimeo.com", "vimeocdn.com")
+CLIP_HOSTS = ("pixabay.com", "pexels.com", "vimeo.com", "vimeocdn.com")
+# Clip-Quellen in Such-Reihenfolge (1.4.1: Pixabay zuerst – Pexels vergibt zeitweise keine neuen Schlüssel):
+# (Name in der Brücke, Anzeigename, Domain für den Nachweis, Pfad, Parameter)
+CLIP_QUELLEN = (
+    ("pixabay", "Pixabay", "pixabay.com", "videos", {"per_page": 12}),
+    ("pexels", "Pexels", "pexels.com", "videos/search", {"orientation": "landscape", "size": "medium", "per_page": 12}),
+)
 
 
 def stock_clips(l: Lauf) -> bool:
@@ -1054,40 +1060,63 @@ def _clip_laden(l: Lauf, url: str, ziel) -> None:
     tmp.replace(ziel)
 
 
-def _clip_holen(l: Lauf, suche: str, dauer: float, benutzt: set[str], hinweise: list[str], wo: str) -> str | None:
-    """Passenden Pexels-Clip suchen (über die Brücke – der Schlüssel bleibt im Seller-System) und laden. None = keiner."""
+def _clip_treffer(l: Lauf, quelle: str, pfad: str, params: dict, suche: str, hinweise: list[str], wo: str, aus: set[str]) -> list[dict] | None:
+    """Suchergebnis einer Quelle (im Projekt gemerkt – ein Neustart sucht nicht neu). None = Quelle hier nicht nutzbar."""
+    cache = l.p.state.setdefault("clipsuche", {})
+    k = f"{quelle}:{suche}"
+    treffer = cache.get(k)
+    if treffer is None and quelle == "pexels":
+        treffer = (l.p.state.get("pexels") or {}).get(suche)  # Projekte von 1.4.0
+    if treffer is not None:
+        return treffer
+    name = dict((q[0], q[1]) for q in CLIP_QUELLEN)[quelle]
+    r = l.seller.anbieter_holen(l.id, quelle, pfad, {"query": suche, **params}, was=f"{name}-Suche – {wo}")
+    if r.status_code == 424:  # Schlüssel fehlt: diese Quelle für den ganzen Lauf auslassen
+        aus.add(quelle)
+        return None
+    if r.status_code != 200:
+        hinweise.append(f"{wo}: {name}-Suche „{suche}“ fehlgeschlagen ({_fehlertext(r)}).")
+        return None
+    treffer = [
+        {"id": str(v.get("id")), "quelle": quelle, "duration": v.get("duration"), "url": v.get("url"), "user": {"name": (v.get("user") or {}).get("name")}, "video_files": [{k2: f.get(k2) for k2 in ("link", "width", "height", "file_type")} for f in v.get("video_files") or []]}
+        for v in (r.json().get("videos") or [])[:12]
+    ]
+    cache[k] = treffer
+    l.p.speichern()
+    return treffer
+
+
+def _clip_holen(l: Lauf, suche: str, dauer: float, benutzt: set[str], hinweise: list[str], wo: str, aus: set[str] | None = None) -> str | None:
+    """Passenden Stock-Clip suchen – erst Pixabay, dann Pexels (über die Brücke, die Schlüssel bleiben im Seller-System)
+    – und laden. None = keiner passt. Ist keine Quelle verbunden, _OhneClips (alle Clips werden zu Bildern)."""
+    aus = set() if aus is None else aus
     suche = re.sub(r"[^\w\s-]", " ", suche or "").strip()[:80]
     if not suche or bild_treffer(suche, l.streng):
         return None
-    treffer = l.p.state["pexels"].get(suche)
-    if treffer is None:
-        r = l.seller.anbieter_holen(l.id, "pexels", "videos/search", {"query": suche, "orientation": "landscape", "size": "medium", "per_page": 12}, was=f"Pexels-Suche – {wo}")
-        if r.status_code == 424:
-            raise _OhnePexels(_fehlertext(r))
-        if r.status_code != 200:
-            hinweise.append(f"{wo}: Pexels-Suche „{suche}“ fehlgeschlagen ({_fehlertext(r)}) – Bild statt Clip.")
-            return None
-        treffer = [
-            {"id": str(v.get("id")), "duration": v.get("duration"), "url": v.get("url"), "user": {"name": (v.get("user") or {}).get("name")}, "video_files": [{k: f.get(k) for k in ("link", "width", "height", "file_type")} for f in v.get("video_files") or []]}
-            for v in (r.json().get("videos") or [])[:12]
-        ]
-        l.p.state["pexels"][suche] = treffer
-        l.p.speichern()
-    wahl = bewegt.clip_waehlen(treffer, dauer, benutzt)
-    if not wahl:
-        return None
-    v, datei = wahl
-    vid = str(v["id"])
-    if not l.p.datei_vorhanden("stock", vid):
-        rel = f"stock/{vid}.mp4"
-        _clip_laden(l, datei["link"], l.p.pfad(rel))
-        l.p.datei_merken("stock", vid, rel, dauer=float(v.get("duration") or 0), url=v.get("url") or "", fotograf=((v.get("user") or {}).get("name") or "")[:80])
-    benutzt.add(vid)
-    return vid
+    for quelle, _name, _domain, pfad, params in CLIP_QUELLEN:
+        if quelle in aus:
+            continue
+        treffer = _clip_treffer(l, quelle, pfad, params, suche, hinweise, wo, aus)
+        if not treffer:
+            continue
+        wahl = bewegt.clip_waehlen(treffer, dauer, benutzt)
+        if not wahl:
+            continue
+        v, datei = wahl
+        vid = str(v["id"])
+        if not l.p.datei_vorhanden("stock", vid):
+            rel = f"stock/{vid}.mp4"
+            _clip_laden(l, datei["link"], l.p.pfad(rel))
+            l.p.datei_merken("stock", vid, rel, dauer=float(v.get("duration") or 0), url=v.get("url") or "", fotograf=((v.get("user") or {}).get("name") or "")[:80], quelle=quelle)
+        benutzt.add(vid)
+        return vid
+    if all(q[0] in aus for q in CLIP_QUELLEN):
+        raise _OhneClips("weder Pixabay noch Pexels verbunden")
+    return None
 
 
-class _OhnePexels(Exception):
-    """Pexels ist im Seller-System nicht verbunden – alle Clips werden zu Bildern."""
+class _OhneClips(Exception):
+    """Keine Clip-Quelle (Pixabay/Pexels) im Seller-System verbunden – alle Clips werden zu Bildern."""
 
 
 def visuals(l: Lauf) -> tuple[dict, list[str]]:
@@ -1108,10 +1137,11 @@ def visuals(l: Lauf) -> tuple[dict, list[str]]:
 
 
 def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str]) -> tuple[int, int]:
-    """Bildplan holen und je Szene die Bilder (bezahlt nur Neues) bzw. Pexels-Clips besorgen → s["bilder"]."""
+    """Bildplan holen und je Szene die Bilder (bezahlt nur Neues) bzw. Stock-Clips (Pixabay/Pexels) besorgen → s["bilder"]."""
     sek = bewegt.bild_sek(l.kanal)
     plan = _bildplan(l, auswahl, sek)
-    pexels = stock_clips(l)
+    clips_an = stock_clips(l)
+    quellen_aus: set[str] = set()
     benutzt: set[str] = set()
     n_bilder = n_clips = 0
     for i, s in auswahl:
@@ -1122,12 +1152,12 @@ def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str])
         for k, (e, (start, laenge)) in enumerate(zip(elemente, zeiten)):
             wo = f"Szene {i + 1}.{k + 1}"
             eintrag = {"art": "bild", "idee": (e.get("idee") or s.get("bildidee") or "")[:300], "suche": (e.get("suche") or "")[:80], "wort": (e.get("wort") or "")[:40], "start": start, "dauer": laenge}
-            if e.get("art") == "clip" and pexels:
+            if e.get("art") == "clip" and clips_an:
                 try:
-                    vid = _clip_holen(l, e.get("suche") or "", laenge + bewegt.UEBERGANG, benutzt, hinweise, wo)
-                except _OhnePexels as x:
-                    hinweise.append(f"Pexels nicht verbunden ({x}) – Bilder statt Clips. Schlüssel unter Anbindungen → Pexels eintragen.")
-                    pexels = False
+                    vid = _clip_holen(l, e.get("suche") or "", laenge + bewegt.UEBERGANG, benutzt, hinweise, wo, quellen_aus)
+                except _OhneClips as x:
+                    hinweise.append(f"Keine Clip-Quelle verbunden ({x}) – Bilder statt Clips. Schlüssel unter Anbindungen → Pixabay eintragen.")
+                    clips_an = False
                     vid = None
                 if vid:
                     eintrag.update(art="clip", clip=vid)
@@ -1363,17 +1393,24 @@ def _paket_erzeugen(l: Lauf) -> dict:
 
 
 def clip_nachweis(l: Lauf, szenen: list[dict]) -> str:
-    """Pexels-Clips im Video: Nachweis in der Beschreibung (Pexels verlangt es nicht, bittet aber darum)."""
-    namen: list[str] = []
+    """Stock-Clips im Video: Nachweis je Quelle in der Beschreibung (Pixabay und Pexels verlangen es nicht, bitten aber
+    darum), z. B. „Videos: Pixabay (pixabay.com) – A, B; Pexels (pexels.com) – C“."""
+    namen: dict[str, list[str]] = {}
     for s in szenen:
         for e in s.get("bilder") or []:
             if e.get("art") == "clip" and e.get("clip"):
-                f = (l.p.state["stock"].get(str(e["clip"])) or {}).get("fotograf") or ""
-                if f and f not in namen:
-                    namen.append(f)
-    if not namen and not any(e.get("art") == "clip" for s in szenen for e in s.get("bilder") or []):
-        return ""
-    return "Videos: Pexels (pexels.com)" + (f" – {', '.join(namen[:12])}" + (" u. a." if len(namen) > 12 else "") if namen else "")
+                info = l.p.state["stock"].get(str(e["clip"])) or {}
+                quelle = info.get("quelle") or ("pixabay" if str(e["clip"]).startswith("pixabay-") else "pexels")
+                liste = namen.setdefault(quelle, [])
+                f = info.get("fotograf") or ""
+                if f and f not in liste:
+                    liste.append(f)
+    teile = []
+    for quelle, name, domain, _p, _par in CLIP_QUELLEN:
+        if quelle in namen:
+            n = namen[quelle]
+            teile.append(f"{name} ({domain})" + (f" – {', '.join(n[:12])}" + (" u. a." if len(n) > 12 else "") if n else ""))
+    return "Videos: " + "; ".join(teile) if teile else ""
 
 
 def package(l: Lauf) -> tuple[dict, list[str]]:

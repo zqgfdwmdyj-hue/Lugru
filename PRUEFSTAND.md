@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/16 Abläufe | – | 8 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/17 Abläufe | – | 8 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -557,8 +557,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B36.10 Nachtrag: fertiges, privat hochgeladenes Whiteboard-Video → „Im neuen Takt neu machen“ (gleicher Text), Szenen-Übersicht freigeben | Kostenschätzung vorab (Sprache mit Wortzeiten, Motive aus der Bibliothek); Auftrag ab Skript, YouTube-ID und „Privat hochladen“ zurückgesetzt, alter Text als eigenes Skript; keine neue Recherche/Websuche; mindestens 55 kurze Szenen; Sprache je Szene einmal mit Wortzeiten; kein neues Motiv bezahlt; neues Video fertig, Upload erst wieder von Hand | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11. Sprechtempo/Zeichnen/Hand: Whiteboard-Video mit Sprechtempo 1,1 und Motiv-Stil Strichzeichnung rendern | ElevenLabs mit speed 1,1 und den gespeicherten Stimmeinstellungen (Stabilität bleibt); Stille vor/nach jeder Szene abgeschnitten, höchstens 0,3 s zwischen Szenen; Wörter/Min. ≥ 135 im Auftrag; alle Motiv-Prompts außer Glühbirne „Schwarze Strichzeichnung … keine Flächen“, kein „Filzstift“; keine Hand vom Bildmodell; Hand im MP4 sichtbar | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11. Probeszene: fertiges Whiteboard-Video, Sprechtempo 1,15, „Probeszene (20 s)“ ab Szene 3, danach Warnung unter 135 Wörter/Min. und „Neu vertonen & zeichnen“ | probe.mp4 1920×1080, höchstens 20,3 s, Hand sichtbar; ElevenLabs speed 1,15; keine neuen Bilder; Status und Freigaben des Videos unverändert, Ergebnis mit Wörter/Min. auf der Seite; Vorschau-Freigabe mit 95 Wörtern/Min. zeigt Warnung; Neu vertonen vertont nur die übrigen Szenen, ergibt ≥ 135 Wörter/Min. | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
-| Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips von Pexels“, Video bis zur Vorschau rendern | Bildplan von Claude (ein Aufruf je 25 Szenen); im Schnitt alle 4–8 s ein neues Bild oder ein Clip, Start je Element beim Schlüsselwort; jedes Bild fährt (Bildausschnitt ändert sich innerhalb des Bilds); mindestens ein Viertel Clips, Pexels-Suche Querformat ≤ 15, jede Clip-Datei einmal geladen, Filmer in der Beschreibung; Bildaufrufe = verschiedene Bilder + 1 Ablehnung | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips“ (Pixabay), Video bis zur Vorschau rendern | Bildplan von Claude (ein Aufruf je 25 Szenen); im Schnitt alle 4–8 s ein neues Bild oder ein Clip, Start je Element beim Schlüsselwort; jedes Bild fährt (Bildausschnitt ändert sich innerhalb des Bilds); mindestens ein Viertel Clips, Clips von Pixabay (Suche ≤ 15 Treffer, safesearch, nur Filme), jede Clip-Datei einmal geladen, Filmer in der Beschreibung; Bildaufrufe = verschiedene Bilder + 1 Ablehnung | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand | Hand (Hautton) in mehreren Einzelbildern der ersten Szenen und der Probeszene sichtbar; unterer Rand ohne Untertitel | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
+| Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel | gültig → „Schlüssel gültig. Videosuche funktioniert“; falsch → „Schlüssel abgelehnt“ bzw. HTTP 401, nie Teile des Schlüssels; ohne Schlüssel 424; Antwort im Pexels-Format (IDs pixabay-…, leere Größen weg), höchstens 15 Treffer, fremder Pfad 404; im Video (B36.7) alle Clips von Pixabay, Pexels nicht gefragt, Nachweis „Videos: Pixabay (pixabay.com) – …“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
 | Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ | Status „wartet“ statt „Fehler“, neuer Versuch automatisch in 10 Min. (danach 30, 60), Hinweis „Störung beim Anbieter in „Skript“ … (1/3)“; „Jetzt neu versuchen“ holt nur den fehlenden Abschnitt und die danach; alle Claude-Aufrufe mit mindestens 16.000 Tokens Platz (Denken zählt mit) | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ | Abbrüche/529 nach 2, 4, 8, 16 s wiederholt (Log „neuer Versuch“); nach 5 Fehlversuchen Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“; fertige Abschnitte als Dateien im Projektordner; Wiederholen holt nur Punkt 3 bis CTA; Skript 1.500–1.700 Wörter, 5 Punkte, alle Studien in der Quellenliste; Sprache je Szene genau einmal bezahlt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel | Bilder mit gpt-image-2.5-flare, nie gpt-image-1; Wahl gespeichert und bei jedem Bild benutzt, Kosten-Zeile nennt das Modell; gesperrtes Modell einmal versucht, dann Flare; Test „Schlüssel gültig. Bildmodell für Videos: …“ bzw. „Schlüssel abgelehnt (HTTP 401)“; Brücke 401 „OpenAI-Schlüssel abgelehnt … neu eintragen“ ohne Schlüsselteile | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
@@ -570,7 +571,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - – Offen: B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
 - – Offen: Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.4.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
-- – Offen: Nachtrag 13.11. (2): Pexels-Schlüssel eintragen, Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
+- – Offen: Nachtrag 13.11. (2)/(3): Pixabay-Schlüssel eintragen (Pexels vergibt zurzeit keine), Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
 - – Offen: B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 
 ### Team & Verwaltung › VA & Delegation (`/delegation`)
@@ -753,7 +754,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (191 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 191 nicht gelaufen.
+**Automatisch** (192 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 192 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -881,8 +882,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): B36.10 Nachtrag: fertiges, privat hochgeladenes Whiteboard-Video → „Im neuen Takt neu machen“ (gleicher Text), Szenen-Übersicht freigeben – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. Sprechtempo/Zeichnen/Hand: Whiteboard-Video mit Sprechtempo 1,1 und Motiv-Stil Strichzeichnung rendern – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. Probeszene: fertiges Whiteboard-Video, Sprechtempo 1,15, „Probeszene (20 s)“ ab Szene 3, danach Warnung unter 135 Wörter/Min. und „Neu vertonen & zeichnen“ – im letzten Lauf nicht gelaufen
-- ○ Video (YouTube): Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips von Pexels“, Video bis zur Vorschau rendern – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips“ (Pixabay), Video bis zur Vorschau rendern – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel – im letzten Lauf nicht gelaufen
@@ -1017,7 +1019,7 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Video (YouTube): vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - Video (YouTube): B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
 - Video (YouTube): Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.4.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
-- Video (YouTube): Nachtrag 13.11. (2): Pexels-Schlüssel eintragen, Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
+- Video (YouTube): Nachtrag 13.11. (2)/(3): Pixabay-Schlüssel eintragen (Pexels vergibt zurzeit keine), Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
 - Video (YouTube): B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs

@@ -1901,6 +1901,24 @@ die Einblendung war ins Bild eingebrannt.
 | Jedes Bild einmal bezahlt | ✅ automatisch (e2e B36.7): Bildaufrufe = verschiedene Bilder + 1 Ablehnung (Ersatzbild) |
 | Echte Hand | ✅ automatisch (`test_hand_png_transparent_mit_stiftspitze_als_anker`, e2e Whiteboard + Probeszene): Spitze unten links, Hautfläche > 20.000 px, im fertigen Video in 50 von 91 Einzelbildern der Szenen 1–2 sichtbar, in der Probeszene in 17 von 30; unterer Rand frei (keine Untertitel) |
 
+**Nachtrag 13.11. (3): Pixabay statt Pexels** (Rückmeldung: „Die Ausstellung neuer API-Schlüssel ist derzeit
+ausgesetzt“ – Pexels; Auswahl: Pixabay einbauen).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Clip-Quelle | ⚠️ nur Pexels (keine neuen Schlüssel) | ✅ **Pixabay** als erste Quelle (kostenlos, Schlüssel sofort nach Anmeldung), Pexels als zweite; passt bei Pixabay nichts, sucht der Worker bei Pexels weiter; ohne Quelle Bilder + Hinweis | `schritte.py › CLIP_QUELLEN, _clip_holen` |
+| Anbindung | – | ✅ Anbindungen → **Pixabay** (sicheres Formular, „Verbindung testen“ mit Probesuche, falscher Schlüssel → Meldung ohne Schlüsselteile) | `clients/pixabay.ts`, `registry.ts` |
+| Brücke | – | ✅ `GET /api/video-worker/anbieter/pixabay/videos?query=…` – Schlüssel bleibt im Seller-System (Pixabay will ihn in der Adresse), Antwort im Pexels-Format (IDs `pixabay-…`, nur https-Dateien, leere Größen weg), höchstens 15 Treffer, `safesearch`, nur gefilmte Clips | `anbieter.ts › pixabaySuche`, `logic.ts › pixabayAlsVideos` |
+| Nachweis | Pexels | ✅ je Quelle: „Videos: Pixabay (pixabay.com) – …; Pexels (pexels.com) – …“ | `schritte.py › clip_nachweis` |
+| Worker | 1.4.0 | **1.4.1** | `udd/__init__.py` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Video mit Pixabay-Clips | ✅ automatisch (e2e B36.7, nur Pixabay-Schlüssel): 22 Szenen → 106 Bilder/Clips, davon **44 Clips, alle von Pixabay** (IDs `pixabay-…`), jede Datei genau einmal geladen; Pexels wird ohne Schlüssel gar nicht gefragt; der Pixabay-Schlüssel taucht im Worker-Protokoll nicht auf; Beschreibung „Videos: Pixabay (pixabay.com) – Testfilmer …“ |
+| Erst Pixabay, sonst Pexels | ✅ automatisch (`test_vollbild_clips_zuerst_von_pixabay_sonst_pexels`): Szene 1 nur bei Pixabay gesucht, Szene 2 (nur Hochformat) bei Pexels weiter; Nachweis nennt beide Quellen getrennt |
+| Keine Quelle | ✅ automatisch (`test_vollbild_ohne_pexels_schluessel_bilder_statt_clips`): je Quelle einmal gefragt (424), danach nur Bilder + Hinweis „Keine Clip-Quelle verbunden … Anbindungen → Pixabay“ |
+| Verbindung testen / Brücke | ✅ automatisch (e2e „Pixabay: Verbindung testen und Brücke“): gültig → Treffer, falscher Schlüssel → „Schlüssel abgelehnt“ bzw. 401 ohne Schlüsselteile, ohne Schlüssel 424, per_page auf 15 begrenzt, fremder Pfad 404 |
+
 ## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
@@ -3018,20 +3036,22 @@ nie in Chats oder Mails.
      Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
 186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
      der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.
-187. **Worker auf v1.4.0 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
-     Bewegung, Pexels): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den Unterordner `grafik/` mit deiner
+187. **Worker auf v1.4.1 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
+     Bewegung, Clips von Pixabay): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den Unterordner `grafik/` mit deiner
      Hand und braucht `numpy`), in PowerShell im Ordner `C:\video\unter-der-decke`: `docker stop video-worker; docker rm
-     video-worker; docker build -t video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.4.0`.
+     video-worker; docker build -t video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.4.1`.
 188. **Kanalprofil „Unter der Decke“**: Sprechtempo **1,1** (Standard) und Motiv-Stil „Strichzeichnung“ prüfen, speichern.
 189. **Probeszene am Video „Vakuumpumpe“**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen →
      „Probeszene erzeugen“. Nach 1–3 Min. erscheint das 20-s-Video mit Wörter/Min. Ansehen: Tempo, Striche, Hand.
      Passt es nicht, Sprechtempo im Kanalprofil ändern (z. B. 1,15) und noch einmal. Passt es: **„Neu vertonen &
      zeichnen“** – Skript und Motive bleiben, nur Sprache und Render kosten. Bei schon vorhandenen bunten Motiven
      werden die Konturen aus diesen Bildern gezogen; neue Motive kommen als Strichzeichnung.
-190. **Pexels-Schlüssel eintragen** (kostenlos): auf pexels.com/api anmelden → „Your API Key“ kopieren → Seller-System
-     → Anbindungen → **Pexels** → im sicheren Formular einfügen → „Verbindung testen“. Nicht in den Chat oder in Dateien.
+190. **Pixabay-Schlüssel eintragen** (kostenlos; Pexels vergibt zurzeit keine Schlüssel): auf pixabay.com registrieren
+     und anmelden → pixabay.com/api/docs/ → bei „key“ steht dein Schlüssel → kopieren → Seller-System → Anbindungen →
+     **Pixabay** → im sicheren Formular einfügen → „Verbindung testen“. Nicht in den Chat oder in Dateien. Pexels später
+     optional zusätzlich, wenn dort wieder Schlüssel vergeben werden.
 191. **Kanalprofil des Uhren-Kanals (Zeitlux)**: „Bildwechsel alle **6** s“ (Standard) lassen, Haken bei „Echte
-     Videoclips von Pexels einmischen“ setzen, speichern. Die Kosten-Schätzung zeigt danach mehr Bilder (≈ 2–4 $ mehr je Video).
+     Videoclips einbauen“ setzen, speichern. Die Kosten-Schätzung zeigt danach mehr Bilder (≈ 2–4 $ mehr je Video).
 192. **Probeszene am Zeitlux-Video**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen → erzeugen.
      Nach 2–4 Min. ansehen: Bildwechsel, Kamerafahrt, Übergänge, Clips. Passt es: **„Neu bebildern & rendern“** – Skript
      und Sprache bleiben, neu kosten nur die zusätzlichen Bilder. Danach wieder Vorschau-Freigabe, Upload bleibt privat.

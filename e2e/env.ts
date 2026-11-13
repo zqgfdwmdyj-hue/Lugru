@@ -48,6 +48,7 @@ export const E2E_ENV: Record<string, string> = {
   // B36 Video-Pipeline: ElevenLabs, OpenAI-Bilder, YouTube (Anmeldung, Upload, Sichtbarkeit) gegen den Nachbau
   ELEVENLABS_BASE_URL: `${TD}/elevenlabs`,
   PEXELS_BASE_URL: `${TD}/pexels`,
+  PIXABAY_BASE_URL: `${TD}/pixabay`,
   OPENAI_BASE_URL: `${TD}/openai`,
   YOUTUBE_AUTH_URL: `${TD}/youtube-auth`,
   YOUTUBE_TOKEN_URL: `${TD}/youtube-oauth/token`,

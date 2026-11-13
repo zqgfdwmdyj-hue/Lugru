@@ -3,7 +3,7 @@
 Vorher: je Szene EIN Standbild für 20–30 s, ohne jede Bewegung. Jetzt:
 - Bildwechsel alle ~6 s (Kanalprofil „Bildwechsel alle … s“): je Szene 1–6 Bilder bzw. Clips, jeweils beim Schlüsselwort.
 - Jedes Bild mit Kamerafahrt (Ken Burns: hinein/heraus zoomen, schwenken; aus 4K gerechnet, damit es ruckelfrei läuft).
-- Echte Videoclips (Pexels, Kanalprofil „Videoclips“) zwischen den Bildern.
+- Echte Videoclips (Pixabay, sonst Pexels; Kanalprofil „Echte Videoclips“) zwischen den Bildern.
 - Weiche Übergänge zwischen allem, die Einblendung (Kernaussage/Studie) blendet weich ein, Untertitel wie bisher.
 """
 
@@ -146,11 +146,11 @@ def szene(ffmpeg: str, ordner: Path, segmente: list[tuple[str, float]], band: st
     _lauf(args, cwd=ordner)
 
 
-# ---- Pexels: passenden Clip wählen ------------------------------------------------------------------------------------
+# ---- Stock-Clips (Pixabay/Pexels): passenden Clip wählen ------------------------------------------------------------------------------------
 
 
 def clip_waehlen(videos: list[dict], dauer: float, benutzt: set[str]) -> tuple[dict, dict] | None:
-    """Aus einer Pexels-Suche das beste Video + die beste Datei: noch nicht im Video benutzt, mindestens so lang wie
+    """Aus einer Clip-Suche (Pixabay/Pexels, gleiches Format) das beste Video + die beste Datei: noch nicht im Video benutzt, mindestens so lang wie
     gebraucht (sonst das längste), Querformat, Datei mit 1920 px (sonst die nächstgrößere bis 2560, sonst ≥ 1280)."""
     beste: tuple[float, dict, dict] | None = None
     for v in videos:

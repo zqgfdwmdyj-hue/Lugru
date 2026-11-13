@@ -49,8 +49,8 @@ export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
  *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
  *  ein neuer Versuch mit doppeltem Platz). */
-export const WORKER_VERSION_AKTUELL = "1.4.0";
-/** Ab 1.4.0 (B36.11): Stil „Vollbild“ in Bewegung – Bildwechsel alle ~6 s mit Kamerafahrt, weiche Übergänge, Pexels-Clips;
+export const WORKER_VERSION_AKTUELL = "1.4.1";
+/** Ab 1.4.0 (B36.11): Stil „Vollbild“ in Bewegung – Bildwechsel alle ~6 s mit Kamerafahrt, weiche Übergänge, Clips (Pixabay/Pexels);
  *  Probeszene und „Neu bebildern & rendern“ auch für Vollbild. */
 export const WORKER_AB_BEWEGT = "1.4.0";
 /** Ab 1.3.0: Probeszene (20 s), echtes Zeichnen (Motive vektorisiert), feste Hand mit Stiftspitze, Sprechtempo und
@@ -77,18 +77,39 @@ export function probeMoeglich(a: { art: string; status: string; skript: { motive
 /** Worker-Version, die Probeszene/Neu-Rendern für diesen Stil braucht. */
 export const workerAbProbe = (stil: string | null | undefined) => (stil === "whiteboard" ? WORKER_AB_PROBE : WORKER_AB_BEWEGT);
 
-/** B36.11 Stil „Vollbild“: Bildwechsel alle N Sekunden (Kanalprofil, 4–10 s, Standard 6) und Anteil Pexels-Clips. */
+/** B36.11 Stil „Vollbild“: Bildwechsel alle N Sekunden (Kanalprofil, 4–10 s, Standard 6) und Anteil Stock-Clips (Pixabay/Pexels). */
 export const BILD_SEK = { min: 4, max: 10, standard: 6 } as const;
 export const bildSekAus = (v: unknown): number => {
   const n = typeof v === "number" ? v : Number.parseFloat(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) ? Math.round(Math.min(BILD_SEK.max, Math.max(BILD_SEK.min, n)) * 2) / 2 : BILD_SEK.standard;
 };
-/** Ungefähr so viele Bilder werden bei Clips zu Pexels-Videos (kostenlos) – Schätzung für die Kosten. */
+/** Ungefähr so viele Bilder werden bei Clips zu Stock-Videos (Pixabay/Pexels, kostenlos) – Schätzung für die Kosten. */
 export const CLIP_ANTEIL = 0.4;
 /** Bilder für ein Vollbild-Video: Sprechzeit / Bildwechsel, bei Clips ~40 % weniger. */
 export function bilderVollbild(sekunden: number, bildSek: number = BILD_SEK.standard, clips = false): number {
   const n = Math.max(1, Math.round(sekunden / bildSekAus(bildSek)));
   return Math.round(clips ? n * (1 - CLIP_ANTEIL) : n);
+}
+/** Pixabay meldet einen falschen Schlüssel mit HTTP 400 und Text „[ERROR 400] Invalid or missing API key“. */
+export function pixabaySchluesselAbgelehnt(status: number, text: string): boolean {
+  return status === 401 || status === 403 || (status === 400 && /api key/i.test(text));
+}
+/** Pixabay-Treffer (api/videos) im Format der Pexels-Videosuche, damit der Worker beide Quellen gleich auswählt.
+ * ID mit Vorsilbe „pixabay-“ (keine Verwechslung mit Pexels-IDs), leere Größen (url "") fallen weg; nur https
+ * (http nur im Testbetrieb mit eigener PIXABAY_BASE_URL). */
+export type PixabayTreffer = { id: number | string; pageURL?: string; duration?: number; user?: string; videos?: Record<string, { url?: string; width?: number; height?: number } | null | undefined> };
+export type ClipVideo = { id: string; quelle: "pixabay" | "pexels"; duration: number; url: string; user: { name: string }; video_files: { link: string; width: number; height: number; file_type: string }[] };
+export function pixabayAlsVideos(hits: PixabayTreffer[] | null | undefined, nurHttps = true): ClipVideo[] {
+  return (hits ?? []).map((h) => ({
+    id: `pixabay-${h.id}`,
+    quelle: "pixabay" as const,
+    duration: Number(h.duration) || 0,
+    url: h.pageURL ?? "",
+    user: { name: String(h.user ?? "").slice(0, 80) },
+    video_files: Object.values(h.videos ?? {})
+      .filter((f): f is { url: string; width?: number; height?: number } => !!f && typeof f.url === "string" && (f.url.startsWith("https://") || (!nurHttps && f.url.startsWith("http://"))))
+      .map((f) => ({ link: f.url, width: Number(f.width) || 0, height: Number(f.height) || 0, file_type: "video/mp4" })),
+  })).filter((v) => v.video_files.length > 0);
 }
 /** Szenen der Probe ab Nummer „ab“ (1-basiert): so viele, bis ca. PROBE_SEK zusammen sind (≈ 2,5 Wörter/s), höchstens 5. */
 export function probeSzenen(skript: { text?: string | null }[], ab: number): number[] {

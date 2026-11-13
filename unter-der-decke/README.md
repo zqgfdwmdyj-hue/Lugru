@@ -133,6 +133,14 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
+**1.4.1:** Videoclips von **Pixabay** (Pexels vergibt zurzeit keine neuen Schlüssel).
+- Clip-Quellen in dieser Reihenfolge: erst Pixabay, dann Pexels (falls dort ein Schlüssel eingetragen ist). Passt bei
+  Pixabay kein Clip (zu kurz, Hochformat, schon benutzt), sucht der Worker bei Pexels weiter. Ohne jede Quelle: Bilder.
+- Schlüssel: Seller-System → Anbindungen → **Pixabay** (sicheres Formular). Der Worker sucht über die Brücke; Pixabay
+  will den Schlüssel in der Adresse – die Adresse bleibt im Seller-System, der Worker sieht ihn nie.
+- Dateien kommen direkt von `cdn.pixabay.com` (nur https). Die Beschreibung nennt die Filmer je Quelle, z. B.
+  „Videos: Pixabay (pixabay.com) – A, B; Pexels (pexels.com) – C“.
+
 **1.4.0:** Vollbild in Bewegung statt Bilderwechsel, Pexels-Clips, echte Hand.
 - **Stil „Vollbild“** (Rückmeldung 13.11.: „eher ein Bilderwechsel als ein Video“): statt einem Standbild je Szene
   kommt etwa alle 6 s ein neues Bild (Kanalprofil „Bildwechsel alle … s“, 4–10 s). Je Szene plant Claude 1–6 Bilder

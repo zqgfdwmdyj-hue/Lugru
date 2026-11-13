@@ -1060,9 +1060,9 @@ def test_bewegt_clip_waehlen_lang_genug_1920_nicht_doppelt():
 
 
 class _VbSeller(_TtsSeller):
-    def __init__(self, tmp: Path, pexels: bool = True):
+    def __init__(self, tmp: Path, quellen: set[str] | None = None):
         super().__init__(tmp)
-        self.bilder, self.suchen, self.pexels = [], [], pexels
+        self.bilder, self.suchen, self.quellen = [], [], {"pexels"} if quellen is None else quellen
 
     def anbieter(self, _id, anbieter, pfad, koerper, **_kw):
         if anbieter == "openai":
@@ -1083,22 +1083,28 @@ class _VbSeller(_TtsSeller):
         return super().anbieter(_id, anbieter, pfad, koerper, **_kw)
 
     def anbieter_holen(self, _id, anbieter, pfad, params, **_kw):
-        assert anbieter == "pexels" and pfad == "videos/search" and params["orientation"] == "landscape"
-        self.suchen.append(params["query"])
-        if not self.pexels:
-            return _Antwort({"error": {"message": "Pexels-Schlüssel fehlt (Anbindungen → Pexels)"}}, 424)
+        self.suchen.append((anbieter, params["query"]))
         n = len(self.suchen)
+        if anbieter == "pixabay":  # Format wie die Seller-Brücke es liefert (pixabayAlsVideos)
+            assert pfad == "videos" and "key" not in params
+            if "pixabay" not in self.quellen:
+                return _Antwort({"error": {"message": "Pixabay-Schlüssel fehlt (Anbindungen → Pixabay)"}}, 424)
+            hoch = " 2 " in params["query"]  # Szene 2: nur Hochformat → nicht brauchbar, weiter bei Pexels
+            return _Antwort({"videos": [{"id": f"pixabay-{500 + n}", "quelle": "pixabay", "duration": 12, "url": f"https://pixabay.com/videos/id-{500 + n}/", "user": {"name": f"Pixafilmer {n}"}, "video_files": [{"link": f"https://cdn.pixabay.com/video/test/{500 + n}.mp4", "width": 1080 if hoch else 1920, "height": 1920 if hoch else 1080, "file_type": "video/mp4"}]}]})
+        assert anbieter == "pexels" and pfad == "videos/search" and params["orientation"] == "landscape"
+        if "pexels" not in self.quellen:
+            return _Antwort({"error": {"message": "Pexels-Schlüssel fehlt (Anbindungen → Pexels)"}}, 424)
         return _Antwort({"videos": [{"id": 1000 + n, "duration": 10, "url": f"https://www.pexels.com/video/{1000 + n}/", "user": {"name": f"Testfilmer {n}"}, "video_files": [{"link": f"https://videos.pexels.com/{1000 + n}.mp4", "width": 1920, "height": 1080, "file_type": "video/mp4"}]}]})
 
 
-def _vb_lauf(tmp: Path, monkeypatch, kanal: dict | None = None, pexels: bool = True, probe: dict | None = None):
+def _vb_lauf(tmp: Path, monkeypatch, kanal: dict | None = None, quellen: set[str] | None = None, probe: dict | None = None):
     from udd import schritte as sch
 
     text = "Eine alte Uhr tickt leise. Das Werk ist sauber geölt, die Zeiger laufen ruhig über das Zifferblatt. So sieht ein guter Kauf aus."
     skript = [{"nr": i, "abschnitt": "punkt-1", "text": f"Teil {i}: {text}", "bildidee": f"Uhr auf dem Tisch {i}", "einblendung": "Kernaussage: Zustand zählt" if i == 1 else ""} for i in range(1, 6)]
     l = _tts_lauf(tmp, kanal={"stil": "vollbild", "bildSek": 6, "stockClips": True, **(kanal or {})}, skript=skript, probe=probe)
     l.whiteboard = False
-    l.seller = _VbSeller(tmp, pexels)
+    l.seller = _VbSeller(tmp, quellen)
     l._claude, l.modell = object(), "test"
     gefragt: list[str] = []
 
@@ -1146,19 +1152,42 @@ def test_vollbild_probe_bilder_alle_6s_mit_kamerafahrt_und_pexels_clips(tmp_path
     # Plan je Szene gespeichert: 2 Elemente, Start beim Schlüsselwort, Clip mit Nachweis
     s1 = l.daten["skript"][0]["bilder"]
     assert len(s1) == 2 and s1[0]["start"] == 0 and s1[1]["art"] == "clip" and s1[1]["start"] > 2.5
-    assert "Testfilmer" in sch.clip_nachweis(l, l.daten["skript"])
+    assert sch.clip_nachweis(l, l.daten["skript"]).startswith("Videos: Pexels (pexels.com) – Testfilmer")
+    # ohne Pixabay-Schlüssel: Pixabay einmal gefragt (424), danach nur noch Pexels
+    assert [q for q, _s in l.seller.suchen].count("pixabay") == 1
     # noch einmal: Plan, Bilder und Clips kommen aus dem Projekt – nichts doppelt bezahlt
-    n_bilder, n_such = len(l.seller.bilder), len(l.seller.suchen)
+    n_bilder, n_such = len(l.seller.bilder), [q for q, _s in l.seller.suchen].count("pexels")
     sch.probe(l)
-    assert len(gefragt) == 1 and len(l.seller.bilder) == n_bilder and len(l.seller.suchen) == n_such
+    assert len(gefragt) == 1 and len(l.seller.bilder) == n_bilder and [q for q, _s in l.seller.suchen].count("pexels") == n_such
 
 
 def test_vollbild_ohne_pexels_schluessel_bilder_statt_clips(tmp_path, monkeypatch):
     from udd import schritte as sch
 
-    l, _g, geladen = _vb_lauf(tmp_path, monkeypatch, pexels=False, probe={"szene": 3})
+    l, _g, geladen = _vb_lauf(tmp_path, monkeypatch, quellen=set(), probe={"szene": 3})
     l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 9.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
     d, h = sch.probe(l)
     assert d["probe"]["clips"] == 0 and d["probe"]["bilder"] >= 3 and not geladen
-    assert any("Pexels nicht verbunden" in x for x in h)
-    assert len(l.seller.suchen) == 1  # nach der ersten Absage nicht weiter gefragt
+    assert any("Keine Clip-Quelle verbunden" in x and "Pixabay" in x for x in h)
+    assert [q for q, _s in l.seller.suchen] == ["pixabay", "pexels"]  # je Quelle einmal gefragt, dann nicht mehr
+
+
+def test_vollbild_clips_zuerst_von_pixabay_sonst_pexels(tmp_path, monkeypatch):
+    """1.4.1: Pexels vergibt keine neuen Schlüssel – Pixabay ist erste Quelle; passt dort nichts (Szene 2: nur
+    Hochformat), sucht der Worker bei Pexels weiter. Nachweis nennt beide Quellen getrennt."""
+    from udd import schritte as sch
+
+    l, _g, geladen = _vb_lauf(tmp_path, monkeypatch, quellen={"pixabay", "pexels"}, probe={"szene": 1})
+    l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 14.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
+    d, _h = sch.probe(l)
+    assert d["probe"]["clips"] >= 2
+    s1, s2 = l.daten["skript"][0]["bilder"], l.daten["skript"][1]["bilder"]
+    assert s1[1]["clip"].startswith("pixabay-") and not str(s2[1]["clip"]).startswith("pixabay-")
+    assert any("cdn.pixabay.com" in u for u in geladen) and any("pexels.com" in u for u in geladen)
+    assert l.p.state["stock"][s1[1]["clip"]]["quelle"] == "pixabay"
+    n = sch.clip_nachweis(l, l.daten["skript"])
+    assert n.startswith("Videos: Pixabay (pixabay.com) – Pixafilmer") and "; Pexels (pexels.com) – Testfilmer" in n
+    # Szene 1 nur bei Pixabay gesucht, Szene 2 bei beiden
+    assert [q for q, s in l.seller.suchen if s.startswith("watch closeup 1 ")] == ["pixabay"]
+    assert [q for q, s in l.seller.suchen if s.startswith("watch closeup 2 ")] == ["pixabay", "pexels"]
+    assert sch.CLIP_HOSTS[0] == "pixabay.com"

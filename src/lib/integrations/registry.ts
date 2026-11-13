@@ -605,12 +605,24 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "pixabay",
+    name: "Pixabay (Videoclips für Videos) – optional",
+    purpose: "Echte, kostenlose Stock-Videoclips zwischen den Bildern für Kanäle im Stil „Vollbild“ (Kanalprofil → „Echte Videoclips“). Erste Clip-Quelle; ist zusätzlich Pexels verbunden, sucht der Worker dort weiter. Der Worker sucht über das Seller-System – der Schlüssel bleibt hier.",
+    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "Schlüssel von pixabay.com/api/docs", help: "Nur den Schlüssel einfügen – nie im Chat." }],
+    setup: [
+      "pixabay.com → kostenlos registrieren und anmelden → pixabay.com/api/docs/ öffnen → unter „Parameters“ steht bei „key“ dein Schlüssel (grün hinterlegt). Kopieren und hier eintragen.",
+      "„Verbindung testen“ macht eine Probesuche.",
+      "Grenze: 100 Anfragen pro Minute – je Video werden etwa 20–40 Suchen gebraucht, Suchen werden im Projekt gemerkt.",
+      "Die Clips sind frei nutzbar (Pixabay-Inhaltslizenz, keine Namensnennung nötig). Die Filmer werden trotzdem in der YouTube-Beschreibung genannt.",
+    ],
+  },
+  {
     provider: "pexels",
     name: "Pexels (Videoclips für Videos) – optional",
-    purpose: "Echte, kostenlose Stock-Videoclips zwischen den Bildern für Kanäle im Stil „Vollbild“ (Kanalprofil → „Videoclips von Pexels“). Der Worker sucht über das Seller-System – der Schlüssel bleibt hier.",
+    purpose: "Zweite Quelle für echte, kostenlose Stock-Videoclips (Kanalprofil → „Echte Videoclips“), falls Pixabay nichts Passendes hat. Der Worker sucht über das Seller-System – der Schlüssel bleibt hier.",
     fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "Schlüssel von pexels.com/api", help: "Nur den Schlüssel einfügen – nie im Chat." }],
     setup: [
-      "pexels.com → kostenloses Konto anlegen → pexels.com/api → „Your API Key“ anfordern (sofort, kostenlos) und hier eintragen.",
+      "pexels.com → kostenloses Konto anlegen → pexels.com/api → „Your API Key“ anfordern und hier eintragen. Hinweis: Pexels vergibt zeitweise keine neuen Schlüssel – dann reicht Pixabay.",
       "„Verbindung testen“ macht eine Probesuche.",
       "Grenzen: 200 Anfragen pro Stunde, 20.000 pro Monat – je Video werden etwa 20–40 Suchen gebraucht.",
       "Die Clips sind frei nutzbar (Pexels-Lizenz). Die Filmer werden automatisch in der YouTube-Beschreibung genannt.",

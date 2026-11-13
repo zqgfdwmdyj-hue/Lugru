@@ -135,7 +135,7 @@ class Seller:
         return netz.mit_wiederholung(einmal, was or f"{anbieter} {pfad}", log=self.log)
 
     def anbieter_holen(self, auftrag_id: str, anbieter: str, pfad: str, params: dict[str, Any], timeout: float = netz.TIMEOUT_S, was: str | None = None) -> requests.Response:
-        """Anbieter-Brücke lesend (GET, B36.11: Pexels-Videosuche) – rohe Antwort; Wiederholung wie bei anbieter()."""
+        """Anbieter-Brücke lesend (GET, B36.11: Videosuche Pixabay/Pexels) – rohe Antwort; Wiederholung wie bei anbieter()."""
 
         def einmal() -> requests.Response:
             r = self.s.get(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", params=params, headers={"x-auftrag": auftrag_id}, timeout=(20, timeout), stream=True)

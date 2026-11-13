@@ -2,13 +2,13 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
-import { bildModellFehlt, bildModellReihenfolge, claudeMitPlatz, claudeNutzung, kostenPosition, stimmeMitTempo, schluesselAbgelehnt, type BildModell } from "./logic";
+import { bildModellFehlt, bildModellReihenfolge, claudeMitPlatz, claudeNutzung, kostenPosition, pixabayAlsVideos, pixabaySchluesselAbgelehnt, stimmeMitTempo, schluesselAbgelehnt, type BildModell, type PixabayTreffer } from "./logic";
 import { kostenBuchen, videoEinstellungen, type Worker } from "./service";
 
 // B36 Anbieter-Brücke: Der Worker ruft Claude, ElevenLabs und OpenAI über das Seller-System auf. Die Schlüssel bleiben
 // verschlüsselt hier (Anbindungen), der Worker kennt nur sein Worker-Token. Jeder Aufruf wird dem Auftrag (Kopf
 // „x-auftrag“) zugeordnet und die Kosten werden aus der Antwort gezählt (Tokens/Websuchen, Zeichen, Bilder).
-// Nur diese Pfade sind erlaubt – keine offene Weiterleitung (dazu lesend die Pexels-Videosuche, B36.11).
+// Nur diese Pfade sind erlaubt – keine offene Weiterleitung (dazu lesend die Videosuche bei Pixabay und Pexels, B36.11).
 // Bilder: Das Modell setzt die Brücke aus den Video-Einstellungen (die Angabe des Workers zählt nicht – so laufen auch
 // ältere Worker nach einer Abschaltung bei OpenAI weiter). Fehlt das Modell im Konto, nimmt sie das nächste.
 // Abgelehnter Schlüssel (401): eigene klare Meldung, nie der Text des Anbieters (der zeigt Teile des Schlüssels).
@@ -166,12 +166,50 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
  * hier. Erlaubt ist nur /videos/search mit query/orientation/size/per_page; die Clip-Dateien lädt der Worker direkt
  * vom Pexels-CDN (ohne Schlüssel). Kostet nichts – es wird nichts verbucht.
  */
-export async function pexelsSuche(w: Worker, pfad: string[], request: Request): Promise<Response> {
+async function clipAuftragPruefen(w: Worker, request: Request): Promise<Response | null> {
   const auftragId = request.headers.get("x-auftrag") ?? "";
   if (!/^[0-9a-f-]{36}$/.test(auftragId)) return fehler(400, "Kopf x-auftrag fehlt");
   const [a] = await db.select({ id: schema.videoAuftraege.id, status: schema.videoAuftraege.status }).from(schema.videoAuftraege).where(and(eq(schema.videoAuftraege.tenantId, w.tenantId), eq(schema.videoAuftraege.id, auftragId)));
   if (!a) return fehler(404, "Auftrag nicht gefunden");
   if (a.status === "abgebrochen") return fehler(409, "Auftrag abgebrochen");
+  return null;
+}
+
+/**
+ * B36.11 Pixabay-Videosuche (nur lesend, GET /pixabay/videos?query=…&per_page=…): erste Clip-Quelle. Pixabay will den
+ * Schlüssel als URL-Parameter – er bleibt hier, die Adresse erscheint in keiner Meldung. Die Antwort kommt im Format der
+ * Pexels-Suche (videos[], IDs „pixabay-…“), die Dateien lädt der Worker direkt von cdn.pixabay.com. Kostet nichts.
+ */
+export async function pixabaySuche(w: Worker, pfad: string[], request: Request): Promise<Response> {
+  const nein = await clipAuftragPruefen(w, request);
+  if (nein) return nein;
+  if (pfad.join("/") !== "videos") return fehler(404, "Pfad nicht erlaubt");
+  const ein = new URL(request.url).searchParams;
+  const query = (ein.get("query") ?? "").trim();
+  if (!query || query.length > 100) return fehler(400, "query fehlt oder zu lang");
+  const k = await getIntegration(w.tenantId, "pixabay");
+  if (!k?.apiKey) return fehler(424, "Pixabay-Schlüssel fehlt (Anbindungen → Pixabay)");
+  const raus = new URLSearchParams({ key: String(k.apiKey), q: query, per_page: String(Math.min(15, Math.max(3, Number(ein.get("per_page")) || 10))), safesearch: "true", video_type: "film" });
+  const { pixabayBasis } = await import("@/lib/integrations/clients/pixabay");
+  let res: Response;
+  try {
+    res = await fetch(`${pixabayBasis()}/api/videos/?${raus}`, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]) });
+  } catch {
+    return fehler(502, "Pixabay nicht erreichbar");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    if (pixabaySchluesselAbgelehnt(res.status, text)) return fehler(401, "Pixabay-Schlüssel abgelehnt – unter Anbindungen → Pixabay neu eintragen.");
+    return fehler(res.status === 429 ? 429 : 502, res.status === 429 ? "Pixabay-Limit erreicht (100 Anfragen pro Minute)" : `Pixabay antwortet mit HTTP ${res.status}`);
+  }
+  const d = (await res.json().catch(() => null)) as { totalHits?: number; hits?: PixabayTreffer[] } | null;
+  if (!d) return fehler(502, "Antwort von Pixabay unlesbar");
+  return Response.json({ total_results: d.totalHits ?? 0, videos: pixabayAlsVideos(d.hits, !process.env.PIXABAY_BASE_URL) }, { headers: { "cache-control": "no-store" } });
+}
+
+export async function pexelsSuche(w: Worker, pfad: string[], request: Request): Promise<Response> {
+  const nein = await clipAuftragPruefen(w, request);
+  if (nein) return nein;
   if (pfad.join("/") !== "videos/search") return fehler(404, "Pfad nicht erlaubt");
   const ein = new URL(request.url).searchParams;
   const query = (ein.get("query") ?? "").trim();

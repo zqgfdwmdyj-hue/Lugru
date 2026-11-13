@@ -371,7 +371,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                   const preis = cfg.preise.elevenlabsJe1000Zeichen;
                   return (
                     <details open={laeuft || !!p} data-testid="vd-probe">
-                      <summary className="small"><strong>Probeszene ({PROBE_SEK} s)</strong> – {wbStil ? "neues Sprechtempo, echtes Zeichnen und Hand ansehen" : `Bewegung ansehen (alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild mit Kamerafahrt${kanal.stockClips ? ", Pexels-Clips" : ""}, weiche Übergänge)`}, bevor das ganze Video neu entsteht</summary>
+                      <summary className="small"><strong>Probeszene ({PROBE_SEK} s)</strong> – {wbStil ? "neues Sprechtempo, echtes Zeichnen und Hand ansehen" : `Bewegung ansehen (alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild mit Kamerafahrt${kanal.stockClips ? ", echte Clips" : ""}, weiche Übergänge)`}, bevor das ganze Video neu entsteht</summary>
                       <div className="stack small" style={{ gap: 6, marginTop: 6 }}>
                         {laeuft && <span className="notice" data-testid="vd-probe-laeuft">Probeszene ab Szene {p?.szene ?? 1} wird gerendert – das Video selbst bleibt, wie es ist.</span>}
                         {!laeuft && p?.status === "fehler" && <span className="notice notice-warn" data-testid="vd-probe-fehler">Probeszene nicht geklappt: {p.fehler}</span>}
@@ -508,7 +508,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             </label>
             <label className="row" style={{ gap: 6, alignItems: "center", paddingBottom: 18 }}>
               <input type="checkbox" name="stockClips" defaultChecked={kanal?.stockClips ?? false} data-testid="vd-k-stockclips" />
-              Echte Videoclips von Pexels einbauen (kostenlos; Schlüssel unter <Link href="/anbindungen?p=pexels#pexels">Anbindungen → Pexels</Link>)
+              Echte Videoclips einbauen (kostenlos von Pixabay, zusätzlich Pexels; Schlüssel unter <Link href="/anbindungen?p=pixabay#pixabay">Anbindungen → Pixabay</Link>)
             </label>
           </div>
           <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>
