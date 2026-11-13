@@ -27,7 +27,7 @@ Die Zielgruppe steht im Kanalprofil (Seller-System) und fließt in jeden Prompt;
 (1.500–1.700 Wörter). Beim Anlegen eines Videos
 kann eine **Vorlage** eingefügt werden (z. B. englisches Transkript eines erfolgreichen Videos – Claude übernimmt nur
 Aufbau, Hook und Spannungsbogen, schreibt eigenen Text und belegt alles neu) oder ein **eigenes Skript** (wird
-möglichst wörtlich übernommen und in Szenen geteilt).
+möglichst wörtlich übernommen und in Szenen geteilt; es wird nie verlängert, nur über 1.700 Wörter auf 1.500–1.700 gekürzt).
 
 Freigaben (je Kanal einstellbar) gibt es nach research (Gliederung + Quellen), script (Skript) und package
 (Vorschau-Video + Thumbnail + Titel). Weiter geht es erst nach der Freigabe auf der Seite **Video**.

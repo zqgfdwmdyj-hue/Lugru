@@ -127,7 +127,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
               <div className="stack" style={{ gap: 6, marginTop: 6 }}>
                 <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
                   <label><input type="radio" name="vorlageArt" value="vorlage" defaultChecked data-testid="vd-vorlage-art-vorlage" /> Vorlage (z. B. englisches Transkript eines erfolgreichen Videos)</label>
-                  <label><input type="radio" name="vorlageArt" value="skript" data-testid="vd-vorlage-art-skript" /> Mein Skript (wird möglichst wörtlich übernommen)</label>
+                  <label><input type="radio" name="vorlageArt" value="skript" data-testid="vd-vorlage-art-skript" /> Mein Skript (wird möglichst wörtlich übernommen, nie verlängert – über 1.700 Wörter gekürzt)</label>
                 </div>
                 <textarea className="input" name="vorlage" rows={6} maxLength={40_000} placeholder="Text hier einfügen (höchstens 40.000 Zeichen)" data-testid="vd-vorlage" />
                 <span className="muted">Vorlage: Claude übernimmt nur Hook, Aufbau und Spannungsbogen, schreibt eigenen deutschen Text und belegt alle Aussagen mit eigenen Quellen – keine Übersetzung. Mein Skript: wird in Szenen geteilt, Quellen werden gesucht; Länge und Sicherheitsstufe gelten trotzdem.</span>

@@ -120,7 +120,27 @@ class Lauf:
             out.append((pfad.name, pfad.read_bytes(), r.get("typ") or "image/png"))
         return out
 
+    def eigenes_skript_woerter(self) -> int | None:
+        """Wortzahl des eigenen Skripts (Vorlage-Art „skript“), sonst None."""
+        if self.vorlage and self.vorlage.get("art") == "skript":
+            return woerter(self.vorlage["text"])
+        return None
+
+    def woerter_ziel(self) -> list[int]:
+        """Wortziel des Skripts: fest 1.500–1.700. Ein eigenes Skript wird nie verlängert (Entscheidung 13.11.): ist es
+        kürzer als 1.700 Wörter, bleibt seine Länge (−10 %/+5 % Spielraum fürs Aufteilen); ist es länger, wird es auf
+        1.500–1.700 gekürzt."""
+        w = list(self.laenge["woerter"])
+        n = self.eigenes_skript_woerter()
+        if n is not None and n <= w[1]:
+            return [max(50, round(n * 0.9)), min(w[1], round(n * 1.05))]
+        return w
+
     def minuten(self) -> str:
+        n = self.eigenes_skript_woerter()
+        if n is not None and n <= self.laenge["woerter"][1]:
+            lo, hi = self.woerter_ziel()
+            return f"{max(1, round(lo / 145))}–{max(1, round(hi / 145))} Minuten"
         m = self.laenge["minuten"]
         return f"{m[0]}–{m[1]} Minuten"
 
@@ -136,9 +156,15 @@ class Lauf:
                     "belastbare Quellen. Findest du für eine Aussage keine Quelle, schreibe das in „kern“ des Punktes („ohne Quelle: …“)."
                 )
             else:
+                n = self.eigenes_skript_woerter() or 0
+                laenge = (
+                    f"Es hat {zahl(n)} Wörter – nicht verlängern, nichts auffüllen, keine neuen Absätze dazuerfinden."
+                    if n <= self.laenge["woerter"][1]
+                    else f"Es hat {zahl(n)} Wörter – kürze es auf {zahl(self.laenge['woerter'][0])}–{zahl(self.laenge['woerter'][1])} Wörter (Wiederholungen und Nebensätze zuerst, Kernaussagen behalten)."
+                )
                 regel = (
                     "Eigenes Skript von Ludwig: Übernimm es möglichst wörtlich (Deutsch), teile es in Szenen und ergänze bildidee, einblendung "
-                    "und quelle_ids. Ändere nur, was Länge, Quellenpflicht oder Sicherheitsstufe verlangen."
+                    f"und quelle_ids. {laenge} Ändere sonst nur, was Quellenpflicht oder Sicherheitsstufe verlangen."
                 )
         else:
             regel = (
@@ -452,7 +478,7 @@ def _abschnitt_schreiben(l: Lauf, name: str, ziel_abschnitt: tuple[int, int], g:
     """Einen Abschnitt schreiben (eigener, kurzer Aufruf). Mit „ueberarbeiten“ = (bisherige Fassung, Anweisung) nachbessern."""
     punkte = g.get("punkte") or []
     lo, hi = ziel_abschnitt
-    w = l.laenge["woerter"]
+    w = l.woerter_ziel()
     if name.startswith("punkt-"):
         i = int(name.split("-", 1)[1])
         p = punkte[i - 1] if i <= len(punkte) else {"titel": name, "kern": "", "quelle_ids": []}
@@ -536,7 +562,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
         return {"skript": e["skript"], "woerter": e["woerter"]}, e.get("hinweise", [])
     quellen = l.daten.get("quellen") or []
     g = l.daten.get("gliederung") or {}
-    w = l.laenge["woerter"]
+    w = l.woerter_ziel()
     figuren = {f["key"]: f["beschreibung"] for f in (l.kanal.get("figuren") or []) if f.get("key")}
     namen = abschnitte(len(g.get("punkte") or []))
     ziele = abschnitt_ziele(len(g.get("punkte") or []), w)
@@ -838,7 +864,9 @@ def _render_abschluss(l: Lauf, video, clips, namen: list[str], srt_gesamt: list[
     if (info["breite"], info["hoehe"]) != (1920, 1080):
         raise RuntimeError(f"Video hat {info['breite']}×{info['hoehe']} statt 1920×1080.")
     dauer = round(info["dauer"])
-    lo, hi = l.laenge["sekunden"]
+    # Ziel-Dauer aus dem Wortziel (eigenes, kürzeres Skript → kürzeres Video ist richtig); Toleranz für Sprechtempo
+    w_lo, w_hi = l.woerter_ziel()
+    lo, hi = (l.laenge["sekunden"] if [w_lo, w_hi] == list(l.laenge["woerter"]) else (round(w_lo / 145 * 60 * 0.85), round(w_hi / 145 * 60 * 1.15)))
     if not lo <= dauer <= hi:
         hinweise.append(f"Video ist {dauer // 60}:{dauer % 60:02d} lang (Ziel {l.minuten().replace('Minuten', 'Min.')}).")
     l.p.zwischendateien_loeschen()

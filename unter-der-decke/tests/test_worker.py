@@ -452,6 +452,8 @@ class _FakeLauf:
         }
 
     kopf = Lauf.kopf
+    eigenes_skript_woerter = Lauf.eigenes_skript_woerter
+    woerter_ziel = Lauf.woerter_ziel
     vidiq = Lauf.vidiq
     anmerkung = Lauf.anmerkung
     vorlage_text = Lauf.vorlage_text
@@ -560,3 +562,34 @@ def test_neu_schreiben_verwirft_abschnitte_nach_fehler_nicht(tmp_path, monkeypat
     schritte.ausfuehren(k, S(), dict(auftrag), log=lambda _t: None)
     assert not (p.ordner / "skript").exists()
     assert not Projekt(tmp_path, "k", "a1").erledigt("script")
+
+
+def test_eigenes_skript_wird_nie_verlaengert_nur_gekuerzt():
+    kurz = _lauf({"name": "K"}, {"art": "skript", "text": " ".join(["Wort"] * 1200)})
+    assert kurz.woerter_ziel() == [1080, 1260]  # Länge bleibt (−10 %/+5 %), kein Auffüllen auf 1.500
+    assert kurz.minuten() == "7–9 Minuten"
+    regel = kurz.vorlage_text("script")
+    assert "1.200 Wörter – nicht verlängern" in regel and "kürze" not in regel
+    lang = _lauf({"name": "K"}, {"art": "skript", "text": " ".join(["Wort"] * 2500)})
+    assert lang.woerter_ziel() == [1500, 1700]  # zu lang → auf 1.500–1.700 kürzen
+    assert "kürze es auf 1.500–1.700 Wörter" in lang.vorlage_text("script")
+    passt = _lauf({"name": "K"}, {"art": "skript", "text": " ".join(["Wort"] * 1650)})
+    assert passt.woerter_ziel() == [1485, 1700]
+    # englische Vorlage (nur Muster) und ohne Vorlage: fest 1.500–1.700
+    assert _lauf({"name": "K"}, {"art": "vorlage", "text": "Hook ..."}).woerter_ziel() == [1500, 1700]
+    assert _lauf({"name": "K"}).woerter_ziel() == [1500, 1700]
+
+
+def test_skript_aus_eigenem_kurzem_skript_ohne_auffuellen(tmp_path, monkeypatch):
+    l = _FakeLauf(tmp_path)
+    l.vorlage = {"art": "skript", "text": " ".join(["Wort"] * 1200)}
+    prompts: list[str] = []
+
+    def fragen(_c, _m, prompt, *, was="", **_kw):
+        prompts.append(prompt)
+        return _antwort_fuer(prompt), []
+
+    monkeypatch.setattr(schritte.ki, "fragen", fragen)
+    daten, hinweise = schritte.script(l)
+    assert hinweise == [] and 1080 <= daten["woerter"] <= 1260
+    assert "insgesamt 1.080–1.260 Wörter" in prompts[0] and "nicht verlängern" in prompts[0]

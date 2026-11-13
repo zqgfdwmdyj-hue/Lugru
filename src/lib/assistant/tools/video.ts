@@ -101,7 +101,7 @@ const auftragEingabe = z.object({
   kanal: z.string().trim().min(2).max(80).describe("Kanalname (Teil reicht, muss eindeutig sein)"),
   thema: z.string().trim().min(5).max(300).describe("Thema/Arbeitstitel des Videos"),
   vorlage: z.string().max(VORLAGE_MAX).optional().describe("Optional: englische Vorlage (Transkript/Gliederung eines erfolgreichen Videos) oder eigenes Skript – vollständiger Text"),
-  vorlage_art: z.enum(["vorlage", "skript"]).optional().describe("„vorlage“ = nur Muster für Aufbau/Hook/Spannungsbogen, nicht übersetzen (Standard); „skript“ = eigenes Skript, wird möglichst wörtlich übernommen"),
+  vorlage_art: z.enum(["vorlage", "skript"]).optional().describe("„vorlage“ = nur Muster für Aufbau/Hook/Spannungsbogen, nicht übersetzen (Standard); „skript“ = eigenes Skript, wird möglichst wörtlich übernommen, nie verlängert (über 1.700 Wörter gekürzt)"),
   start: z.string().trim().max(30).optional().describe("„sofort“ (Standard), „nacht“ (heute 23 Uhr) oder Zeitpunkt „JJJJ-MM-TTTHH:MM“ (deutsche Zeit)"),
   vidiq_keywords: z.string().trim().max(2000).optional().describe("Optional: Keywords/Ideen aus vidIQ"),
   vidiq_titel: z.string().trim().max(2000).optional().describe("Optional: Titelvorschläge aus vidIQ"),
