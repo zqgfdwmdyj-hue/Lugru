@@ -22,3 +22,4 @@ import "./bqool-web";
 import "./arbitrageone-web";
 import "./briefversand";
 import "./leadquellen";
+import "./openai";

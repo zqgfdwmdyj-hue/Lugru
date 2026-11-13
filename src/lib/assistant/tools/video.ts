@@ -127,7 +127,7 @@ async function auftragPlan(tenantId: string, i: z.infer<typeof auftragEingabe>) 
   if (vorlage && vorlage.length < 200) return { fehler: "Vorlage/Skript ist sehr kurz – bitte den ganzen Text mitschicken (oder weglassen)." } as const;
   const cfg = await videoEinstellungen(tenantId);
   const ziel = laengeZiel();
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(k.stil), cfg.modell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(k.stil), cfg.modell, cfg.bildModell);
   const worker = await workerZuletzt(tenantId);
   const startAb = startAbAus(st.wahl, st.zeitpunkt);
   const zusammenfassung = [

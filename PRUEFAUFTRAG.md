@@ -1761,6 +1761,29 @@ Länge im Kanalprofil). Schlüssel unverändert.
 | Endprüfung bessert nur betroffene Abschnitte nach | ✅ automatisch (Python): alle Abschnitte 25 % zu kurz + fremde Quelle in Punkt 2 → höchstens 4 Abschnitte neu, Hook nicht; Ergebnis 1.500–1.700 Wörter, keine fremde ID |
 | Echte Anbieter | offen: erstes Video mit echten Zugängen (Kosten je Abschnitt in der Liste) |
 
+### B36 Nachtrag 13.11.: Bildmodell (gpt-image-1 abgeschaltet) und falscher OpenAI-Schlüssel
+
+Anlass: Schritt „Bilder“ brach erst mit „HTTP 401: Incorrect API key provided: .\.venv\…“ ab (statt des Schlüssels war
+ein Pfad eingetragen), nach dem Neueintrag mit „HTTP 400: The model 'gpt-image-1' does not exist“ – OpenAI hat
+gpt-image-1 am 23.10.2026 abgeschaltet (gpt-image-1.5/-1-mini folgen am 01.12.2026; Nachfolger laut OpenAI-Doku
+gpt-image-2.5-flare/-sunburst, daneben gpt-image-2). Schlüssel unverändert.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Bildmodell aktuell | ❌ fest gpt-image-1 im Worker | ✅ Standard **GPT Image 2.5 Flare**, wählbar auf der Seite Video → „Modell und Ablage“ (Flare / Sunburst / GPT Image 2). Die Anbieter-Brücke setzt das Modell selbst – auch ältere Worker laufen ohne Update weiter | `BILD_MODELLE`, `anbieter.ts › mitBildModell`, `vd-bildmodell` |
+| Modell fehlt im Konto | ❌ Abbruch | ✅ Antwort „model does not exist / not found / no access / must be verified“ → nächstes Modell der Liste; das funktionierende wird 30 Min. gemerkt (kein Fehlversuch je Bild). Inhalts-Ablehnung zählt nicht (→ Ersatzmotiv wie bisher). Fehlen alle: klare Meldung mit „Projekt → erlaubte Modelle / Verify Organization“. Kosten-Zeile nennt das benutzte Modell („Bild (GPT Image 2.5 Flare)“) | `bildModellFehlt`, `bildModellReihenfolge`, `kostenPosition` |
+| Falscher Schlüssel | ❌ OpenAI-Text mit Schlüsselteilen im Auftrag | ✅ 401 von OpenAI, ElevenLabs oder Claude → „OpenAI-Schlüssel abgelehnt (HTTP 401) – unter Anbindungen → OpenAI (Bilder für Videos) den API-Key neu eintragen …“, nie Teile des Schlüssels | `schluesselAbgelehnt`, `weiterleiten` |
+| „Verbindung testen“ für OpenAI | ❌ „Für diese Anbindung gibt es noch keinen Test.“ | ✅ prüft den Schlüssel über die Modellliste (kostet nichts) und nennt das tatsächlich benutzte Bildmodell („Schlüssel gültig. Bildmodell für Videos: …“) bzw. „Schlüssel abgelehnt (HTTP 401) – neu eintragen“; Hinweis am Feld „nur den Schlüssel einfügen (beginnt mit „sk-“)“ | `clients/openai.ts`, `registry.ts` |
+| Worker | – | v1.1.2: Vorgabe gpt-image-2.5-flare statt gpt-image-1 (nur kosmetisch, das Seller-System entscheidet) – Update nicht nötig | `udd/schritte.py › BILD_MODELL` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Vollbild-Video: Bilder mit dem Standardmodell, gpt-image-1 kommt nie beim Anbieter an | ✅ automatisch (`b36-video.spec.ts › Abnahme B36.7`): Nachbau lehnt gpt-image-1 wie OpenAI ab; alle Bilder `gpt-image-2.5-flare`, kein Fehlversuch |
+| Bildmodell auf der Seite wählen | ✅ automatisch (Drive-Test): Sunburst wählen → „Gespeichert: … Bilder GPT Image 2.5 Sunburst“; alle Bilder des Laufs mit Sunburst, Kosten-Zeile „Bild (GPT Image 2.5 Sunburst)“ |
+| Gewähltes Modell fehlt im Konto → Ausweichen | ✅ automatisch (Whiteboard-Test): Sunburst gewählt, im Nachbau-Konto gesperrt → alle Motive mit Flare, Sunburst genau einmal versucht |
+| Verbindung testen + falscher Schlüssel | ✅ automatisch: gültig → „Bildmodell für Videos: gpt-image-2.5-flare (gewählt ist gpt-image-2.5-sunburst …)“; Pfad statt Schlüssel → „Schlüssel abgelehnt (HTTP 401)“, Brücke 401 mit eigener Meldung, ohne „.venv“/„Incorrect API key“ |
+| Echtes OpenAI-Konto | offen: „Verbindung testen“ zeigt, welche Modelle freigeschaltet sind; dann „Schritt wiederholen“ |
+
 
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
@@ -2817,3 +2840,10 @@ nie in Chats oder Mails.
      video-worker; docker rm video-worker; docker build -t video-worker .` und `docker run …` wie im README („Aktualisieren“).
      Auf der Seite Video steht danach unter „Worker“ `v1.1.0`; solange ein älterer Worker läuft, zeigt die Seite oben
      „Der Worker am PC ist veraltet“. Dann beim fehlgeschlagenen Video „Schritt wiederholen“.
+181. **OpenAI-Bilder** (Nachtrag 13.11.): Server aktualisieren, dann Anbindungen → OpenAI → „Verbindung testen“. Zeigt es
+     „Schlüssel gültig. Bildmodell für Videos: …“, beim Video „Schritt wiederholen“. Zeigt es „Schlüssel abgelehnt“: neuen
+     Schlüssel (beginnt mit „sk-“) über das Formular eintragen – nur den Schlüssel. Zeigt es „keines der Bildmodelle
+     freigeschaltet“: im OpenAI-Konto unter Projekt → Limits/erlaubte Modelle freigeben bzw. Settings → Organization →
+     „Verify Organization“. Preis je Bild für das gewählte Modell auf der Seite Video unter „Kosten“ eintragen
+     (GPT Image 2 medium laut Liste ca. 0,04 $; die 2.5-Modelle rechnet OpenAI nach Tokens ab – Wert aus der eigenen
+     Abrechnung übernehmen). Worker-Update nicht nötig.

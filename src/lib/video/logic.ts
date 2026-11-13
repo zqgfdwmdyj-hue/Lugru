@@ -134,6 +134,41 @@ export type VideoModell = keyof typeof VIDEO_MODELLE;
 export const VIDEO_MODELL_STANDARD: VideoModell = "claude-opus-5-5";
 export const istVideoModell = (m: unknown): m is VideoModell => typeof m === "string" && m in VIDEO_MODELLE;
 
+/** OpenAI-Bildmodelle (Stand 13.11.2026 – gpt-image-1 hat OpenAI am 23.10.2026 abgeschaltet, gpt-image-1.5/-1-mini
+ *  folgen am 01.12.2026). Die Anbieter-Brücke setzt das Modell selbst (Worker-Angabe zählt nicht); fehlt das gewählte im
+ *  OpenAI-Konto, nimmt sie das nächste dieser Liste. */
+export const BILD_MODELLE = {
+  "gpt-image-2.5-flare": { name: "GPT Image 2.5 Flare", hinweis: "schnell, für Szenenbilder (empfohlen)" },
+  "gpt-image-2.5-sunburst": { name: "GPT Image 2.5 Sunburst", hinweis: "genauer, gut mit Stil-Referenzbildern" },
+  "gpt-image-2": { name: "GPT Image 2", hinweis: "Listenpreis ca. 0,04 $ je Bild (medium); transparente Motive nur Vorschau" },
+} as const;
+export type BildModell = keyof typeof BILD_MODELLE;
+export const BILD_MODELL_STANDARD: BildModell = "gpt-image-2.5-flare";
+export const istBildModell = (m: unknown): m is BildModell => typeof m === "string" && m in BILD_MODELLE;
+export const bildModellName = (m: string | null | undefined) => (istBildModell(m) ? BILD_MODELLE[m].name : (m ?? "OpenAI"));
+
+/** Reihenfolge der Versuche: gewähltes Modell, dann die übrigen. „zuerst“ = zuletzt funktionierendes (spart Fehlversuche). */
+export function bildModellReihenfolge(gewaehlt: string | null | undefined, zuerst?: string | null): BildModell[] {
+  const start = istBildModell(gewaehlt) ? gewaehlt : BILD_MODELL_STANDARD;
+  const liste = [start, ...(Object.keys(BILD_MODELLE) as BildModell[]).filter((m) => m !== start)];
+  return istBildModell(zuerst) ? [zuerst, ...liste.filter((m) => m !== zuerst)] : liste;
+}
+
+/** OpenAI-Antwort „Modell gibt es (im Konto) nicht / nicht freigeschaltet / abgeschaltet“ → nächstes Modell versuchen.
+ *  Eine Ablehnung wegen des Inhalts (Moderation) zählt nicht – die behandelt der Worker (Ersatzmotiv). */
+export function bildModellFehlt(status: number, text: string): boolean {
+  if (![400, 403, 404].includes(status)) return false;
+  if (/moderation|safety|content.?policy/i.test(text)) return false;
+  if (/model_not_found/i.test(text)) return true;
+  return /model/i.test(text) && /does not exist|not found|not have access|no access|must be verified|verif|not available|unavailable|not supported|deprecated|shut ?down|retired/i.test(text);
+}
+
+/** Klare Meldung bei abgelehntem Schlüssel (401) – ohne Teile des Schlüssels aus der Anbieter-Antwort. */
+export function schluesselAbgelehnt(anbieter: "anthropic" | "elevenlabs" | "openai"): string {
+  const ort = { anthropic: ["Claude", "KI (Claude)"], elevenlabs: ["ElevenLabs", "ElevenLabs (Sprache für Videos)"], openai: ["OpenAI", "OpenAI (Bilder für Videos)"] }[anbieter];
+  return `${ort[0]}-Schlüssel abgelehnt (HTTP 401) – unter Anbindungen → ${ort[1]} den API-Key neu eintragen${anbieter === "openai" ? " und „Verbindung testen“" : ""}.`;
+}
+
 /** Claude-Preis: eingetragener Preis, sonst Listenpreis des Modells (unbekanntes Modell → Opus-Preis, lieber zu hoch). */
 export function claudePreis(p: VideoPreise, modell?: string | null): { eingabe: number; ausgabe: number } {
   const liste = VIDEO_MODELLE[istVideoModell(modell) ? modell : VIDEO_MODELL_STANDARD];
@@ -169,20 +204,21 @@ export function typischFuer(stil: string | null = "vollbild") {
 /** Typischer Lauf (1.500–1.700 Wörter): ~10.600 Zeichen Sprache, ~25 Bilder, ~112k/15k Tokens. */
 export const TYPISCH = typischFuer();
 
-export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typischFuer> = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
+export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typischFuer> = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD, bildModell: string | null = BILD_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
   const c = claudePreis(p, modell);
+  const bm = bildModellName(bildModell);
   const pos = [
     { art: "Claude (Recherche, Skript, Paket)", betrag: (menge.eingabeTokens / 1e6) * c.eingabe + (menge.ausgabeTokens / 1e6) * c.ausgabe },
     { art: "Websuche", betrag: p.websucheJe1000 !== null ? (menge.websuchen / 1000) * p.websucheJe1000 : null },
     { art: "Sprache (ElevenLabs)", betrag: p.elevenlabsJe1000Zeichen !== null ? (menge.zeichen / 1000) * p.elevenlabsJe1000Zeichen : null },
-    ...(menge.bilder > 0 ? [{ art: "Bilder (gpt-image-1)", betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null }] : []),
-    ...(menge.motive > 0 ? [{ art: `Motive (gpt-image-1, höchstens ${menge.motive})`, betrag: motivPreis(p) != null ? menge.motive * (motivPreis(p) as number) : null }] : []),
+    ...(menge.bilder > 0 ? [{ art: `Bilder (${bm})`, betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null }] : []),
+    ...(menge.motive > 0 ? [{ art: `Motive (${bm}, höchstens ${menge.motive})`, betrag: motivPreis(p) != null ? menge.motive * (motivPreis(p) as number) : null }] : []),
   ];
   return { summe: Math.round(pos.reduce((a, x) => a + (x.betrag ?? 0), 0) * 100) / 100, positionen: pos.map((x) => ({ ...x, betrag: x.betrag === null ? null : Math.round(x.betrag * 100) / 100 })), fehlend: pos.filter((x) => x.betrag === null).map((x) => x.art) };
 }
 
 /** Kosten eines Anbieter-Aufrufs aus der Antwort (Tokens, Websuchen, Zeichen, Bilder). */
-export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number; motiv?: boolean; modell?: string | null }, am = new Date()): VideoKosten[] {
+export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", p: VideoPreise, m: { eingabe?: number; ausgabe?: number; websuchen?: number; zeichen?: number; bilder?: number; motiv?: boolean; modell?: string | null; bildModell?: string | null }, am = new Date()): VideoKosten[] {
   const iso = am.toISOString();
   const r = (x: number) => Math.round(x * 10_000) / 10_000;
   if (anbieter === "anthropic") {
@@ -195,7 +231,7 @@ export function kostenPosition(anbieter: "anthropic" | "elevenlabs" | "openai", 
   }
   if (anbieter === "elevenlabs") return [{ anbieter: "ElevenLabs", art: "Sprache", menge: m.zeichen ?? 0, einheit: "Zeichen", betrag: p.elevenlabsJe1000Zeichen !== null ? r(((m.zeichen ?? 0) / 1000) * p.elevenlabsJe1000Zeichen) : null, am: iso }];
   const preis = m.motiv ? motivPreis(p) : p.bildJeStueck;
-  return [{ anbieter: "OpenAI", art: m.motiv ? "Motiv" : "Bild", menge: m.bilder ?? 1, einheit: m.motiv ? "Motive" : "Bilder", betrag: preis != null ? r((m.bilder ?? 1) * preis) : null, am: iso }];
+  return [{ anbieter: "OpenAI", art: `${m.motiv ? "Motiv" : "Bild"}${m.bildModell ? ` (${bildModellName(m.bildModell)})` : ""}`, menge: m.bilder ?? 1, einheit: m.motiv ? "Motive" : "Bilder", betrag: preis != null ? r((m.bilder ?? 1) * preis) : null, am: iso }];
 }
 
 export const kostenSumme = (k: VideoKosten[]) => Math.round(k.reduce((a, x) => a + (x.betrag ?? 0), 0) * 10_000) / 10_000;

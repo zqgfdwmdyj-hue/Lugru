@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { VideoFreigabe } from "@/db/tables/video";
 import { requireArea } from "@/lib/auth/session";
-import { istVideoModell, type VideoPreise } from "@/lib/video/logic";
+import { BILD_MODELLE, istBildModell, istVideoModell, type VideoPreise } from "@/lib/video/logic";
 
 // B36 Seite „Video“: Kanäle, neues Video, Freigaben, „Schritt wiederholen“, „Privat hochladen“, Worker-Token, Preise.
 // Zugangsdaten (Claude, ElevenLabs, OpenAI, Google-App) nur unter Anbindungen – nie hier, nie im Chat.
@@ -209,9 +209,12 @@ export async function ablageAction(fd: FormData) {
     if (!istVideoModell(modell)) throw new VideoFehler("Unbekanntes Modell.");
     const ablage = fd.get("ablage") === "drive" ? "drive" : "server";
     const cfg = await videoEinstellungen(s.tenantId);
+    const bm = fd.get("bildModell");
+    const bildModell = bm === null ? cfg.bildModell : String(bm);
+    if (!istBildModell(bildModell)) throw new VideoFehler("Unbekanntes Bildmodell.");
     if (ablage === "drive" && !cfg.drive) throw new VideoFehler("Zuerst „Google Drive verbinden“.");
-    await videoEinstellungenSpeichern(s, { modell, ablage });
-    return `Gespeichert: ${modell === "claude-opus-5-5" ? "Claude Opus 5.5" : "Claude Sonnet 5.5"}, Ablage ${ablage === "drive" ? "Google Drive" : "Seller-Server"} – gilt für neue Schritte.`;
+    await videoEinstellungenSpeichern(s, { modell, bildModell, ablage });
+    return `Gespeichert: ${modell === "claude-opus-5-5" ? "Claude Opus 5.5" : "Claude Sonnet 5.5"}, Bilder ${BILD_MODELLE[bildModell].name}, Ablage ${ablage === "drive" ? "Google Drive" : "Seller-Server"} – gilt für neue Schritte.`;
   }, null, "#ablage");
 }
 

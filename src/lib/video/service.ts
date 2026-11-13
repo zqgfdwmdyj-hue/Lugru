@@ -11,7 +11,7 @@ import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, 
 import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
-import { FREIGABE_VOR, figurenAus, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -34,14 +34,15 @@ const jetzt = () => new Date();
  * drive: Refresh-Token (verschlüsselt, Bereich drive.file) und Wurzelordner „Seller-System Videos“.
  */
 export type VideoDrive = { token: string; ordnerId: string; verbundenAm: string };
-export type VideoEinstellungen = { preise: VideoPreise; serverReserveGb: number; modell: VideoModell; ablage: "drive" | "server"; drive: VideoDrive | null };
-const STANDARD: VideoEinstellungen = { preise: VIDEO_PREISE_STANDARD, serverReserveGb: 2, modell: VIDEO_MODELL_STANDARD, ablage: "server", drive: null };
+export type VideoEinstellungen = { preise: VideoPreise; serverReserveGb: number; modell: VideoModell; bildModell: BildModell; ablage: "drive" | "server"; drive: VideoDrive | null };
+const STANDARD: VideoEinstellungen = { preise: VIDEO_PREISE_STANDARD, serverReserveGb: 2, modell: VIDEO_MODELL_STANDARD, bildModell: BILD_MODELL_STANDARD, ablage: "server", drive: null };
 
 export async function videoEinstellungen(tenantId: string): Promise<VideoEinstellungen> {
   const [t] = await db.select({ s: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
   const roh = ((t?.s as Record<string, unknown> | null)?.video ?? {}) as Partial<VideoEinstellungen>;
   const cfg = { ...STANDARD, ...roh, preise: { ...STANDARD.preise, ...(roh.preise ?? {}) } };
   if (!istVideoModell(cfg.modell)) cfg.modell = VIDEO_MODELL_STANDARD;
+  if (!istBildModell(cfg.bildModell)) cfg.bildModell = BILD_MODELL_STANDARD;
   // Drive nur, wenn verbunden – sonst Seller-Server
   if (cfg.ablage === "drive" && !cfg.drive?.token) cfg.ablage = "server";
   return cfg;
@@ -96,7 +97,7 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.stil), cfg.modell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.stil), cfg.modell, cfg.bildModell);
   const vorlage = e.vorlage?.trim() || null;
   if (vorlage && vorlage.length > VORLAGE_MAX) throw new VideoFehler(`Vorlage/Skript ist zu lang (${vorlage.length.toLocaleString("de-DE")} Zeichen, höchstens ${VORLAGE_MAX.toLocaleString("de-DE")}).`);
   if (vorlage && vorlage.length < 200) throw new VideoFehler("Vorlage/Skript ist sehr kurz – bitte den ganzen Text einfügen (oder das Feld leer lassen).");

@@ -2,13 +2,16 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
-import { claudeNutzung, kostenPosition } from "./logic";
+import { bildModellFehlt, bildModellReihenfolge, claudeNutzung, kostenPosition, schluesselAbgelehnt, type BildModell } from "./logic";
 import { kostenBuchen, videoEinstellungen, type Worker } from "./service";
 
 // B36 Anbieter-Brücke: Der Worker ruft Claude, ElevenLabs und OpenAI über das Seller-System auf. Die Schlüssel bleiben
 // verschlüsselt hier (Anbindungen), der Worker kennt nur sein Worker-Token. Jeder Aufruf wird dem Auftrag (Kopf
 // „x-auftrag“) zugeordnet und die Kosten werden aus der Antwort gezählt (Tokens/Websuchen, Zeichen, Bilder).
 // Nur diese drei Pfade sind erlaubt – keine offene Weiterleitung.
+// Bilder: Das Modell setzt die Brücke aus den Video-Einstellungen (die Angabe des Workers zählt nicht – so laufen auch
+// ältere Worker nach einer Abschaltung bei OpenAI weiter). Fehlt das Modell im Konto, nimmt sie das nächste.
+// Abgelehnter Schlüssel (401): eigene klare Meldung, nie der Text des Anbieters (der zeigt Teile des Schlüssels).
 
 type Ziel = { anbieter: "anthropic" | "elevenlabs" | "openai"; url: string; kopf: Record<string, string> };
 
@@ -83,19 +86,26 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
   }
   const falsch = bodyPruefen(z.anbieter, body);
   if (falsch) return fehler(400, falsch);
-  const preise = (await videoEinstellungen(w.tenantId)).preise;
+  const cfg = await videoEinstellungen(w.tenantId);
+  const preise = cfg.preise;
+  if (z.anbieter === "openai") {
+    // Bild aus Text: Modell aus den Einstellungen, bei „Modell fehlt“ das nächste
+    const r = await mitBildModell(w.tenantId, cfg.bildModell, (modell) => fetch(z.url, { method: "POST", headers: z.kopf, body: JSON.stringify({ ...body, model: modell }), signal: AbortSignal.any([request.signal, AbortSignal.timeout(180_000)]) }));
+    if (r instanceof Response) return r;
+    if (r.res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1, motiv: body.size === "1024x1024", bildModell: r.modell }));
+    return new Response(r.daten, { status: r.res.status, headers: antwortKopf(r.res) });
+  }
   let res: Response;
   try {
     res = await fetch(z.url, { method: "POST", headers: z.kopf, body: roh, signal: AbortSignal.any([request.signal, AbortSignal.timeout(z.anbieter === "anthropic" ? 600_000 : 180_000)]) });
   } catch (e) {
     return fehler(502, `Anbieter nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
   }
-  const kopf = new Headers();
-  for (const h of ["content-type", "request-id", "x-request-id", "retry-after"]) {
-    const v = res.headers.get(h);
-    if (v) kopf.set(h, v);
+  if (res.status === 401) {
+    await res.body?.cancel().catch(() => undefined);
+    return fehler(401, schluesselAbgelehnt(z.anbieter));
   }
-  kopf.set("cache-control", "no-store");
+  const kopf = antwortKopf(res);
 
   if (z.anbieter === "anthropic") {
     if (!res.body) return new Response(null, { status: res.status, headers: kopf });
@@ -123,14 +133,53 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
     // Verbindung zum Anbieter mitten in der Antwort abgebrochen – der Worker wiederholt bei 502 von selbst
     return fehler(502, `Antwort des Anbieters abgebrochen: ${e instanceof Error ? e.message : "Fehler"}`);
   }
-  if (res.ok) {
-    const pos = z.anbieter === "elevenlabs" ? kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }) : kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1, motiv: body.size === "1024x1024" });
-    await kostenBuchen(w.tenantId, auftragId, pos);
-  }
+  if (res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }));
   return new Response(daten, { status: res.status, headers: kopf });
 }
 
-/** Motiv mit Stil-Referenzbildern (gpt-image-1 „edits“, multipart): Prompt, Anzahl und Bilder prüfen, weiterreichen, zählen. */
+function antwortKopf(res: Response): Headers {
+  const kopf = new Headers();
+  for (const h of ["content-type", "request-id", "x-request-id", "retry-after"]) {
+    const v = res.headers.get(h);
+    if (v) kopf.set(h, v);
+  }
+  kopf.set("cache-control", "no-store");
+  return kopf;
+}
+
+// Zuletzt funktionierendes Bildmodell je Mandant (30 Min.): nach einem Ausweichen nicht jedes Bild erst mit dem fehlenden versuchen.
+const bildModellOk = new Map<string, { gewaehlt: BildModell; modell: BildModell; bis: number }>();
+
+/** OpenAI-Aufruf mit dem gewählten Bildmodell; meldet OpenAI „Modell gibt es nicht / nicht freigeschaltet“, das nächste. */
+async function mitBildModell(tenantId: string, gewaehlt: BildModell, senden: (modell: BildModell) => Promise<Response>): Promise<Response | { res: Response; daten: ArrayBuffer; modell: BildModell }> {
+  const g = bildModellOk.get(tenantId);
+  const reihe = bildModellReihenfolge(gewaehlt, g && g.gewaehlt === gewaehlt && g.bis > Date.now() ? g.modell : null);
+  const fehlt: string[] = [];
+  for (const modell of reihe) {
+    let res: Response;
+    let daten: ArrayBuffer;
+    try {
+      res = await senden(modell);
+    } catch (e) {
+      return fehler(502, `Anbieter nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
+    }
+    try {
+      daten = await res.arrayBuffer();
+    } catch (e) {
+      return fehler(502, `Antwort des Anbieters abgebrochen: ${e instanceof Error ? e.message : "Fehler"}`);
+    }
+    if (res.status === 401) return fehler(401, schluesselAbgelehnt("openai"));
+    if (!res.ok && bildModellFehlt(res.status, new TextDecoder().decode(daten.slice(0, 4000)))) {
+      fehlt.push(modell);
+      continue;
+    }
+    if (res.ok) bildModellOk.set(tenantId, { gewaehlt, modell, bis: Date.now() + 30 * 60_000 });
+    return { res, daten, modell };
+  }
+  return fehler(400, `Kein Bildmodell im OpenAI-Konto nutzbar (versucht: ${fehlt.join(", ")}). Im OpenAI-Konto prüfen: Projekt → erlaubte Modelle, ggf. Settings → Organization → „Verify Organization“. Danach unter Anbindungen → OpenAI „Verbindung testen“.`);
+}
+
+/** Motiv mit Stil-Referenzbildern (OpenAI „edits“, multipart): Prompt, Anzahl und Bilder prüfen, weiterreichen, zählen. */
 async function bildBearbeiten(w: Worker, auftragId: string, z: Ziel, request: Request): Promise<Response> {
   let form: FormData;
   try {
@@ -145,16 +194,14 @@ async function bildBearbeiten(w: Worker, auftragId: string, z: Ziel, request: Re
   const bilder = [...form.getAll("image[]"), ...form.getAll("image")].filter((x): x is File => typeof x !== "string");
   if (!bilder.length || bilder.length > 8) return fehler(400, "1–8 Referenzbilder nötig");
   if (bilder.some((b) => b.size > 10 * 1024 ** 2 || !/^image\/(png|jpeg|webp)$/.test(b.type))) return fehler(400, "Referenzbilder nur PNG/JPG/WebP bis 10 MB");
-  const raus = new FormData();
-  for (const [k, v] of form.entries()) raus.append(k, v);
-  const preise = (await videoEinstellungen(w.tenantId)).preise;
-  let res: Response;
-  try {
-    res = await fetch(z.url, { method: "POST", headers: z.kopf, body: raus, signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]) });
-  } catch (e) {
-    return fehler(502, `Anbieter nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
-  }
-  const daten = new Uint8Array(await res.arrayBuffer());
-  if (res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("openai", preise, { bilder: n, motiv: form.get("size") === "1024x1024" }));
-  return new Response(daten, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
+  const cfg = await videoEinstellungen(w.tenantId);
+  const r = await mitBildModell(w.tenantId, cfg.bildModell, (modell) => {
+    const raus = new FormData();
+    for (const [k, v] of form.entries()) if (k !== "model") raus.append(k, v);
+    raus.set("model", modell);
+    return fetch(z.url, { method: "POST", headers: z.kopf, body: raus, signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]) });
+  });
+  if (r instanceof Response) return r;
+  if (r.res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("openai", cfg.preise, { bilder: n, motiv: form.get("size") === "1024x1024", bildModell: r.modell }));
+  return new Response(r.daten, { status: r.res.status, headers: { "content-type": r.res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
 }

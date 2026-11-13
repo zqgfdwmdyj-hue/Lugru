@@ -594,11 +594,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "openai",
     name: "OpenAI (Bilder für Videos)",
-    purpose: "Symbolbilder je Szene für die Video-Pipeline (gpt-image-1, 1536×1024, Qualität „medium“). Getrennt vom ChatGPT-Abo: API-Konto mit Guthaben nötig.",
-    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-…" }],
+    purpose: "Symbolbilder je Szene für die Video-Pipeline (Standard GPT Image 2.5 Flare, 1536×1024, Qualität „medium“; Modell wählbar auf der Seite Video). Getrennt vom ChatGPT-Abo: API-Konto mit Guthaben nötig.",
+    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-…", help: "Nur den Schlüssel selbst einfügen (beginnt mit „sk-“) – keinen Pfad, Befehl oder Text drumherum." }],
     setup: [
       "platform.openai.com → Billing: Guthaben aufladen (getrennt vom ChatGPT-Abo) → API keys → neuen Schlüssel anlegen und hier eintragen.",
+      "Danach „Verbindung testen“: zeigt, ob der Schlüssel gilt und welches Bildmodell benutzt wird.",
       "Unter Settings → Limits ein Monatslimit setzen. Den Preis je Bild auf der Seite Video unter „Kosten“ eintragen.",
+      "Bildmodell: Seite Video → Modell und Ablage. Fehlt es im Konto (z. B. abgeschaltet), nimmt das System automatisch das nächste.",
       "Lehnt OpenAI ein Bild ab, nimmt der Worker ein ruhiges Ersatzmotiv.",
     ],
   },

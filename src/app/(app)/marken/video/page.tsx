@@ -5,7 +5,7 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
-import { anzeigeStatus, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -69,8 +69,8 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
   const typisch = typischFuer(kanal?.stil);
   const whiteboard = kanal?.stil === "whiteboard";
   const ziel = laengeZiel();
-  const schaetzung = kostenSchaetzung(cfg.preise, typisch, cfg.modell);
-  const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, typisch, m).summe }));
+  const schaetzung = kostenSchaetzung(cfg.preise, typisch, cfg.modell, cfg.bildModell);
+  const andereModelle = (Object.keys(VIDEO_MODELLE) as (keyof typeof VIDEO_MODELLE)[]).map((m) => ({ m, summe: kostenSchaetzung(cfg.preise, typisch, m, cfg.bildModell).summe }));
   const fehlend = [!claude?.apiKey && "Claude (KI)", !eleven?.apiKey && "ElevenLabs", !openai?.apiKey && "OpenAI (Bilder)"].filter(Boolean) as string[];
 
   return (
@@ -476,6 +476,13 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
               <label key={m}><input type="radio" name="modell" value={m} defaultChecked={cfg.modell === m} data-testid={`vd-modell-${m}`} /> {d.name} – {d.hinweis} (ca. {usd(andereModelle.find((x) => x.m === m)?.summe)} je Video)</label>
             ))}
           </div>
+          <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }} data-testid="vd-bildmodell">
+            <span>Bilder (OpenAI):</span>
+            {(Object.entries(BILD_MODELLE) as [BildModell, (typeof BILD_MODELLE)[BildModell]][]).map(([m, d]) => (
+              <label key={m}><input type="radio" name="bildModell" value={m} defaultChecked={cfg.bildModell === m} data-testid={`vd-bildmodell-${m}`} /> {d.name} – {d.hinweis}</label>
+            ))}
+          </div>
+          <span className="muted">Ist das gewählte Bildmodell im OpenAI-Konto nicht freigeschaltet oder abgeschaltet, nimmt das System automatisch das nächste dieser Liste (die Kosten zeigen, welches). Prüfen: Anbindungen → OpenAI → „Verbindung testen“.</span>
           <div className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <span>Fertige Videos ablegen in:</span>
             <label><input type="radio" name="ablage" value="drive" defaultChecked={cfg.ablage === "drive"} disabled={!cfg.drive} data-testid="vd-ablage-drive" /> Google Drive{cfg.drive ? "" : " (erst verbinden)"}</label>

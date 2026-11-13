@@ -18,7 +18,7 @@ Der Worker macht aus einem Thema ein fertiges YouTube-Video (Länge je Kanal, St
 | research | Erst die Gliederung (kleine Websuche), dann je Punkt ein Aufruf für die Quellen | Claude + Websuche |
 | script | Skript abschnittsweise: Hook, Fear Activation, jeder Punkt (5–7) einzeln, Zusammenfassung, CTA – je Abschnitt ein kurzer Aufruf; zusammen fest 1.500–1.700 Wörter (≈ 10–12 Min.), JSON je Szene; Endprüfung (Wörter, 5–7 Punkte, jede Studie in der Quellenliste) mit Nachbesserung nur der betroffenen Abschnitte | Claude |
 | voice | Sprache je Szene (ElevenLabs) | ElevenLabs |
-| visuals | Vollbild: Symbolbild je Szene (gpt-image-1, 1536×1024). Whiteboard: 3–5 Einzelmotive je Szene (1024×1024, transparent, Bibliothek) + Szenen-Übersicht; bei Ablehnung Ersatzmotiv | OpenAI |
+| visuals | Vollbild: Symbolbild je Szene (OpenAI GPT Image, Modell wählt das Seller-System, 1536×1024). Whiteboard: 3–5 Einzelmotive je Szene (1024×1024, transparent, Bibliothek) + Szenen-Übersicht; bei Ablehnung Ersatzmotiv | OpenAI |
 | render | ffmpeg + Pillow: Vollbild mit eingebrannten Untertiteln; Whiteboard mit Aufdeck-Animation, Hand und blassem Vorgänger, ohne eingebrannte Untertitel; optional Musik | – |
 | package | Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln + Quellen, Tags; Dateien ins Seller-System | Claude |
 | upload | YouTube, **privat** (nur mit Schalter „Privat hochladen“ und freigegebener Vorschau) | – |
@@ -46,7 +46,7 @@ Freigaben (je Kanal einstellbar) gibt es nach research (Gliederung + Quellen), s
 ## Stil „Whiteboard-Collage“ (B36.9)
 
 Im Kanalprofil (Seller-System → Video) „Stil der Bilder: Whiteboard-Collage“ wählen. Dann gilt:
-- **Motive einzeln:** je Szene 3–5 Cartoon-Motive (gpt-image-1, 1024×1024, transparenter Hintergrund). Sind im
+- **Motive einzeln:** je Szene 3–5 Cartoon-Motive (OpenAI GPT Image, 1024×1024, transparenter Hintergrund). Sind im
   Kanalprofil **Stil-Referenzbilder** hinterlegt (bis 4, z. B. Bildschirmfotos aus dem Kanal), bekommt das Bildmodell
   sie bei jedem neuen Motiv als Vorlage mit. Die Pipeline ordnet die Motive nach festen Vorlagen an: 3er, 4er, 5er,
   Figur links + Liste, Gegenüberstellung.

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, bildTreffer, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -70,7 +70,7 @@ describe("Start „heute Nacht“", () => {
 describe("Kosten (B36.3)", () => {
   it("Schätzung nennt fehlende Preise; mit Preisen alle Posten", () => {
     const s = kostenSchaetzung(VIDEO_PREISE_STANDARD);
-    expect(s.fehlend).toEqual(["Sprache (ElevenLabs)", "Bilder (gpt-image-1)"]);
+    expect(s.fehlend).toEqual(["Sprache (ElevenLabs)", "Bilder (GPT Image 2.5 Flare)"]);
     const p = { ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 };
     const sonnet = kostenSchaetzung(p, TYPISCH, "claude-sonnet-5-5");
     expect(sonnet.fehlend).toEqual([]);
@@ -84,11 +84,36 @@ describe("Kosten (B36.3)", () => {
     const wb = typischFuer("whiteboard");
     expect(wb).toMatchObject({ bilder: 0, motive: 25 * MOTIVE_JE_SZENE });
     const mitMotivpreis = kostenSchaetzung({ ...p, motivJeStueck: 0.02 }, wb, "claude-opus-5-5");
-    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (gpt-image-1, höchstens 100)"]);
+    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (GPT Image 2.5 Flare, höchstens 100)"]);
     expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(2.0, 2);
     // ohne eigenen Motivpreis gilt der Bildpreis
     expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(4.0, 2);
     expect(kostenPosition("openai", { ...p, motivJeStueck: 0.02 }, { bilder: 1, motiv: true }, new Date(0))[0]).toMatchObject({ art: "Motiv", einheit: "Motive", betrag: 0.02 });
+    // Die Brücke nennt das tatsächlich benutzte Bildmodell
+    expect(kostenPosition("openai", p, { bilder: 1, bildModell: "gpt-image-2" }, new Date(0))[0]).toMatchObject({ art: "Bild (GPT Image 2)", betrag: 0.04 });
+    expect(kostenSchaetzung(p, TYPISCH, "claude-opus-5-5", "gpt-image-2.5-sunburst").positionen.at(-1)!.art).toBe("Bilder (GPT Image 2.5 Sunburst)");
+  });
+  it("Bildmodell (13.11.): gpt-image-1 abgeschaltet → Standard GPT Image 2.5 Flare; bei „Modell fehlt“ das nächste, Inhalts-Ablehnung zählt nicht", () => {
+    expect(BILD_MODELL_STANDARD).toBe("gpt-image-2.5-flare");
+    expect(bildModellReihenfolge("gpt-image-2.5-flare")).toEqual(["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"]);
+    expect(bildModellReihenfolge("gpt-image-2")).toEqual(["gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst"]);
+    // unbekannt/alt (z. B. gpt-image-1 aus alten Einstellungen) → Standard
+    expect(bildModellReihenfolge("gpt-image-1")[0]).toBe("gpt-image-2.5-flare");
+    // zuletzt funktionierendes zuerst
+    expect(bildModellReihenfolge("gpt-image-2.5-sunburst", "gpt-image-2.5-flare")).toEqual(["gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2"]);
+    // Antworten wie von OpenAI
+    expect(bildModellFehlt(400, '{"error":{"message":"The model \'gpt-image-1\' does not exist","type":"invalid_request_error"}}')).toBe(true);
+    expect(bildModellFehlt(404, '{"error":{"message":"The model `gpt-image-2` does not exist or you do not have access to it.","code":"model_not_found"}}')).toBe(true);
+    expect(bildModellFehlt(403, '{"error":{"message":"Your organization must be verified to use the model `gpt-image-2.5-flare`."}}')).toBe(true);
+    expect(bildModellFehlt(400, '{"error":{"message":"Your request was rejected as a result of our safety system.","code":"moderation_blocked"}}')).toBe(false);
+    expect(bildModellFehlt(400, '{"error":{"message":"Invalid size 999x999."}}')).toBe(false);
+    expect(bildModellFehlt(429, '{"error":{"message":"Rate limit for model gpt-image-2 not available"}}')).toBe(false);
+    expect(bildModellFehlt(401, "model does not exist")).toBe(false);
+  });
+  it("Abgelehnter Schlüssel: klare Meldung mit Ort, ohne Schlüsselteile", () => {
+    expect(schluesselAbgelehnt("openai")).toBe("OpenAI-Schlüssel abgelehnt (HTTP 401) – unter Anbindungen → OpenAI (Bilder für Videos) den API-Key neu eintragen und „Verbindung testen“.");
+    expect(schluesselAbgelehnt("elevenlabs")).toContain("Anbindungen → ElevenLabs (Sprache für Videos)");
+    expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
     expect(WORKER_VERSION_AKTUELL).toBe("1.1.0");

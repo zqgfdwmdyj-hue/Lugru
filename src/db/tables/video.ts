@@ -52,7 +52,7 @@ export const videoKanaele = pgTable(
     stil: text("stil", { enum: ["vollbild", "whiteboard"] }).notNull().default("vollbild"),
     /** Wiederkehrende Figuren, eine je Zeile „kurzname: Beschreibung“ (einmal festgelegt, immer gleich gezeichnet). */
     figuren: text("figuren"),
-    /** Qualität beim Bildmodell (gpt-image-1): low/medium/high – bestimmt die Kosten je Bild/Motiv. */
+    /** Qualität beim Bildmodell (OpenAI GPT Image): low/medium/high – bestimmt die Kosten je Bild/Motiv. */
     bildQualitaet: text("bild_qualitaet", { enum: ["low", "medium", "high"] }).notNull().default("medium"),
     referenzen: jsonb("referenzen").$type<VideoReferenz[]>().notNull().default([]),
     /** Dateiname einer Hintergrundmusik im Ordner „musik“ des Workers (leer = ohne Musik). */

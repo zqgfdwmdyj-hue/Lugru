@@ -630,11 +630,14 @@ def voice(l: Lauf) -> tuple[dict, list[str]]:
 
 # Bilder brauchen beim Anbieter oft länger als Text – Zeitlimit je Aufruf 180 s (statt 120 s)
 BILD_TIMEOUT_S = max(netz.TIMEOUT_S, 180.0)
+# Nur Vorgabe: Das Seller-System setzt das Bildmodell selbst (Seite Video → Modell und Ablage) und weicht aus, wenn es im
+# OpenAI-Konto fehlt. gpt-image-1 hat OpenAI am 23.10.2026 abgeschaltet.
+BILD_MODELL = "gpt-image-2.5-flare"
 
 
 def _bild_holen(l: Lauf, prompt: str, was: str = "Bild") -> bytes | None:
-    """Ein Bild bei OpenAI (gpt-image-1, 1536×1024, medium). None = vom Anbieter abgelehnt."""
-    r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
+    """Ein Bild bei OpenAI (Modell setzt das Seller-System, 1536×1024, medium). None = vom Anbieter abgelehnt."""
+    r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": BILD_MODELL, "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
     if r.status_code == 200:
         return base64.b64decode(r.json()["data"][0]["b64_json"])
     text = _fehlertext(r)
@@ -662,10 +665,10 @@ def _motiv_holen(l: Lauf, prompt: str, was: str = "Motiv") -> bytes | None:
     q = l.kanal.get("bildQualitaet") or "medium"
     refs = l.referenzen()
     if refs:
-        felder = {"model": "gpt-image-1", "prompt": prompt + " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt).", "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
+        felder = {"model": BILD_MODELL, "prompt": prompt + " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt).", "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
         r = l.seller.anbieter_datei(l.id, "openai", "v1/images/edits", felder, [("image[]", name, daten, typ) for name, daten, typ in refs], timeout=BILD_TIMEOUT_S, was=was)
     else:
-        r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": "gpt-image-1", "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
+        r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": BILD_MODELL, "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
     if r.status_code == 200:
         return base64.b64decode(r.json()["data"][0]["b64_json"])
     text = _fehlertext(r)

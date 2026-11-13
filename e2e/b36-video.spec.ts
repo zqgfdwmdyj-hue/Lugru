@@ -16,7 +16,7 @@ function versiegeln(plain: string) {
   const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
-type VideoNb = { eleven: { hash: string; zeichen: number; stimme: string }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
+type VideoNb = { modellFehler: string[]; eleven: { hash: string; zeichen: number; stimme: string }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
 const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[] }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
 type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
@@ -220,8 +220,10 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.eleven.every((e) => e.stimme === "testStimme01")).toBe(true);
     expect(log).toContain("Sprache – Szene"); // ElevenLabs-Abbruch → neuer Versuch, ohne doppelte Kosten
 
-    // Abnahme 8: OpenAI gpt-image-1 1536×1024 medium; Ablehnung → Ersatzbild; strenger Filter vor dem Aufruf
-    expect(nb.bilder.every((b) => b.model === "gpt-image-1" && b.size === "1536x1024" && b.quality === "medium")).toBe(true);
+    // Abnahme 8: OpenAI 1536×1024 medium, Modell aus den Einstellungen (Standard GPT Image 2.5 Flare – gpt-image-1 ist
+    // abgeschaltet, der Nachbau lehnt es ab); Ablehnung → Ersatzbild; strenger Filter vor dem Aufruf
+    expect(nb.bilder.every((b) => b.model === "gpt-image-2.5-flare" && b.size === "1536x1024" && b.quality === "medium")).toBe(true);
+    expect(nb.modellFehler).toEqual([]);
     expect(nb.bilder.filter((b) => b.abgelehnt)).toHaveLength(1);
     expect(nb.bilder.length).toBe(szenen + 1);
     expect(nb.bilder.some((b) => /\bbett\b/i.test(b.prompt))).toBe(false);
@@ -318,6 +320,12 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(page.getByTestId("vd-meldung")).toContainText("Google Drive verbunden");
     await expect(page.getByTestId("vd-drive-verbunden")).toBeVisible();
     await expect(page.getByTestId("vd-ablage-drive")).toBeChecked();
+    // Bildmodell: Standard GPT Image 2.5 Flare; hier Sunburst wählen und speichern – die Brücke setzt es bei jedem Bild
+    await expect(page.getByTestId("vd-bildmodell-gpt-image-2.5-flare")).toBeChecked();
+    await page.getByTestId("vd-bildmodell-gpt-image-2.5-sunburst").check();
+    await Promise.all([aktion(page), page.getByTestId("vd-ablage-speichern").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Bilder GPT Image 2.5 Sunburst");
+    await expect(page.getByTestId("vd-bildmodell-gpt-image-2.5-sunburst")).toBeChecked();
     // Kanal ohne Freigaben, mit YouTube
     await page.goto("/marken/video?neu=1");
     await page.getByTestId("vd-k-name").fill(KANAL2);
@@ -360,6 +368,11 @@ test.describe("B36 Video-Pipeline", () => {
     expect(prompts.find((k) => k.text.startsWith("[video:script:hook]"))!.text).toContain("five reasons why some men"); // Vorlage in jedem Abschnitt
     // Claude lief mit Opus 5.5 (Kosten je Modell gebucht)
     expect(a.kosten_positionen.some((k) => k.anbieter === "Claude" && /Opus 5\.5/.test((k as unknown as { art: string }).art))).toBe(true);
+    // Bilder mit dem gewählten Modell (Worker schickt eine Vorgabe, die Brücke setzt die Einstellung)
+    const nbDrive = await nachbau();
+    expect(nbDrive.bilder.length).toBeGreaterThan(5);
+    expect(nbDrive.bilder.every((b) => b.model === "gpt-image-2.5-sunburst")).toBe(true);
+    expect(a.kosten_positionen.some((k) => (k as unknown as { art: string }).art === "Bild (GPT Image 2.5 Sunburst)")).toBe(true);
     // MP4 nur in Drive, kleine Dateien zusätzlich im Seller-System
     const dateien = a.dateien as unknown as Record<string, { key: string; drive?: string; groesse: number }>;
     expect(dateien.mp4.drive).toBeTruthy();
@@ -406,8 +419,9 @@ test.describe("B36 Video-Pipeline", () => {
       googleNeu = true;
       await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'google', 'Test', $2::jsonb, $3)", [T, JSON.stringify({ clientId: "test-google-client.apps.example.invalid" }), versiegeln(JSON.stringify({ clientSecret: "test-google-secret" }))]);
     }
-    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ ablage: "server", preise: { claudeEingabeJeMio: 2, claudeAusgabeJeMio: 10, websucheJe1000: 10, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04, motivJeStueck: 0.02 }, serverReserveGb: 0.1 })]);
-    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0 }) });
+    // Gewählt: Sunburst – im Nachbau-Konto „nicht vorhanden“ → die Brücke weicht auf das nächste Modell (Flare) aus
+    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ ablage: "server", bildModell: "gpt-image-2.5-sunburst", preise: { claudeEingabeJeMio: 2, claudeAusgabeJeMio: 10, websucheJe1000: 10, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04, motivJeStueck: 0.02 }, serverReserveGb: 0.1 })]);
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0, bildModelleGesperrt: ["gpt-image-2.5-sunburst"] }) });
     await anmelden(page, "inhaber");
 
     // Kanal im Stil Whiteboard: feste Figur, nur Freigabe „Szenen-Übersicht“, Qualität niedrig (Nachbau: eine Szene je Abschnitt)
@@ -463,7 +477,9 @@ test.describe("B36 Video-Pipeline", () => {
     // Motive einzeln: 1024×1024, transparent, Qualität niedrig, mit dem Referenzbild (edits); jede Motiv-Art nur einmal bezahlt
     let nb = await nachbau();
     expect(nb.bilder.length).toBeGreaterThan(5);
-    for (const b of nb.bilder as unknown as { size: string; background: string; edits: boolean; referenzen: number; quality: string }[]) expect([b.size, b.background, b.edits, b.referenzen, b.quality]).toEqual(["1024x1024", "transparent", true, 1, "low"]);
+    for (const b of nb.bilder as unknown as { size: string; background: string; edits: boolean; referenzen: number; quality: string; model: string }[]) expect([b.size, b.background, b.edits, b.referenzen, b.quality, b.model]).toEqual(["1024x1024", "transparent", true, 1, "low", "gpt-image-2.5-flare"]);
+    // Ausweichen: das fehlende Modell nur einmal versucht (danach gemerkt), nicht bei jedem Motiv
+    expect(nb.modellFehler).toEqual(["gpt-image-2.5-sunburst"]);
     const prompts = nb.bilder.map((b) => b.prompt);
     expect(prompts.filter((p) => p.includes("hält einen schwarzen Filzstift"))).toHaveLength(1); // Hand einmal je Kanal
     expect(prompts.some((p) => p.includes("Mann um die 60 mit Hut"))).toBe(true); // feste Figur aus dem Profil
@@ -516,7 +532,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect(r > 170 && g < 90 && b < 90, `roter Balken oben (${r},${g},${b})`).toBe(true);
     // Thumbnail aus der ersten Szene, Kosten je Motiv
     expect(a.dateien.thumbnail).toBeTruthy();
-    expect(a.kosten_positionen.some((k) => (k as unknown as { art: string }).art === "Motiv" && k.betrag === 0.02)).toBe(true);
+    expect(a.kosten_positionen.some((k) => (k as unknown as { art: string }).art === "Motiv (GPT Image 2.5 Flare)" && k.betrag === 0.02)).toBe(true);
     // „Privat hochladen“: Video privat, Untertitel als YouTube-Untertitel (Spur Deutsch)
     await page.reload();
     await Promise.all([aktion(page), karte.getByTestId("vd-hochladen").click()]);
@@ -527,6 +543,54 @@ test.describe("B36 Video-Pipeline", () => {
     expect(ut[0]).toMatchObject({ videoId: a.youtube_id, sprache: "de", entwurf: false });
     expect(ut[0].zeilen).toBeGreaterThan(20);
     await workerStoppen();
+  });
+
+  test("OpenAI: „Verbindung testen“ zeigt Schlüssel und benutztes Bildmodell; falscher Schlüssel → klare Meldung ohne Schlüsselteile (Test und Brücke)", async ({ page }) => {
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const schluessel = async (k: string) => {
+      await sql("delete from integrations where tenant_id = $1 and provider = 'openai'", [T]);
+      await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'openai', 'Test', '{}'::jsonb, $2)", [T, versiegeln(JSON.stringify({ apiKey: k }))]);
+    };
+    await schluessel("test-openai-schluessel");
+    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ bildModell: "gpt-image-2.5-sunburst" })]);
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, bildModelleGesperrt: ["gpt-image-2.5-sunburst"] }) });
+    await anmelden(page, "inhaber");
+    const testen = async () => {
+      await page.goto("/anbindungen?p=openai#openai");
+      const karte = page.locator("#openai");
+      await karte.getByRole("button", { name: "Verbindung testen" }).click();
+      return karte;
+    };
+    // Gültig: gewähltes Modell fehlt im Konto → Test nennt das tatsächlich benutzte
+    let karte = await testen();
+    await expect(karte).toContainText("Schlüssel gültig. Bildmodell für Videos: gpt-image-2.5-flare (gewählt ist gpt-image-2.5-sunburst");
+    // Falscher Schlüssel (wie ein eingefügter Pfad): Test und Brücke melden „neu eintragen“, nie Teile des Schlüssels
+    const falsch = ".\\.venv\\Scripts\\falsch-eingefuegt";
+    await schluessel(falsch);
+    karte = await testen();
+    await expect(karte).toContainText("Schlüssel abgelehnt (HTTP 401)");
+    await expect(karte).not.toContainText(".venv");
+    if (!token) {
+      await page.goto("/marken/video");
+      await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+      await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+      token = (await page.getByTestId("vw-token").innerText()).trim();
+    }
+    const [auftrag] = await sql<{ id: string }>("select id from video_auftraege where tenant_id = $1 and status <> 'abgebrochen' order by created_at desc limit 1", [T]);
+    test.skip(!auftrag, "kein Auftrag aus den Abnahmen vorhanden");
+    const r = await page.request.post("/api/video-worker/anbieter/openai/v1/images/generations", { headers: { authorization: `Bearer ${token}`, "x-auftrag": auftrag.id, "content-type": "application/json" }, data: { model: "gpt-image-1", prompt: "Testbild (erfunden)", size: "1536x1024", quality: "medium", n: 1 } });
+    expect(r.status()).toBe(401);
+    const text = await r.text();
+    expect(text).toContain("OpenAI-Schlüssel abgelehnt (HTTP 401) – unter Anbindungen → OpenAI (Bilder für Videos) den API-Key neu eintragen");
+    expect(text).not.toContain("venv");
+    expect(text).not.toContain("Incorrect API key");
+    // Wieder gültig, alle Modelle frei: Brücke ersetzt das abgeschaltete gpt-image-1 durch Flare
+    await schluessel("test-openai-schluessel");
+    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ bildModell: "gpt-image-2.5-flare" })]);
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true }) });
+    const ok = await page.request.post("/api/video-worker/anbieter/openai/v1/images/generations", { headers: { authorization: `Bearer ${token}`, "x-auftrag": auftrag.id, "content-type": "application/json" }, data: { model: "gpt-image-1", prompt: "Testbild (erfunden)", size: "1536x1024", quality: "medium", n: 1 } });
+    expect(ok.status()).toBe(200);
+    expect((await nachbau()).bilder.at(-1)!.model).toBe("gpt-image-2.5-flare");
   });
 
   test("Werkzeug video_auftrag_anlegen: Claude legt aus dem Chat ein Video an – erst Rückfrage mit Zusammenfassung, nach Ja angelegt (eigenes Skript, Startzeit); ohne Änderungsrecht nicht sichtbar", async ({ browser, baseURL }) => {
