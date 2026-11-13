@@ -384,8 +384,19 @@ export async function workerMelden(w: Worker, m: Meldung) {
 }
 
 /** Was der Worker zum Auftrag braucht (Kanalprofil, Daten der vorigen Schritte, vidIQ, Anmerkung). */
-function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, cfg: VideoEinstellungen) {
+type ClipKontext = { kanalOrdner: string[]; clipKorrekturen: Record<string, { gesperrt: boolean; schlagwoerter: string[] | null; beschreibung: string | null }> };
+
+/** B36.12: Kanal-Ordnernamen (welche Unterordner im Clip-Ordner nur einem Kanal gehören) + Korrekturen von Hand. */
+async function clipKontext(tenantId: string, k: typeof K.$inferSelect): Promise<ClipKontext> {
+  if (k.stil !== "vollbild" || !k.stockClips) return { kanalOrdner: [], clipKorrekturen: {} };
+  const { clipKorrekturen } = await import("./clips");
+  const ordner = await db.select({ slug: K.slug }).from(K).where(eq(K.tenantId, tenantId));
+  return { kanalOrdner: ordner.map((x) => x.slug), clipKorrekturen: await clipKorrekturen(tenantId) };
+}
+
+function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, cfg: VideoEinstellungen, clips: ClipKontext) {
   return {
+    ...clips,
     id: a.id,
     modell: cfg.modell,
     ablage: cfg.ablage,
@@ -416,7 +427,7 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
 export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType<typeof auftragFuerWorker> | null; grund?: string }> {
   await db.update(W).set({ zuletztGesehen: jetzt() }).where(eq(W.id, w.id));
   const [eigener] = await db.select({ a: A, k: K }).from(A).innerJoin(K, eq(K.id, A.kanalId)).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), eq(A.workerId, w.id))).limit(1);
-  if (eigener) return { auftrag: auftragFuerWorker(eigener.a, eigener.k, await videoEinstellungen(w.tenantId)) };
+  if (eigener) return { auftrag: auftragFuerWorker(eigener.a, eigener.k, await videoEinstellungen(w.tenantId), await clipKontext(w.tenantId, eigener.k)) };
   if (w.freiGb !== null && w.freiGb < WORKER_MIN_FREI_GB) return { auftrag: null, grund: `Zu wenig freier Speicher am Worker (${w.freiGb} GB, mindestens ${WORKER_MIN_FREI_GB} GB) – kein Lauf` };
   const still = new Date(Date.now() - 10 * 60_000);
   const [anderer] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), gte(A.zuletztVomWorker, still))).limit(1);
@@ -448,7 +459,7 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
       .returning();
     if (!r) continue;
     const [kanal] = await db.select().from(K).where(eq(K.id, r.kanalId));
-    return { auftrag: auftragFuerWorker(r, kanal, await videoEinstellungen(w.tenantId)) };
+    return { auftrag: auftragFuerWorker(r, kanal, await videoEinstellungen(w.tenantId), await clipKontext(w.tenantId, kanal)) };
   }
   return { auftrag: null, grund };
 }

@@ -1082,6 +1082,17 @@ class _VbSeller(_TtsSeller):
             return _Antwort({"data": [{"b64_json": base64.b64encode(buf.getvalue()).decode()}]})
         return super().anbieter(_id, anbieter, pfad, koerper, **_kw)
 
+    def clips_melden(self, clips, vollstaendig=True):
+        self.clip_meldungen = [*getattr(self, "clip_meldungen", []), (list(clips), vollstaendig)]
+        if vollstaendig:
+            self.gemeldet = list(clips)
+        return {"ok": True, "vorschauFehlt": [c["id"] for c in clips] if vollstaendig else []}
+
+    def clip_vorschau(self, cid, daten):
+        self.vorschauen = [*getattr(self, "vorschauen", []), (cid, len(daten))]
+        assert daten[:2] == b"\xff\xd8" and len(daten) < 400 * 1024
+        return {"ok": True}
+
     def anbieter_holen(self, _id, anbieter, pfad, params, **_kw):
         self.suchen.append((anbieter, params["query"]))
         n = len(self.suchen)
@@ -1191,3 +1202,118 @@ def test_vollbild_clips_zuerst_von_pixabay_sonst_pexels(tmp_path, monkeypatch):
     assert [q for q, s in l.seller.suchen if s.startswith("watch closeup 1 ")] == ["pixabay"]
     assert [q for q, s in l.seller.suchen if s.startswith("watch closeup 2 ")] == ["pixabay", "pexels"]
     assert sch.CLIP_HOSTS[0] == "pixabay.com"
+
+
+# ---- B36.12 eigene Clip-Bibliothek ------------------------------------------------------------------------------------
+
+
+def _testvideo(ziel: Path, breite: int, hoehe: int, sek: float, muster: str = "testsrc2") -> Path:
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"{muster}=size={breite}x{hoehe}:rate=25", "-t", str(sek), "-pix_fmt", "yuv420p", str(ziel)], check=True)
+    return ziel
+
+
+def test_clipbib_scannen_kanalordner_tags_und_herkunft(tmp_path):
+    from udd import clipbib
+
+    o = tmp_path / "clips"
+    for rel in ["testkanal-uhren/uhr1.mp4", "anderer-kanal/x.mp4", "Rolex Details/pexels-max-muster-4711.mp4", "alle/eigen.MOV", ".versteckt/y.mp4", "notiz.txt", "lose.mp4"]:
+        (o / rel).parent.mkdir(parents=True, exist_ok=True)
+        (o / rel).write_bytes(rel.encode() * 10)
+    d = {x["pfad"]: x for x in clipbib.scannen(o, {"testkanal-uhren", "anderer-kanal"})}
+    assert set(d) == {"testkanal-uhren/uhr1.mp4", "anderer-kanal/x.mp4", "Rolex Details/pexels-max-muster-4711.mp4", "alle/eigen.MOV", "lose.mp4"}
+    assert d["testkanal-uhren/uhr1.mp4"]["kanal"] == "testkanal-uhren" and d["anderer-kanal/x.mp4"]["kanal"] == "anderer-kanal"
+    assert d["Rolex Details/pexels-max-muster-4711.mp4"]["kanal"] is None and d["Rolex Details/pexels-max-muster-4711.mp4"]["tags"] == ["rolex details"]
+    assert d["alle/eigen.MOV"]["tags"] == [] and d["lose.mp4"]["kanal"] is None
+    # Kennung = Inhalt, nicht Name
+    a = clipbib.clip_id(o / "lose.mp4")
+    (o / "lose.mp4").rename(o / "umbenannt.mp4")
+    assert clipbib.clip_id(o / "umbenannt.mp4") == a != clipbib.clip_id(o / "alle/eigen.MOV")
+    assert clipbib.quelle_aus_name("pexels-max-muster-4711.mp4") == ("pexels", "Max Muster")
+    assert clipbib.quelle_aus_name("pexels-cottonbro-studio-5740010-uhd.mp4") == ("pexels", "Cottonbro Studio")
+    assert clipbib.quelle_aus_name("uhr-pixabay-123.mp4") == ("pixabay", None)
+    assert clipbib.quelle_aus_name("meine-aufnahme.mp4") == ("eigen", None)
+    # Katalog: Treffer im Text zuerst, selten benutzte vor oft benutzten
+    k = clipbib.katalog([{"id": "a", "pfad": "a", "schlagwoerter": ["auto"], "beschreibung": "", "benutzt": 0}, {"id": "b", "pfad": "b", "schlagwoerter": ["uhr", "rolex"], "beschreibung": "Rolex am Handgelenk", "benutzt": 3}, {"id": "c", "pfad": "c", "schlagwoerter": ["rolex"], "beschreibung": "", "benutzt": 0}], "Die Rolex Submariner ist eine Uhr")
+    assert [e["id"] for e in k] == ["b", "c", "a"]
+    assert clipbib.wirksam({"id": "x", "schlagwoerter": ["a"], "beschreibung": "alt"}, {"gesperrt": True}) is None
+    assert clipbib.wirksam({"id": "x", "schlagwoerter": ["a"], "beschreibung": "alt"}, {"gesperrt": False, "schlagwoerter": ["neu"], "beschreibung": None}) == {"id": "x", "schlagwoerter": ["neu"], "beschreibung": "alt"}
+
+
+def test_vollbild_eigene_clips_angesehen_passend_ausgewaehlt_einmal_je_video(tmp_path, monkeypatch):
+    """B36.12: Clips im Ordner werden einmal angesehen (Claude mit 4 Standbildern), Unbrauchbares aussortiert (Technik
+    oder Claude), die passenden im Bildplan gezielt gewählt (eigene vor Pixabay/Pexels), jeder höchstens einmal je Video,
+    bester Abschnitt als 1920×1080 ausgeschnitten, Nachweis aus dem Dateinamen, Korrektur „gesperrt“ wirkt."""
+    import dataclasses
+
+    from udd import schritte as sch
+
+    l, gefragt, _geladen = _vb_lauf(tmp_path, monkeypatch, quellen=set(), probe={"szene": 1})
+    o = tmp_path / "clips"
+    l.k = dataclasses.replace(l.k, clipordner=o)
+    l.a["kanalOrdner"] = ["testkanal", "anderer-kanal"]
+    _testvideo(o / "testkanal" / "uhr-nahaufnahme.mp4", 1280, 720, 8)
+    _testvideo(o / "Uhren" / "pexels-max-muster-4711.mp4", 1920, 1080, 6, "testsrc")
+    _testvideo(o / "wasserzeichen.mp4", 1280, 720, 5, "smptebars")
+    _testvideo(o / "hochkant.mp4", 720, 1280, 5)
+    _testvideo(o / "anderer-kanal" / "fremd.mp4", 1280, 720, 5)
+    l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 14.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
+    angesehen: list[str] = []
+
+    def fragen(_c, _m, prompt, **kw):
+        if isinstance(prompt, list):  # Clip ansehen: Text + 4 Bilder
+            text = prompt[0]["text"]
+            assert text.startswith("[video:clipanalyse]") and sum(1 for b in prompt if b["type"] == "image") == 4
+            pfad = re.search(r"Datei: (\S+)", text).group(1)
+            angesehen.append(pfad)
+            if "wasserzeichen" in pfad:
+                return json.dumps({"beschreibung": "Farbbalken mit Logo", "schlagwoerter": ["test"], "einstellung": "totale", "brauchbar": False, "grund": "Wasserzeichen", "bestes_bild": 1}), {}
+            return json.dumps({"beschreibung": f"Uhr in Nahaufnahme ({pfad})", "schlagwoerter": ["Uhr", "watch", "zifferblatt"], "einstellung": "detail", "brauchbar": True, "grund": "", "bestes_bild": 3}), {}
+        gefragt.append(prompt)
+        assert "Eigene Clips" in prompt
+        marken = re.findall(r"^(E\d+): ", prompt, re.M)
+        assert len(marken) == 2  # nur die 2 brauchbaren eigenen (nicht Hochformat, nicht Wasserzeichen, nicht fremder Kanal)
+        szenen = []
+        for nr, n in re.findall(r"Szene (\d+) \(n=(\d+)", prompt):
+            # jede Szene will einen eigenen Clip – E1 zweimal: der zweite Wunsch wird zum Stock-Clip
+            wunsch = {"1": "E1", "2": "E1", "3": "E2"}.get(nr, "")
+            szenen.append({"nr": int(nr), "bilder": [{"art": "eigen" if k == 1 and wunsch else "bild", "idee": f"Uhr {nr}.{k}", "suche": f"watch {nr}", "wort": "", "eigen": wunsch if k == 1 else ""} for k in range(int(n))]})
+        return json.dumps({"szenen": szenen}), {}
+
+    monkeypatch.setattr(sch.ki, "fragen", fragen)
+    d, h = sch.probe(l)
+    assert sorted(angesehen) == ["Uhren/pexels-max-muster-4711.mp4", "testkanal/uhr-nahaufnahme.mp4", "wasserzeichen.mp4"]  # Hochkant: Technik reicht
+    gemeldet = {c["pfad"]: c for c in l.seller.gemeldet}
+    assert set(gemeldet) == {"testkanal/uhr-nahaufnahme.mp4", "Uhren/pexels-max-muster-4711.mp4", "wasserzeichen.mp4", "hochkant.mp4"}  # fremder Kanal: erst bei dessen Video
+    assert gemeldet["hochkant.mp4"]["brauchbar"] is False and gemeldet["hochkant.mp4"]["grund"] == "Hochformat"
+    assert gemeldet["wasserzeichen.mp4"]["brauchbar"] is False and gemeldet["wasserzeichen.mp4"]["grund"] == "Wasserzeichen"
+    assert gemeldet["Uhren/pexels-max-muster-4711.mp4"]["quelle"] == "pexels" and gemeldet["Uhren/pexels-max-muster-4711.mp4"]["filmer"] == "Max Muster"
+    assert "uhren" in gemeldet["Uhren/pexels-max-muster-4711.mp4"]["schlagwoerter"] and "uhr" in gemeldet["testkanal/uhr-nahaufnahme.mp4"]["schlagwoerter"]
+    assert gemeldet["testkanal/uhr-nahaufnahme.mp4"]["abschnitt"]["start"] > 0  # ab dem besten Bild
+    assert len(l.seller.vorschauen) == 4
+    # Bildplan: Szene 1 eigener Clip E1, Szene 2 wollte E1 nochmal → kein eigener (Stock gibt es nicht → Bild)
+    s1, s2 = l.daten["skript"][0]["bilder"], l.daten["skript"][1]["bilder"]
+    assert s1[1]["art"] == "clip" and s1[1].get("eigen") and str(s1[1]["clip"]).startswith("eigen-")
+    assert not s2[1].get("eigen")
+    stock = l.p.state["stock"][s1[1]["clip"]]
+    info = medien.video_info(l.k.ffprobe, l.p.pfad(stock["datei"]))
+    assert (info["breite"], info["hoehe"]) == (1920, 1080)
+    assert d["probe"]["clips"] >= 1
+    assert any("Clip-Bibliothek: 4 neue Clips angesehen." in x for x in h)
+    assert any("eigene Clips eingesetzt" in x for x in h)
+    benutzt = {e["pfad"]: e["benutzt"] for e in sch._clipbib(l).clips.values()}
+    assert sum(benutzt.values()) == 1
+    teil, voll = l.seller.clip_meldungen[-1]  # Nutzung nach dem Bebildern nachgemeldet (nur der benutzte Clip)
+    assert voll is False and len(teil) == 1 and teil[0]["benutzt"] == 1
+    # Nachweis: Pexels-Clip aus dem Ordner wird genannt, eigener nicht
+    nachweis = sch.clip_nachweis(l, l.daten["skript"])
+    eigen_quelle = stock["quelle"]
+    assert (nachweis == "Videos: Pexels (pexels.com) – Max Muster") if eigen_quelle == "pexels" else nachweis == ""
+    # zweiter Lauf: nichts neu angesehen, nichts doppelt gezählt
+    n = len(angesehen)
+    sch.probe(l)
+    assert len(angesehen) == n and sum(e["benutzt"] for e in sch._clipbib(l).clips.values()) == 1
+    # gesperrt (von Hand im Seller-System) → nicht mehr im Katalog
+    cid = next(c["id"] for c in l.seller.gemeldet if c["pfad"] == "testkanal/uhr-nahaufnahme.mp4")
+    l.a["clipKorrekturen"] = {cid: {"gesperrt": True, "schlagwoerter": None, "beschreibung": None}}
+    assert cid not in {e["id"] for e in sch._clipbib_vorbereiten(l, [])}

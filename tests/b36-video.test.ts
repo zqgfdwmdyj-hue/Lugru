@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_AB_TAKT, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_AB_TAKT, WORKER_AB_CLIPS, clipMeldungAus, schlagwoerterAus, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -122,7 +122,7 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.4.1");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.5.0");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
@@ -130,7 +130,9 @@ describe("Kosten (B36.3)", () => {
     expect(workerVeraltet("1.2.1")).toBe(true); // 1.3.0: echtes Zeichnen, Probeszene
     expect(workerVeraltet("1.3.0")).toBe(true); // 1.4.0: Vollbild in Bewegung (Bildwechsel, Kamerafahrt, Pexels)
     expect(workerVeraltet("1.4.0")).toBe(true); // 1.4.1: Clips von Pixabay (Pexels vergibt keine Schlüssel)
-    expect(workerVeraltet("1.4.1")).toBe(false);
+    expect(workerVeraltet("1.4.1")).toBe(true); // 1.5.0: eigene Clip-Bibliothek (Ordner clips)
+    expect(workerVeraltet("1.5.0")).toBe(false);
+    expect(workerVeraltet("1.4.1", WORKER_AB_CLIPS)).toBe(true);
     expect(workerVeraltet("2.0")).toBe(false);
     // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
     expect(workerVeraltet("1.2.0", WORKER_AB_TAKT)).toBe(false);
@@ -310,5 +312,31 @@ describe("B36.11 Vollbild in Bewegung (13.11.)", () => {
     expect(workerAbProbe("whiteboard")).toBe(WORKER_AB_PROBE);
     expect(workerAbProbe("vollbild")).toBe(WORKER_AB_BEWEGT);
     expect(probeMoeglich({ art: "video", status: "freigabe", skript: [{ text: "Ein Satz." }] }, "vollbild")).toBe(true);
+  });
+});
+
+describe("B36.12 Eigene Clip-Bibliothek – Meldung vom Worker", () => {
+  const gut = { id: "0123456789abcdef0123", pfad: "uhren/pexels-max-muster-4711.mp4", kanal: "testkanal", dauer: 8.04, breite: 1920, hoehe: 1080, beschreibung: " Uhr am Handgelenk ", schlagwoerter: ["Uhr", "watch", ""], einstellung: "detail", brauchbar: true, grund: "", abschnitt: { start: 1.234, dauer: 6.8 }, quelle: "pexels", filmer: "Max Muster", benutzt: 2, zuletzt: 1_763_000_000 };
+  it("prüft und kürzt die Angaben", () => {
+    const c = clipMeldungAus(gut)!;
+    expect(c).toMatchObject({ clipId: gut.id, pfad: gut.pfad, kanalSlug: "testkanal", dauer: 8, breite: 1920, beschreibung: "Uhr am Handgelenk", schlagwoerter: ["uhr", "watch"], brauchbar: true, grund: null, abschnitt: { start: 1.2, dauer: 6.8 }, quelle: "pexels", filmer: "Max Muster", benutzt: 2 });
+    expect(c.zuletztBenutzt?.getTime()).toBe(1_763_000_000_000);
+    expect(clipMeldungAus({ ...gut, pfad: "C:\\video\\clips\\a.mp4" })?.pfad).toBe("C:/video/clips/a.mp4");
+  });
+  it("lehnt Ungültiges ab (ID, Pfad mit ..), unbekannte Quelle = eigen, brauchbar nur bei false aus", () => {
+    expect(clipMeldungAus({ ...gut, id: "xyz" })).toBeNull();
+    expect(clipMeldungAus({ ...gut, pfad: "../geheim.mp4" })).toBeNull();
+    expect(clipMeldungAus({ ...gut, pfad: "" })).toBeNull();
+    expect(clipMeldungAus(null)).toBeNull();
+    expect(clipMeldungAus({ ...gut, quelle: "youtube" })?.quelle).toBe("eigen");
+    expect(clipMeldungAus({ ...gut, brauchbar: undefined })?.brauchbar).toBe(true);
+    expect(clipMeldungAus({ ...gut, brauchbar: false, grund: "Wasserzeichen" })).toMatchObject({ brauchbar: false, grund: "Wasserzeichen" });
+    expect(clipMeldungAus({ ...gut, kanal: "" })?.kanalSlug).toBeNull();
+    expect(clipMeldungAus({ ...gut, abschnitt: { start: 1, dauer: 0 } })?.abschnitt).toBeNull();
+    expect(clipMeldungAus({ ...gut, schlagwoerter: Array.from({ length: 40 }, (_, i) => `w${i}`) })?.schlagwoerter).toHaveLength(25);
+  });
+  it("Schlagwörter aus dem Eingabefeld: klein, ohne Doppelte", () => {
+    expect(schlagwoerterAus("Rolex, Zifferblatt; rolex\nNahaufnahme, ")).toEqual(["rolex", "zifferblatt", "nahaufnahme"]);
+    expect(schlagwoerterAus("  ")).toEqual([]);
   });
 });

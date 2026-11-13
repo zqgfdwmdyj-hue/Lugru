@@ -1086,6 +1086,13 @@
       "when": 1794570419090,
       "tag": "0154_b36_vollbild_bewegt",
       "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1794583164279,
+      "tag": "0155_b36_clip_bibliothek",
+      "breakpoints": true
     }
   ]
 }

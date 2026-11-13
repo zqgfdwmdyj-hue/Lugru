@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/17 Abläufe | – | 8 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/18 Abläufe | – | 9 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -560,6 +560,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips“ (Pixabay), Video bis zur Vorschau rendern | Bildplan von Claude (ein Aufruf je 25 Szenen); im Schnitt alle 4–8 s ein neues Bild oder ein Clip, Start je Element beim Schlüsselwort; jedes Bild fährt (Bildausschnitt ändert sich innerhalb des Bilds); mindestens ein Viertel Clips, Clips von Pixabay (Suche ≤ 15 Treffer, safesearch, nur Filme), jede Clip-Datei einmal geladen, Filmer in der Beschreibung; Bildaufrufe = verschiedene Bilder + 1 Ablehnung | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand | Hand (Hautton) in mehreren Einzelbildern der ersten Szenen und der Probeszene sichtbar; unterer Rand ohne Untertitel | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
 | Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel | gültig → „Schlüssel gültig. Videosuche funktioniert“; falsch → „Schlüssel abgelehnt“ bzw. HTTP 401, nie Teile des Schlüssels; ohne Schlüssel 424; Antwort im Pexels-Format (IDs pixabay-…, leere Größen weg), höchstens 15 Treffer, fremder Pfad 404; im Video (B36.7) alle Clips von Pixabay, Pexels nicht gefragt, Nachweis „Videos: Pixabay (pixabay.com) – …“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
+| Nachtrag 13.11. (4) Eigene Clip-Bibliothek: Clip-Ordner mit Kanal-Unterordner, Pexels-Download in „alle“, Clip mit Wasserzeichen und Hochformat-Clip; Vollbild-Video bis zur Vorschau; Seite Video → Clip-Bibliothek, einen Clip sperren | jeder neue Clip einmal angesehen (4 Standbilder, Hochformat ohne Claude); im Seller-System alle 4 mit Vorschaubild, Wasserzeichen/Hochformat „nicht brauchbar“ mit Grund; nur brauchbare im Bildplan; eigene Clips vor Pixabay, jeder höchstens einmal je Video, als 1920×1080-Ausschnitt; „1× benutzt“; Beschreibung nennt den Pexels-Filmer; Sperren → „Clip gesperrt“, Anzahl sinkt, Schlagwörter bleiben „erkannt“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ | Status „wartet“ statt „Fehler“, neuer Versuch automatisch in 10 Min. (danach 30, 60), Hinweis „Störung beim Anbieter in „Skript“ … (1/3)“; „Jetzt neu versuchen“ holt nur den fehlenden Abschnitt und die danach; alle Claude-Aufrufe mit mindestens 16.000 Tokens Platz (Denken zählt mit) | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ | Abbrüche/529 nach 2, 4, 8, 16 s wiederholt (Log „neuer Versuch“); nach 5 Fehlversuchen Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“; fertige Abschnitte als Dateien im Projektordner; Wiederholen holt nur Punkt 3 bis CTA; Skript 1.500–1.700 Wörter, 5 Punkte, alle Studien in der Quellenliste; Sprache je Szene genau einmal bezahlt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel | Bilder mit gpt-image-2.5-flare, nie gpt-image-1; Wahl gespeichert und bei jedem Bild benutzt, Kosten-Zeile nennt das Modell; gesperrtes Modell einmal versucht, dann Flare; Test „Schlüssel gültig. Bildmodell für Videos: …“ bzw. „Schlüssel abgelehnt (HTTP 401)“; Brücke 401 „OpenAI-Schlüssel abgelehnt … neu eintragen“ ohne Schlüsselteile | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
@@ -572,6 +573,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
 - – Offen: Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.4.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
 - – Offen: Nachtrag 13.11. (2)/(3): Pixabay-Schlüssel eintragen (Pexels vergibt zurzeit keine), Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
+- – Offen: Nachtrag 13.11. (4): Ordner C:\video\clips anlegen, Worker 1.5.0 mit -v C:\video\clips:/clips, echte Clips hineinlegen und die Auswahl am echten Video ansehen (Claude-Beschreibungen, Treffer je Satz)
 - – Offen: B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 
 ### Team & Verwaltung › VA & Delegation (`/delegation`)
@@ -754,7 +756,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (192 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 192 nicht gelaufen.
+**Automatisch** (193 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 193 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -885,6 +887,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): Nachtrag 13.11. (2) Vollbild in Bewegung + Pexels: Vollbild-Kanal mit „Bildwechsel alle 6 s“ und „Echte Videoclips“ (Pixabay), Video bis zur Vorschau rendern – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 13.11. (4) Eigene Clip-Bibliothek: Clip-Ordner mit Kanal-Unterordner, Pexels-Download in „alle“, Clip mit Wasserzeichen und Hochformat-Clip; Vollbild-Video bis zur Vorschau; Seite Video → Clip-Bibliothek, einen Clip sperren – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel – im letzten Lauf nicht gelaufen
@@ -1020,6 +1023,7 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Video (YouTube): B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
 - Video (YouTube): Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.4.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
 - Video (YouTube): Nachtrag 13.11. (2)/(3): Pixabay-Schlüssel eintragen (Pexels vergibt zurzeit keine), Probeszene am Vollbild-Video des Uhren-Kanals ansehen, dann neu bebildern & rendern
+- Video (YouTube): Nachtrag 13.11. (4): Ordner C:\video\clips anlegen, Worker 1.5.0 mit -v C:\video\clips:/clips, echte Clips hineinlegen und die Auswahl am echten Video ansehen (Claude-Beschreibungen, Treffer je Satz)
 - Video (YouTube): B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs

@@ -49,7 +49,9 @@ export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
  *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
  *  ein neuer Versuch mit doppeltem Platz). */
-export const WORKER_VERSION_AKTUELL = "1.4.1";
+export const WORKER_VERSION_AKTUELL = "1.5.0";
+/** Ab 1.5.0 (B36.12): eigene Clip-Bibliothek (Ordner „clips“ am Worker-PC, von Claude angesehen, passend ausgewählt). */
+export const WORKER_AB_CLIPS = "1.5.0";
 /** Ab 1.4.0 (B36.11): Stil „Vollbild“ in Bewegung – Bildwechsel alle ~6 s mit Kamerafahrt, weiche Übergänge, Clips (Pixabay/Pexels);
  *  Probeszene und „Neu bebildern & rendern“ auch für Vollbild. */
 export const WORKER_AB_BEWEGT = "1.4.0";
@@ -110,6 +112,42 @@ export function pixabayAlsVideos(hits: PixabayTreffer[] | null | undefined, nurH
       .filter((f): f is { url: string; width?: number; height?: number } => !!f && typeof f.url === "string" && (f.url.startsWith("https://") || (!nurHttps && f.url.startsWith("http://"))))
       .map((f) => ({ link: f.url, width: Number(f.width) || 0, height: Number(f.height) || 0, file_type: "video/mp4" })),
   })).filter((v) => v.video_files.length > 0);
+}
+/** B36.12 Eigene Clip-Bibliothek: Eintrag vom Worker prüfen und kürzen (alles optional außer id/pfad). */
+export type ClipMeldung = { clipId: string; pfad: string; kanalSlug: string | null; dauer: number; breite: number; hoehe: number; beschreibung: string; schlagwoerter: string[]; einstellung: string | null; brauchbar: boolean; grund: string | null; abschnitt: { start: number; dauer: number } | null; quelle: string; filmer: string | null; benutzt: number; zuletztBenutzt: Date | null };
+export function clipMeldungAus(x: unknown): ClipMeldung | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  const id = String(o.id ?? "");
+  if (!/^[0-9a-f]{12,64}$/.test(id)) return null;
+  const pfad = String(o.pfad ?? "").replace(/\\/g, "/").replace(/^\/+/, "").slice(0, 300);
+  if (!pfad || pfad.split("/").includes("..")) return null;
+  const zahl = (v: unknown, max: number) => Math.min(max, Math.max(0, Number(v) || 0));
+  const slug = o.kanal == null || o.kanal === "" ? null : String(o.kanal).toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80) || null;
+  const ab = o.abschnitt as { start?: unknown; dauer?: unknown } | null | undefined;
+  const zuletzt = typeof o.zuletzt === "string" || typeof o.zuletzt === "number" ? new Date(typeof o.zuletzt === "number" ? o.zuletzt * 1000 : o.zuletzt) : null;
+  return {
+    clipId: id,
+    pfad,
+    kanalSlug: slug,
+    dauer: Math.round(zahl(o.dauer, 36_000) * 10) / 10,
+    breite: Math.round(zahl(o.breite, 20_000)),
+    hoehe: Math.round(zahl(o.hoehe, 20_000)),
+    beschreibung: String(o.beschreibung ?? "").trim().slice(0, 600),
+    schlagwoerter: (Array.isArray(o.schlagwoerter) ? o.schlagwoerter : []).map((w) => String(w).trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 25),
+    einstellung: o.einstellung ? String(o.einstellung).slice(0, 30) : null,
+    brauchbar: o.brauchbar !== false,
+    grund: o.grund ? String(o.grund).slice(0, 200) : null,
+    abschnitt: ab && Number.isFinite(Number(ab.start)) && Number(ab.dauer) > 0 ? { start: Math.round(zahl(ab.start, 36_000) * 10) / 10, dauer: Math.round(zahl(ab.dauer, 600) * 10) / 10 } : null,
+    quelle: ["eigen", "pexels", "pixabay"].includes(String(o.quelle)) ? String(o.quelle) : "eigen",
+    filmer: o.filmer ? String(o.filmer).trim().slice(0, 80) || null : null,
+    benutzt: Math.round(zahl(o.benutzt, 100_000)),
+    zuletztBenutzt: zuletzt && !Number.isNaN(zuletzt.getTime()) ? zuletzt : null,
+  };
+}
+/** Schlagwörter aus einem Eingabefeld („rolex, zifferblatt; nahaufnahme“) – klein, ohne Doppelte, höchstens 25. */
+export function schlagwoerterAus(text: string): string[] {
+  return [...new Set(text.split(/[,;\n]/).map((w) => w.trim().toLowerCase().slice(0, 40)).filter(Boolean))].slice(0, 25);
 }
 /** Szenen der Probe ab Nummer „ab“ (1-basiert): so viele, bis ca. PROBE_SEK zusammen sind (≈ 2,5 Wörter/s), höchstens 5. */
 export function probeSzenen(skript: { text?: string | null }[], ab: number): number[] {

@@ -4,3 +4,4 @@ __pycache__/
 .env
 musik/*
 !musik/LIESMICH.txt
+clips/

@@ -55,7 +55,7 @@ function kiAnswer(req, b) {
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
   // B36 Video-Pipeline (Worker über die Anbieter-Brücke): feste erfundene Gliederung/Skript/Paket, auf Wunsch als Stream.
-  const video = /^\[video:(research|script|package|story|bildplan)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
+  const video = /^\[video:(research|script|package|story|bildplan|clipanalyse)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
   if (video) {
     if (b.stream) return [200, videoSse(b, video), "text/event-stream"];
     const content = [...(video.suche ? [{ type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: { query: "Studie" } }, { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: video.suche.map((x) => ({ type: "web_search_result", url: x.url, title: x.title, encrypted_content: "test", page_age: null })) }] : []), { type: "text", text: video.text }];
@@ -1725,7 +1725,7 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0 });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0, clipanalysen: [] });
       // Bildmodelle, die es „im Konto nicht gibt“ (zusätzlich zum abgeschalteten gpt-image-1) – prüft das Ausweichen der Brücke
       if (Array.isArray(b.bildModelleGesperrt)) videoNb.bildModelleGesperrt = b.bildModelleGesperrt.map(String);
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
@@ -1733,7 +1733,7 @@ http
       if (b.stoerung) videoNb.stoerungen[b.stoerung.schluessel] = { art: b.stoerung.art, anzahl: b.stoerung.anzahl ?? 1 };
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler, bildplaene: videoNb.bildplaene, pexels: videoNb.pexels, pexelsDateien: videoNb.pexelsDateien, pixabay: videoNb.pixabay, pixabayDateien: videoNb.pixabayDateien });
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler, bildplaene: videoNb.bildplaene, pexels: videoNb.pexels, pexelsDateien: videoNb.pexelsDateien, pixabay: videoNb.pixabay, pixabayDateien: videoNb.pixabayDateien, clipanalysen: videoNb.clipanalysen });
     if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
       // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
       const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
@@ -1798,7 +1798,7 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0 };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0, clipanalysen: [] };
 
 /** Video-Pipeline: Claude-Abschnitte mitschreiben und auf Wunsch stören – „abbruch“ (Antwort beginnt, dann wird die
  *  Verbindung ohne Abschluss geschlossen = „incomplete chunked read“), 529/429/503 als Fehlerantwort. */
@@ -1813,7 +1813,7 @@ function videoStoerungRoh(req, res, url, body) {
     }
     const last = (b.messages ?? []).filter((m) => m.role === "user").at(-1);
     const text = typeof last?.content === "string" ? last.content : (last?.content ?? []).filter((x) => x.type === "text").map((x) => x.text).join(" ");
-    const m = /^\[video:(research|script|package|story|bildplan)(?::([\w-]+))?\]/.exec(text ?? "");
+    const m = /^\[video:(research|script|package|story|bildplan|clipanalyse)(?::([\w-]+))?\]/.exec(text ?? "");
     if (!m) return false;
     schluessel = m[2] ? `${m[1]}:${m[2]}` : m[1];
     videoNb.claude.push(schluessel);
@@ -2210,16 +2210,29 @@ function videoAntwort(text) {
   }
   const st = /^\[video:story:(\w+)\]/.exec(text);
   if (st) return { text: JSON.stringify(storyAntwort(st[1], text)), usage: { input_tokens: 1500, output_tokens: 220 } };
+  if (text.startsWith("[video:clipanalyse]")) {
+    // B36.12: Clip ansehen (Text + 4 Standbilder) – Beschreibung/Schlagwörter aus dem Dateinamen, „wasserzeichen“ = unbrauchbar
+    const pfad = /Datei: (\S+)/.exec(text)?.[1] ?? "clip.mp4";
+    const name = pfad.split("/").at(-1).replace(/\.\w+$/, "").replace(/^pexels-|-\d+$/g, "");
+    const woerter = name.split(/[-_ ]+/).filter((w) => w.length > 2).map((w) => w.toLowerCase());
+    const wz = /wasserzeichen/i.test(pfad);
+    videoNb.clipanalysen.push({ pfad, bilder: (/Die (\d) Bilder/.exec(text) ?? [])[1] ?? null });
+    const json = { beschreibung: wz ? "Testclip mit eingeblendetem Logo" : `Testclip: ${woerter.join(" ")} in ruhiger Nahaufnahme`, schlagwoerter: wz ? ["logo"] : [...woerter, "test", "nahaufnahme"], einstellung: "nah", brauchbar: !wz, grund: wz ? "Wasserzeichen eines Anbieters" : "", bestes_bild: 2 };
+    return { text: JSON.stringify(json), usage: { input_tokens: 3200, output_tokens: 120 } };
+  }
   if (text.startsWith("[video:bildplan]")) {
     // B36.11: je Szene genau n Elemente; mit Clips erlaubt jedes zweite ein Clip; Schlüsselwort aus dem Szenentext
+    // B36.12: mit Katalog „Eigene Clips“ nimmt das erste Element jeder Szene den nächsten eigenen Clip (E1, E2 …)
     const clips = /„clip“ für ein echtes gefilmtes Video/.test(text);
+    const eigene = [...text.matchAll(/^(E\d+): /gm)].map((m) => m[1]);
     const szenen = [];
     for (const m of text.matchAll(/^Szene (\d+) \(n=(\d+), [\d.]+ s\): (.*)$/gm)) {
       const woerter = m[3].replace(/\s+\[bisherige Bildidee:.*$/, "").split(/\s+/).filter((w) => w.replace(/[^\p{L}]/gu, "").length > 3);
       const n = Number(m[2]);
-      szenen.push({ nr: Number(m[1]), bilder: Array.from({ length: n }, (_, k) => ({ art: clips && k % 2 === 1 ? "clip" : "bild", idee: `Testmotiv ${m[1]}.${k + 1}: ruhige Detailaufnahme`, suche: `test clip ${m[1]} ${k + 1}`, wort: k === 0 ? (m[3].split(/\s+/)[0] ?? "") : (woerter[Math.min(woerter.length - 1, Math.round(((k / n) * woerter.length)))] ?? "") })) });
+      const eigen = eigene.shift() ?? "";
+      szenen.push({ nr: Number(m[1]), bilder: Array.from({ length: n }, (_, k) => ({ art: k === 0 && eigen ? "eigen" : clips && k % 2 === 1 ? "clip" : "bild", eigen: k === 0 ? eigen : "", idee: `Testmotiv ${m[1]}.${k + 1}: ruhige Detailaufnahme`, suche: `test clip ${m[1]} ${k + 1}`, wort: k === 0 ? (m[3].split(/\s+/)[0] ?? "") : (woerter[Math.min(woerter.length - 1, Math.round(((k / n) * woerter.length)))] ?? "") })) });
     }
-    videoNb.bildplaene.push({ szenen: szenen.length, clips });
+    videoNb.bildplaene.push({ szenen: szenen.length, clips, eigene: [...text.matchAll(/^(E\d+): /gm)].length });
     return { text: JSON.stringify({ szenen }), usage: { input_tokens: 3000, output_tokens: 900 } };
   }
   if (text.startsWith("[video:package]")) {

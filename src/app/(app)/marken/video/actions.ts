@@ -140,6 +140,17 @@ export async function probeAction(fd: FormData) {
   }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
 }
 
+/** B36.12 Clip-Bibliothek: Clip sperren/freigeben, Schlagwörter und Beschreibung von Hand. */
+export async function clipAendernAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const clip = txt(fd, "clip", 64);
+  await mitFehler(async () => {
+    const { clipAendern } = await import("@/lib/video/clips");
+    await clipAendern(s, clip, { gesperrt: fd.get("gesperrt") === "on", schlagwoerter: txt(fd, "schlagwoerter", 1000), beschreibung: txt(fd, "beschreibung", 600) });
+    return fd.get("gesperrt") === "on" ? "Clip gesperrt – wird in keinem Video mehr benutzt." : "Clip gespeichert – gilt ab dem nächsten Bebildern.";
+  }, txt(fd, "kanal", 40) || null, "#clips");
+}
+
 export async function neuVertonenAction(fd: FormData) {
   const s = await requireArea("marken");
   await mitFehler(async () => {

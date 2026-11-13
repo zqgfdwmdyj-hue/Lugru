@@ -16,9 +16,9 @@ COPY schriften ./schriften
 COPY grafik ./grafik
 
 # Arbeitsdateien und Musik liegen außerhalb des Containers (Volumes), damit ein Neustart dort weitermacht.
-ENV ARBEITSORDNER=/arbeit MUSIKORDNER=/musik PYTHONUNBUFFERED=1
-VOLUME ["/arbeit", "/musik"]
-RUN useradd -m worker && mkdir -p /arbeit /musik && chown worker /arbeit /musik
+ENV ARBEITSORDNER=/arbeit MUSIKORDNER=/musik CLIPORDNER=/clips PYTHONUNBUFFERED=1
+VOLUME ["/arbeit", "/musik", "/clips"]
+RUN useradd -m worker && mkdir -p /arbeit /musik /clips && chown worker /arbeit /musik /clips
 USER worker
 
 CMD ["python", "worker.py"]

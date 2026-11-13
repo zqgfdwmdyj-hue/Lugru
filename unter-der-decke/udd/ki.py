@@ -62,7 +62,7 @@ def _einmal(c: anthropic.Anthropic, nachrichten: list[dict[str, Any]], kw: dict[
 def fragen(
     c: anthropic.Anthropic,
     modell: str,
-    prompt: str,
+    prompt: str | list[dict[str, Any]],
     *,
     was: str = "Claude",
     system: str | None = None,
@@ -95,7 +95,7 @@ class Abgeschnitten(RuntimeError):
 def _fragen(
     c: anthropic.Anthropic,
     modell: str,
-    prompt: str,
+    prompt: str | list[dict[str, Any]],
     *,
     was: str,
     system: str | None,

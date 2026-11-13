@@ -200,6 +200,46 @@ export const videoFotos = pgTable(
   (t) => [index("video_fotos_kanal").on(t.tenantId, t.kanalId)],
 );
 
+/**
+ * B36.12 Eigene Clip-Bibliothek: Videos im Ordner „clips“ am Worker-PC. Der Worker lässt jeden Clip einmal von Claude
+ * ansehen und meldet hier nur Metadaten + ein Vorschaubild (die Videos bleiben am PC). Sperren und Schlagwort-
+ * Korrekturen macht Ludwig hier; sie gehen mit jedem Auftrag an den Worker. ID = Prüfsumme der Datei (umbenennen ok).
+ */
+export type VideoClipAbschnitt = { start: number; dauer: number };
+export const videoClips = pgTable(
+  "video_clips",
+  {
+    tenantId: tenantId(),
+    clipId: text("clip_id").notNull(),
+    pfad: text("pfad").notNull(),
+    /** Kanal-Unterordner (Slug) oder null = für alle Kanäle */
+    kanalSlug: text("kanal_slug"),
+    dauer: real("dauer").notNull().default(0),
+    breite: integer("breite").notNull().default(0),
+    hoehe: integer("hoehe").notNull().default(0),
+    beschreibung: text("beschreibung").notNull().default(""),
+    schlagwoerter: jsonb("schlagwoerter").$type<string[]>().notNull().default([]),
+    einstellung: text("einstellung"),
+    brauchbar: boolean("brauchbar").notNull().default(true),
+    grund: text("grund"),
+    abschnitt: jsonb("abschnitt").$type<VideoClipAbschnitt | null>(),
+    quelle: text("quelle").notNull().default("eigen"),
+    filmer: text("filmer"),
+    benutzt: integer("benutzt").notNull().default(0),
+    zuletztBenutzt: timestamp("zuletzt_benutzt", { withTimezone: true }),
+    /** von Hand: gesperrt / eigene Schlagwörter (ersetzen die erkannten) / eigene Beschreibung */
+    gesperrt: boolean("gesperrt").notNull().default(false),
+    schlagwoerterHand: jsonb("schlagwoerter_hand").$type<string[] | null>(),
+    beschreibungHand: text("beschreibung_hand"),
+    vorschau: boolean("vorschau").notNull().default(false),
+    /** Datei liegt nicht mehr im Ordner (beim letzten Abgleich nicht gefunden) */
+    fehlt: boolean("fehlt").notNull().default(false),
+    gesehenAm: timestamp("gesehen_am", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("video_clips_id").on(t.tenantId, t.clipId), index("video_clips_kanal").on(t.tenantId, t.kanalSlug)],
+);
+
 /** Worker am Arbeits-PC: Token (nur Prüfsumme), zuletzt gesehen, freie Platte, Version. */
 export const videoWorker = pgTable(
   "video_worker",

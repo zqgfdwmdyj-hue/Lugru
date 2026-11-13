@@ -110,6 +110,13 @@ class Seller:
     def drive_melden(self, auftrag_id: str, art: str, file_id: str, groesse: int, link: str | None) -> dict[str, Any]:
         return self._anfrage("POST", f"/api/video-worker/auftrag/{auftrag_id}/datei/{art}", json={"drive": {"fileId": file_id, "groesse": groesse, "link": link}})
 
+    def clips_melden(self, clips: list[dict[str, Any]], vollstaendig: bool = True) -> dict[str, Any]:
+        """B36.12: Clip-Bibliothek abgleichen (nur Metadaten); Antwort nennt fehlende Vorschaubilder."""
+        return self._anfrage("POST", "/api/video-worker/clips", json={"clips": clips, "vollstaendig": vollstaendig})
+
+    def clip_vorschau(self, clip_id: str, daten: bytes) -> dict[str, Any]:
+        return self._anfrage("PUT", f"/api/video-worker/clips/{clip_id}/vorschau", data=daten, headers={"content-type": "image/jpeg"})
+
     def referenz_holen(self, kanal_id: str, nr: int) -> bytes:
         """Stil-Referenzbild eines Kanals (Whiteboard, B36.9)."""
         r = self.s.get(f"{self.url}/api/video-worker/referenz/{kanal_id}/{nr}", timeout=60)

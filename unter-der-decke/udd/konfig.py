@@ -22,6 +22,7 @@ class Konfig:
     ffmpeg: str
     ffprobe: str
     clip_hosts: tuple[str, ...] = ()  # zusätzlich erlaubte Hosts für Clip-Downloads (nur Testumgebung)
+    clipordner: Path | None = None  # B36.12 eigene Clip-Bibliothek (Docker: /clips)
 
 
 def laden() -> Konfig:
@@ -47,4 +48,5 @@ def laden() -> Konfig:
         ffmpeg=os.environ.get("FFMPEG", "ffmpeg"),
         ffprobe=os.environ.get("FFPROBE", "ffprobe"),
         clip_hosts=tuple(h.strip().lower() for h in os.environ.get("UDD_CLIP_HOSTS", "").split(",") if h.strip()),
+        clipordner=Path(os.environ.get("CLIPORDNER", hier / "clips")).resolve(),
     )

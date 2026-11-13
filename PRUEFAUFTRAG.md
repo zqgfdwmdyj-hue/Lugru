@@ -1919,6 +1919,26 @@ ausgesetzt“ – Pexels; Auswahl: Pixabay einbauen).
 | Keine Quelle | ✅ automatisch (`test_vollbild_ohne_pexels_schluessel_bilder_statt_clips`): je Quelle einmal gefragt (424), danach nur Bilder + Hinweis „Keine Clip-Quelle verbunden … Anbindungen → Pixabay“ |
 | Verbindung testen / Brücke | ✅ automatisch (e2e „Pixabay: Verbindung testen und Brücke“): gültig → Treffer, falscher Schlüssel → „Schlüssel abgelehnt“ bzw. 401 ohne Schlüsselteile, ohne Schlüssel 424, per_page auf 15 begrenzt, fremder Pfad 404 |
 
+**Nachtrag 13.11. (4): Eigene Clip-Bibliothek** (Wunsch: „Ordner, wo ich selber Videos hochlade … dass er das dann
+automatisch anschaut und sich die passenden Videos rauszieht – nicht auf Zufall“; Auswahl: „Ja, komplett“).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Ordner am PC | ❌ fehlt | ✅ `C:\video\clips` (Docker `-v C:\video\clips:/clips`, sonst `CLIPORDNER`); MP4/MOV/M4V/WEBM/MKV, versteckte Dateien ignoriert; Unterordner mit Kanal-Kurzname = nur dieser Kanal, andere Ordnernamen = Schlagwörter | `udd/clipbib.py › scannen`, `konfig.py`, `Dockerfile` |
+| Clip ansehen | ❌ fehlt | ✅ jeder neue Clip einmal: Technik (≥ 2 s, Querformat, ≥ 960 px) → 4 Standbilder (10/35/60/85 %) → Claude: Beschreibung, 5–12 Schlagwörter, Einstellung, brauchbar (Wasserzeichen/Logo/verwackelt/dunkel → nein + Grund), bestes Bild = Start des Abschnitts; ≈ 1 Cent je Clip, höchstens 40 neue je Video; Kennung = Prüfsumme (Umbenennen/Verschieben kostet nichts); Clips eines anderen Kanals erst bei dessen Video | `clipbib.py › ANALYSE_SCHEMA, analyse_prompt`, `schritte.py › _clip_ansehen, _clipbib_vorbereiten` |
+| Passende Auswahl | ❌ Zufall/Suche | ✅ Bildplan bekommt die passendsten eigenen Clips (Wort-Treffer im Text, selten benutzte zuerst, höchstens 40) als Liste E1…; Claude wählt je Satz gezielt, „nicht erzwingen“; Reihenfolge **eigener Clip → Pixabay → Pexels → KI-Bild**; jeder eigene Clip höchstens einmal je Video (auch über mehrere Aufrufe); bester Abschnitt als 1920×1080 ins Projekt geschnitten | `clipbib.py › katalog`, `schritte.py › _bildplan_holen, _bildplan, _eigen_holen, _vb_bebildern` |
+| Nachweis | – | ✅ Clip aus einem Pexels-Download („pexels-vorname-nachname-123.mp4“) → „Pexels (pexels.com) – Vorname Nachname“; eigene Aufnahmen ohne Nennung | `clipbib.py › quelle_aus_name`, `schritte.py › clip_nachweis` |
+| Seller-System | ❌ fehlt | ✅ Tabelle `video_clips` (nur Angaben + Vorschaubild 2×2, Videos bleiben am PC); Abgleich `POST /api/video-worker/clips` (fehlende → „nicht mehr im Ordner“), Vorschau `PUT …/clips/<id>/vorschau` (JPEG ≤ 400 KB); Nutzung wird nach dem Bebildern nachgemeldet | `src/lib/video/clips.ts`, `api/video-worker/clips/…`, `drizzle/0155_b36_clip_bibliothek.sql` |
+| Übersicht „Clip-Bibliothek“ | ❌ fehlt | ✅ Seite Video (Vollbild-Kanal): Anzahl brauchbar/gesperrt/fehlt, je Clip Vorschaubild, Pfad, Dauer/Größe, „nur Kanal“/„alle“, „k× benutzt“, Pexels-Filmer, Grund bei „nicht brauchbar“; Schlagwörter/Beschreibung korrigieren, **sperren**; Korrekturen gehen mit jedem Auftrag an den Worker | `marken/video/page.tsx › #clips`, `actions.ts › clipAendernAction`, `service.ts › clipKontext` |
+| Worker | 1.4.1 | **1.5.0** (Hinweis „veraltet“ auf der Seite, Clip-Bibliothek erst ab 1.5.0) | `udd/__init__.py`, `logic.ts › WORKER_AB_CLIPS` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Ordner, Analyse, Auswahl im echten Lauf | ✅ automatisch (e2e B36.7 mit Worker): Ordner mit Kanal-Unterordner, „alle/pexels-erika-muster-4711.mp4“, Clip mit Wasserzeichen, Hochformat-Clip → **3 Claude-Ansichten mit je 4 Bildern** (Hochformat ohne Claude); im Seller-System 4 Clips mit Vorschaubild, „Hochformat“ und „Wasserzeichen eines Anbieters“ als nicht brauchbar, Kanal-Clip „nur Kanal“, Pexels-Clip mit Filmer; Bildplan-Liste nur mit den 2 brauchbaren; Video: 22 Szenen → 106 Bilder/Clips, davon **2 eigene Clips** (je einmal, `eigen-…`, je „1× benutzt“) + 44 Pixabay-Clips; Beschreibung „Pexels (pexels.com) – Erika Muster“ |
+| Übersicht + Sperren | ✅ automatisch (e2e B36.7): „2 brauchbare Clips“, Beschreibung/„1× benutzt“/„nur Kanal“ sichtbar, 2× „nicht brauchbar“, Vorschaubild 200 image/jpeg; Sperren → Meldung „Clip gesperrt“, DB gesperrt, unverändert gelassene Schlagwörter bleiben „erkannt“; Anzeige „1 brauchbarer Clip, 1 gesperrt“ |
+| Worker-Logik | ✅ automatisch (`test_clipbib_scannen_kanalordner_tags_und_herkunft`, `test_vollbild_eigene_clips_angesehen_passend_ausgewaehlt_einmal_je_video`): Kanal-/Tag-Ordner, Prüfsumme bleibt beim Umbenennen, Herkunft aus Dateinamen, Liste nach Treffern + Nutzung; gleicher Clip zweimal gewünscht → nur einmal; 2. Lauf: nichts neu angesehen, nichts doppelt gezählt; gesperrt → nicht mehr in der Liste; Ausschnitt 1920×1080 |
+| Meldung prüfen | ✅ automatisch (vitest „B36.12 Eigene Clip-Bibliothek“): ungültige ID / `..` im Pfad abgelehnt, Windows-Pfad vereinheitlicht, unbekannte Quelle = eigen, höchstens 25 Schlagwörter |
+
 ## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
@@ -3036,10 +3056,11 @@ nie in Chats oder Mails.
      Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
 186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
      der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.
-187. **Worker auf v1.4.1 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
-     Bewegung, Clips von Pixabay): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den Unterordner `grafik/` mit deiner
-     Hand und braucht `numpy`), in PowerShell im Ordner `C:\video\unter-der-decke`: `docker stop video-worker; docker rm
-     video-worker; docker build -t video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.4.1`.
+187. **Worker auf v1.5.0 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
+     Bewegung, Clips von Pixabay, eigene Clip-Bibliothek): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den
+     Unterordner `grafik/` mit deiner Hand und braucht `numpy`), in PowerShell im Ordner `C:\video\unter-der-decke`:
+     `docker stop video-worker; docker rm video-worker; docker build -t video-worker .` und `docker run …` wie im README –
+     **neu mit `-v C:\video\clips:/clips`**. Auf der Seite Video steht danach `v1.5.0`.
 188. **Kanalprofil „Unter der Decke“**: Sprechtempo **1,1** (Standard) und Motiv-Stil „Strichzeichnung“ prüfen, speichern.
 189. **Probeszene am Video „Vakuumpumpe“**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen →
      „Probeszene erzeugen“. Nach 1–3 Min. erscheint das 20-s-Video mit Wörter/Min. Ansehen: Tempo, Striche, Hand.
@@ -3055,3 +3076,10 @@ nie in Chats oder Mails.
 192. **Probeszene am Zeitlux-Video**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen → erzeugen.
      Nach 2–4 Min. ansehen: Bildwechsel, Kamerafahrt, Übergänge, Clips. Passt es: **„Neu bebildern & rendern“** – Skript
      und Sprache bleiben, neu kosten nur die zusätzlichen Bilder. Danach wieder Vorschau-Freigabe, Upload bleibt privat.
+193. **Ordner `C:\video\clips` anlegen** (einmal) und Clips hineinlegen, z. B. von pexels.com von Hand geladene Rolex-Clips
+     (Dateinamen so lassen, dann nennt die Beschreibung den Filmer). Querformat, ab 960 px Breite. Nur für den Uhren-Kanal:
+     Unterordner mit dessen Kurznamen (steht auf der Seite Video in der Clip-Bibliothek); für alle Kanäle direkt in
+     `clips` oder in Themenordner wie `clips\rolex` (Ordnername = Schlagwort).
+194. **Clip-Bibliothek prüfen**: nach dem nächsten Vollbild-Video (oder der Probeszene) Seite Video → Uhren-Kanal →
+     „Clip-Bibliothek“ aufklappen: Beschreibungen ansehen, falsche Schlagwörter korrigieren, unpassende Clips **sperren**.
+     Im Video-Hinweis steht „Clip-Bibliothek: N eigene Clips eingesetzt (von M passenden im Ordner)“.

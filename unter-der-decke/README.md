@@ -95,7 +95,7 @@ Seller-System → **Marken & Content → Video** → Abschnitt „Worker“ → 
    cd C:\video\unter-der-decke
    docker build -t video-worker .
    docker run -d --name video-worker --restart unless-stopped --env-file ..\worker.env `
-     -v C:\video\arbeit:/arbeit -v C:\video\musik:/musik --cpus 2 --memory 3g video-worker
+     -v C:\video\arbeit:/arbeit -v C:\video\musik:/musik -v C:\video\clips:/clips --cpus 2 --memory 3g video-worker
    ```
    `--restart unless-stopped` startet den Worker nach einem Neustart des PCs von selbst wieder, sobald Docker Desktop
    läuft (Docker Desktop → Settings → „Start Docker Desktop when you sign in“).
@@ -132,6 +132,22 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
+
+**1.5.0:** Eigene **Clip-Bibliothek** – eigene Videos in einen Ordner legen, der Worker sucht die passenden aus.
+- Ordner am PC: `C:\video\clips` (einmal anlegen). Beim `docker run` kommt dafür `-v C:\video\clips:/clips` dazu
+  (siehe Befehl unten). Ohne Docker: Ordner `clips` neben `worker.py` oder `CLIPORDNER` setzen.
+- Hineinlegen: MP4/MOV/M4V/WEBM/MKV, Querformat, ab 960 px Breite und 2 s Länge (z. B. von pexels.com von Hand geladene
+  Clips – der Dateiname „pexels-vorname-nachname-12345.mp4“ bleibt so, dann nennt die Beschreibung den Filmer).
+- Unterordner mit dem Kurznamen eines Kanals (steht auf der Seite Video in der Clip-Bibliothek, z. B. `clips\mein-kanal`)
+  = nur für diesen Kanal. Alles andere gilt für alle Kanäle; Ordnernamen zählen als Schlagwort (`clips\rolex\…` → „rolex“).
+- Beim nächsten Vollbild-Video (mit „Echte Videoclips einbauen“) schaut Claude jeden **neuen** Clip einmal an: 4 Standbilder
+  → Beschreibung, Schlagwörter, bester Abschnitt, brauchbar ja/nein (Wasserzeichen, Logo, verwackelt, dunkel). Kosten ca.
+  1 Cent je Clip, höchstens 40 neue je Video (Rest beim nächsten). Umbenennen/Verschieben kostet nichts (Prüfsumme).
+- Beim Bebildern bekommt Claude die passendsten Clips als Liste und wählt je Satz gezielt – **erst eigene Clips, dann
+  Pixabay, dann Pexels, dann KI-Bilder**. Jeder eigene Clip höchstens einmal je Video, selten benutzte zuerst.
+- Seite Video → **Clip-Bibliothek**: Vorschaubild, Beschreibung, „k× benutzt“, aussortierte mit Grund; Schlagwörter und
+  Beschreibung korrigieren, Clip sperren. Die Videos selbst bleiben am PC – ins Seller-System gehen nur Angaben und ein
+  kleines Vorschaubild.
 
 **1.4.1:** Videoclips von **Pixabay** (Pexels vergibt zurzeit keine neuen Schlüssel).
 - Clip-Quellen in dieser Reihenfolge: erst Pixabay, dann Pexels (falls dort ein Schlüssel eingetragen ist). Passt bei
@@ -194,7 +210,7 @@ selbst nach 10, 30 und 60 Minuten neu (Hinweis auf der Seite, Knopf „Jetzt neu
    docker stop video-worker; docker rm video-worker
    docker build -t video-worker .
    docker run -d --name video-worker --restart unless-stopped --env-file ..\worker.env `
-     -v C:\video\arbeit:/arbeit -v C:\video\musik:/musik --cpus 2 --memory 3g video-worker
+     -v C:\video\arbeit:/arbeit -v C:\video\musik:/musik -v C:\video\clips:/clips --cpus 2 --memory 3g video-worker
    ```
 3. Prüfen: `docker logs -f video-worker` – oben steht die Version; auf der Seite Video erscheint sie nach ~30 s.
 
@@ -211,6 +227,7 @@ Halb fertige Aufträge laufen danach mit „Schritt wiederholen“ auf der Seite
 | `WORKER_TOKEN` | Worker-Token `vw_…` | – (Pflicht) |
 | `ARBEITSORDNER` | Projektordner (Zwischendateien) | `./arbeit` |
 | `MUSIKORDNER` | Hintergrundmusik (MP3) | `./musik` |
+| `CLIPORDNER` | eigene Videoclips (Clip-Bibliothek, ab 1.5.0) | `./clips` (Docker: `/clips`) |
 | `VIDEO_POLL_S` | Abfrage-Takt in Sekunden | `30` |
 | `MIN_FREI_GB` / `WARN_FREI_GB` | unter 3 GB frei kein Lauf, unter 5 GB Warnung | `3` / `5` |
 | `VIDEO_FPS` | Bilder je Sekunde im Video | `25` |

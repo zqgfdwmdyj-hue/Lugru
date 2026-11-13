@@ -1,3 +1,3 @@
 """Video-Worker „unter-der-decke“ (B36): holt Aufträge beim Seller-System ab und macht daraus ein fertiges Video."""
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
