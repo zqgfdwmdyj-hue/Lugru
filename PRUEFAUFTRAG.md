@@ -1809,6 +1809,22 @@ eigener Renderer im Worker (`udd/whiteboard.py`, Abschnitt „B36.10 Tempo“).
 | 10–12 Min. Video mit mindestens 55 Szenen | ✅ automatisch: **63 Szenen** in 640 s (10:40 Min.), jede Szene ≤ 32 Wörter, Sprache je Szene mit Wortzeiten |
 | Sichtprüfung am echten Video | offen: nach dem Worker-Update ein Whiteboard-Video rendern und ansehen (Takt, Zoom, Wisch, Hervorhebungen) |
 
+**Nachtrag 13.11.: Bestehendes Video im neuen Takt neu machen** (Frage: „Wie mache ich das erste Video neu, ohne alles
+noch einmal zu bezahlen, aber mit flüssigem Ablauf?“). Vorher gab es für ein fertiges Video keinen Weg – „Skript neu
+schreiben“ erscheint nur während der Skript-Freigabe, ein neues Video hätte auch Recherche und Websuche neu gekostet.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Knopf am fertigen Whiteboard-Video | ❌ – | ✅ „Im neuen Takt neu machen“ (aufgeklappt, wenn das Video weniger als 55 Szenen oder keinen Takt hat): „gleicher Text – nur in kurze Szenen teilen“ (Standard) oder „Skript neu schreiben“, optional Anmerkung, Kostenschätzung vorab, Rückfrage | `page.tsx › vd-takt-neu`, `taktNeuAction` |
+| Was bleibt (kostet nichts) | – | Gliederung + Quellen (keine Recherche, keine Websuche), alle Motive der Kanal-Bibliothek, Hand, Referenzbilder | `service.ts › imTaktNeu` |
+| Was neu kostet | – | Skript in kurzen Szenen + Paket (Claude), Sprache mit Wortzeiten (alle Zeichen – die Szenen sind neu geschnitten), nur neue Motive | `logic.ts › taktNeuSchaetzung` |
+| YouTube | – | bisheriges Video bleibt privat in YouTube Studio (selbst löschen); „Privat hochladen“ wieder aus, neuer Upload erst nach Vorschau; der Worker verwirft die alte YouTube-ID | `imTaktNeu`, `schritte.py › ausfuehren` |
+| Schutz | – | nur mit Worker v1.2.0 (sonst entstünde wieder der alte Takt), nur Whiteboard, nur fertig/Fehler | `imTaktNeu` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Fertiges, hochgeladenes Whiteboard-Video „gleicher Text“ neu machen | ✅ automatisch (`b36-video.spec.ts › B36.10 „Im neuen Takt neu machen“`): Auftrag ab Skript, YouTube-ID/„Privat hochladen“ zurückgesetzt, alter Text als eigenes Skript in allen Skript-Aufrufen, **keine** neue Recherche/Websuche, 63 kurze Szenen, Sprache je Szene einmal mit Wortzeiten, **0 neue Motive** (alle aus der Bibliothek), neues Video fertig; Kosten im Nachbau 2,54 $ → 4,59 $ (nur Skript, Paket, Sprache) |
+
 ## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und

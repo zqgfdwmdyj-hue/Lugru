@@ -213,6 +213,23 @@ export function typischFuer(stil: string | null = "vollbild") {
 /** Typischer Lauf (1.500–1.700 Wörter): ~10.600 Zeichen Sprache, ~25 Bilder, ~112k/15k Tokens. */
 export const TYPISCH = typischFuer();
 
+/**
+ * B36.10 „Im neuen Takt neu machen“ (fertiges Whiteboard-Video): Gliederung und Quellen bleiben (keine Websuche, keine
+ * Recherche), Skript in kurzen Szenen + Paket neu (Claude, ca. 70.000 Tokens Eingabe / 6.000 Ausgabe), Sprache neu mit
+ * Wortzeiten (alle Zeichen – neue Szenen-Aufteilung), Motive nur neue: die bisherigen liegen in der Kanal-Bibliothek.
+ */
+export function taktNeuSchaetzung(p: VideoPreise, modell: string | null, zeichen: number, bekannteMotive: number): { summe: number; positionen: { art: string; betrag: number | null }[]; neueMotive: number; fehlend: string[] } {
+  const c = claudePreis(p, modell);
+  const neueMotive = Math.max(10, Math.round(((WB_SZENEN[0] + WB_SZENEN[1]) / 2) * NEUE_MOTIVE_JE_SZENE) - bekannteMotive);
+  const positionen = [
+    { art: "Claude (Skript in kurzen Szenen, Paket)", betrag: (70_000 / 1e6) * c.eingabe + (6_000 / 1e6) * c.ausgabe },
+    { art: `Sprache mit Wortzeiten (${zeichen.toLocaleString("de-DE")} Zeichen)`, betrag: p.elevenlabsJe1000Zeichen !== null ? (zeichen / 1000) * p.elevenlabsJe1000Zeichen : null },
+    { art: `neue Motive (ca. ${neueMotive}, ${bekannteMotive} aus der Bibliothek)`, betrag: motivPreis(p) != null ? neueMotive * (motivPreis(p) as number) : null },
+  ];
+  const fehlend = positionen.filter((x) => x.betrag === null).map((x) => x.art.split(" (")[0]);
+  return { summe: Math.round(positionen.reduce((n, x) => n + (x.betrag ?? 0), 0) * 100) / 100, positionen, neueMotive, fehlend };
+}
+
 export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typischFuer> = TYPISCH, modell: string | null = VIDEO_MODELL_STANDARD, bildModell: string | null = BILD_MODELL_STANDARD): { summe: number; positionen: { art: string; betrag: number | null }[]; fehlend: string[] } {
   const c = claudePreis(p, modell);
   const bm = bildModellName(bildModell);

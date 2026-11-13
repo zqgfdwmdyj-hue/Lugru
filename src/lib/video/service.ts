@@ -12,7 +12,7 @@ import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
 import { storySperre } from "./story-sperre";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -164,6 +164,36 @@ export async function neuMachen(s: Session, id: string, schritt: "research" | "s
   const { a } = await auftragFuer(s, id);
   const freigegeben = schritt === "research" ? {} : { gliederung: a.freigegeben.gliederung };
   await aendern(id, { status: "wartet", schritt, wiederholen: schritt, freigabeOffen: null, freigegeben, hinweis: hinweis?.trim().slice(0, 2000) || a.hinweis, fertigAm: null });
+}
+
+/**
+ * B36.10 „Im neuen Takt neu machen“: ein fertiges (oder abgebrochenes) Whiteboard-Video ab dem Skript neu – Gliederung
+ * und Quellen bleiben (keine neue Recherche/Websuche). „Gleicher Text“: das bisherige Skript wird als eigenes Skript
+ * übernommen und nur in kurze Szenen geteilt (möglichst wörtlich); sonst schreibt Claude neu. Sprache entsteht neu mit
+ * Wortzeiten, Motive kommen aus der Kanal-Bibliothek (nur neue kosten). Das bisherige YouTube-Video bleibt privat in
+ * YouTube Studio; „Privat hochladen“ ist danach wieder aus (neue Freigabe der Vorschau).
+ */
+export async function imTaktNeu(s: Session, id: string, o: { gleicherText: boolean; hinweis: string | null }): Promise<string> {
+  const { a, kanal } = await auftragFuer(s, id);
+  if (a.art !== "video") throw new VideoFehler("Nur für Videos.");
+  if (kanal.stil !== "whiteboard") throw new VideoFehler("Nur für Whiteboard-Videos (Takt nach B36.10).");
+  if (a.status !== "fertig" && a.status !== "fehler") throw new VideoFehler("Erst wenn das Video fertig ist oder im Fehler steht.");
+  if (!a.skript?.length || !a.gliederung) throw new VideoFehler("Kein Skript bzw. keine Gliederung vorhanden – bitte ein neues Video anlegen.");
+  const w = await workerZuletzt(s.tenantId);
+  if (w && workerVeraltet(w.version)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren, sonst entsteht wieder der alte Takt (nichts geändert).`);
+  const text = a.skript.map((x) => x.text.trim()).filter(Boolean).join("\n\n").slice(0, VORLAGE_MAX);
+  const cfg = await videoEinstellungen(s.tenantId);
+  const bekannt = new Set(a.skript.flatMap((x) => (x.motive ?? []).map((m) => m.key))).size;
+  const schaetzung = taktNeuSchaetzung(cfg.preise, cfg.modell, text.length, bekannt);
+  const neu = ["script", "voice", "visuals", "render", "package", "upload"] as const;
+  const schritte = { ...a.schritte, ...Object.fromEntries(neu.map((x) => [x, { status: "offen" as const }])) };
+  await aendern(id, {
+    status: "wartet", schritt: "script", wiederholen: "script", freigabeOffen: null, freigegeben: { gliederung: a.freigegeben.gliederung ?? jetzt().toISOString() },
+    ...(o.gleicherText ? { vorlage: text, vorlageArt: "skript" as const } : {}),
+    hinweis: o.hinweis?.trim().slice(0, 2000) || a.hinweis, startAb: null, fertigAm: null, aufraeumen: false, hochladen: false, youtubeId: null, youtubeStatus: null, neuMotive: [], schritte,
+    kostenSchaetzung: Math.round((a.kostenIst + schaetzung.summe) * 100) / 100,
+  });
+  return `Wird im neuen Takt neu gemacht${o.gleicherText ? " – gleicher Text, in kurze Szenen geteilt" : " – Skript neu geschrieben"}. Recherche bleibt, geschätzt ca. ${schaetzung.summe.toFixed(2)} $ dazu${schaetzung.fehlend.length ? ` (ohne ${schaetzung.fehlend.join(", ")} – Preis fehlt)` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio – dort löschen, wenn das neue passt." : ""}`;
 }
 
 /** Szenen-Übersicht (B36.9.6): ausgewählte Motive verwerfen und neu erzeugen lassen – alles andere bleibt (Bibliothek). */

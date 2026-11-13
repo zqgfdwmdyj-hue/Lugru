@@ -615,7 +615,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
             ab.schreiben(name, e)
             fertig[name] = e
     szenen = [dict(s) for name in namen for s in fertig[name]["szenen"]]
-    probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen, voll=w[0] >= l.laenge["woerter"][0]) if l.whiteboard else [])
+    probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen, voll=w[1] >= l.laenge["woerter"][0]) if l.whiteboard else [])
     if l.whiteboard:
         wb_aufbereiten(szenen, figuren)
     for i, s in enumerate(szenen, 1):
@@ -1310,6 +1310,9 @@ def ausfuehren(k: Konfig, seller: Seller, auftrag: dict[str, Any], log: Callable
             if neu_schreiben and s in ABSCHNITT_ORDNER:
                 shutil.rmtree(l.p.ordner / ABSCHNITT_ORDNER[s], ignore_errors=True)
             l.p.state["schritte"].pop(s, None)
+        if neu_schreiben and wdh != "upload":
+            # Neu ab einem früheren Schritt (z. B. „Im neuen Takt neu machen“): neues Video → neuer YouTube-Upload, nie die alte ID
+            l.p.state.pop("youtube", None)
         l.p.speichern()
     elif wdh == "story":
         l.p.state["schritte"].pop("story", None)

@@ -630,6 +630,18 @@ def test_neu_schreiben_verwirft_abschnitte_nach_fehler_nicht(tmp_path, monkeypat
     schritte.ausfuehren(k, S(), dict(auftrag), log=lambda _t: None)
     assert not (p.ordner / "skript").exists()
     assert not Projekt(tmp_path, "k", "a1").erledigt("script")
+    # „Im neuen Takt neu machen“ nach fertigem Upload: alte YouTube-ID wird verworfen (neues Video, neuer Upload) …
+    p = Projekt(tmp_path, "k", "a1")
+    p.state["youtube"] = {"id": "ytALT", "sitzung": "https://example.invalid/s"}
+    p.markieren("script", skript=[], woerter=0)
+    schritte.ausfuehren(k, S(), dict(auftrag), log=lambda _t: None)
+    assert "youtube" not in Projekt(tmp_path, "k", "a1").state
+    # … „Schritt wiederholen“ beim Upload behält die Sitzung (Fortsetzen statt doppelt hochladen)
+    p = Projekt(tmp_path, "k", "a1")
+    p.state["youtube"] = {"sitzung": "https://example.invalid/s"}
+    p.speichern()
+    schritte.ausfuehren(k, S(), {**auftrag, "schritt": "upload", "wiederholen": "upload"}, log=lambda _t: None)
+    assert Projekt(tmp_path, "k", "a1").state["youtube"] == {"sitzung": "https://example.invalid/s"}
 
 
 def test_eigenes_skript_wird_nie_verlaengert_nur_gekuerzt():

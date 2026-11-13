@@ -119,6 +119,15 @@ export async function neuAction(fd: FormData) {
   }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
 }
 
+/** B36.10: fertiges Whiteboard-Video im neuen Takt neu (Recherche bleibt; gleicher Text oder neu geschrieben). */
+export async function taktNeuAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { imTaktNeu } = await import("@/lib/video/service");
+    return imTaktNeu(s, id(fd), { gleicherText: fd.get("text") !== "neu", hinweis: txt(fd, "hinweis", 2000) || null });
+  }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
+}
+
 export async function wiederholenAction(fd: FormData) {
   const s = await requireArea("marken");
   await mitFehler(async () => {

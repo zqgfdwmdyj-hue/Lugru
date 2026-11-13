@@ -605,6 +605,68 @@ test.describe("B36 Video-Pipeline", () => {
     await workerStoppen();
   });
 
+  test("B36.10 „Im neuen Takt neu machen“: fertiges Whiteboard-Video ab dem Skript neu – gleicher Text, Recherche bleibt, Sprache mit Wortzeiten neu, Motive aus der Bibliothek, YouTube-Upload zurückgesetzt", async ({ page }) => {
+    test.setTimeout(420_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL3 = `Testkanal Whiteboard ${m}`;
+    type Alt = { id: string; kanal_id: string; status: string; youtube_id: string | null; skript: { text: string; motive: { key: string }[] }[] | null; kosten_ist: number };
+    const lies = async () => (await sql<Alt & { schritt: string; freigabe_offen: string | null; hochladen: boolean; vorlage_art: string | null; freigegeben: Record<string, string>; dateien: Record<string, unknown>; schritte: Record<string, { status: string; fehler?: string | null }> }>("select a.id, a.kanal_id, a.status, a.schritt, a.freigabe_offen, a.hochladen, a.vorlage_art, a.freigegeben, a.youtube_id, a.skript, a.dateien, a.schritte, a.kosten_ist::float as kosten_ist from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = $2 order by a.created_at desc limit 1", [T, KANAL3]))[0];
+    const vorher = await lies();
+    test.skip(!vorher || vorher.status !== "fertig" || !vorher.youtube_id, "braucht das fertige, hochgeladene Whiteboard-Video aus dem Test davor");
+    const nb0 = await nachbau();
+    const forschung0 = nb0.claude.filter((c) => c.startsWith("research")).length;
+    const bilder0 = nb0.bilder.filter((b) => !b.abgelehnt).length;
+    const eleven0 = nb0.eleven.length;
+    page.on("dialog", (d) => d.accept());
+    await anmelden(page, "inhaber");
+    await page.goto(`/marken/video?kanal=${vorher.kanal_id}`);
+    const karte = page.locator(`#a-${vorher.id}`);
+    const bereich = karte.getByTestId("vd-takt-neu");
+    if (!(await bereich.evaluate((d) => (d as HTMLDetailsElement).open))) await bereich.locator("summary").click();
+    await expect(karte.getByTestId("vd-takt-kosten")).toContainText("Sprache mit Wortzeiten");
+    await expect(karte.getByTestId("vd-takt-kosten")).toContainText("aus der Bibliothek");
+    await karte.getByTestId("vd-takt-gleich").check();
+    await Promise.all([aktion(page), karte.getByTestId("vd-takt-los").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Wird im neuen Takt neu gemacht – gleicher Text, in kurze Szenen geteilt. Recherche bleibt");
+    await expect(page.getByTestId("vd-meldung")).toContainText("bisherige YouTube-Video bleibt privat");
+    let a = await lies();
+    expect([a.status, a.schritt, a.youtube_id, a.hochladen, a.vorlage_art]).toEqual(["wartet", "script", null, false, "skript"]);
+    expect(Object.keys(a.freigegeben)).toEqual(["gliederung"]);
+    // Worker: Skript ab dem eigenen (alten) Text in kurzen Szenen, Sprache neu mit Wortzeiten, Motive aus der Bibliothek
+    if (!token) throw new Error("kein Worker-Token aus den Tests davor");
+    await sql("update video_worker set frei_gb = null where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
+    await sql("update video_auftraege set status = 'abgebrochen' where tenant_id = $1 and status in ('wartet', 'laeuft') and id <> $2", [T, vorher.id]);
+    await workerStoppen();
+    workerStarten();
+    for (const bis = Date.now() + 300_000; (a = await lies()).freigabe_offen !== "szenen"; ) {
+      if (a.status === "fehler") throw new Error(`Fehler (${a.schritt}): ${a.schritte[a.schritt]?.fehler}\n${log.slice(-3000)}`);
+      if (Date.now() > bis) throw new Error(`Zeitüberschreitung bis zur Szenen-Übersicht (${a.status}/${a.schritt})\n${log.slice(-3000)}`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string }[];
+    const skriptPrompts = ki.filter((k) => k.text.startsWith("[video:script:") && k.text.includes("Eigenes Skript von Ludwig"));
+    expect(skriptPrompts.length).toBeGreaterThanOrEqual(9); // je Abschnitt ein Aufruf mit dem alten Text
+    expect(skriptPrompts[0].text).toContain(vorher.skript![0].text.slice(0, 60));
+    const nb = await nachbau();
+    expect(nb.claude.filter((c) => c.startsWith("research")).length).toBe(forschung0); // keine neue Recherche/Websuche
+    expect(a.skript!.length).toBeGreaterThanOrEqual(55);
+    expect(nb.eleven.length - eleven0).toBe(a.skript!.length); // Sprache je neue Szene genau einmal
+    expect(nb.eleven.slice(eleven0).every((e) => e.zeiten)).toBe(true);
+    expect(nb.bilder.filter((b) => !b.abgelehnt).length).toBe(bilder0); // alle Motive aus der Bibliothek, kein neues bezahlt
+    await page.goto(`/marken/video?kanal=${vorher.kanal_id}`);
+    await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
+    for (const bis = Date.now() + 300_000; (a = await lies()).status !== "fertig"; ) {
+      if (a.status === "fehler") throw new Error(`Fehler (${a.schritt}): ${a.schritte[a.schritt]?.fehler}\n${log.slice(-3000)}`);
+      if (Date.now() > bis) throw new Error(`Zeitüberschreitung bis fertig (${a.status}/${a.schritt})\n${log.slice(-3000)}`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    expect(a.youtube_id).toBeNull(); // „Privat hochladen“ wieder von Hand
+    expect(a.dateien.mp4).toBeTruthy();
+    expect(a.kosten_ist).toBeGreaterThan(vorher.kosten_ist); // nur Skript, Paket und Sprache dazu
+    console.log(`B36.10 neu im Takt: ${vorher.skript!.length} → ${a.skript!.length} Szenen, Kosten ${vorher.kosten_ist.toFixed(2)} $ → ${a.kosten_ist.toFixed(2)} $, neue Bilder 0`);
+    await workerStoppen();
+  });
+
   test("B37 Instagram-Stories – Abnahme 1–6: Kanal mit Zeitplan, 5 Stories im Hochformat am Handy, Regeln wie B34.3, Neu erzeugen/Ablehnen ohne Doppelkosten, Posten zur Planzeit mit Fehler- und Ablauf-Meldung, Kosten und Monatslimit", async ({ page, browser }) => {
     test.setTimeout(420_000);
     if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");

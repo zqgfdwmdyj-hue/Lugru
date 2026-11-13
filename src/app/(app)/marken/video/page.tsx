@@ -6,9 +6,9 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
-import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
-import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
 import { StoriesBereich } from "./stories";
 import { FREIGABE_MODI, profilMitVorgaben, STORY_ARTEN, tokenStand } from "@/lib/video/story-logic";
@@ -337,6 +337,28 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                     )
                   )}
                 </div>
+                {kanal.stil === "whiteboard" && (a.status === "fertig" || a.status === "fehler") && !!a.skript?.length && !!a.gliederung && !s.readOnly && (() => {
+                  const zeichen = a.skript.reduce((n, x) => n + x.text.trim().length + 2, 0);
+                  const bekannt = new Set(a.skript.flatMap((x) => (x.motive ?? []).map((m) => m.key))).size;
+                  const sch = taktNeuSchaetzung(cfg.preise, cfg.modell, zeichen, bekannt);
+                  const alt = (a.skript.length < WB_SZENEN[0]) || a.skript.some((x) => !x.takt);
+                  return (
+                    <details open={alt && a.status === "fertig"} data-testid="vd-takt-neu">
+                      <summary className="small"><strong>Im neuen Takt neu machen</strong>{alt ? ` – dieses Video hat ${a.skript.length} lange Szenen ohne Takt` : ""}</summary>
+                      <form action={taktNeuAction} className="stack small" style={{ gap: 6, marginTop: 6 }}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <input type="hidden" name="kanal" value={kanal.id} />
+                        <span className="muted">Gliederung und Quellen bleiben (keine neue Recherche, keine Websuche). Neu: Skript in kurzen Szenen ({WB_SZENEN[0]}–{WB_SZENEN[1]}), Sprache mit Wortzeiten, Motive im Takt (Tempo „{kanal.tempo}“). Vorhandene Motive kommen aus der Bibliothek ({bekannt} Stück) – nur neue kosten. Freigaben laufen wie eingestellt; das bisherige YouTube-Video bleibt privat in YouTube Studio.</span>
+                        <label><input type="radio" name="text" value="gleich" defaultChecked data-testid="vd-takt-gleich" /> gleicher Text – nur in kurze Szenen teilen (möglichst wörtlich)</label>
+                        <label><input type="radio" name="text" value="neu" data-testid="vd-takt-neu-text" /> Skript neu schreiben (gleiche Gliederung und Quellen)</label>
+                        <label className="stack" style={{ gap: 2 }}>Anmerkung (optional)<input className="input" name="hinweis" maxLength={2000} placeholder="z. B. mehr Humor im Hook" /></label>
+                        <span data-testid="vd-takt-kosten">Geschätzt ca. <strong>{usd(sch.summe)}</strong>: {sch.positionen.map((x) => `${x.art} ${usd(x.betrag)}`).join(" · ")}{sch.fehlend.length ? ` (Preis fehlt: ${sch.fehlend.join(", ")})` : ""}</span>
+                        {worker && workerVeraltet(worker.version) && <span className="notice notice-warn small">Erst den Worker am PC auf v{WORKER_VERSION_AKTUELL} aktualisieren – sonst entsteht wieder der alte Takt.</span>}
+                        <div><ConfirmButton className="btn btn-sm btn-primary" confirm={`Video im neuen Takt neu machen? Geschätzt ca. ${usd(sch.summe)} zusätzlich.`} testid="vd-takt-los">Im neuen Takt neu machen</ConfirmButton></div>
+                      </form>
+                    </details>
+                  );
+                })()}
                 <details>
                   <summary className="small">Mehr (Dateien, Kostenposten, vidIQ, Abbrechen)</summary>
                   <div className="stack small" style={{ gap: 8, marginTop: 6 }}>

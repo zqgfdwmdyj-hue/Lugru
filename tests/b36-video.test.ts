@@ -177,3 +177,17 @@ describe("Seller-System rechnet nicht (B36.2/Abnahme 7)", () => {
     }
   });
 });
+
+describe("B36.10 „Im neuen Takt neu machen“ – Kostenschätzung", () => {
+  it("ohne Recherche/Websuche: Claude für Skript+Paket, Sprache für alle Zeichen, nur neue Motive (Rest aus der Bibliothek)", async () => {
+    const { taktNeuSchaetzung, VIDEO_PREISE_STANDARD } = await import("@/lib/video/logic");
+    const p = { ...VIDEO_PREISE_STANDARD, claudeEingabeJeMio: 4, claudeAusgabeJeMio: 20, elevenlabsJe1000Zeichen: 0.18, motivJeStueck: 0.02 };
+    const s = taktNeuSchaetzung(p, "claude-opus-5-5", 10_000, 60);
+    expect(s.positionen.map((x) => x.art)).toEqual(["Claude (Skript in kurzen Szenen, Paket)", "Sprache mit Wortzeiten (10.000 Zeichen)", "neue Motive (ca. 41, 60 aus der Bibliothek)"]);
+    expect(s.positionen.map((x) => Math.round((x.betrag ?? 0) * 100) / 100)).toEqual([0.4, 1.8, 0.82]);
+    expect(s.summe).toBe(3.02);
+    expect(s.positionen.some((x) => /Websuche|Recherche/.test(x.art))).toBe(false);
+    // große Bibliothek: mindestens 10 neue Motive eingeplant; fehlender Sprachpreis wird genannt
+    expect(taktNeuSchaetzung({ ...p, elevenlabsJe1000Zeichen: null }, null, 10_000, 500)).toMatchObject({ neueMotive: 10, fehlend: ["Sprache mit Wortzeiten"] });
+  });
+});

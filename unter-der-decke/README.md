@@ -62,6 +62,9 @@ Im Kanalprofil (Seller-System → Video) „Stil der Bilder: Whiteboard-Collage�
   sonst gleichmäßig verteilt. Zeichenzeit je Motiv nach Kanalprofil „Tempo“: ruhig 2,5 s · normal 2,0 s · schnell
   1,5 s. Lücken über 2,6 s füllt der Worker mit Hervorhebungen (unterstreichen, einkreisen, Pfeil). Vor dem Render prüft
   er jede Szene: mehr als 3 s ohne neue Aktion → Hinweis in der Szenen-Übersicht.
+- **Ältere Videos im neuen Takt:** Seite Video → fertiges Video → „Im neuen Takt neu machen“. Gliederung, Quellen und
+  Motive der Bibliothek bleiben; neu entstehen Skript in kurzen Szenen (auf Wunsch mit gleichem Text), Sprache mit
+  Wortzeiten und nur neue Motive.
 - **Animation:** Motive werden „aufgezeichnet“ (die Hand folgt der Kante), Texte erscheinen mit kurzem Pop, Szenen-
   wechsel mit 0,3 s Wisch; über jede Szene läuft ein sanfter Zoom (`VIDEO_ZOOM`, Standard 0,07 = 7 %). Die vorige
   Szene bleibt mit 15 % als blasser Hintergrund stehen.
