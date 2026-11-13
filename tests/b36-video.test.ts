@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -80,14 +80,16 @@ describe("Kosten (B36.3)", () => {
     // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
     expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
     expect(kostenSchaetzung(p).summe).toBeCloseTo(0.448 + 0.3 + 0.12 + 1.908 + 1.0, 2);
-    // Whiteboard: statt 25 Bildern bis zu 100 Einzelmotive (ohne Wiederverwendung = Obergrenze), eigener Preis je Motiv
+    // Whiteboard: statt 25 Bildern Einzelmotive (neue je Video, Rest aus der Bibliothek), eigener Preis je Motiv
     const wb = typischFuer("whiteboard");
-    expect(wb).toMatchObject({ bilder: 0, motive: 25 * MOTIVE_JE_SZENE });
+    // B36.10: 55–80 kurze Szenen, Motive kehren wieder – im Schnitt 1,5 neue (bezahlte) Motive je Szene
+    expect(wb).toMatchObject({ bilder: 0, motive: Math.round(67.5 * NEUE_MOTIVE_JE_SZENE) });
+    expect(wb.motive).toBeLessThan(67.5 * MOTIVE_JE_SZENE);
     const mitMotivpreis = kostenSchaetzung({ ...p, motivJeStueck: 0.02 }, wb, "claude-opus-5-5");
-    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (GPT Image 2.5 Flare, höchstens 100)"]);
-    expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(2.0, 2);
+    expect(mitMotivpreis.positionen.map((x) => x.art)).toEqual(["Claude (Recherche, Skript, Paket)", "Websuche", "Sprache (ElevenLabs)", "Motive (GPT Image 2.5 Flare, ca. 101 neue)"]);
+    expect(mitMotivpreis.positionen.at(-1)!.betrag).toBeCloseTo(2.02, 2);
     // ohne eigenen Motivpreis gilt der Bildpreis
-    expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(4.0, 2);
+    expect(kostenSchaetzung(p, wb).positionen.at(-1)!.betrag).toBeCloseTo(4.04, 2);
     expect(kostenPosition("openai", { ...p, motivJeStueck: 0.02 }, { bilder: 1, motiv: true }, new Date(0))[0]).toMatchObject({ art: "Motiv", einheit: "Motive", betrag: 0.02 });
     // Die Brücke nennt das tatsächlich benutzte Bildmodell
     expect(kostenPosition("openai", p, { bilder: 1, bildModell: "gpt-image-2" }, new Date(0))[0]).toMatchObject({ art: "Bild (GPT Image 2)", betrag: 0.04 });
@@ -116,10 +118,10 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.1.0");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.2.0");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
-    expect(workerVeraltet("1.1.0")).toBe(false);
+    expect(workerVeraltet("1.1.2")).toBe(true);
     expect(workerVeraltet("1.2.0")).toBe(false);
     expect(workerVeraltet("2.0")).toBe(false);
   });

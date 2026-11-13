@@ -281,6 +281,11 @@ export async function runScheduledJobs(force = false) {
         // B22.2: eigene Käufe (sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen) alle 6 Std.
         if (force || due(`${t}:lugru-kauf`, 359)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
       }
+      // B37 Instagram-Stories: Planzeiten der nächsten 36 h mit Stories aus der Themenliste füllen (Worker erzeugt, Ludwig gibt
+      // frei), freigegebene zur Planzeit posten (3 Wiederholungen, dann Meldung), Zugang 7 Tage vor Ablauf erneuern.
+      if (force || due(`${t}:stories-planen`, 14)) await step(t, "Instagram-Stories planen", async () => (await import("@/lib/video/story")).storiesPlanen(t));
+      if (force || due(`${t}:stories-posten`, 4)) await step(t, "Instagram-Stories posten", async () => (await import("@/lib/video/story")).storiesPosten(t));
+      if (force || due(`${t}:instagram-zugang`, 1435)) await step(t, "Instagram-Zugang pflegen", async () => (await import("@/lib/video/story")).instagramZugangPflegen(t));
       // Datei-Import (Konnektor): Dateien nach 90 Tagen aus der Ablage löschen (Ergebnis bleibt), abgelaufene Aufträge schließen.
       if (force || due("datei-importe-aufraeumen", 1435)) await step(t, "Datei-Importe aufräumen", async () => (await import("@/lib/datei-import/service")).importeAufraeumen());
       if (force || due("automatik-debug-aufraeumen", 1435)) await step(t, "Automatik: Bildschirmfotos aufräumen", async () => (await import("@/lib/automatik/runner")).debugAufraeumen());

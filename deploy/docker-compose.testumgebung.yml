@@ -60,6 +60,9 @@ services:
       YOUTUBE_TOKEN_URL: http://testdienste:4010/youtube-oauth/token
       YOUTUBE_API_BASE_URL: http://testdienste:4010/youtube-api
       YOUTUBE_UPLOAD_BASE_URL: http://testdienste:4010/youtube-upload
+      INSTAGRAM_AUTH_URL: http://testdienste:4010/instagram-auth
+      INSTAGRAM_API_BASE_URL: http://testdienste:4010/instagram-api
+      INSTAGRAM_GRAPH_BASE_URL: http://testdienste:4010/instagram-graph
       DRIVE_UPLOAD_BASE_URL: http://testdienste:4010/drive-upload/drive/v3
       MEDIA_DIR: /medien
     volumes:

@@ -5,10 +5,14 @@ import { AutoRefresh } from "@/app/(app)/lieferanten/finden/refresh";
 import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
+import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
 import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
-import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
+import { StoriesBereich } from "./stories";
+import { FREIGABE_MODI, profilMitVorgaben, STORY_ARTEN, tokenStand } from "@/lib/video/story-logic";
+import type { StoryInhaltsart } from "@/db/tables/video";
 
 export const metadata: Metadata = { title: "Video – Seller-System" };
 export const dynamic = "force-dynamic";
@@ -61,10 +65,14 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
     getIntegration(s.tenantId, "openai"),
     getIntegration(s.tenantId, "google"),
   ]);
+  const igApp = await getIntegration(s.tenantId, "instagram");
   const neuerKanal = sp.neu === "1" || kanalListe.length === 0;
   const kanal = neuerKanal ? null : (kanalListe.find((k) => k.id === sp.kanal) ?? kanalListe[0] ?? null);
-  const liste = kanal ? await auftraege(s.tenantId, kanal.id, 30) : [];
+  const instagram = kanal?.plattform === "instagram";
+  const liste = kanal && !instagram ? await auftraege(s.tenantId, kanal.id, 30, "video") : [];
   const ws = worker?.stand ?? workerStand(null);
+  const igProfil = profilMitVorgaben(kanal?.instagram);
+  const igZugang = tokenStand(kanal?.instagramTokenBis ?? null);
   const laeuftWas = liste.some(({ a }) => a.status === "laeuft" || a.status === "wartet");
   const typisch = typischFuer(kanal?.stil);
   const whiteboard = kanal?.stil === "whiteboard";
@@ -90,7 +98,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
       </div>
       {worker && worker.zuletztGesehen && workerVeraltet(worker.version) && (
         <div className="notice notice-warn small" data-testid="vd-worker-alt">
-          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): Er schreibt das Skript noch in einem langen Aufruf und wiederholt abgebrochene Verbindungen nicht. Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
+          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): Er kennt keine Instagram-Stories und zeichnet Whiteboard-Motive noch nicht im Takt der Sprache (B36.10). Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
         </div>
       )}
       {fehlend.length > 0 && (
@@ -108,11 +116,13 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         {!s.readOnly && <Link href="/marken/video?neu=1#kanal" className={`btn btn-sm ${neuerKanal ? "btn-primary" : ""}`} data-testid="vd-kanal-neu">+ Kanal</Link>}
       </nav>
 
-      {kanal && (
+      {kanal && instagram && <StoriesBereich tenantId={s.tenantId} kanal={kanal} nurLesen={s.readOnly} />}
+
+      {kanal && !instagram && (
         <section className="card card-pad stack" style={{ gap: 8 }} id="neu" data-testid="vd-neu">
           <h2 style={{ margin: 0 }}>Neues Video · {kanal.name}</h2>
           <p className="small muted" style={{ margin: 0 }} data-testid="vd-ziel">
-            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {ziel.szenen[0]}–{ziel.szenen[1]} Szenen{whiteboard ? ` · Whiteboard-Collage (bis ${typisch.motive} Motive, Wiederverwendung aus der Bibliothek spart)` : "/Bilder"}{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
+            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {whiteboard ? `${WB_SZENEN[0]}–${WB_SZENEN[1]} kurze Szenen (je 1–2 Sätze) · Whiteboard-Collage, Tempo ${kanal.tempo} (${TEMPO_SEK[kanal.tempo]} s je Motiv, bis ${typisch.motive} neue Motive, Wiederverwendung aus der Bibliothek spart)` : `${ziel.szenen[0]}–${ziel.szenen[1]} Szenen/Bilder`}{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
           </p>
           <form action={auftragAction} className="stack small" style={{ gap: 8 }}>
             <input type="hidden" name="kanalId" value={kanal.id} />
@@ -149,7 +159,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         </section>
       )}
 
-      {kanal && (
+      {kanal && !instagram && (
         <section className="stack" style={{ gap: 10 }} id="auftraege" data-testid="vd-auftraege">
           <h2 style={{ margin: 0 }}>Aufträge</h2>
           {liste.length === 0 && <p className="small muted">Noch keine Videos für diesen Kanal.</p>}
@@ -382,6 +392,14 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             <label className="stack" style={{ gap: 2, width: 160 }}>Handle<input className="input" name="handle" defaultValue={kanal?.handle ?? ""} placeholder="@…" /></label>
             <label className="stack" style={{ gap: 2, width: 80 }}>Sprache<input className="input" name="sprache" defaultValue={kanal?.sprache ?? "de"} /></label>
           </div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <label className="stack" style={{ gap: 2, width: 220 }}>Plattform
+              <select className="input" name="plattform" defaultValue={kanal?.plattform ?? "youtube"} data-testid="vd-k-plattform"><option value="youtube">YouTube (Videos 16:9)</option><option value="instagram">Instagram (Stories 9:16)</option></select>
+            </label>
+            <label className="stack" style={{ gap: 2, width: 260 }}>Tempo der Zeichen-Animation
+              <select className="input" name="tempo" defaultValue={kanal?.tempo ?? "normal"} data-testid="vd-k-tempo"><option value="ruhig">ruhig (2,5 s je Motiv)</option><option value="normal">normal (2,0 s)</option><option value="schnell">schnell (1,5 s)</option></select>
+            </label>
+          </div>
           <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>
           <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
             <label className="stack" style={{ gap: 2, flex: 1, minWidth: 220 }}>Zielgruppe<input className="input" name="zielgruppe" maxLength={300} defaultValue={kanal?.zielgruppe ?? ""} placeholder="z. B. Männer ab 55" data-testid="vd-k-zielgruppe" /></label>
@@ -414,6 +432,37 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             <label><input type="checkbox" name="f_vorschau" value="1" defaultChecked={kanal?.freigaben.vorschau ?? true} /> Vorschau</label>
             {kanal && <label><select className="input" name="aktiv" defaultValue={kanal.aktiv ? "1" : "0"}><option value="1">aktiv</option><option value="0">ausgeschaltet</option></select></label>}
           </div>
+          <details open={instagram} data-testid="vd-k-instagram">
+            <summary>Instagram-Stories (nur bei Plattform Instagram)</summary>
+            <div className="stack" style={{ gap: 8, marginTop: 6 }}>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Tage:</span>
+                {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((t, i) => <label key={t}><input type="checkbox" name={`ig_tag_${i + 1}`} value="1" defaultChecked={igProfil.tage.includes(i + 1)} data-testid={`vd-ig-tag-${i + 1}`} /> {t}</label>)}
+                <label className="row" style={{ gap: 4 }}>Uhrzeit(en)<input className="input" name="ig_uhrzeiten" defaultValue={igProfil.uhrzeiten.join(", ")} style={{ width: 130 }} placeholder="12:00" data-testid="vd-ig-uhrzeiten" /></label>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Inhaltsarten:</span>
+                {(Object.keys(STORY_ARTEN) as StoryInhaltsart[]).map((a) => <label key={a} title={STORY_ARTEN[a].hinweis}><input type="checkbox" name={`ig_art_${a}`} value="1" defaultChecked={igProfil.inhaltsarten.includes(a)} /> {STORY_ARTEN[a].name}</label>)}
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <label>Freigabe <select className="input" name="ig_freigabe" defaultValue={igProfil.freigabeModus} data-testid="vd-ig-freigabe">{(Object.keys(FREIGABE_MODI) as (keyof typeof FREIGABE_MODI)[]).map((m) => <option key={m} value={m}>{FREIGABE_MODI[m]}</option>)}</select></label>
+                <label className="row" style={{ gap: 4 }}>Monatslimit $<input className="input" name="ig_limit" defaultValue={igProfil.monatslimit ?? ""} placeholder="ohne" style={{ width: 80 }} data-testid="vd-ig-limit" /></label>
+                <label><input type="checkbox" name="ig_hand" value="1" defaultChecked={igProfil.hand} /> Hand-Animation (Video statt Standbild)</label>
+                <label><input type="checkbox" name="ig_werbung" value="1" defaultChecked={igProfil.werbung} /> Werbekennzeichnung bei Preis/Leistung/CTA</label>
+              </div>
+              <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <span>Farben:</span>
+                <label className="row" style={{ gap: 4 }}>Grund<input type="color" name="ig_grund" defaultValue={igProfil.farben.grund} /></label>
+                <label className="row" style={{ gap: 4 }}>Akzent<input type="color" name="ig_akzent" defaultValue={igProfil.farben.akzent} /></label>
+                <label className="row" style={{ gap: 4 }}>Text<input type="color" name="ig_text" defaultValue={igProfil.farben.text} /></label>
+                <span className="muted">Schrift: Anton (fest, mit Umlauten)</span>
+              </div>
+              <label className="stack" style={{ gap: 2 }}>Hinweistext/Link am Story-Ende (z. B. Anfrage über die Website, Impressum-Link)<input className="input" name="ig_hinweis" maxLength={300} defaultValue={igProfil.hinweis ?? ""} data-testid="vd-ig-hinweis" /></label>
+              <label className="stack" style={{ gap: 2 }}>Bestätigte Fakten (nur diese Angaben dürfen in Stories stehen – Preise netto je Artikel, Leistungen, Mindestmengen; nichts wird erfunden)
+                <textarea className="input" name="ig_fakten" rows={5} maxLength={4000} defaultValue={igProfil.fakten ?? ""} data-testid="vd-ig-fakten" />
+              </label>
+            </div>
+          </details>
           <div><button className="btn btn-primary btn-sm" type="submit" disabled={s.readOnly} data-testid="vd-k-speichern">{kanal ? "Kanalprofil speichern" : "Kanal anlegen"}</button></div>
         </form>
         {kanal && (
@@ -439,7 +488,27 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             )}
           </div>
         )}
-        {kanal && (
+        {kanal && instagram && (
+          <div className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-instagram-zugang">
+            <strong>Instagram-Zugang</strong>
+            {kanal.instagramToken ? (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span data-testid="vd-ig-verbunden">verbunden{kanal.instagramKonto ? ` mit „${kanal.instagramKonto}“` : ""} seit {zeit(kanal.instagramVerbundenAm)} – gültig bis {zeit(kanal.instagramTokenBis)}{igZugang.stand === "bald" ? " (läuft bald ab – wird automatisch erneuert)" : igZugang.stand === "abgelaufen" ? " – ABGELAUFEN, bitte neu verbinden" : ""}</span>
+                {inhaber && <a className="btn btn-sm" href={`/api/oauth/instagram/start?kanal=${kanal.id}`}>Neu verbinden</a>}
+                {inhaber && <form action={instagramTrennenAction}><input type="hidden" name="kanalId" value={kanal.id} /><button className="btn btn-sm" type="submit">Trennen</button></form>}
+              </div>
+            ) : inhaber ? (
+              <>
+                {!igApp?.appId && <span className="muted">Zuerst unter <Link href="/anbindungen?p=instagram#instagram">Anbindungen → Instagram</Link> die Meta-App eintragen (Business-Konto, App-Prüfung durch Meta kann dauern).</span>}
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><a className="btn btn-sm" href={`/api/oauth/instagram/start?kanal=${kanal.id}`} data-testid="vd-ig-verbinden">Mit Instagram verbinden</a></div>
+                <span className="muted">Ohne Verbindung (Stufe 1) entstehen die Stories trotzdem – nach der Freigabe kommt zur Planzeit eine Erinnerung zum Herunterladen und Posten von Hand.</span>
+              </>
+            ) : (
+              <span className="muted">Nicht verbunden (verbindet der Inhaber).</span>
+            )}
+          </div>
+        )}
+        {kanal && !instagram && (
           <div className="stack small" style={{ gap: 6, borderTop: "1px solid var(--border, #ddd)", paddingTop: 8 }} data-testid="vd-youtube-zugang">
             <strong>YouTube-Zugang</strong>
             {kanal.youtubeToken ? (

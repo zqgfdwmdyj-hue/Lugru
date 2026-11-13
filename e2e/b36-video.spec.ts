@@ -5,6 +5,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { deflateSync } from "node:zlib";
 import path from "node:path";
 import { E2E_ENV, E2E_PORT, TD } from "./env";
 import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
@@ -16,7 +17,43 @@ function versiegeln(plain: string) {
   const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
-type VideoNb = { modellFehler: string[]; eleven: { hash: string; zeichen: number; stimme: string }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
+type VideoNb = { modellFehler: string[]; eleven: { hash: string; zeichen: number; stimme: string; zeiten?: boolean }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
+/** Einfarbiges PNG (erfundenes Testfoto) – ohne Bildbibliothek. */
+function pngFarbe(w: number, h: number, rgb: [number, number, number]): Buffer {
+  const crc = (b: Buffer) => {
+    let c = 0xffffffff;
+    for (const x of b) {
+      c ^= x;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const block = (typ: string, daten: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(daten.length);
+    const td = Buffer.concat([Buffer.from(typ), daten]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const kopf = Buffer.alloc(13);
+  kopf.writeUInt32BE(w, 0);
+  kopf.writeUInt32BE(h, 4);
+  kopf.set([8, 2, 0, 0, 0], 8);
+  const zeile = Buffer.concat([Buffer.from([0]), ...Array.from({ length: w }, () => Buffer.from(rgb))]);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), block("IHDR", kopf), block("IDAT", deflateSync(Buffer.concat(Array.from({ length: h }, () => zeile)))), block("IEND", Buffer.alloc(0))]);
+}
+
+/** Wartet, bis die Story mit diesem Thema im Fehler steht (z. B. Monatslimit). */
+async function warteStoriesFehler<S extends { thema: string; status: string }>(liste: () => Promise<S[]>, thema: string, ms = 60_000): Promise<S> {
+  for (const bis = Date.now() + ms; ; ) {
+    const s = (await liste()).find((x) => x.thema === thema);
+    if (s?.status === "fehler") return s;
+    if (Date.now() > bis) throw new Error(`Zeitüberschreitung: ${thema} (${s?.status})`);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[] }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
 type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
@@ -32,6 +69,7 @@ test.describe("B36 Video-Pipeline", () => {
   let worker: ChildProcess | null = null;
   let token = "";
   let googleNeu = false;
+  let igNeu = false;
   const logDatei = path.join(process.cwd(), "test-results", "b36-worker.log");
   let log = "";
 
@@ -66,14 +104,14 @@ test.describe("B36 Video-Pipeline", () => {
     mkdirSync(path.dirname(logDatei), { recursive: true });
     writeFileSync(logDatei, log);
     if (T) {
-      const namen = [KANAL, `Testkanal Drive ${m}`, `Testkanal Whiteboard ${m}`, `Testkanal Chat ${m}`];
+      const namen = [KANAL, `Testkanal Drive ${m}`, `Testkanal Whiteboard ${m}`, `Testkanal Chat ${m}`, `Testkanal Instagram ${m}`];
       const ids = await sql<{ id: string }>("select a.id from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = any($2)", [T, namen]);
       for (const { id } of ids) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, id), { recursive: true, force: true });
       const kanaeleIds = await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
       for (const { id } of kanaeleIds) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, `kanal-${id}`), { recursive: true, force: true });
       await sql("delete from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
       await sql("delete from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
-      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai'${googleNeu ? ", 'google'" : ""})`, [T]);
+      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai'${googleNeu ? ", 'google'" : ""}${igNeu ? ", 'instagram'" : ""})`, [T]);
       await sql("update tenants set settings = settings - 'video' where id = $1", [T]);
     }
     rmSync(arbeit, { recursive: true, force: true });
@@ -209,7 +247,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.1.0)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.2.0)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);
@@ -406,7 +444,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect((yt as unknown as { groesse: number }).groesse).toBe(dateien.mp4.groesse);
     await workerStoppen();
   });
-  test("B36.9 Whiteboard-Collage: Motive einzeln mit Referenzbild, Bibliothek, Szenen-Übersicht mit „neu erzeugen“, Aufdeck-Render ohne eingebrannte Untertitel, YouTube-Untertitel", async ({ page }) => {
+  test("B36.9/B36.10 Whiteboard-Collage: kurze Szenen im Takt (Wortzeiten, Tempo, ≤3 s Stillstand), Motive einzeln mit Referenzbild, Bibliothek, Szenen-Übersicht mit „neu erzeugen“, Aufdeck-Render mit Zoom ohne eingebrannte Untertitel, YouTube-Untertitel", async ({ page }) => {
     test.setTimeout(600_000);
     if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
     const KANAL3 = `Testkanal Whiteboard ${m}`;
@@ -430,6 +468,7 @@ test.describe("B36 Video-Pipeline", () => {
     await page.getByTestId("vd-k-stimme").fill("testStimme03");
     await page.getByTestId("vd-k-stil").selectOption("whiteboard");
     await page.getByTestId("vd-k-qualitaet").selectOption("low");
+    await page.getByTestId("vd-k-tempo").selectOption("schnell"); // B36.10: 1,5 s je Motiv
     await page.getByTestId("vd-k-figuren").fill("testmann: Mann um die 60 mit Hut (erfunden)");
     for (const f of ["f_gliederung", "f_skript", "f_vorschau"]) await page.locator(`input[name=${f}]`).uncheck();
     await page.getByTestId("vd-k-f-szenen").check();
@@ -465,10 +504,31 @@ test.describe("B36 Video-Pipeline", () => {
         await new Promise((r) => setTimeout(r, 300));
       }
     };
-    type Szene = { nr: number; layout: string; motive: { key: string; beschreibung: string; ersatz?: boolean }[]; dauer: number; balken: string | null; ueberschrift: string | null };
+    type Szene = { nr: number; text: string; layout: string; motive: { key: string; beschreibung: string; ersatz?: boolean; wort?: string | null }[]; dauer: number; balken: string | null; ueberschrift: string | null; takt?: { ereignisse: number; maxPause: number; mittel: number; hervorhebungen: number; drawS: number } | null };
     let a = await warte3("Szenen-Übersicht", (x) => x.freigabe_offen === "szenen");
     const szenen = a.skript as unknown as Szene[];
     const keys = szenen.flatMap((x) => x.motive.map((mm) => mm.key));
+    // B36.10 Tempo: mindestens 55 kurze Szenen (1–2 Sätze), Schlüsselwort je Motiv, Sprache mit Wortzeiten
+    expect(szenen.length).toBeGreaterThanOrEqual(55);
+    expect(szenen.every((x) => x.text.split(/\s+/).length <= 32)).toBe(true);
+    const motive = szenen.flatMap((x) => x.motive);
+    expect(motive.filter((mm) => mm.wort && szenen.some((x) => x.text.includes(mm.wort!))).length).toBeGreaterThan(motive.length * 0.8);
+    expect((await nachbau()).eleven.length).toBe(szenen.length);
+    expect((await nachbau()).eleven.every((e) => e.zeiten)).toBe(true);
+    // Takt-Prüfung vor dem Render: keine Szene mit mehr als 3 s ohne neue Aktion, Ø höchstens alle 3 s eine Aktion,
+    // Zeichenzeit je Motiv aus dem Kanalprofil („schnell“ = 1,5 s)
+    for (const x of szenen) {
+      expect(x.takt, `Takt Szene ${x.nr}`).toBeTruthy();
+      expect(x.takt!.maxPause, `Stillstand Szene ${x.nr}`).toBeLessThanOrEqual(3);
+      expect(x.takt!.drawS).toBe(1.5);
+    }
+    const ereignisse = szenen.reduce((n, x) => n + x.takt!.ereignisse, 0);
+    const sekunden = szenen.reduce((n, x) => n + x.dauer, 0);
+    expect(sekunden / ereignisse).toBeLessThanOrEqual(3);
+    expect(szenen.some((x) => x.takt!.hervorhebungen > 0)).toBe(true); // Lücken mit Unterstreichen/Einkreisen/Pfeil gefüllt
+    const hinweiseVisuals = (a.schritte as Record<string, { hinweise?: string[] | null }>).visuals?.hinweise ?? [];
+    console.log(`B36.10 ${hinweiseVisuals.find((h) => h.startsWith("Takt:"))} – Hervorhebungen gesamt ${szenen.reduce((n, x) => n + x.takt!.hervorhebungen, 0)}, Video ${Math.round(sekunden)} s`);
+    expect(hinweiseVisuals.join(" ")).toMatch(new RegExp(`Takt: ${szenen.length} Szenen, Ø alle \\d+(,\\d)? s eine neue Aktion`));
     // Prompt fürs Skript: Whiteboard-Regeln + feste Figur
     const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string }[];
     const skriptPrompt = ki.filter((k) => k.text.startsWith("[video:script:") && k.text.includes(THEMA3)).at(-1)!;
@@ -542,6 +602,231 @@ test.describe("B36 Video-Pipeline", () => {
     expect(ut).toHaveLength(1);
     expect(ut[0]).toMatchObject({ videoId: a.youtube_id, sprache: "de", entwurf: false });
     expect(ut[0].zeilen).toBeGreaterThan(20);
+    await workerStoppen();
+  });
+
+  test("B37 Instagram-Stories – Abnahme 1–6: Kanal mit Zeitplan, 5 Stories im Hochformat am Handy, Regeln wie B34.3, Neu erzeugen/Ablehnen ohne Doppelkosten, Posten zur Planzeit mit Fehler- und Ablauf-Meldung, Kosten und Monatslimit", async ({ page, browser }) => {
+    test.setTimeout(420_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL5 = `Testkanal Instagram ${m}`;
+    // Zugänge wie über das sichere Formular (nur Testwerte): Bilder (Motive) und die Meta-App für Instagram
+    if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'openai'", [T])).length) {
+      await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" }))]);
+    }
+    if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'instagram'", [T])).length) {
+      igNeu = true;
+      await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'instagram', 'Test', $2::jsonb, $3)", [T, JSON.stringify({ appId: "test-ig-app" }), versiegeln(JSON.stringify({ appSecret: "test-ig-secret" }))]);
+    }
+    await sql("update tenants set settings = settings || jsonb_build_object('video', coalesce(settings->'video', '{}'::jsonb) || $2::jsonb) where id = $1", [T, JSON.stringify({ ablage: "server", preise: { claudeEingabeJeMio: 2, claudeAusgabeJeMio: 10, websucheJe1000: 10, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04, motivJeStueck: 0.02 }, serverReserveGb: 0.1 })]);
+    await fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true, verzoegerungMs: 0, bildModelleGesperrt: [] }) });
+    await fetch(`${TD}/__instagram`, { method: "POST", body: JSON.stringify({ zuruecksetzen: true }) });
+    page.on("dialog", (d) => d.accept());
+    await anmelden(page, "inhaber");
+
+    // 1. Kanal (Plattform Instagram): täglich 12:00, 1 Story/Tag, Freigabe „jedes Mal“, Monatslimit, bestätigte Fakten
+    await page.goto("/marken/video?neu=1");
+    await page.getByTestId("vd-k-name").fill(KANAL5);
+    await page.getByTestId("vd-k-plattform").selectOption("instagram");
+    await page.getByTestId("vd-k-instagram").locator("summary").first().click();
+    await page.getByTestId("vd-ig-uhrzeiten").fill("12:00");
+    await page.getByTestId("vd-ig-freigabe").selectOption("jedes_mal");
+    await page.getByTestId("vd-ig-limit").fill("5");
+    await page.getByTestId("vd-ig-hinweis").fill("Anfrage über example.com");
+    await page.getByTestId("vd-ig-fakten").fill("Prep ab 0,59 € netto je Artikel\nLagerung auf Paletten, nur für Händler (B2B)");
+    await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
+    const [{ id: kanalId }] = await sql<{ id: string }>("select id from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL5]);
+    await expect(page.getByTestId("st-plan")).toContainText("täglich um 12:00 Uhr · 1 Story/Tag · Freigabe: Vorschau jedes Mal");
+    await expect(page.getByTestId("st-plan")).toContainText("Instagram nicht verbunden");
+    await expect(page.getByTestId("vd-auftrag")).toHaveCount(0); // keine YouTube-Aufträge im Instagram-Kanal
+
+    // 2. Themenliste (5 Themen) + eigenes Lager-Foto (ohne Personen) → 5 Stories auf die nächsten Planzeiten
+    await page.getByTestId("st-themen").fill("preis: Prep-Preis je Artikel\nleistung: Lagerung auf Paletten\ntipp: FNSKU richtig kleben\neinblick: Blick ins Lager\ncta: Platz frei für neue Kunden");
+    await Promise.all([aktion(page), page.getByTestId("st-themen-speichern").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("5 Themen gespeichert");
+    await page.getByTestId("st-foto-datei").setInputFiles({ name: "lager-test.png", mimeType: "image/png", buffer: pngFarbe(64, 64, [60, 110, 160]) });
+    await Promise.all([aktion(page), page.getByTestId("st-foto-hochladen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("keine Personen"); // ohne Bestätigung kein Foto
+    await page.getByTestId("st-foto-datei").setInputFiles({ name: "lager-test.png", mimeType: "image/png", buffer: pngFarbe(64, 64, [60, 110, 160]) });
+    await page.getByTestId("st-foto-ohne-personen").check();
+    await Promise.all([aktion(page), page.getByTestId("st-foto-hochladen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("1 Foto(s) gespeichert");
+    await Promise.all([aktion(page), page.getByTestId("st-erzeugen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("5 Stories angelegt");
+    // dazu eine Story, bei der Claude gegen die Regeln schreibt (Nachbau: „TESTREGEL“ → „kostenlose Zählung“)
+    await sql(`insert into video_auftraege (tenant_id, kanal_id, art, thema, story, geplant_fuer, schritt, schritte, kosten_schaetzung) values ($1, $2, 'story', 'TESTREGEL Zählung erklären', '{"inhaltsart":"tipp","werbung":false}'::jsonb, now() + interval '40 days', 'story', '{"story":{"status":"offen"}}'::jsonb, 0.02)`, [T, kanalId]);
+    type Story = { id: string; status: string; thema: string; story: { inhaltsart: string; ueberschrift?: string; text?: string; cta?: string; werbung?: boolean; regeln?: string[] | null; motivKey?: string; fotoId?: string | null; format?: string; dauerSek?: number | null; sticker?: unknown } | null; dateien: Record<string, { groesse: number }>; ig_status: string | null; ig_versuche: number; ig_fehler: string | null; kosten_ist: number; schritte: Record<string, { status: string; fehler?: string | null }> };
+    const stories = async () => sql<Story>("select id, status, thema, story, dateien, ig_status, ig_versuche, ig_fehler, kosten_ist::float as kosten_ist, schritte from video_auftraege where tenant_id = $1 and kanal_id = $2 and art = 'story' order by geplant_fuer", [T, kanalId]);
+    const warteStories = async (was: string, ok: (l: Story[]) => boolean, ms = 180_000) => {
+      for (const bis = Date.now() + ms; ; ) {
+        const l = await stories();
+        if (ok(l)) return l;
+        const f = l.find((x) => x.status === "fehler");
+        if (f) throw new Error(`Story im Fehler: ${f.schritte.story?.fehler}\n${log.slice(-3000)}`);
+        if (Date.now() > bis) throw new Error(`Zeitüberschreitung: ${was} (${l.map((x) => x.status).join(", ")})\n${log.slice(-3000)}`);
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    };
+    if (!token) {
+      await page.getByTestId("vw-name").fill(`Test-PC ${m}`);
+      await Promise.all([aktion(page), page.getByTestId("vw-anlegen-los").click()]);
+      token = (await page.getByTestId("vw-token").innerText()).trim();
+    }
+    await sql("update video_worker set frei_gb = null where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
+    await sql("update video_auftraege set status = 'abgebrochen' where tenant_id = $1 and status in ('wartet', 'laeuft') and kanal_id <> $2", [T, kanalId]);
+    await workerStoppen();
+    workerStarten();
+    let l = await warteStories("6 Stories zur Freigabe", (x) => x.length === 6 && x.every((y) => y.status === "freigabe"));
+    const nach = (art: string) => l.find((x) => x.story?.inhaltsart === art && !x.thema.startsWith("TESTREGEL"))!;
+    // Hochformat 1080×1920 (Hand-Animation → MP4 ohne Ton, 5–15 s), Vorschau-Bild, Einblick mit eigenem Foto
+    for (const x of l) {
+      expect(x.story?.format).toBe("mp4");
+      expect(x.dateien.story_mp4 && x.dateien.story_vorschau).toBeTruthy();
+      const mp4 = path.join(E2E_ENV.MEDIA_DIR, "video", T, x.id, "story.mp4");
+      const pr = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", mp4]).toString()) as { streams: { width: number; height: number }[]; format: { duration: string } };
+      expect([pr.streams[0].width, pr.streams[0].height]).toEqual([1080, 1920]);
+      expect(Number(pr.format.duration)).toBeGreaterThanOrEqual(5);
+      expect(Number(pr.format.duration)).toBeLessThanOrEqual(15.5);
+    }
+    expect(nach("einblick").story?.fotoId).toBeTruthy();
+    expect(nach("einblick").story?.motivKey).toMatch(/^foto-/);
+    let nb = await nachbau();
+    expect(nb.bilder.some((b) => /Lagerregal/.test(b.prompt))).toBe(false); // Foto statt Bildanbieter
+    const bilderVorher = nb.bilder.length;
+    // Handy-Vorschau: alle Stories mit Bild/Video, ohne seitliches Scrollen
+    const handy = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const hp = await handy.newPage();
+    await anmelden(hp, "inhaber");
+    await hp.goto(`/marken/video?kanal=${kanalId}#stories`);
+    await expect(hp.getByTestId("st-story")).toHaveCount(6);
+    await expect(hp.getByTestId("st-vorschau")).toHaveCount(6);
+    expect(await hp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await handy.close();
+
+    // 3. Regeln (B34.3): keine „kostenlose Zählung“, kein „Komplettpreis“/„all-in“ ohne Aufzählung, keine Versicherung;
+    //    Preis nur aus den bestätigten Fakten, „Werbung“ bei Preis/Leistung/CTA; Regelverstoß sperrt die Freigabe
+    const ki = (await (await fetch(`${TD}/__ki`)).json()) as { text: string }[];
+    const preisPrompt = ki.find((k) => k.text.startsWith("[video:story:preis]"))!;
+    expect(preisPrompt.text).toContain("Prep ab 0,59 € netto je Artikel");
+    expect(preisPrompt.text).toContain("Nie „kostenlose Zählung“");
+    for (const x of l.filter((y) => !y.thema.startsWith("TESTREGEL"))) {
+      const text = [x.story?.ueberschrift, x.story?.text, x.story?.cta].join(" ");
+      expect(text).not.toMatch(/kostenlos|gratis|komplettpreis|alles inklusive|versicher/i);
+      if (/all[\s-]?in/i.test(text)) expect(text).toMatch(/Enthalten:/);
+      expect(x.story?.regeln ?? []).toEqual([]);
+      expect(x.story?.werbung).toBe(["preis", "leistung", "cta"].includes(x.story!.inhaltsart));
+    }
+    expect(nach("preis").story?.text).toContain("0,59 € netto je Artikel. Enthalten:");
+    const regel = l.find((x) => x.thema.startsWith("TESTREGEL"))!;
+    expect(regel.story?.regeln?.join(" ")).toMatch(/kostenlose\/inklusive Zählung/);
+    expect(ki.filter((k) => k.text.startsWith("[video:story:tipp]") && k.text.includes("TESTREGEL")).length).toBe(2); // eine Korrektur-Runde
+    await page.goto(`/marken/video?kanal=${kanalId}`);
+    const karte = (id: string) => page.locator(`#s-${id}`);
+    await expect(karte(regel.id).getByTestId("st-regel").first()).toContainText("Zählung");
+    await expect(karte(regel.id).getByTestId("st-freigeben")).toBeDisabled();
+    await expect(page.getByTestId("st-kosten")).toContainText("je Story ca.");
+
+    // 4. Neu erzeugen: neuer Text, Motiv bleibt (kein zweites Bild); „Motiv neu“ genau ein Bild mehr; Ablehnen
+    const tipp = nach("tipp");
+    const storyAufrufe = () => fetch(`${TD}/__video`).then((r) => r.json()).then((v: { claude: string[] }) => v.claude.filter((c) => c.startsWith("story:")).length);
+    const aufrufeVorher = await storyAufrufe();
+    await Promise.all([aktion(page), karte(tipp.id).getByTestId("st-neu").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("das Motiv bleibt");
+    l = await warteStories("Tipp neu", (x) => x.find((y) => y.id === tipp.id)!.status === "freigabe" && x.find((y) => y.id === tipp.id)!.story?.ueberschrift !== tipp.story?.ueberschrift);
+    expect(l.find((y) => y.id === tipp.id)!.story?.ueberschrift).toBe("Kleiner Prep-Tipp");
+    expect(l.find((y) => y.id === tipp.id)!.story?.motivKey).toBe(tipp.story?.motivKey);
+    expect((await nachbau()).bilder.length).toBe(bilderVorher); // Motiv nicht doppelt bezahlt
+    expect(await storyAufrufe()).toBe(aufrufeVorher + 1);
+    const leistung = nach("leistung");
+    await page.reload();
+    await karte(leistung.id).locator("input[name=motivNeu]").check();
+    await Promise.all([aktion(page), karte(leistung.id).getByTestId("st-neu").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("mit neuem Motiv");
+    l = await warteStories("Leistung mit neuem Motiv", (x) => x.find((y) => y.id === leistung.id)!.status === "freigabe" && x.find((y) => y.id === leistung.id)!.story?.ueberschrift !== leistung.story?.ueberschrift);
+    expect((await nachbau()).bilder.length).toBe(bilderVorher + 1);
+    const cta = nach("cta");
+    await page.reload();
+    await Promise.all([aktion(page), karte(cta.id).getByTestId("st-ablehnen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Story abgelehnt");
+    expect((await stories()).find((y) => y.id === cta.id)!.status).toBe("abgebrochen");
+
+    // 5. Stufe 1 → Stufe 2: Freigeben (nicht verbunden = „von Hand posten“), dann Instagram verbinden → geplant;
+    //    zur Planzeit posten über die API (Datei über den befristeten Link), Fehler mit Wiederholung, Ablauf gemeldet
+    const preis = nach("preis");
+    await Promise.all([aktion(page), karte(preis.id).getByTestId("st-freigeben").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Erinnerung");
+    expect((await stories()).find((y) => y.id === preis.id)!.ig_status).toBe("manuell");
+    await page.getByTestId("vd-ig-verbinden").click();
+    await expect(page.getByTestId("vd-meldung")).toContainText("Instagram verbunden (testkonto_ig)");
+    expect((await (await fetch(`${TD}/__instagram`)).json()).anmeldungen[0].scope).toBe("instagram_business_basic,instagram_business_content_publish");
+    expect((await stories()).find((y) => y.id === preis.id)!.ig_status).toBe("geplant");
+    const ungepostet = await (await fetch(`${TD}/__instagram`)).json();
+    expect(ungepostet.posts).toHaveLength(0); // vor der Planzeit wird nichts gepostet
+    await sql("update video_auftraege set geplant_fuer = now() - interval '1 minute' where id = $1", [preis.id]);
+    await page.goto(`/marken/video?kanal=${kanalId}`);
+    await Promise.all([aktion(page), page.getByTestId("st-posten").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Gepostet: 1");
+    let ig = (await (await fetch(`${TD}/__instagram`)).json()) as { posts: { typ: string; video: boolean }[]; container: { quelle: string; status: number; typ: string }[] };
+    expect(ig.posts).toHaveLength(1);
+    expect(ig.posts[0]).toMatchObject({ video: true, typ: "video/mp4" });
+    expect(ig.container[0].quelle).toContain(`/api/public/story/${preis.id}/`);
+    expect((await stories()).find((y) => y.id === preis.id)!.ig_status).toBe("gepostet");
+    await expect(karte(preis.id)).toHaveAttribute("data-ig", "gepostet");
+    // befristeter Link: falsche Signatur oder fremde Datei → nicht abrufbar
+    expect((await fetch(ig.container[0].quelle.replace(/\/[^/]+\/story\.mp4$/, `/${Date.now() + 3_600_000}.falsch/story.mp4`))).status).toBe(404);
+    // Fehler beim Posten: 3 Wiederholungen (5/15/45 Min.), danach „nicht gepostet“ + Meldung – kein stilles Scheitern
+    const einblick = nach("einblick");
+    await Promise.all([aktion(page), karte(einblick.id).getByTestId("st-freigeben").click()]);
+    await sql("update video_auftraege set geplant_fuer = now() - interval '1 minute' where id = $1", [einblick.id]);
+    await fetch(`${TD}/__instagram`, { method: "POST", body: JSON.stringify({ fehler: 10 }) });
+    for (let v = 1; v <= 4; v++) {
+      await sql("update video_auftraege set ig_naechster_versuch = now() - interval '1 second' where id = $1 and ig_naechster_versuch is not null", [einblick.id]);
+      await page.goto(`/marken/video?kanal=${kanalId}`);
+      await Promise.all([aktion(page), page.getByTestId("st-posten").click()]);
+      const e = (await stories()).find((y) => y.id === einblick.id)!;
+      expect(e.ig_versuche).toBe(v);
+      expect(e.ig_status).toBe(v < 4 ? "geplant" : "fehler");
+      expect(e.ig_fehler).toContain("unexpected error");
+    }
+    await expect(karte(einblick.id).getByTestId("st-ig-fehler")).toContainText("unexpected error");
+    const meldungen = async () => sql<{ titel: string; text: string }>("select titel, text from meldungen where tenant_id = $1 and titel like $2 order by created_at", [T, `%(${KANAL5})%`]);
+    expect((await meldungen()).some((x) => x.titel.startsWith("Story nicht gepostet") && x.text.includes("Nach 4 Versuchen"))).toBe(true);
+    // abgelaufener Zugang: sofort gemeldet (keine Wiederholung), nach neuer Verbindung „Erneut posten“
+    await fetch(`${TD}/__instagram`, { method: "POST", body: JSON.stringify({ fehler: 0, abgelaufen: true }) });
+    const tipp2 = l.find((y) => y.id === tipp.id)!;
+    await page.reload();
+    await Promise.all([aktion(page), karte(tipp2.id).getByTestId("st-freigeben").click()]);
+    await sql("update video_auftraege set geplant_fuer = now() - interval '1 minute' where id = $1", [tipp2.id]);
+    await page.goto(`/marken/video?kanal=${kanalId}`);
+    await Promise.all([aktion(page), page.getByTestId("st-posten").click()]);
+    const t2 = (await stories()).find((y) => y.id === tipp2.id)!;
+    expect([t2.ig_status, t2.ig_versuche]).toEqual(["fehler", 1]);
+    expect(t2.ig_fehler).toContain("abgelaufen");
+    expect((await meldungen()).some((x) => x.titel.startsWith("Story nicht gepostet") && x.text.includes("abgelaufen"))).toBe(true);
+    await fetch(`${TD}/__instagram`, { method: "POST", body: JSON.stringify({ abgelaufen: false }) });
+    await page.reload();
+    await Promise.all([aktion(page), karte(einblick.id).getByTestId("st-erneut").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("erneut gepostet");
+    await Promise.all([aktion(page), page.getByTestId("st-posten").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Gepostet: 1");
+    ig = await (await fetch(`${TD}/__instagram`)).json();
+    expect(ig.posts).toHaveLength(2);
+
+    // 6. Kosten je Story (Ist) und Monatslimit: über dem Limit keine neuen Stories, wartende bekommen einen Hinweis
+    l = await stories();
+    expect(l.filter((x) => x.status !== "abgebrochen").every((x) => x.kosten_ist > 0)).toBe(true);
+    const monat = l.reduce((n, x) => n + x.kosten_ist, 0);
+    await expect(page.getByTestId("st-kosten")).toContainText("von 5,00 $");
+    await sql("update video_kanaele set instagram = instagram || '{\"monatslimit\": 0.01}'::jsonb where id = $1", [kanalId]);
+    await page.reload();
+    await expect(page.getByTestId("st-limit")).toContainText("Monatslimit erreicht");
+    await expect(page.getByTestId("st-erzeugen")).toBeDisabled();
+    await Promise.all([aktion(page), page.getByTestId("st-planen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Monatslimit erreicht");
+    await sql(`insert into video_auftraege (tenant_id, kanal_id, art, thema, story, geplant_fuer, schritt, schritte, kosten_schaetzung) values ($1, $2, 'story', 'Tipp über dem Limit', '{"inhaltsart":"tipp","werbung":false}'::jsonb, now() + interval '41 days', 'story', '{"story":{"status":"offen"}}'::jsonb, 0.02)`, [T, kanalId]);
+    const ueber = await warteStoriesFehler(stories, "Tipp über dem Limit");
+    expect(ueber.schritte.story?.fehler).toContain(`Monatslimit erreicht (${monat.toFixed(2)} $ von 0.01 $)`);
+    expect((await nachbau()).bilder.length).toBe(bilderVorher + 1); // nichts mehr erzeugt
     await workerStoppen();
   });
 

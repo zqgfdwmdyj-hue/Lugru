@@ -219,20 +219,33 @@ def clip(ffmpeg: str, ordner: Path, bild: str, ton: str, untertitel: str, ziel: 
     )
 
 
-def clip_bilder(ffmpeg: str, ordner: Path, bilder: list[tuple[str, float]], ton: str, ziel: str, laenge: float, fps: int) -> None:
-    """Whiteboard-Clip (B36.9): Bildfolge mit Dauern (Aufdeck-Animation) + Sprache, ohne eingebrannte Untertitel.
-    Läuft im Bildordner (relative Pfade)."""
+def zoom_filter(laenge: float, zoom: float, anker: float, breite: int = BREITE, hoehe: int = HOEHE) -> str:
+    """B36.10: sanfter Zoom über die ganze Szene (1 → 1+zoom) mit leichtem Schwenk (anker 0..1 = Bildausschnitt links..rechts)."""
+    if zoom <= 0:
+        return f"scale={breite}:{hoehe}"
+    d = max(0.5, laenge)
+    return (
+        f"scale={breite}:{hoehe},"
+        f"scale=w='2*trunc({breite // 2}*(1+{zoom:.4f}*t/{d:.3f}))':h='2*trunc({hoehe // 2}*(1+{zoom:.4f}*t/{d:.3f}))':eval=frame,"
+        f"crop={breite}:{hoehe}:x='(in_w-out_w)*{anker:.3f}':y='(in_h-out_h)/2'"
+    )
+
+
+def clip_bilder(ffmpeg: str, ordner: Path, bilder: list[tuple[str, float]], ton: str | None, ziel: str, laenge: float, fps: int, zoom: float = 0.0, anker: float = 0.5, breite: int = BREITE, hoehe: int = HOEHE) -> None:
+    """Whiteboard-Clip (B36.9/B36.10): Bildfolge mit Dauern (Aufdeck-Animation) + Sprache, ohne eingebrannte
+    Untertitel; optional sanfter Zoom/Schwenk. Ohne Ton (Story): stumme Spur. Läuft im Bildordner (relative Pfade)."""
     zeilen = ["ffconcat version 1.0"]
     for name, d in bilder:
         zeilen += [f"file '{name}'", f"duration {max(d, 1 / fps):.4f}"]
     zeilen.append(f"file '{bilder[-1][0]}'")
     (ordner / "bilder.txt").write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+    ton_args = ["-i", ton] if ton else ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
     _lauf(
         [
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
             "-f", "concat", "-safe", "0", "-i", "bilder.txt",
-            "-i", ton,
-            "-vf", f"fps={fps},scale={BREITE}:{HOEHE},format=yuv420p",
+            *ton_args,
+            "-vf", f"fps={fps},{zoom_filter(laenge, zoom, anker, breite, hoehe)},format=yuv420p",
             "-af", "apad",
             "-t", f"{laenge:.3f}",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-r", str(fps),

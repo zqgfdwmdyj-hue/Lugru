@@ -7,11 +7,12 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, VideoQuelle, VideoReferenz, VideoSchritt, VideoSzene } from "@/db/tables/video";
+import type { InstagramProfil, SchrittStand, VideoDatei, VideoFreigabe, VideoKosten, VideoPaket, VideoQuelle, VideoReferenz, VideoSchritt, VideoStory, VideoSzene } from "@/db/tables/video";
 import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, workerStand, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { storySperre } from "./story-sperre";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -57,7 +58,7 @@ export async function videoEinstellungenSpeichern(s: Session, patch: Partial<Vid
 
 // ---- Kanäle ------------------------------------------------------------------------------------------------------
 
-export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null };
+export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null; plattform?: string | null; tempo?: string | null; instagram?: InstagramProfil | null };
 
 export const kanaele = (tenantId: string) => db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(asc(K.createdAt));
 
@@ -65,17 +66,25 @@ export async function kanalSpeichern(s: Session, id: string | null, e: KanalEing
   if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
   const name = e.name.trim().slice(0, 80);
   if (!name) throw new VideoFehler("Bitte einen Kanalnamen angeben.");
-  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium" } as const;
+  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium", plattform: e.plattform === "instagram" ? "instagram" : "youtube", tempo: e.tempo === "ruhig" || e.tempo === "schnell" ? e.tempo : "normal" } as const;
+  // B37: Instagram-Profil nur übernehmen, wenn mitgeschickt (Themenliste bleibt beim Speichern des Profils erhalten)
+  const instagram = e.instagram ? await instagramProfilMischen(s.tenantId, id, e.instagram) : undefined;
   if (id) {
-    const [r] = await db.update(K).set(werte).where(and(eq(K.tenantId, s.tenantId), eq(K.id, id))).returning({ id: K.id });
+    const [r] = await db.update(K).set({ ...werte, ...(instagram ? { instagram } : {}) }).where(and(eq(K.tenantId, s.tenantId), eq(K.id, id))).returning({ id: K.id });
     if (!r) throw new VideoFehler("Kanal nicht gefunden.");
     return r.id;
   }
   let slug = slugAus(name);
   const vorhanden = new Set((await db.select({ slug: K.slug }).from(K).where(eq(K.tenantId, s.tenantId))).map((x) => x.slug));
   for (let i = 2; vorhanden.has(slug); i++) slug = `${slugAus(name)}-${i}`;
-  const [r] = await db.insert(K).values({ tenantId: s.tenantId, slug, ...werte }).returning({ id: K.id });
+  const [r] = await db.insert(K).values({ tenantId: s.tenantId, slug, ...werte, ...(instagram ? { instagram } : {}) }).returning({ id: K.id });
   return r.id;
+}
+
+/** Profil-Felder ersetzen, Themenliste behalten (die pflegt man getrennt). */
+async function instagramProfilMischen(tenantId: string, id: string | null, neu: InstagramProfil): Promise<InstagramProfil> {
+  const [alt] = id ? await db.select({ instagram: K.instagram }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.id, id))) : [];
+  return { ...(alt?.instagram ?? {}), ...neu, themen: neu.themen ?? alt?.instagram?.themen ?? [] };
 }
 
 /** YouTube-Zugang eines Kanals speichern (Refresh-Token verschlüsselt) bzw. trennen. */
@@ -108,13 +117,13 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   return r.id;
 }
 
-export async function auftraege(tenantId: string, kanalId?: string | null, limit = 50) {
+export async function auftraege(tenantId: string, kanalId?: string | null, limit = 50, art: "video" | "story" | null = null) {
   return db
     .select({ a: A, kanal: K.name, kanalSlug: K.slug })
     .from(A)
     .innerJoin(K, eq(K.id, A.kanalId))
-    .where(and(eq(A.tenantId, tenantId), kanalId ? eq(A.kanalId, kanalId) : undefined))
-    .orderBy(desc(A.createdAt))
+    .where(and(eq(A.tenantId, tenantId), kanalId ? eq(A.kanalId, kanalId) : undefined, art ? eq(A.art, art) : undefined))
+    .orderBy(art === "story" ? sql`${A.geplantFuer} desc nulls last` : desc(A.createdAt))
     .limit(limit);
 }
 
@@ -303,7 +312,10 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
     vorlage: a.vorlage ? { art: a.vorlageArt ?? "vorlage", text: a.vorlage } : null,
     neuMotive: a.neuMotive,
     laenge: laengeZiel(),
-    kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik },
+    art: a.art,
+    // B37 Story: Inhalt/Thema, geplanter Zeitpunkt; Fakten/Farben/Hinweis aus dem Kanalprofil
+    story: a.art === "story" ? { ...(a.story ?? { inhaltsart: "tipp" }), geplantFuer: a.geplantFuer?.toISOString() ?? null } : null,
+    kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik, plattform: k.plattform, tempo: k.tempo, instagram: k.plattform === "instagram" ? (() => { const { themen: _t, ...rest } = k.instagram; return rest; })() : null },
     daten: { gliederung: a.gliederung, quellen: a.quellen, skript: a.skript, paket: a.paket },
   };
 }
@@ -321,12 +333,20 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
   const [anderer] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), gte(A.zuletztVomWorker, still))).limit(1);
   if (anderer) return { auftrag: null, grund: "Ein anderer Auftrag läuft gerade (nur ein Render gleichzeitig)" };
   const kandidaten = await db
-    .select({ id: A.id })
+    .select({ id: A.id, art: A.art })
     .from(A)
     .where(and(eq(A.tenantId, w.tenantId), or(eq(A.status, "wartet"), and(eq(A.status, "laeuft"), or(isNull(A.zuletztVomWorker), lt(A.zuletztVomWorker, still)))), or(isNull(A.startAb), lte(A.startAb, jetzt()))))
     .orderBy(asc(A.createdAt))
     .limit(5);
+  let grund: string | undefined;
   for (const k of kandidaten) {
+    // B37: Stories erst ab Worker 1.2.0 (ältere kennen den Schritt nicht) und nur unter dem Monatslimit des Kanals
+    if (k.art === "story" && workerVeraltet(w.version)) {
+      grund = `Worker v${w.version ?? "?"} kann keine Stories – bitte auf v${WORKER_VERSION_AKTUELL} aktualisieren`;
+      continue;
+    }
+    const sperre = await storySperre(w.tenantId, k.id);
+    if (sperre) continue;
     const [r] = await db
       .update(A)
       .set({ status: "laeuft", workerId: w.id, zuletztVomWorker: jetzt(), updatedAt: jetzt() })
@@ -336,7 +356,7 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
     const [kanal] = await db.select().from(K).where(eq(K.id, r.kanalId));
     return { auftrag: auftragFuerWorker(r, kanal, await videoEinstellungen(w.tenantId)) };
   }
-  return { auftrag: null };
+  return { auftrag: null, grund };
 }
 
 export type SchrittMeldung = {
@@ -345,12 +365,12 @@ export type SchrittMeldung = {
   fortschritt?: { fertig: number; gesamt: number } | null;
   fehler?: string | null;
   hinweise?: string[] | null;
-  daten?: { gliederung?: (typeof A.$inferSelect)["gliederung"]; quellen?: VideoQuelle[]; skript?: VideoSzene[]; woerter?: number; dauerSek?: number; paket?: VideoPaket };
+  daten?: { gliederung?: (typeof A.$inferSelect)["gliederung"]; quellen?: VideoQuelle[]; skript?: VideoSzene[]; woerter?: number; dauerSek?: number; paket?: VideoPaket; story?: VideoStory };
 };
 
 /** Schritt-Meldung des Workers: Stand, Daten, nächster Schritt bzw. Freigabe. */
 export async function schrittMelden(w: Worker, id: string, m: SchrittMeldung): Promise<{ weiter: boolean; status: string; naechster: VideoSchritt | null; freigabe: VideoFreigabe | null }> {
-  if (!SCHRITTE.includes(m.schritt)) throw new VideoFehler("Unbekannter Schritt.");
+  if (!SCHRITTE.includes(m.schritt) && m.schritt !== "story") throw new VideoFehler("Unbekannter Schritt.");
   const [r] = await db.select({ a: A, k: K }).from(A).innerJoin(K, eq(K.id, A.kanalId)).where(and(eq(A.tenantId, w.tenantId), eq(A.id, id)));
   if (!r) throw new VideoFehler("Auftrag nicht gefunden.");
   const { a, k } = r;
@@ -370,11 +390,18 @@ export async function schrittMelden(w: Worker, id: string, m: SchrittMeldung): P
     await aendern(id, { ...werte, status: "fehler", schritt: m.schritt });
     return { weiter: false, status: "fehler", naechster: null, freigabe: null };
   }
+  // B37 Story fertig: Regeln prüfen, Freigabe nach Modus (jedes Mal / Stichprobe / automatisch)
+  if (a.art === "story") {
+    const { storyFertig } = await import("./story");
+    const r2 = await storyFertig(a, k, werte, m.daten?.story ?? null);
+    return { weiter: false, status: r2.status, naechster: null, freigabe: r2.freigabe };
+  }
   // fertig: Daten übernehmen
   const d = m.daten ?? {};
   if (d.gliederung !== undefined) werte.gliederung = d.gliederung;
   if (d.quellen) werte.quellen = d.quellen.slice(0, 60);
-  if (d.skript) werte.skript = d.skript.slice(0, 60);
+  // B36.10: Whiteboard hat 55–80 kurze Szenen
+  if (d.skript) werte.skript = d.skript.slice(0, 160);
   if (typeof d.woerter === "number") werte.woerter = Math.round(d.woerter);
   if (typeof d.dauerSek === "number") werte.dauerSek = Math.round(d.dauerSek);
   if (d.paket) werte.paket = { ...d.paket, titel: d.paket.titel.slice(0, 5), warnungen: [...(d.paket.warnungen ?? []), ...d.paket.titel.map((t) => (titelTreffer(t) ? `Titel „${t}“ enthält „${titelTreffer(t)}“` : null)).filter((x): x is string => !!x)] };
@@ -396,6 +423,10 @@ export const DATEI_ARTEN: Record<string, { name: string; typ: string; max: numbe
   untertitel: { name: "untertitel.srt", typ: "application/x-subrip", max: 5 * 1024 ** 2 },
   /** Whiteboard: Szenen-Übersicht (alle Szenen als Raster) zur Freigabe vor dem Render. */
   uebersicht: { name: "uebersicht.jpg", typ: "image/jpeg", max: 30 * 1024 ** 2 },
+  /** B37 Instagram-Story (Hochformat 1080×1920): Video mit Aufdeck-Animation oder Standbild, dazu ein Vorschaubild. */
+  story_mp4: { name: "story.mp4", typ: "video/mp4", max: 200 * 1024 ** 2 },
+  story_png: { name: "story.png", typ: "image/png", max: 20 * 1024 ** 2 },
+  story_vorschau: { name: "story-vorschau.jpg", typ: "image/jpeg", max: 10 * 1024 ** 2 },
 };
 
 // ---- Stil-Referenzbilder je Kanal (B36.9.1) -----------------------------------------------------------------------

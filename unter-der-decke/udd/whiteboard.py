@@ -198,7 +198,9 @@ def _text_ebene(text: str, max_b: int, max_h: int, farbe, start: int, zeilen: in
     f, z, hz = _passend(text, max_b, max_h, start, zeilen=zeilen)
     probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     breite = max(int(probe.textlength(x, font=f)) for x in z) + 8
-    img = Image.new("RGBA", (breite, hz * len(z) + 8), (0, 0, 0, 0))
+    # Höhe nach Schriftmaßen: die letzte Zeile braucht Ober- und Unterlänge (sonst wird z. B. das „p“ abgeschnitten)
+    auf, ab = f.getmetrics() if hasattr(f, "getmetrics") else (hz, 0)
+    img = Image.new("RGBA", (breite, hz * (len(z) - 1) + max(hz, auf + ab) + 8), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     for i, x in enumerate(z):
         w = probe.textlength(x, font=f)
@@ -382,6 +384,290 @@ def animation(grund: Image.Image, els: list[Element], dauer: float, fps: int, ha
         name, d = liste[-1]
         liste[-1] = (name, d + rest)
     return liste, bild.convert("RGB")
+
+
+# ---- B36.10 Tempo: Takt nach Wortzeiten, kurze Zeichenzeit, dauernde Bewegung -----------------------------------------
+
+# Zeichenzeit je Motiv nach Kanalprofil „Tempo“ (nicht mehr auf die Szenenlänge gedehnt)
+TEMPO = {"ruhig": 2.5, "normal": 2.0, "schnell": 1.5}
+MAX_PAUSE = 3.0  # höchstens so lange ohne neues Ereignis (Motiv, Beschriftung, Hervorhebung)
+ZIEL_PAUSE = 2.6  # Lücken darüber werden mit Hervorhebungen gefüllt
+WISCH_S = 0.3  # Szenenwechsel (Wisch)
+POP_S = 0.35  # Text-Pop
+PUNKT_S = 0.6
+HERVOR_S = 0.6
+HERVOR_MAX = 6  # Hervorhebungen je Szene
+FORMEN = ("unterstreichen", "kreis", "pfeil")
+
+
+def draw_s(tempo: str | None) -> float:
+    return TEMPO.get(tempo or "normal", TEMPO["normal"])
+
+
+def _norm(w: str) -> str:
+    t = w.lower()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        t = t.replace(a, b)
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def wortzeiten(text: str, alignment: dict | None) -> list[tuple[str, float]]:
+    """Startzeit je Wort aus der Zeichen-Ausrichtung von ElevenLabs (characters + character_start_times_seconds).
+    Ohne Ausrichtung: leere Liste (dann gleichmäßig verteilt)."""
+    if not alignment:
+        return []
+    zeichen = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    if not zeichen or len(zeichen) != len(starts):
+        return []
+    out: list[tuple[str, float]] = []
+    akt, t0 = "", None
+    for c, t in zip(zeichen, starts):
+        if c.isspace():
+            if akt:
+                out.append((_norm(akt), float(t0 or 0)))
+            akt, t0 = "", None
+        else:
+            if not akt:
+                t0 = t
+            akt += c
+    if akt:
+        out.append((_norm(akt), float(t0 or 0)))
+    return [(w, t) for w, t in out if w]
+
+
+@dataclass
+class Ereignis:
+    start: float
+    art: str  # text | motiv | punkt | hervorhebung
+    index: int  # Element (bei Hervorhebung: das hervorgehobene Element)
+    dauer: float
+    form: str | None = None  # unterstreichen | kreis | pfeil
+
+
+def _dauer(art: str, ds: float) -> float:
+    return {"text": POP_S, "punkt": PUNKT_S, "motiv": ds}.get(art, HERVOR_S)
+
+
+def takt_plan(arten: list[str], woerter: list[str | None], dauer: float, ds: float, zeiten: list[tuple[str, float]]) -> tuple[list[Ereignis], dict]:
+    """Zeitplan einer Szene: jedes Element beginnt, wenn sein Schlüsselwort gesprochen wird (Wortzeiten), sonst gleichmäßig
+    verteilt. Lücken über ZIEL_PAUSE werden mit Hervorhebungen (unterstreichen, einkreisen, Pfeil) gefüllt.
+    Liefert Ereignisse und Kennzahlen {ereignisse, maxPause, mittel, hervorhebungen, drawS}."""
+    n = len(arten)
+    ende = max(dauer - 0.25, WISCH_S + 0.1)
+    gewuenscht: list[float | None] = [None] * n
+    pos = 0
+    for i, w in enumerate(woerter):
+        if not w or not zeiten:
+            continue
+        nw = _norm(w.split()[0]) if w.split() else ""
+        for j in range(pos, len(zeiten)):
+            if nw and (zeiten[j][0] == nw or (len(nw) >= 4 and zeiten[j][0].startswith(nw[:max(4, len(nw) - 2)]))):
+                gewuenscht[i] = zeiten[j][1]
+                pos = j + 1
+                break
+    # Kopf-Texte (Überschrift/Balken) gleich zu Beginn, wenn kein Wort zugeordnet ist
+    if n and gewuenscht[0] is None and arten[0] == "text":
+        gewuenscht[0] = WISCH_S
+    # Lücken ohne Zeit gleichmäßig zwischen bekannte Nachbarn verteilen
+    starts: list[float] = [0.0] * n
+    i = 0
+    while i < n:
+        if gewuenscht[i] is not None:
+            starts[i] = float(gewuenscht[i])
+            i += 1
+            continue
+        j = i
+        while j < n and gewuenscht[j] is None:
+            j += 1
+        links = starts[i - 1] if i > 0 else WISCH_S
+        rechts = float(gewuenscht[j]) if j < n else ende
+        m = j - i
+        for k in range(m):
+            # mit Vorgänger: zwischen beide Anker; am Szenenanfang: erstes Element gleich zu Beginn
+            anteil = (k + 1) / (m + 1) if i > 0 else k / m
+            starts[i + k] = links + (rechts - links) * anteil
+        i = j
+    # Reihenfolge halten, mindestens 0,5 s Abstand, nicht über das Szenenende
+    for k in range(n):
+        lo = WISCH_S if k == 0 else starts[k - 1] + 0.5
+        starts[k] = min(max(starts[k], lo), max(lo, ende - 0.3))
+    ereignisse = [Ereignis(round(s, 3), a, k, _dauer(a, ds)) for k, (s, a) in enumerate(zip(starts, arten))]
+    # Lücken füllen: Stillstand = Zeit, in der nichts gezeichnet wird (nach dem Wisch, zwischen Ende und nächstem Start).
+    # Hervorhebung bereits gezeichneter Elemente (Texte unterstreichen, Motive einkreisen/Pfeil); steht noch nichts im Bild
+    # (Szenenanfang), kommt das nächste Element früher – lieber etwas vor seinem Wort als Stillstand.
+    hervor = 0
+    for _runde in range(HERVOR_MAX + n + 2):
+        groesse, a, b = max(stillstand(ereignisse, dauer), default=(0.0, 0.0, 0.0))
+        if groesse <= ZIEL_PAUSE:
+            break
+        fertige = [e for e in ereignisse if e.art != "hervorhebung" and e.start + e.dauer <= a + 1e-6]
+        if not fertige:
+            folgende = [e for e in ereignisse if e.art != "hervorhebung" and e.start >= b - 1e-6]
+            if not folgende:
+                break
+            erstes = min(folgende, key=lambda e: e.start)
+            erstes.start = round(a + min(1.0, groesse / 2), 3)
+            continue
+        if hervor >= HERVOR_MAX:
+            break
+        t = a + max(0.0, (groesse - HERVOR_S) / 2)
+        ziel = fertige[hervor % len(fertige)]
+        form = "unterstreichen" if ziel.art in ("text", "punkt") else FORMEN[1 + hervor % 2]
+        ereignisse.append(Ereignis(round(t, 3), "hervorhebung", ziel.index, HERVOR_S, form))
+        hervor += 1
+    ereignisse.sort(key=lambda e: e.start)
+    max_pause = max((g for g, _a, _b in stillstand(ereignisse, dauer)), default=0.0)
+    kenn = {"ereignisse": len(ereignisse), "maxPause": round(max_pause, 2), "mittel": round(dauer / max(1, len(ereignisse)), 2), "hervorhebungen": hervor, "drawS": ds}
+    return ereignisse, kenn
+
+
+def stillstand(ereignisse: list[Ereignis], dauer: float) -> list[tuple[float, float, float]]:
+    """Zeiträume ohne Bewegung (Länge, von, bis): weder Wisch (erste 0,3 s) noch ein laufendes Ereignis."""
+    bewegt = sorted([(0.0, WISCH_S)] + [(e.start, min(dauer, e.start + e.dauer)) for e in ereignisse])
+    out: list[tuple[float, float, float]] = []
+    ende = 0.0
+    for a, b in bewegt:
+        if a > ende + 1e-6:
+            out.append((round(a - ende, 3), ende, a))
+        ende = max(ende, b)
+    if dauer > ende + 1e-6:
+        out.append((round(dauer - ende, 3), ende, dauer))
+    return out
+
+
+def _pop(e: Element, p: float) -> tuple[Image.Image, tuple[int, int]]:
+    """Text-Pop: wächst von 60 % auf 100 % (leichtes Überschwingen) und wird dabei sichtbar."""
+    s = 0.6 + 0.4 * p + 0.08 * math.sin(math.pi * p)
+    w, h = max(1, round(e.ebene.width * s)), max(1, round(e.ebene.height * s))
+    img = e.ebene.resize((w, h), Image.BILINEAR)
+    if p < 1:
+        a = img.getchannel("A").point(lambda v: round(v * min(1.0, 0.3 + p)))
+        img.putalpha(a)
+    cx, cy = e.pos[0] + e.ebene.width / 2, e.pos[1] + e.ebene.height / 2
+    return img, (round(cx - w / 2), round(cy - h / 2))
+
+
+def _hervorhebung(bild: Image.Image, e: Element, form: str, p: float) -> tuple[int, int]:
+    """Zeichnet die Hervorhebung bis Fortschritt p ins Bild; liefert die Stiftspitze (für die Hand)."""
+    d = ImageDraw.Draw(bild)
+    x0, y0, x1, y1 = e.box
+    farbe = ROT + (255,)
+    if form == "unterstreichen":
+        y = min(bild.height - 8, y1 + 6)
+        xe = x0 + (x1 - x0) * p
+        d.line((x0, y, xe, y), fill=farbe, width=9)
+        return round(xe), y
+    if form == "kreis":
+        rand = 14
+        box = (x0 - rand, y0 - rand, x1 + rand, y1 + rand)
+        d.arc(box, start=-90, end=-90 + 360 * p, fill=farbe, width=8)
+        winkel = math.radians(-90 + 360 * p)
+        cx, cy, rx, ry = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2, (box[2] - box[0]) / 2, (box[3] - box[1]) / 2
+        return round(cx + rx * math.cos(winkel)), round(cy + ry * math.sin(winkel))
+    # Pfeil von unten links auf das Motiv
+    sx, sy = x0 - 110, y1 + 70
+    zx, zy = x0 + (x1 - x0) * 0.2, y1 - (y1 - y0) * 0.2
+    ex, ey = sx + (zx - sx) * p, sy + (zy - sy) * p
+    d.line((sx, sy, ex, ey), fill=farbe, width=9)
+    if p >= 0.98:
+        ang = math.atan2(zy - sy, zx - sx)
+        for da in (2.6, -2.6):
+            d.line((zx, zy, zx + 34 * math.cos(ang + da), zy + 34 * math.sin(ang + da)), fill=farbe, width=9)
+    return round(ex), round(ey)
+
+
+def _zeichnen(bild: Image.Image, e: Element, p: float) -> tuple[int, int]:
+    breite = max(1, round(e.ebene.width * p))
+    bild.alpha_composite(e.ebene.crop((0, 0, breite, e.ebene.height)), e.pos)
+    return e.pos[0] + breite, round(e.pos[1] + e.ebene.height * 0.5)
+
+
+def animation_takt(grund: Image.Image, els: list[Element], ereignisse: list[Ereignis], dauer: float, fps: int, hand: Image.Image | None, ordner: Path, vorher: Image.Image | None = None) -> tuple[list[tuple[str, float]], Image.Image]:
+    """B36.10: Szene nach Zeitplan – Wisch vom vorigen Szenenbild (0,3 s), Motive in draw_s „aufgezeichnet“ (Hand folgt),
+    Texte mit Pop, Hervorhebungen (unterstreichen, einkreisen, Pfeil). Mehrere Ereignisse dürfen sich überlappen.
+    Nur bewegte Bilder werden einzeln gespeichert, Standbilder bekommen eine Dauer (ffmpeg concat); den sanften Zoom
+    legt ffmpeg beim Clip darüber. Liefert (Bild, Dauer)-Liste und das fertige Szenenbild (mit Hervorhebungen)."""
+    ordner.mkdir(parents=True, exist_ok=True)
+    schritt = 1 / max(1, fps)
+    # Zeitpunkte mit Bewegung: Wisch + jedes Ereignis über seine Dauer
+    aktiv: list[tuple[float, float]] = [(0.0, WISCH_S)] if vorher is not None else []
+    aktiv += [(e.start, e.start + e.dauer) for e in ereignisse]
+    zeiten: set[float] = {0.0}
+    for a, b in aktiv:
+        t = a
+        while t < b - 1e-6:
+            zeiten.add(round(t, 4))
+            t += schritt
+        zeiten.add(round(min(b, dauer), 4))
+    zeitpunkte = sorted(z for z in zeiten if z < dauer)
+    weiss = grund.convert("RGBA")
+    vorher_rgba = vorher.convert("RGBA") if vorher is not None else None
+    liste: list[tuple[str, float]] = []
+    for k, t in enumerate(zeitpunkte):
+        rahmen = weiss.copy()
+        spitze = None
+        # fertige Elemente / laufende Ereignisse in Startreihenfolge
+        for e in ereignisse:
+            if e.start > t:
+                continue
+            p = min(1.0, (t - e.start) / e.dauer) if e.dauer > 0 else 1.0
+            el = els[e.index] if 0 <= e.index < len(els) else None
+            if el is None:
+                continue
+            if e.art == "hervorhebung":
+                pkt = _hervorhebung(rahmen, el, e.form or "kreis", p)
+                if p < 1:
+                    spitze = pkt
+            elif e.art == "text" and p < 1:
+                img, xy = _pop(el, p)
+                _einsetzen(rahmen, img, *xy)
+            elif p < 1:
+                spitze = _zeichnen(rahmen, el, p)
+            else:
+                rahmen.alpha_composite(el.ebene, el.pos)
+        if vorher_rgba is not None and t < WISCH_S:
+            # Wisch: links schon die neue Szene, rechts noch die vorige, harte Kante mit kurzem Schatten
+            bw, bh = rahmen.size
+            kante = round(bw * t / WISCH_S)
+            if kante < bw:
+                rahmen.paste(vorher_rgba.crop((kante, 0, bw, bh)), (kante, 0))
+        if hand is not None and spitze is not None:
+            _einsetzen(rahmen, hand, round(spitze[0] - hand.width * 0.04), round(spitze[1] - hand.height * 0.04))
+        d = (zeitpunkte[k + 1] if k + 1 < len(zeitpunkte) else dauer) - t
+        name = f"{len(liste):05d}.jpg"
+        rahmen.convert("RGB").save(ordner / name, quality=88)
+        liste.append((name, max(d, 1 / fps)))
+    return liste, fertig_takt(grund, els, ereignisse)
+
+
+def fertig_takt(grund: Image.Image, els: list[Element], ereignisse: list[Ereignis]) -> Image.Image:
+    """Fertiges Szenenbild nach dem Zeitplan: alle Elemente + Hervorhebungen (blasser Hintergrund der nächsten Szene)."""
+    bild = grund.convert("RGBA")
+    for e in ereignisse:
+        el = els[e.index] if 0 <= e.index < len(els) else None
+        if el is None:
+            continue
+        if e.art == "hervorhebung":
+            _hervorhebung(bild, el, e.form or "kreis", 1.0)
+        else:
+            bild.alpha_composite(el.ebene, el.pos)
+    return bild.convert("RGB")
+
+
+def element_woerter(szene: dict, els: list[Element]) -> list[str | None]:
+    """Schlüsselwort je Element (Aufdeck-Reihenfolge wie in elemente()): Motive aus motive[].wort, Texte ohne Wort
+    (Kopftexte gleich zu Beginn, Fußtexte gleichmäßig verteilt)."""
+    worte = [m.get("wort") for m in (szene.get("motive") or [])]
+    out: list[str | None] = []
+    mi = 0
+    for e in els:
+        if e.art == "motiv":
+            out.append(worte[mi] if mi < len(worte) else None)
+            mi += 1
+        else:
+            out.append(None)
+    return out
 
 
 def uebersicht(bilder: list[tuple[int, Image.Image, str]], ziel: Path, spalten: int = 4) -> None:

@@ -605,6 +605,22 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "instagram",
+    name: "Instagram (Stories für Kanäle)",
+    purpose: "Automatisches Posten freigegebener Stories (Marken & Content → Video, Instagram-Kanal) über die Instagram-API mit Instagram-Login. Ohne Anbindung entstehen die Stories trotzdem – du postest sie dann von Hand.",
+    fields: [
+      { key: "appId", label: "Meta-App-ID", placeholder: "Zahl aus developers.facebook.com" },
+      { key: "appSecret", label: "App-Secret (Instagram)", secret: true, help: "Nur den Schlüssel einfügen – nie im Chat." },
+    ],
+    setup: [
+      "Voraussetzung: Instagram-Konto als Business-Konto (Profi-Konto). Eine Facebook-Seite ist beim Instagram-Login nicht nötig.",
+      "developers.facebook.com → Meine Apps → App erstellen (Business) → Produkt „Instagram“ → „API-Einrichtung mit Instagram-Login“.",
+      "Dort „Instagram-App-ID“ und „Instagram-App-Secret“ kopieren und hier eintragen; als Weiterleitungs-URI https://<deine Adresse>/api/oauth/instagram/callback eintragen.",
+      "Berechtigungen instagram_business_basic und instagram_business_content_publish – für fremde Konten ist eine App-Prüfung durch Meta nötig (Dauer: Tage bis Wochen). Bis dahin: Stories erzeugen, freigeben, von Hand posten.",
+      "Danach im Kanalprofil des Instagram-Kanals „Mit Instagram verbinden“. Der Zugang hält ~60 Tage und wird automatisch verlängert (Warnung 7 Tage vorher).",
+    ],
+  },
+  {
     provider: "anthropic",
     name: "KI (Claude) – optional",
     purpose: "Stuft Amazon-Systemmails ein, fasst die Themen-Recherche zusammen und schreibt Marken-Ideen, Video-Skripte und Listing-Vorschläge. Ohne Schlüssel arbeiten Mails und Recherche mit festen Regeln.",

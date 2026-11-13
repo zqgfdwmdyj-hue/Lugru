@@ -260,19 +260,87 @@ def test_uebersicht_raster(tmp_path):
 
 
 def test_wb_pruefen_und_aufbereiten():
+    kurz = "Ein kurzer Satz mit genau zwölf Wörtern für diese Szene im Test."
     szenen = [
-        {"layout": "3er", "motive": [{"key": "a", "beschreibung": "x"}] * 3, "liste": []},
-        {"layout": "4er", "motive": [{"key": "a", "beschreibung": "x"}], "liste": []},
-        {"layout": "figur-liste", "motive": [{"key": "f", "beschreibung": "y"}], "liste": ["eins"]},
+        {"text": kurz, "layout": "3er", "motive": [{"key": "a", "beschreibung": "x"}] * 3, "liste": []},
+        {"text": kurz, "layout": "4er", "motive": [{"key": "a", "beschreibung": "x"}], "liste": []},
+        {"text": kurz, "layout": "figur-liste", "motive": [{"key": "f", "beschreibung": "y"}], "liste": ["eins"]},
     ]
-    p = wb_pruefen(szenen)
+    p = wb_pruefen(szenen, voll=False)
     assert len(p) == 2 and "Szene 2" in p[0] and "Szene 3" in p[1]
-    s = [{"ueberschrift": "eins zwei drei vier fünf sechs sieben", "balken": "", "kernaussage": "", "schritt": "Schritt 4: Arzt fragen", "liste": [], "motive": [{"key": "Blonder Mann", "beschreibung": "egal"}, {"key": "Sanduhr", "beschreibung": "Sanduhr mit Gesicht"}]}]
+    # B36.10: zu lange Szenen und zu wenige Szenen bei voller Länge
+    lang = [{**szenen[0], "text": " ".join(["Wort"] * 40)}] + [szenen[0]] * 10
+    p = wb_pruefen(lang, voll=True)
+    assert any("Szenen 1 sind zu lang" in x for x in p) and any("Nur 11 Szenen – Ziel 55–80" in x for x in p)
+    assert not any("Nur" in x for x in wb_pruefen([szenen[0]] * 60, voll=True))
+    s = [{"text": "Die Sanduhr läuft und der Mann wartet geduldig.", "ueberschrift": "eins zwei drei vier fünf sechs sieben", "balken": "", "kernaussage": "", "schritt": "Schritt 4: Arzt fragen", "liste": [], "motive": [{"key": "Blonder Mann", "beschreibung": "egal", "wort": "Mann"}, {"key": "Sanduhr", "beschreibung": "Sanduhr mit Gesicht", "wort": "Sanduhr"}, {"key": "Wolke", "beschreibung": "Wolke", "wort": "Regen"}]}]
     wb_aufbereiten(s, {"blonder-mann": "Mann um die 60, blond"})
     assert s[0]["ueberschrift"] == "eins zwei drei vier fünf sechs"
     assert s[0]["balken"] is None and s[0]["schrittText"] == "Schritt 4: Arzt fragen" and "schritt" not in s[0]
-    assert s[0]["motive"][0] == {"key": "blonder-mann", "beschreibung": "Mann um die 60, blond"}  # feste Figur
+    assert s[0]["motive"][0] == {"key": "blonder-mann", "beschreibung": "Mann um die 60, blond", "wort": "Mann"}  # feste Figur
     assert s[0]["motive"][1]["key"] == "sanduhr" and "Sanduhr mit Gesicht" in s[0]["bildidee"]
+    assert "wort" not in s[0]["motive"][2]  # Wort steht nicht im Text → gleichmäßig verteilt
+
+
+# ---- B36.10 Tempo: Takt nach Wortzeiten, draw_s, Hervorhebungen, Prüfung -------------------------------------------
+
+
+def _ausrichtung(text: str, sek_je_zeichen: float = 0.06) -> dict:
+    zeichen = list(text)
+    return {"characters": zeichen, "character_start_times_seconds": [i * sek_je_zeichen for i in range(len(zeichen))], "character_end_times_seconds": [(i + 1) * sek_je_zeichen for i in range(len(zeichen))]}
+
+
+def test_wortzeiten_aus_elevenlabs_ausrichtung():
+    text = "Die Sanduhr läuft, der Wecker klingelt."
+    z = wb.wortzeiten(text, _ausrichtung(text))
+    assert [w for w, _ in z] == ["die", "sanduhr", "laeuft", "der", "wecker", "klingelt"]
+    assert z[1][1] == 4 * 0.06 and z[4][1] == text.index("Wecker") * 0.06
+    assert wb.wortzeiten(text, None) == [] and wb.wortzeiten(text, {"characters": ["a"], "character_start_times_seconds": []}) == []
+
+
+def test_takt_plan_motive_beim_schluesselwort_und_kurze_zeichenzeit():
+    text = "Erst kommt die Sanduhr, dann nach einer Weile der Wecker und zum Schluss das Glas."
+    zeiten = wb.wortzeiten(text, _ausrichtung(text, 0.1))  # ~8,4 s Sprache
+    arten = ["text", "motiv", "motiv", "motiv"]
+    plan, k = wb.takt_plan(arten, [None, "Sanduhr", "Wecker", "Glas"], 9.0, wb.draw_s("normal"), zeiten)
+    motive = [e for e in plan if e.art == "motiv"]
+    assert [round(e.start, 1) for e in motive] == [round(text.index(w) * 0.1, 1) for w in ("Sanduhr", "Wecker", "Glas")]
+    assert all(e.dauer == 2.0 for e in motive)  # Tempo „normal“: 2,0 s je Motiv, nicht auf die Szene gedehnt
+    assert plan[0].art == "text" and plan[0].start == wb.WISCH_S  # Überschrift gleich zu Beginn
+    assert k["maxPause"] <= wb.MAX_PAUSE and k["drawS"] == 2.0
+    assert wb.draw_s("ruhig") == 2.5 and wb.draw_s("schnell") == 1.5 and wb.draw_s(None) == 2.0
+
+
+def test_takt_plan_fuellt_luecken_mit_hervorhebungen_und_verteilt_ohne_wortzeiten():
+    # 12 s Szene, nur zwei Motive ohne Wortzeiten → gleichmäßig verteilt, Lücken > 2,6 s mit Hervorhebungen gefüllt
+    plan, k = wb.takt_plan(["motiv", "motiv"], [None, None], 12.0, 1.5, [])
+    assert k["hervorhebungen"] >= 2 and k["maxPause"] <= wb.MAX_PAUSE
+    hervor = [e for e in plan if e.art == "hervorhebung"]
+    assert {e.form for e in hervor} <= {"kreis", "pfeil"} and all(e.index in (0, 1) for e in hervor)
+    starts = [e.start for e in plan]
+    assert starts == sorted(starts)
+    # Zu leere Szene (nur ein Text, sehr lang) → Pause bleibt über 3 s und wird gemeldet
+    _p, k2 = wb.takt_plan(["text"], [None], 30.0, 2.0, [])
+    sz = [{"nr": 7, "takt": k2}, {"nr": 8, "takt": k}]
+    h = schritte.takt_hinweise(sz)
+    assert any(x.startswith("Szene 7:") and "ohne neue Aktion" in x for x in h) and not any(x.startswith("Szene 8:") for x in h)
+    assert any(x.startswith("Takt: 2 Szenen, Ø alle") for x in h)
+
+
+def test_animation_takt_wisch_pop_hervorhebung_und_hand(tmp_path):
+    grund = wb.hintergrund(None)
+    vorher = Image.new("RGB", (wb.B, wb.H), (0, 0, 255))
+    motiv = Image.new("RGBA", (300, 300), (250, 120, 0, 255))
+    s = {"ueberschrift": "Teil eins", "motive": [{"key": "m", "wort": "Motiv"}], "layout": "figur-liste", "liste": []}
+    els = wb.elemente(s, [motiv])
+    plan, k = wb.takt_plan([e.art for e in els], wb.element_woerter(s, els), 8.0, 1.5, [])
+    liste, fertig = wb.animation_takt(grund, els, plan, 8.0, 10, wb.hand_gezeichnet(), tmp_path, vorher)
+    assert abs(sum(d for _n, d in liste) - 8.0) < 0.15
+    erstes = Image.open(tmp_path / liste[0][0]).convert("RGB")
+    assert erstes.getpixel((wb.B - 5, wb.H // 2))[2] > 200  # Wisch: rechts noch die vorige Szene (blau)
+    # fertiges Bild enthält die Hervorhebung in Rot
+    rot = sum(1 for x in range(0, wb.B, 7) for y in range(0, wb.H, 7) if fertig.getpixel((x, y)) == wb.ROT)
+    assert k["hervorhebungen"] >= 1 and rot > 20
 
 
 # ---- Robustheit (Nachtrag 12.11.): Wiederholung, Streaming mit Abbruch, Abschnitte mit Wiederaufnahme --------------
@@ -593,3 +661,127 @@ def test_skript_aus_eigenem_kurzem_skript_ohne_auffuellen(tmp_path, monkeypatch)
     daten, hinweise = schritte.script(l)
     assert hinweise == [] and 1080 <= daten["woerter"] <= 1260
     assert "insgesamt 1.080–1.260 Wörter" in prompts[0] and "nicht verlängern" in prompts[0]
+
+
+# ---- B37 Instagram-Story ----------------------------------------------------------------------------------------------
+
+
+def test_story_regeln_wie_im_seller_system():
+    from udd.story import story_regeln
+
+    assert any("kostenlose" in f for f in story_regeln("Inklusive kostenloser Zählung jeder Einheit", "preis", True, True))
+    assert any("all-in" in f for f in story_regeln("Prep all-in ab 0,59 € netto je Artikel", "preis", True, True))
+    assert not story_regeln("Prep all-in ab 0,59 € netto je Artikel. Enthalten: Etikett, Polybeutel, Versandkarton-Packen.", "preis", True, True)
+    assert any("netto" in f for f in story_regeln("Prep ab 0,59 € je Artikel", "preis", True, True))
+    assert any("Versicherung" in f for f in story_regeln("Deine Ware ist bei uns voll versichert", "leistung", True, True))
+    assert any("Werbekennzeichnung" in f for f in story_regeln("Wir labeln deine Ware", "leistung", True, False))
+    assert not story_regeln("FNSKU immer auf die Einheit, nicht auf den Karton.", "tipp", True, False)
+
+
+class _StorySeller:
+    def __init__(self, foto: bytes | None = None):
+        self.hochgeladen: dict[str, Path] = {}
+        self.foto = foto
+
+    def datei_hochladen(self, _id, art, pfad):
+        self.hochgeladen[art] = Path(pfad)
+
+    def foto_holen(self, _id):
+        return self.foto
+
+
+class _StoryLauf:
+    def __init__(self, tmp: Path, story: dict, hand: bool = True, ffmpeg: str = "ffmpeg"):
+        from udd import whiteboard as wb
+        from udd.konfig import Konfig
+
+        self.id = "story-1"
+        self.p = Projekt(tmp, "testkanal-ig", self.id)
+        self.bib = wb.Bibliothek(tmp / "testkanal-ig" / "motive")
+        self.k = Konfig("http://example.invalid", "vw_x", tmp, tmp, 1, 1, 1, 2, "", 1, ffmpeg, shutil.which("ffprobe") or "ffprobe")
+        self.kanal = {"name": "Testkanal", "slug": "testkanal-ig", "tempo": "schnell", "instagram": {"hand": hand, "werbung": True, "farben": {"grund": "#FFFFFF", "akzent": "#C81E1E", "text": "#181818"}, "hinweis": "Anfrage über example.com", "fakten": "Prep ab 0,59 € netto je Artikel"}}
+        self.a = {"id": self.id, "thema": "Prep-Preis", "hinweis": "", "story": story}
+        self.modell, self.claude = "claude-opus-5-5", object()
+        self.seller = _StorySeller(_png(False, (90, 120, 160)))
+
+
+def _story_antwort(key: str = "karton", text: str = "Prep ab 0,59 € netto je Artikel. Enthalten: Etikett und Polybeutel.") -> str:
+    return json.dumps({"ueberschrift": "Prep zum Festpreis", "text": text, "cta": "Jetzt anfragen", "werbung": True, "motiv": {"key": key, "beschreibung": "Ein Versandkarton"}, "sticker": {"art": "keine", "frage": "", "optionen": []}})
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="ffmpeg fehlt")
+def test_story_hochformat_mp4_mit_hand_und_png_ohne_hand(tmp_path, monkeypatch):
+    from udd import schritte
+    from udd import story as st
+
+    aufrufe: list[str] = []
+    bilder: list[str] = []
+    monkeypatch.setattr(st.ki, "fragen", lambda _c, _m, prompt, *, was="", **_kw: (aufrufe.append(prompt), (_story_antwort(), []))[1])
+    monkeypatch.setattr(schritte, "_motiv_holen", lambda _l, _p, was="": (bilder.append(was), _png())[1])
+    l = _StoryLauf(tmp_path, {"inhaltsart": "preis"})
+    daten, hinweise = st.story(l)
+    s = daten["story"]
+    assert s["format"] == "mp4" and 5 <= s["dauerSek"] <= 15 and s["werbung"] is True and s["motivKey"] == "karton"
+    assert not hinweise and "[video:story:preis]" in aufrufe[0] and "Prep ab 0,59 € netto" in aufrufe[0]
+    assert set(l.seller.hochgeladen) == {"story_mp4", "story_vorschau"}
+    info = medien.video_info(l.k.ffprobe, l.seller.hochgeladen["story_mp4"])
+    assert (info["breite"], info["hoehe"]) == (1080, 1920)
+    assert Image.open(l.seller.hochgeladen["story_vorschau"]).size == (540, 960)
+    # zweiter Lauf (Wiederholung nach Fehler): Text und Motiv nicht noch einmal bezahlt
+    st.story(l)
+    assert len(aufrufe) == 1 and len(bilder) == 1
+    # ohne Hand: Standbild (PNG) 1080×1920
+    l2 = _StoryLauf(tmp_path, {"inhaltsart": "preis"}, hand=False)
+    l2.a["id"] = l2.id = "story-2"
+    l2.p = Projekt(tmp_path, "testkanal-ig", "story-2")
+    d2, _ = st.story(l2)
+    assert d2["story"]["format"] == "png" and Image.open(l2.seller.hochgeladen["story_png"]).size == (1080, 1920)
+    assert len(bilder) == 1  # Motiv „karton“ aus der Bibliothek
+
+
+def test_story_neu_erzeugen_motiv_bleibt_oder_wird_einmal_neu(tmp_path, monkeypatch):
+    from udd import schritte
+    from udd import story as st
+
+    aufrufe: list[str] = []
+    bilder: list[str] = []
+    monkeypatch.setattr(st.ki, "fragen", lambda _c, _m, prompt, *, was="", **_kw: (aufrufe.append(prompt), (_story_antwort("lupe", "FNSKU auf jede Einheit kleben."), []))[1])
+    monkeypatch.setattr(schritte, "_motiv_holen", lambda _l, _p, was="": (bilder.append(was), _png())[1])
+    vorher = {"inhaltsart": "tipp", "ueberschrift": "Alt", "text": "Alter Text", "motivKey": "karton"}
+    l = _StoryLauf(tmp_path, dict(vorher), hand=False)
+    l.bib.merken("karton", _png(), "Karton")
+    d, _ = st.story(l)
+    assert d["story"]["motivKey"] == "karton" and not bilder  # Motiv bleibt, kostet nichts
+    assert "Vorige Fassung" in aufrufe[0] and "Alter Text" in aufrufe[0]
+    # „Motiv neu“: genau einmal neu, auch wenn der Schritt danach wiederholt wird
+    l.a["story"] = {**vorher, "motivNeu": True}
+    d, _ = st.story(l)
+    assert d["story"]["motivKey"] == "lupe" and len(bilder) == 1
+    st.story(l)
+    assert len(bilder) == 1
+
+
+def test_story_eigenes_foto_ohne_bildanbieter(tmp_path, monkeypatch):
+    from udd import schritte
+    from udd import story as st
+
+    monkeypatch.setattr(st.ki, "fragen", lambda *_a, **_kw: (_story_antwort("regal", "Blick ins Lager: sortierte Regale."), []))
+    monkeypatch.setattr(schritte, "_motiv_holen", lambda *_a, **_kw: pytest.fail("Foto-Story darf kein Bild erzeugen"))
+    l = _StoryLauf(tmp_path, {"inhaltsart": "einblick", "fotoId": "abcdef1234567890"}, hand=False)
+    d, _ = st.story(l)
+    assert d["story"]["motivKey"] == "foto-abcdef12"
+    bild = Image.open(l.seller.hochgeladen["story_png"]).convert("RGB")
+    assert bild.getpixel((540, 800)) != (255, 255, 255)  # Foto in der Mitte
+
+
+def test_takt_plan_stillstand_am_szenenanfang_ohne_fertiges_element():
+    # Figur-Liste: erstes Element ist ein Motiv, dessen Wort erst nach 4,6 s fällt – vorher steht nichts im Bild, das
+    # hervorgehoben werden könnte → das Motiv kommt früher; Stillstand = Zeit ohne Bewegung (nicht Start-zu-Start)
+    text = "Viele merken lange gar nichts davon und erst nach Monaten kommt die Figur mit Hut ins Spiel und erklärt es."
+    zeiten = wb.wortzeiten(text, _ausrichtung(text, 0.07))
+    plan, k = wb.takt_plan(["motiv", "text", "text", "text", "text"], ["Figur", None, None, None, None], 9.5, 1.5, zeiten)
+    assert k["maxPause"] <= wb.MAX_PAUSE
+    assert plan[0].art == "motiv" and plan[0].start < text.index("Figur") * 0.07
+    luecken = wb.stillstand(plan, 9.5)
+    assert all(g <= wb.MAX_PAUSE for g, _a, _b in luecken)
+    assert wb.stillstand([], 2.0) == [(1.7, wb.WISCH_S, 2.0)]

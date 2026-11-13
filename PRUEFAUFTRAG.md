@@ -1785,6 +1785,68 @@ gpt-image-2.5-flare/-sunburst, daneben gpt-image-2). Schlüssel unverändert.
 | Echtes OpenAI-Konto | offen: „Verbindung testen“ zeigt, welche Modelle freigeschaltet sind; dann „Schritt wiederholen“ |
 
 
+### B36.10 Tempo: ständig etwas Neues im Bild (Nachtrag 13.11., Rückmeldung zum ersten Testvideo)
+
+Anlass: im ersten Whiteboard-Video nur 20 Szenen für 10:37 Min. (≈ 32 s je Szene), Motive dehnten ihre Zeichenzeit über
+die ganze Szene, danach ca. 5 s Stillstand. Der Referenz-Renderer `pipeline/whiteboard.py` lag dem Auftrag nicht bei –
+eigener Renderer im Worker (`udd/whiteboard.py`, Abschnitt „B36.10 Tempo“).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| 1. Kürzere Szenen + Schlüsselwörter | ❌ 15–34 Szenen, 3–5 Sätze | ✅ Skript-Prompt verlangt Szenen mit 1–2 Sätzen (12–28 Wörter, 6–12 s), bei voller Länge 55–80 Szenen; je Motiv `wort` = Schlüsselwort aus dem Szenentext; Motive sollen in Folgeszenen wiederkehren (höchstens 1–2 neue je Szene). Endprüfung: Szenen über 32 Wörter bzw. unter 55 Szenen → Nachbesserung/Hinweis | `schritte.py › WB_SZENEN, wb_pruefen, _wb_regeln` |
+| 2. Zeichenzeit je Motiv (`draw_s`) | ❌ über die Szene gedehnt | ✅ fest je Motiv nach Kanalprofil **Tempo**: ruhig 2,5 s · normal 2,0 s (Standard) · schnell 1,5 s | `whiteboard.py › TEMPO, draw_s`, Kanalprofil `vd-k-tempo` |
+| 3. Takt aus Wortzeiten | ❌ gleichmäßig ohne Bezug zur Sprache | ✅ ElevenLabs `/with-timestamps` (gleicher Preis) liefert Zeichenzeiten → Wortzeiten; jedes Motiv startet bei seinem Schlüsselwort, ohne Wortzeiten gleichmäßig verteilt; Lücken über 2,6 s werden mit Hervorhebungen gefüllt (höchstens 6 je Szene) | `wortzeiten`, `takt_plan`, `voice()` |
+| 4. Dauernde Bewegung | ❌ Standbild nach dem Zeichnen | ✅ sanfter Zoom je Szene (`VIDEO_ZOOM`, 7 %, Ankerpunkt wechselt), Text-Pop, Unterstreichen/Einkreisen/Pfeil als kleine Zeichen-Animation (Hand folgt), blasser Vorgänger, Szenenwechsel mit 0,3 s Wisch | `animation_takt`, `medien.py › zoom_filter`, `render_wb` |
+| 5. Prüfung vor dem Render | ❌ – | ✅ je Szene längste Pause und Ø-Abstand; über 3 s → Hinweis in der Szenen-Übersicht „Szene N: x s ohne neue Aktion – mehr Motive oder Hervorhebungen“; dazu „Takt: N Szenen, Ø alle x s eine neue Aktion, längste Pause …“; Takt je Szene im Skript gespeichert | `takt_hinweise`, `VideoSzene.takt` |
+| 6. Referenz-Renderer | – | ⚠️ nicht beigelegt – eigener Renderer mit denselben Parametern (`draw_s`, Startzeiten, `zoom`) | – |
+| Kostenschätzung | ⚠️ „höchstens 100 Motive“ | ✅ „ca. 101 neue Motive“ (67 Szenen × 1,5 neue, Rest aus der Bibliothek) | `logic.ts › NEUE_MOTIVE_JE_SZENE` |
+| Worker | v1.1.2 | **v1.2.0** (Update nötig, Seite Video zeigt „veraltet“, ältere Worker bekommen keine Stories) | `udd/__init__.py`, `WORKER_VERSION_AKTUELL` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Testvideo im Schnitt mindestens alle 3 s eine neue Aktion | ✅ automatisch (`b36-video.spec.ts › B36.9/B36.10 Whiteboard-Collage`, Tempo „schnell“): **Ø alle 2,0 s** eine neue Aktion (vorher ≈ 32 s je Szene mit ca. 5 s Stillstand) |
+| Keine Szene länger als 3 s Stillstand | ✅ automatisch: längste Zeit ohne Bewegung **2,57 s** (Szene 48); 15 Hervorhebungen füllen Lücken. Erster Lauf fand einen Fall mit 4,6 s (Szenenanfang ohne gezeichnetes Element, Motiv-Wort spät) – behoben: dann kommt das erste Element früher |
+| 10–12 Min. Video mit mindestens 55 Szenen | ✅ automatisch: **63 Szenen** in 640 s (10:40 Min.), jede Szene ≤ 32 Wörter, Sprache je Szene mit Wortzeiten |
+| Sichtprüfung am echten Video | offen: nach dem Worker-Update ein Whiteboard-Video rendern und ansehen (Takt, Zoom, Wisch, Hervorhebungen) |
+
+## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
+
+Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
+Leistungen stehen **nicht im Code**: sie kommen nur aus dem Kanalprofil-Feld „Bestätigte Fakten“ (pflegst du).
+Anbindung über die **Instagram-API mit Instagram-Login** (Business-Konto, Facebook-Seite nicht nötig).
+
+| Punkt | Stand | Fundstelle |
+|---|---|---|
+| B37.1 Stories 9:16 (1080×1920), Freigabe am Handy, Posten zur Planzeit; kein Posten ohne Freigabe außer Modus „automatisch“ | ✅ gebaut | `story.ts › storyFertig, storiesPosten`, `stories.tsx` |
+| B37.2 Kanalprofil: Plattform, Zeitplan (Tage, Uhrzeiten = Stories/Tag), Inhaltsarten, Farben, Hand an/aus, Hinweistext/Link, Werbekennzeichnung, Freigabe-Modus (jedes Mal / Stichprobe jede 5. / automatisch), Monatslimit, Bestätigte Fakten; Bildstil wie B36 | ✅ gebaut | `page.tsx › vd-k-plattform, vd-k-instagram`, `story-logic.ts › profilMitVorgaben` |
+| B37.2 Instagram-Konto | ✅ über „Mit Instagram verbinden“ (Konto und Ablauf des Zugangs werden angezeigt) | `api/oauth/instagram/*`, `vd-instagram-zugang` |
+| B37.2 Schrift | ⚠️ teilweise: fest Anton (wie Whiteboard), nicht je Kanal wählbar | `udd/story.py` |
+| B37.3.1 Themenliste im Kanal | ✅ „art: Thema“ je Zeile; Planer nimmt ungenutzte, dann die am längsten nicht genutzten | `themenAus`, `naechstesThema`, `st-themen` |
+| B37.3.2 Worker: Text 1–3 Sätze, Motiv (transparent, Bibliothek), Layout Hochformat, Hand-Animation, 5–15 s | ✅ gebaut (Schritt `story`, MP4 ohne Ton bzw. PNG ohne Hand, Vorschaubild) | `udd/story.py` |
+| B37.3.3 Handy-Vorschau: freigeben / ablehnen / neu erzeugen (mit „Motiv neu“) | ✅ gebaut | `stories.tsx`, `storyFreigeben/Ablehnen/Neu` |
+| B37.3.4 Posten über die API, Ergebnis in der Liste, 3 Wiederholungen (5/15/45 Min.), dann Meldung | ✅ gebaut; Datei über signierten 24-h-Link (`/api/public/story/…`) | `instagram.ts › igStoryPosten`, `storiesPosten` |
+| B37.3.5 Kosten je Story und Monat, Monatslimit stoppt die Erzeugung | ✅ gebaut (Erzeugen/Planen gesperrt, wartende Story „Monatslimit erreicht“) | `storyKosten`, `story-sperre.ts`, `st-kosten` |
+| B37.4 Inhaltsarten Preis, Leistung, Tipp, Einblick (Foto-Mediathek, nur „keine Personen“ bestätigt; Anteil nach freien Fotos), Umfrage (Sticker-Vorschlag, setzt du in der App – die API kann keine Sticker), CTA | ✅ gebaut | `STORY_ARTEN`, `fotosHochladen`, `st-sticker` |
+| B37.4 Fakten nur aus bestätigten Angaben, keine „kostenlose Zählung“, keine Versicherung, „all-in“ nur mit Aufzählung | ✅ Prompt nur mit „Bestätigte Fakten“; Prüfung im Worker (eine Korrektur-Runde) und im Seller-System (gleiche Regeln wie B34.3) – Verstoß sperrt die Freigabe | `story_regeln`, `storyRegeln` |
+| B37.4 Betreiber im Profil/Impressum | ⚠️ Sache des Instagram-Profils; Story-Ende zeigt deinen Hinweistext/Link aus dem Kanalprofil | `vd-ig-hinweis` |
+| B37.5 Auslöser (neuer Kunde, Saison …) | ❌ bewusst nicht gebaut („später, Stufe 2“) | – |
+| B37.6 Zugang: Langzeit-Token (60 Tage), täglich prüfen, ab 7 Tagen vor Ablauf erneuern bzw. warnen, abgelaufen → Meldung | ✅ gebaut | `instagramZugangPflegen`, Zeitplan „Instagram-Zugang pflegen“ |
+| B37.6 Schlüssel nur übers sichere Formular | ✅ Anbindungen → Instagram (App-ID, App-Secret); Token je Kanal verschlüsselt | `registry.ts › instagram` |
+| B37.6 Stufe 1 / Stufe 2 | ✅ ohne Verbindung: Erinnerung zur Planzeit + „Herunterladen“ / „Von Hand gepostet“; nach Verbindung automatisch | `storiesPosten` |
+| B37.7 Werbung, keine fremden Logos, keine Personen/Daten Dritter, nichts Irreführendes, ein Render gleichzeitig, Plattenplatz | ✅ gebaut (Werbe-Etikett im Bild, Regeln in Prompt und Prüfung; Worker-Schutz wie B36) | `udd/story.py › elemente`, `storyRegeln` |
+
+| Abnahme (B37.8) | Ergebnis |
+|---|---|
+| 1. Kanal anlegen, täglich 12:00, 1 Story/Tag, Freigabe „jedes Mal“ | ✅ automatisch (`b36-video.spec.ts › B37 Instagram-Stories`): „täglich um 12:00 Uhr · 1 Story/Tag · Freigabe: Vorschau jedes Mal“ (Testkanal statt echtem Konto) |
+| 2. 5 Themen → 5 Stories im Hochformat, Handy-Vorschau zeigt alle | ✅ automatisch: 5 Stories (+1 Regel-Test) als MP4 1080×1920, 5–15 s, Einblick mit eigenem Foto ohne Bildanbieter; Handy (390 px) zeigt alle 6 ohne seitliches Scrollen |
+| 3. Angaben wie B34.3 | ✅ automatisch: Preis nur aus den Fakten, „Enthalten: …“, keine „kostenlose Zählung“/Komplettpreis/Versicherung, „Werbung“ bei Preis/Leistung/CTA; Verstoß (Nachbau schreibt „kostenlose Zählung“) → Hinweis, Freigabe gesperrt |
+| 4. Ablehnen/Neu erzeugen ohne Doppelkosten | ✅ automatisch: neuer Text mit gleichem Motiv (kein zweites Bild, genau ein Claude-Aufruf), „Motiv neu“ genau 1 Bild, Ablehnen → nichts gepostet; Wiederholung nach Fehler nutzt bezahlten Text/Motiv (Worker-Test) |
+| 5. Posten zur Planzeit, Fehler/abgelaufen gemeldet | ✅ automatisch (Instagram-Nachbau): vor der Planzeit nichts, dann gepostet (Datei über signierten Link, falsche Signatur 404); 4 Fehlversuche → „nicht gepostet“ + Meldung; abgelaufener Zugang sofort gemeldet; „Erneut posten“ |
+| 6. Kosten und Monatslimit | ✅ automatisch: Kosten je Story > 0, Anzeige „Monat … von 5,00 $ · je Story ca. …“; Limit erreicht → Erzeugen/Planen gesperrt, wartende Story „Monatslimit erreicht“ |
+| Echtes Instagram-Konto | offen: Meta-App, App-Prüfung, öffentliche https-Adresse (siehe To-dos 183–185) |
+
+Neue Claude-Werkzeuge: **keine** (kein `list_changed` nötig).
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2847,3 +2909,20 @@ nie in Chats oder Mails.
      „Verify Organization“. Preis je Bild für das gewählte Modell auf der Seite Video unter „Kosten“ eintragen
      (GPT Image 2 medium laut Liste ca. 0,04 $; die 2.5-Modelle rechnet OpenAI nach Tokens ab – Wert aus der eigenen
      Abrechnung übernehmen). Worker-Update nicht nötig.
+182. **Worker auf v1.2.0 aktualisieren** (B36.10/B37, 13.11.): wie bei 180 (Ordner `unter-der-decke` neu holen, neu
+     bauen). Erst dann laufen Whiteboard-Videos im neuen Takt und Instagram-Stories; die Seite Video zeigt bis dahin
+     „Der Worker am PC ist veraltet“. Kanalprofil → „Tempo“ (Standard normal) für Unter der Decke prüfen.
+183. **Meta-App für Instagram** (B37.6): auf developers.facebook.com eine App vom Typ „Business“ anlegen, Produkt
+     „Instagram“ → „API mit Instagram-Login“ hinzufügen. Rücksprung-Adresse eintragen:
+     `https://<deine Seller-Adresse>/api/oauth/instagram/callback`. App-ID und App-Secret über **Anbindungen → Instagram**
+     (sicheres Formular) eintragen – nie im Chat. Für das Posten braucht die App die Berechtigung
+     `instagram_business_content_publish` (App-Prüfung durch Meta, Dauer ungewiss); bis dahin Stufe 1.
+184. **Öffentliche https-Adresse** (B37): Instagram holt die Story-Datei selbst ab. `APP_URL` bzw. `PUBLIC_URL` muss
+     `https://…` sein und `/api/public/story/` von außen erreichbar (Caddy: wie `/api/public/…` freigeben).
+185. **Instagram-Kanal anlegen** (B37): Seite Video → „Neuer Kanal“ → Plattform Instagram, Zeitplan täglich 12:00,
+     Freigabe „jedes Mal“, Monatslimit (z. B. 10 $), **Bestätigte Fakten** (nur Angaben, die stimmen – Preise netto je
+     Artikel, Leistungen; daraus entstehen die Texte), Hinweistext/Link fürs Story-Ende. Dann „Mit Instagram verbinden“
+     (Business-Konto), Themenliste eintragen, ein paar eigene Lager-Fotos ohne Personen hochladen, „Stories aus der
+     Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
+186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
+     der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.

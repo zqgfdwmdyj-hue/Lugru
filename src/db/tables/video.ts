@@ -7,18 +7,36 @@ import { createdAt, id, tenantId, users } from "./core";
  * Aufträge selbst ab (Token, Abfrage alle ~30 s) – keine offenen Ports am PC. Upload auf YouTube immer privat.
  */
 
-export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload";
-export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau";
+export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload" | "story";
+export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau" | "story";
 export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string };
 /** gefunden: URL stammt direkt aus den Suchtreffern der Recherche. */
 export type VideoQuelle = { id: string; titel: string; url: string | null; jahr: number | null; art: string | null; autoren?: string | null; gefunden?: boolean };
 export type VideoGliederung = { hook?: string | null; angst?: string | null; punkte: { titel: string; kern?: string; quelle_ids?: string[] }[]; fazit?: string | null; cta?: string | null };
 /** Whiteboard-Collage (B36.9): Motiv mit Bibliotheks-Schlüssel (wiederverwendbar) und Beschreibung fürs Bildmodell. */
-export type VideoMotiv = { key: string; beschreibung: string; ersatz?: boolean; wiederverwendet?: boolean };
+export type VideoMotiv = { key: string; beschreibung: string; ersatz?: boolean; wiederverwendet?: boolean; wort?: string | null };
+/** B36.10: Takt einer Whiteboard-Szene (Zeitplan vor dem Render): Ereignisse, längste Pause, Ø-Abstand, Zeichenzeit. */
+export type VideoTakt = { ereignisse: number; maxPause: number; mittel: number; hervorhebungen: number; drawS: number };
 export type VideoSzene = {
   nr: number; abschnitt: string; text: string; bildidee: string; einblendung: string | null; quelle_ids: string[]; dauer?: number | null; ersatzbild?: boolean;
   // nur Stil „whiteboard“: Texte setzt die Pipeline selbst (Schrift fest), Motive kommen einzeln vom Bildmodell
   layout?: string | null; ueberschrift?: string | null; balken?: string | null; kernaussage?: string | null; schrittText?: string | null; liste?: string[] | null; motive?: VideoMotiv[] | null;
+  takt?: VideoTakt | null;
+};
+/** B37 Instagram-Kanal: Zeitplan, Inhaltsarten, Gestaltung, Freigabe-Modus, Monatslimit, bestätigte Fakten, Themenliste.
+ *  Fakten und Hinweistext pflegt Ludwig im Kanalprofil – keine Firmendaten oder Preise im Code. */
+export type StoryInhaltsart = "preis" | "leistung" | "tipp" | "einblick" | "umfrage" | "cta";
+export type StoryThema = { id: string; text: string; art: StoryInhaltsart; genutztAm?: string | null };
+export type InstagramProfil = {
+  tage?: number[]; uhrzeiten?: string[]; inhaltsarten?: StoryInhaltsart[];
+  farben?: { grund: string; akzent: string; text: string }; hand?: boolean; hinweis?: string | null; werbung?: boolean;
+  freigabeModus?: "jedes_mal" | "stichprobe" | "automatisch"; monatslimit?: number | null; fakten?: string | null; themen?: StoryThema[];
+};
+/** B37 Story (Auftrag art = „story“): Inhalt, Sticker-Vorschlag (nur von Hand in der App), Werbekennzeichnung, Foto/Motiv. */
+export type VideoStory = {
+  inhaltsart: StoryInhaltsart; themaId?: string | null; ueberschrift?: string | null; text?: string | null; cta?: string | null;
+  sticker?: { art: "umfrage" | "frage"; frage: string; optionen?: string[] } | null; werbung?: boolean; fotoId?: string | null; motivKey?: string | null;
+  format?: "mp4" | "png" | null; dauerSek?: number | null; regeln?: string[] | null; motivNeu?: boolean;
 };
 /** Stil-Referenzbild eines Kanals (Seite Video → Kanalprofil), wird dem Bildmodell als Vorlage mitgegeben. */
 export type VideoReferenz = { nr: number; name: string; typ: string; groesse: number; hash: string };
@@ -50,6 +68,12 @@ export const videoKanaele = pgTable(
     /** Bildstil der Pipeline: „vollbild“ (ein Symbolbild je Szene, Untertitel eingebrannt) oder „whiteboard“ (B36.9:
      *  Collage aus 3–5 Motiven, Hand zeichnet mit, Texte in fester Schrift, Untertitel als YouTube-Untertitel). */
     stil: text("stil", { enum: ["vollbild", "whiteboard"] }).notNull().default("vollbild"),
+    /** B37: YouTube-Kanal (Videos) oder Instagram-Kanal (Stories im Hochformat). */
+    plattform: text("plattform", { enum: ["youtube", "instagram"] }).notNull().default("youtube"),
+    /** B36.10 Tempo der Zeichen-Animation je Motiv: ruhig 2,5 s · normal 2,0 s · schnell 1,5 s. */
+    tempo: text("tempo", { enum: ["ruhig", "normal", "schnell"] }).notNull().default("normal"),
+    /** B37 Instagram: Zeitplan, Inhaltsarten, Farben, Freigabe-Modus, Monatslimit, Fakten, Themenliste. */
+    instagram: jsonb("instagram").$type<InstagramProfil>().notNull().default({}),
     /** Wiederkehrende Figuren, eine je Zeile „kurzname: Beschreibung“ (einmal festgelegt, immer gleich gezeichnet). */
     figuren: text("figuren"),
     /** Qualität beim Bildmodell (OpenAI GPT Image): low/medium/high – bestimmt die Kosten je Bild/Motiv. */
@@ -63,6 +87,12 @@ export const videoKanaele = pgTable(
     youtubeToken: text("youtube_token"),
     youtubeKanal: text("youtube_kanal"),
     youtubeVerbundenAm: timestamp("youtube_verbunden_am", { withTimezone: true }),
+    /** B37 Instagram-Zugang (Instagram-Login, Business-Konto): Langzeit-Token verschlüsselt, läuft nach ~60 Tagen ab. */
+    instagramToken: text("instagram_token"),
+    instagramUserId: text("instagram_user_id"),
+    instagramKonto: text("instagram_konto"),
+    instagramTokenBis: timestamp("instagram_token_bis", { withTimezone: true }),
+    instagramVerbundenAm: timestamp("instagram_verbunden_am", { withTimezone: true }),
     aktiv: boolean("aktiv").notNull().default(true),
     createdAt: createdAt(),
   },
@@ -75,7 +105,19 @@ export const videoAuftraege = pgTable(
     id: id(),
     tenantId: tenantId(),
     kanalId: uuid("kanal_id").notNull().references(() => videoKanaele.id, { onDelete: "cascade" }),
+    /** B37: „video“ (YouTube, 7 Schritte) oder „story“ (Instagram, ein Schritt „story“, dann Freigabe und Posten). */
+    art: text("art", { enum: ["video", "story"] }).notNull().default("video"),
     thema: text("thema").notNull(),
+    /** B37 Story: geplanter Post-Zeitpunkt (Zeitplan des Kanals) und Inhalt. */
+    geplantFuer: timestamp("geplant_fuer", { withTimezone: true }),
+    story: jsonb("story").$type<VideoStory | null>(),
+    /** B37 Posten: geplant (wartet auf Zeitpunkt) · manuell (Stufe 1: von Hand posten) · gepostet · fehler. */
+    igStatus: text("ig_status", { enum: ["geplant", "manuell", "gepostet", "fehler"] }),
+    igMediaId: text("ig_media_id"),
+    igVersuche: integer("ig_versuche").notNull().default(0),
+    igFehler: text("ig_fehler"),
+    igNaechsterVersuch: timestamp("ig_naechster_versuch", { withTimezone: true }),
+    gepostetAm: timestamp("gepostet_am", { withTimezone: true }),
     /** vidIQ Stufe 1: von Claude/von Hand eingetragen, genutzt in Gliederung, Titeln, Tags, Kapiteln. */
     vidiqKeywords: text("vidiq_keywords"),
     vidiqTitel: text("vidiq_titel"),
@@ -120,7 +162,28 @@ export const videoAuftraege = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("video_auftraege_status").on(t.tenantId, t.status), index("video_auftraege_kanal").on(t.tenantId, t.kanalId)],
+  (t) => [index("video_auftraege_status").on(t.tenantId, t.status), index("video_auftraege_kanal").on(t.tenantId, t.kanalId), index("video_auftraege_geplant").on(t.tenantId, t.art, t.geplantFuer)],
+);
+
+/** B37 Foto-Mediathek je Instagram-Kanal: eigene Lager-Fotos (ohne Personen, von Ludwig bestätigt) für „Einblick“-Stories. */
+export const videoFotos = pgTable(
+  "video_fotos",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kanalId: uuid("kanal_id").notNull().references(() => videoKanaele.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    typ: text("typ").notNull(),
+    groesse: integer("groesse").notNull(),
+    hash: text("hash").notNull(),
+    /** Beim Hochladen bestätigt: keine Personen im Bild, eigenes Foto. */
+    ohnePersonen: boolean("ohne_personen").notNull().default(false),
+    genutztAuftrag: uuid("genutzt_auftrag"),
+    genutztAm: timestamp("genutzt_am", { withTimezone: true }),
+    hochgeladenVon: uuid("hochgeladen_von").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("video_fotos_kanal").on(t.tenantId, t.kanalId)],
 );
 
 /** Worker am Arbeits-PC: Token (nur Prüfsumme), zuletzt gesehen, freie Platte, Version. */

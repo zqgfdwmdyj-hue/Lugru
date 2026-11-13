@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import platform
 import re
 import shutil
@@ -32,6 +33,11 @@ ABSCHNITTE = ["hook", "angst"] + [f"punkt-{i}" for i in range(1, 8)] + ["zusamme
 SKRIPT_WOERTER = [1500, 1700]
 LAENGE_STANDARD = {"minuten": [10, 12], "sekunden": [621, 703], "woerter": SKRIPT_WOERTER, "szenen": [15, 34], "szenenJePunkt": [2, 4]}
 # Wörter, die eine Studie/Erhebung ankündigen – solche Szenen brauchen eine Quelle aus der Quellenliste
+# B36.10 Whiteboard-Tempo: kurze Szenen (1–2 Sätze, 6–12 s Sprecherzeit) → bei 10–12 Min. 55–80 Szenen
+WB_SZENEN = [55, 80]
+WB_SZENE_WOERTER = (12, 28)
+# sanfter Zoom über jede Szene (7 %), Anteil; 0 = aus
+ZOOM = float(os.environ.get("VIDEO_ZOOM", "0.07"))
 STUDIE = re.compile(r"\b(Studie|Studien|Untersuchung|Untersuchungen|Forscher\w*|Wissenschaftler\w*|Umfrage\w*|Befragung\w*|Meta-?[Aa]nalyse\w*|Erhebung\w*)\b")
 
 
@@ -368,8 +374,8 @@ WB_SKRIPT_SCHEMA = {
                         "type": "array",
                         "items": {
                             "type": "object",
-                            "properties": {"key": {"type": "string"}, "beschreibung": {"type": "string"}},
-                            "required": ["key", "beschreibung"],
+                            "properties": {"key": {"type": "string"}, "beschreibung": {"type": "string"}, "wort": {"type": "string"}},
+                            "required": ["key", "beschreibung", "wort"],
                             "additionalProperties": False,
                         },
                     },
@@ -389,9 +395,15 @@ def _kurz(text: str, woerter_max: int) -> str:
     return " ".join(w[:woerter_max])
 
 
-def wb_pruefen(szenen: list[dict]) -> list[str]:
-    """Whiteboard: je Szene 3–5 Motive (Figur + Liste: 1–2 Motive und 2–4 Stichpunkte)."""
+def wb_pruefen(szenen: list[dict], voll: bool = True) -> list[str]:
+    """Whiteboard: je Szene 3–5 Motive (Figur + Liste: 1–2 Motive und 2–4 Stichpunkte); B36.10: Szenen mit 1–2 Sätzen
+    (höchstens ~30 Wörter) und bei voller Länge mindestens 55 Szenen."""
     probleme: list[str] = []
+    lang = [i for i, s in enumerate(szenen, 1) if woerter(s["text"]) > WB_SZENE_WOERTER[1] + 4]
+    if lang:
+        probleme.append(f"Szenen {', '.join(map(str, lang[:8]))}{' …' if len(lang) > 8 else ''} sind zu lang (über {WB_SZENE_WOERTER[1] + 4} Wörter) – höchstens 2 Sätze je Szene.")
+    if voll and len(szenen) < WB_SZENEN[0]:
+        probleme.append(f"Nur {len(szenen)} Szenen – Ziel {WB_SZENEN[0]}–{WB_SZENEN[1]} (je 1–2 Sätze), sonst steht das Bild zu lange.")
     for i, s in enumerate(szenen, 1):
         n = len(s.get("motive") or [])
         if s.get("layout") == "figur-liste":
@@ -411,9 +423,14 @@ def wb_aufbereiten(szenen: list[dict], figuren: dict[str, str]) -> None:
         s["schrittText"] = _kurz(s.pop("schritt", "") or "", 7) or None
         s["liste"] = [_kurz(x, 5) for x in (s.get("liste") or []) if x.strip()][:4] or None
         motive = []
+        im_text = {wb._norm(w) for w in s.get("text", "").split()}
         for m in (s.get("motive") or [])[:5]:
             key = wb.schluessel(m.get("key") or m.get("beschreibung") or "motiv")
-            motive.append({"key": key, "beschreibung": figuren.get(key) or (m.get("beschreibung") or key).strip()[:300]})
+            wort = (m.get("wort") or "").strip().split()[0] if (m.get("wort") or "").strip() else ""
+            eintrag = {"key": key, "beschreibung": figuren.get(key) or (m.get("beschreibung") or key).strip()[:300]}
+            if wort and wb._norm(wort) in im_text:
+                eintrag["wort"] = wort.strip(".,;:!?„“\"'")
+            motive.append(eintrag)
         s["motive"] = motive
         s["bildidee"] = "; ".join(m["beschreibung"] for m in motive)[:500]
         s["einblendung"] = s.get("ueberschrift") or s.get("balken")
@@ -442,12 +459,15 @@ def skript_pruefen(szenen: list[dict], quellen: list[dict], ziel: list[int] | No
     return probleme
 
 
-def _korrekturen(fertig: dict[str, dict], namen: list[str], ziele: dict[str, tuple[int, int]], quellen: list[dict], ziel: list[int]) -> dict[str, str]:
+def _korrekturen(fertig: dict[str, dict], namen: list[str], ziele: dict[str, tuple[int, int]], quellen: list[dict], ziel: list[int], whiteboard: bool = False) -> dict[str, str]:
     """Welche Abschnitte nachgebessert werden (nur diese werden neu geholt) – je Abschnitt eine kurze Anweisung."""
     ids = {q["id"] for q in quellen}
     aufgaben: dict[str, str] = {}
     for name in namen:
         sz = fertig[name]["szenen"]
+        if whiteboard and sum(1 for s in sz if woerter(s["text"]) > WB_SZENE_WOERTER[1] + 6) >= max(2, len(sz) // 3):
+            aufgaben[name] = f"Teile den Abschnitt in kürzere Szenen mit je 1–2 Sätzen ({WB_SZENE_WOERTER[0]}–{WB_SZENE_WOERTER[1]} Wörter), Text sonst unverändert."
+            continue
         fremd = sorted({q for s in sz for q in s.get("quelle_ids", []) if q not in ids})
         if fremd:
             aufgaben[name] = f"Die Quellen {', '.join(fremd)} gibt es nicht – nur IDs aus der Quellenliste verwenden."
@@ -505,7 +525,13 @@ def _abschnitt_schreiben(l: Lauf, name: str, ziel_abschnitt: tuple[int, int], g:
         l.anmerkung(),
         f"Bisher geschrieben (daran anschließen, nichts wiederholen):\n{bisher}" if bisher else "Das ist der erste Abschnitt des Videos.",
         f"Schreibe jetzt NUR den Abschnitt „{abschnitt_name(name)}“: {aufgabe}",
-        f"Länge dieses Abschnitts: ca. {(lo + hi) // 2} Wörter ({lo}–{hi}), aufgeteilt in Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache.",
+        (
+            f"Länge dieses Abschnitts: ca. {(lo + hi) // 2} Wörter ({lo}–{hi}), aufgeteilt in kurze Szenen mit je 1–2 Sätzen "
+            f"({WB_SZENE_WOERTER[0]}–{WB_SZENE_WOERTER[1]} Wörter, 6–12 Sekunden Sprechzeit), also etwa {max(2, round((lo + hi) / 2 / 21))} Szenen – "
+            "im Video soll ständig etwas Neues passieren. Gesprochene Sprache, kurze Sätze, direkte Ansprache."
+            if l.whiteboard
+            else f"Länge dieses Abschnitts: ca. {(lo + hi) // 2} Wörter ({lo}–{hi}), aufgeteilt in Szenen mit je 50–100 Wörtern. Gesprochene Sprache, kurze Sätze, direkte Ansprache."
+        ),
         quellenregel,
         _wb_regeln(l, figuren)
         if l.whiteboard
@@ -543,7 +569,9 @@ def _wb_regeln(l: Lauf, figuren: dict[str, str]) -> str:
         "- kernaussage: Kernaussage in Rot, höchstens 6 Wörter, oder leer",
         "- schritt: nur bei Anleitungen „Schritt N: …“, höchstens 6 Wörter, sonst leer",
         "- liste: nur bei figur-liste 2–4 Stichpunkte (je höchstens 4 Wörter), sonst leer",
-        "- motive: {key, beschreibung}; key = kurzer Name in Kleinbuchstaben mit Bindestrich (z. B. „banane“, „sanduhr“); beschreibung = ein einzelnes Objekt bzw. eine Figur, Cartoon, OHNE Text, Schrift oder Zahlen.",
+        "- motive: {key, beschreibung, wort}; key = kurzer Name in Kleinbuchstaben mit Bindestrich (z. B. „banane“, „sanduhr“); beschreibung = ein einzelnes Objekt bzw. eine Figur, Cartoon, OHNE Text, Schrift oder Zahlen; "
+        "wort = das Schlüsselwort aus dem Szenentext (genau so geschrieben wie dort), bei dem das Motiv erscheinen soll – die Motive in der Reihenfolge, in der ihre Wörter gesprochen werden.",
+        "Szenen sind kurz (1–2 Sätze): Motive dürfen und sollen in den Folgeszenen wiederkehren (gleicher key) – höchstens 1–2 neue Motive je Szene, der Rest aus vorigen Szenen oder der Bibliothek.",
         "Nicht jede Szene braucht alle Texte – höchstens zwei Textelemente je Szene. Symbolik andeutend und humorvoll, niemals explizit, keine Nacktheit, keine erkennbaren realen Personen"
         + (", kein Bett, kein Kuss, keine Berührung." if l.streng else "."),
     ]
@@ -578,7 +606,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
         l.fortschritt("script", k, len(namen))
     # Endprüfung; höchstens zwei Runden Nachbesserung, jeweils nur der betroffenen Abschnitte
     for runde in range(2):
-        aufgaben = _korrekturen(fertig, namen, ziele, quellen, w)
+        aufgaben = _korrekturen(fertig, namen, ziele, quellen, w, l.whiteboard)
         if not aufgaben:
             break
         for name, anweisung in aufgaben.items():
@@ -587,7 +615,7 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
             ab.schreiben(name, e)
             fertig[name] = e
     szenen = [dict(s) for name in namen for s in fertig[name]["szenen"]]
-    probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen) if l.whiteboard else [])
+    probleme = skript_pruefen(szenen, quellen, w) + (wb_pruefen(szenen, voll=w[0] >= l.laenge["woerter"][0]) if l.whiteboard else [])
     if l.whiteboard:
         wb_aufbereiten(szenen, figuren)
     for i, s in enumerate(szenen, 1):
@@ -611,12 +639,24 @@ def voice(l: Lauf) -> tuple[dict, list[str]]:
         schluessel = kurz_hash(stimme, modell, s["text"])
         datei = l.p.datei_vorhanden("voice", schluessel)
         if not datei:
-            r = l.seller.anbieter(l.id, "elevenlabs", f"v1/text-to-speech/{stimme}?output_format=mp3_44100_128", {"text": s["text"], "model_id": modell}, timeout=netz.TIMEOUT_S, was=f"Sprache – Szene {i + 1}")
+            # Whiteboard (B36.10): mit Wortzeiten – Motive erscheinen, wenn ihr Schlüsselwort gesprochen wird (gleicher Preis)
+            pfad = f"v1/text-to-speech/{stimme}{'/with-timestamps' if l.whiteboard else ''}?output_format=mp3_44100_128"
+            r = l.seller.anbieter(l.id, "elevenlabs", pfad, {"text": s["text"], "model_id": modell}, timeout=netz.TIMEOUT_S, was=f"Sprache – Szene {i + 1}")
             if r.status_code != 200:
                 raise RuntimeError(f"ElevenLabs (Szene {i + 1}): {_fehlertext(r)}")
             rel = f"voice/{i + 1:03d}-{schluessel}.mp3"
-            schreiben_atomar(l.p.pfad(rel), r.content)
-            l.p.datei_merken("voice", schluessel, rel, dauer=round(medien.dauer(l.k.ffprobe, l.p.pfad(rel)), 3))
+            extra: dict[str, Any] = {}
+            if l.whiteboard:
+                j = r.json()
+                schreiben_atomar(l.p.pfad(rel), base64.b64decode(j.get("audio_base64") or ""))
+                zeiten = wb.wortzeiten(s["text"], j.get("alignment") or j.get("normalized_alignment"))
+                if zeiten:
+                    rel_z = f"voice/{i + 1:03d}-{schluessel}.json"
+                    schreiben_atomar(l.p.pfad(rel_z), json.dumps(zeiten).encode("utf-8"))
+                    extra["zeiten"] = rel_z
+            else:
+                schreiben_atomar(l.p.pfad(rel), r.content)
+            l.p.datei_merken("voice", schluessel, rel, dauer=round(medien.dauer(l.k.ffprobe, l.p.pfad(rel)), 3), **extra)
         s["dauer"] = round(l.p.state["voice"][schluessel]["dauer"] + PAUSE_S, 3)
         s["_voice"] = schluessel
         l.fortschritt("voice", i + 1, len(szenen))
@@ -696,10 +736,53 @@ def _wb_szenenbilder(l: Lauf, szenen: list[dict]) -> list:
     fertige = []
     for s in szenen:
         motive = [l.bib.bild(m["key"]) for m in s.get("motive") or [] if l.bib.hat(m["key"])]
-        bild = wb.fertig(wb.hintergrund(vorher), wb.elemente(s, motive))
+        els = wb.elemente(s, motive)
+        plan, _k = _wb_takt(l, s, els)
+        bild = wb.fertig_takt(wb.hintergrund(vorher), els, plan)
         fertige.append(bild)
         vorher = bild
     return fertige
+
+
+def _wortzeiten(l: Lauf, s: dict) -> list[tuple[str, float]]:
+    """Wortzeiten einer Szene aus der Sprache (B36.10), sonst leer → Ereignisse gleichmäßig verteilt."""
+    stimme = (l.kanal.get("stimmeId") or "").strip()
+    e = l.p.state["voice"].get(kurz_hash(stimme, "eleven_multilingual_v2", s["text"])) or {}
+    if not e.get("zeiten") or not (l.p.ordner / e["zeiten"]).exists():
+        return []
+    try:
+        return [(w, float(t)) for w, t in json.loads((l.p.ordner / e["zeiten"]).read_text(encoding="utf-8"))]
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def _szenen_dauer(l: Lauf, s: dict) -> float:
+    stimme = (l.kanal.get("stimmeId") or "").strip()
+    e = l.p.state["voice"].get(kurz_hash(stimme, "eleven_multilingual_v2", s["text"])) or {}
+    return float(e.get("dauer") or s.get("dauer") or 8.0) + PAUSE_S
+
+
+def _wb_takt(l: Lauf, s: dict, els: list) -> tuple[list, dict]:
+    """Zeitplan einer Whiteboard-Szene (B36.10) – gleich für Takt-Prüfung und Render."""
+    return wb.takt_plan([e.art for e in els], wb.element_woerter(s, els), _szenen_dauer(l, s), wb.draw_s(l.kanal.get("tempo")), _wortzeiten(l, s))
+
+
+def takt_hinweise(szenen: list[dict]) -> list[str]:
+    """Prüfung vor dem Render: höchstens 3 s ohne neues Ereignis je Szene, Ø-Takt über das Video."""
+    hinweise = [
+        f"Szene {s.get('nr') or i}: {str(s['takt']['maxPause']).replace('.', ',')} s ohne neue Aktion – mehr Motive oder Hervorhebungen vorschlagen."
+        for i, s in enumerate(szenen, 1)
+        if (s.get("takt") or {}).get("maxPause", 0) > wb.MAX_PAUSE
+    ]
+    ereignisse = sum((s.get("takt") or {}).get("ereignisse", 0) for s in szenen)
+    dauer = sum((s.get("takt") or {}).get("mittel", 0) * (s.get("takt") or {}).get("ereignisse", 0) for s in szenen)
+    if ereignisse:
+        laengste = max(szenen, key=lambda s: (s.get("takt") or {}).get("maxPause", 0))
+        hinweise.append(
+            f"Takt: {len(szenen)} Szenen, Ø alle {str(round(dauer / ereignisse, 1)).replace('.', ',')} s eine neue Aktion, längste Pause "
+            f"{str((laengste.get('takt') or {}).get('maxPause', 0)).replace('.', ',')} s (Szene {laengste.get('nr')})."
+        )
+    return hinweise[:12]
 
 
 def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
@@ -743,6 +826,10 @@ def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
     for s in szenen:
         s["ersatzbild"] = any(m.get("ersatz") for m in s.get("motive") or [])
         s["bildidee"] = "; ".join(m["beschreibung"] for m in s.get("motive") or [])[:500]
+        # B36.10 Prüfung vor dem Render: Zeitplan je Szene (Wortzeiten, draw_s, Hervorhebungen) – höchstens 3 s Stillstand
+        els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or [] if l.bib.hat(m["key"])])
+        _plan, s["takt"] = _wb_takt(l, s, els)
+    hinweise += takt_hinweise(szenen)
     # Szenen-Übersicht für die Freigabe vor dem Render (B36.9.6)
     fertige = _wb_szenenbilder(l, szenen)
     ordner = l.p.pfad("szenen", "x").parent
@@ -833,15 +920,17 @@ def render_wb(l: Lauf) -> tuple[dict, list[str]]:
         nr += len(teile)
         name = f"{i + 1:03d}"
         inhalt = json.dumps({k: s.get(k) for k in ("layout", "ueberschrift", "balken", "kernaussage", "schrittText", "liste")}, ensure_ascii=False, sort_keys=True)
-        key = kurz_hash(vorher_key, v, inhalt, *[l.bib.merkmal(m["key"]) for m in s.get("motive") or []], str(l.k.fps), "wb1")
         grund = wb.hintergrund(vorher)
         els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or []])
+        plan, s["takt"] = _wb_takt(l, s, els)
+        anker = (0.5, 0.35, 0.65)[i % 3]  # leichter Schwenk: Zoom mal mittig, mal nach links, mal nach rechts
+        key = kurz_hash(vorher_key, v, inhalt, *[l.bib.merkmal(m["key"]) for m in s.get("motive") or []], str(l.k.fps), json.dumps([e.__dict__ for e in plan]), str(ZOOM), str(anker), "wb2")
         if l.p.state["clips"].get(name, {}).get("key") == key and (clips / f"{name}.mp4").exists():
-            vorher = wb.fertig(grund, els)
+            vorher = wb.fertig_takt(grund, els, plan)
         else:
             bilder_ordner = clips / f"b{name}"
-            liste, vorher = wb.animation(grund, els, laenge, l.k.fps, hand, bilder_ordner)
-            medien.clip_bilder(l.k.ffmpeg, bilder_ordner, liste, "../../" + ton.relative_to(l.p.ordner).as_posix(), f"../{name}.mp4", laenge, l.k.fps)
+            liste, vorher = wb.animation_takt(grund, els, plan, laenge, l.k.fps, hand, bilder_ordner, vorher)
+            medien.clip_bilder(l.k.ffmpeg, bilder_ordner, liste, "../../" + ton.relative_to(l.p.ordner).as_posix(), f"../{name}.mp4", laenge, l.k.fps, zoom=ZOOM, anker=anker)
             shutil.rmtree(bilder_ordner, ignore_errors=True)
             l.p.state["clips"][name] = {"key": key}
             l.p.speichern()
@@ -1179,7 +1268,13 @@ def _untertitel_hochladen(z: dict, video_id: str, srt, sprache: str) -> str | No
 
 # ---- Ablauf --------------------------------------------------------------------------------------------------------
 
-SCHRITTE: dict[str, Callable[[Lauf], tuple[dict, list[str]]]] = {"research": research, "script": script, "voice": voice, "visuals": visuals, "render": render, "package": package, "upload": upload}
+def story(l: Lauf) -> tuple[dict, list[str]]:
+    from . import story as st  # B37: Instagram-Story (eigenes Modul)
+
+    return st.story(l)
+
+
+SCHRITTE: dict[str, Callable[[Lauf], tuple[dict, list[str]]]] = {"research": research, "script": script, "voice": voice, "visuals": visuals, "render": render, "package": package, "upload": upload, "story": story}
 
 
 def _ohne_intern(szenen: list[dict]) -> list[dict]:
@@ -1215,6 +1310,9 @@ def ausfuehren(k: Konfig, seller: Seller, auftrag: dict[str, Any], log: Callable
             if neu_schreiben and s in ABSCHNITT_ORDNER:
                 shutil.rmtree(l.p.ordner / ABSCHNITT_ORDNER[s], ignore_errors=True)
             l.p.state["schritte"].pop(s, None)
+        l.p.speichern()
+    elif wdh == "story":
+        l.p.state["schritte"].pop("story", None)
         l.p.speichern()
     schritt: str | None = auftrag["schritt"]
     while schritt:

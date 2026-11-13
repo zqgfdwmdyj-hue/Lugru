@@ -117,6 +117,13 @@ class Seller:
             raise SellerFehler(f"Referenzbild {nr}: HTTP {r.status_code}", r.status_code)
         return r.content
 
+    def foto_holen(self, foto_id: str) -> bytes:
+        """Eigenes Foto aus der Foto-Bibliothek eines Instagram-Kanals (B37, Inhaltsart „Einblick“)."""
+        r = self.s.get(f"{self.url}/api/video-worker/foto/{foto_id}", timeout=60)
+        if r.status_code != 200:
+            raise SellerFehler(f"Foto {foto_id[:8]}: HTTP {r.status_code}", r.status_code)
+        return r.content
+
     def anbieter_datei(self, auftrag_id: str, anbieter: str, pfad: str, felder: dict[str, str], dateien: list[tuple[str, str, bytes, str]], timeout: float = 180, was: str | None = None) -> requests.Response:
         """Anbieter-Brücke mit Dateien (multipart, z. B. Bild mit Referenzbildern) – rohe Antwort.
         Gestreamt mit Zeitlimit; Abbruch, Zeitüberschreitung, 429 und 5xx bis zu 4 Mal wiederholt (2, 4, 8, 16 s)."""

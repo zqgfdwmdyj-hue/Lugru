@@ -52,6 +52,10 @@ export const E2E_ENV: Record<string, string> = {
   YOUTUBE_TOKEN_URL: `${TD}/youtube-oauth/token`,
   YOUTUBE_API_BASE_URL: `${TD}/youtube-api`,
   YOUTUBE_UPLOAD_BASE_URL: `${TD}/youtube-upload`,
+  // B37 Instagram (Anmeldung, Token, Story posten) gegen den Nachbau
+  INSTAGRAM_AUTH_URL: `${TD}/instagram-auth`,
+  INSTAGRAM_API_BASE_URL: `${TD}/instagram-api`,
+  INSTAGRAM_GRAPH_BASE_URL: `${TD}/instagram-graph`,
   // B36 Ablage Google Drive (resumable Upload) gegen den Drive-Nachbau
   DRIVE_UPLOAD_BASE_URL: `${TD}/drive-upload/drive/v3`,
   DISCORD_API_BASE_URL: `${TD}/discord-api`,

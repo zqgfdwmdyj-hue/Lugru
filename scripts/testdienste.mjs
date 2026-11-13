@@ -55,7 +55,7 @@ function kiAnswer(req, b) {
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
   // B36 Video-Pipeline (Worker über die Anbieter-Brücke): feste erfundene Gliederung/Skript/Paket, auf Wunsch als Stream.
-  const video = /^\[video:(research|script|package)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
+  const video = /^\[video:(research|script|package|story)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
   if (video) {
     if (b.stream) return [200, videoSse(b, video), "text/event-stream"];
     const content = [...(video.suche ? [{ type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: { query: "Studie" } }, { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: video.suche.map((x) => ({ type: "web_search_result", url: x.url, title: x.title, encrypted_content: "test", page_age: null })) }] : []), { type: "text", text: video.text }];
@@ -797,6 +797,7 @@ async function route(req, url, body) {
   if (p === "/openai/v1/images/generations" && req.method === "POST") return openaiBildNb(req, parsed());
   if (p === "/openai/v1/models" && req.method === "GET") return openaiModelleNb(req);
   if (p.startsWith("/youtube")) return youtubeNb(req, url, p, body);
+  if (p.startsWith("/instagram-api/") || p.startsWith("/instagram-graph/")) return instagramNb(req, url, p, body);
   // Claude
   if (p.startsWith("/anthropic/")) return p.endsWith("/v1/messages") ? kiAnswer(req, parsed()) : [404, { type: "error", error: { type: "not_found_error", message: "nicht nachgebildet" } }];
   // Deutsche Post INTERNETMARKE
@@ -1473,7 +1474,7 @@ ${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
   return true;
 }
 
-const dienstOf = (p) => (p.startsWith("/elevenlabs") ? "ElevenLabs" : p.startsWith("/openai") ? "OpenAI" : p.startsWith("/youtube") ? "YouTube" : p.startsWith("/apify") ? "Apify" : p.startsWith("/places") ? "Google Places" : p.startsWith("/leadweb") ? "Firmenwebsite (Impressum)" : p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
+const dienstOf = (p) => (p.startsWith("/instagram") ? "Instagram" : p.startsWith("/elevenlabs") ? "ElevenLabs" : p.startsWith("/openai") ? "OpenAI" : p.startsWith("/youtube") ? "YouTube" : p.startsWith("/apify") ? "Apify" : p.startsWith("/places") ? "Google Places" : p.startsWith("/leadweb") ? "Firmenwebsite (Impressum)" : p.startsWith("/letterxpress") ? "LetterXpress" : p.startsWith("/ebrief") ? "eBrief" : p.startsWith("/drive") || p.startsWith("/google-oauth") ? "Google Drive" : p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl-pickup") ? "DHL Abholung" : p.startsWith("/ups") ? "UPS" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -1739,6 +1740,25 @@ http
       remember(log, { at: new Date().toISOString(), dienst: "Google Drive", method: req.method, path: url.pathname, status: res.statusCode, simuliert: true });
       return;
     }
+    if (url.pathname === "/__instagram" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) Object.assign(igNb, { container: new Map(), posts: [], anmeldungen: [], erneuert: 0, fehler: 0, abgelaufen: false, n: 0 });
+      // Störungen: fehler = so viele Aufrufe mit vorübergehendem Fehler (500), abgelaufen = Token ungültig (Code 190)
+      if (typeof b.fehler === "number") igNb.fehler = b.fehler;
+      if (typeof b.abgelaufen === "boolean") igNb.abgelaufen = b.abgelaufen;
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__instagram") return send(200, { posts: igNb.posts, container: [...igNb.container.values()], anmeldungen: igNb.anmeldungen, erneuert: igNb.erneuert });
+    if (url.pathname === "/instagram-auth") {
+      // Anmeldung bei Instagram (Business-Login): sofort zurück mit Code
+      const ziel = new URL(url.searchParams.get("redirect_uri") ?? "http://localhost");
+      igNb.anmeldungen.push({ at: new Date().toISOString(), scope: url.searchParams.get("scope"), clientId: url.searchParams.get("client_id") });
+      ziel.searchParams.set("code", "ig-test-code");
+      ziel.searchParams.set("state", url.searchParams.get("state") ?? "");
+      res.writeHead(302, { Location: ziel.toString() });
+      res.end();
+      return;
+    }
     if (url.pathname.startsWith("/youtube") && youtubeRoh(req, res, url, body)) {
       remember(log, { at: new Date().toISOString(), dienst: "YouTube", method: req.method, path: url.pathname, status: res.statusCode, simuliert: req.method !== "GET" });
       return;
@@ -1786,7 +1806,7 @@ function videoStoerungRoh(req, res, url, body) {
     }
     const last = (b.messages ?? []).filter((m) => m.role === "user").at(-1);
     const text = typeof last?.content === "string" ? last.content : (last?.content ?? []).filter((x) => x.type === "text").map((x) => x.text).join(" ");
-    const m = /^\[video:(research|script|package)(?::([\w-]+))?\]/.exec(text ?? "");
+    const m = /^\[video:(research|script|package|story)(?::([\w-]+))?\]/.exec(text ?? "");
     if (!m) return false;
     schluessel = m[2] ? `${m[1]}:${m[2]}` : m[1];
     videoNb.claude.push(schluessel);
@@ -1890,13 +1910,21 @@ const warte = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function elevenNb(req, p, b) {
   if (!req.headers["xi-api-key"]) return [401, { detail: { status: "invalid_api_key", message: "Invalid API key" } }];
-  const stimme = p.split("/").pop();
+  // …/text-to-speech/{stimme} oder …/text-to-speech/{stimme}/with-timestamps (B36.10: Wortzeiten)
+  const zeiten = p.endsWith("/with-timestamps");
+  const stimme = p.replace(/\/with-timestamps$/, "").split("/").pop();
   const text = String(b.text ?? "");
   if (!text) return [422, { detail: { message: "text fehlt" } }];
-  videoNb.eleven.push({ at: new Date().toISOString(), stimme, zeichen: text.length, hash: createHash("sha256").update(text).digest("hex").slice(0, 12) });
+  videoNb.eleven.push({ at: new Date().toISOString(), stimme, zeichen: text.length, hash: createHash("sha256").update(text).digest("hex").slice(0, 12), zeiten });
   if (videoNb.verzoegerungMs) await warte(videoNb.verzoegerungMs);
   const woerter = text.split(/\s+/).filter(Boolean).length;
-  return [200, stilleMp3(woerter / 2.6), "audio/mpeg"];
+  const dauer = woerter / 2.6;
+  if (!zeiten) return [200, stilleMp3(dauer), "audio/mpeg"];
+  // Wie die echte API: JSON mit Audio (Base64) und Zeichen-Ausrichtung (Start/Ende je Zeichen, hier gleichmäßig)
+  const zeichen = [...text];
+  const je = dauer / Math.max(1, zeichen.length);
+  const alignment = { characters: zeichen, character_start_times_seconds: zeichen.map((_, i) => Math.round(i * je * 1000) / 1000), character_end_times_seconds: zeichen.map((_, i) => Math.round((i + 1) * je * 1000) / 1000) };
+  return [200, { audio_base64: stilleMp3(dauer).toString("base64"), alignment, normalized_alignment: alignment }];
 }
 
 // Wie bei OpenAI: falscher Schlüssel → 401 mit Teilen des Schlüssels im Text (die Brücke darf das nie durchreichen).
@@ -1933,6 +1961,63 @@ async function openaiBildNb(req, b, extra = {}) {
   const farbe = [40 + (h[0] % 120), 60 + (h[1] % 120), 80 + (h[2] % 120)];
   const png = b.background === "transparent" || b.size === "1024x1024" ? await motivPng(farbe, b.background === "transparent") : await testPng(farbe);
   return [200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: png.toString("base64") }], usage: { total_tokens: 1000 } }];
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// B37 Instagram (API mit Instagram-Login): Code → kurzes Token → Langzeit-Token (60 Tage), Erneuern, /me, Story-Container
+// (media_type=STORIES; holt die Mediendatei wie Instagram von der öffentlichen Adresse), Status, media_publish.
+var igNb = { container: new Map(), posts: [], anmeldungen: [], erneuert: 0, fehler: 0, abgelaufen: false, n: 0 };
+const IG_USER = "17841400000000001";
+
+async function instagramNb(req, url, p, body) {
+  const f = new URLSearchParams(body || "");
+  const token = url.searchParams.get("access_token") ?? f.get("access_token") ?? "";
+  const igFehler = (code, nachricht, typ = "OAuthException", status = 400, extra = {}) => [status, { error: { message: nachricht, type: typ, code, fbtrace_id: "TEST", ...extra } }];
+  if (p === "/instagram-api/oauth/access_token" && req.method === "POST") {
+    if (!f.get("client_id") || !f.get("client_secret")) return igFehler(101, "Missing client_id parameter.");
+    if (f.get("code") !== "ig-test-code") return igFehler(36009, "This authorization code has been used.");
+    return [200, { access_token: "ig-kurz-test", user_id: Number(IG_USER), permissions: ["instagram_business_basic", "instagram_business_content_publish"] }];
+  }
+  if (p === "/instagram-graph/access_token") return token === "ig-kurz-test" && url.searchParams.get("client_secret") ? [200, { access_token: "ig-lang-1", token_type: "bearer", expires_in: 5184000 }] : igFehler(190, "Invalid OAuth access token - Cannot parse access token");
+  const gueltig = /^ig-lang-\d+$/.test(token) && !igNb.abgelaufen;
+  if (!gueltig) return igFehler(190, "Error validating access token: Session has expired.", "OAuthException", 400, { error_subcode: 463 });
+  if (p === "/instagram-graph/refresh_access_token") {
+    igNb.erneuert++;
+    return [200, { access_token: `ig-lang-${igNb.erneuert + 1}`, token_type: "bearer", expires_in: 5184000 }];
+  }
+  if (p === "/instagram-graph/me") return [200, { user_id: IG_USER, id: IG_USER, username: "testkonto_ig" }];
+  if (igNb.fehler > 0 && req.method === "POST") {
+    igNb.fehler--;
+    return igFehler(2, "An unexpected error has occurred. Please retry your request later.", "OAuthException", 500, { is_transient: true });
+  }
+  const m = /^\/instagram-graph\/(\d+)\/(media|media_publish)$/.exec(p);
+  if (m && req.method === "POST") {
+    if (m[1] !== IG_USER) return igFehler(100, "Unsupported post request. Object does not exist.");
+    if (m[2] === "media") {
+      if (f.get("media_type") !== "STORIES") return igFehler(100, "media_type muss STORIES sein (Testdienst)");
+      const quelle = f.get("video_url") ?? f.get("image_url");
+      if (!quelle) return igFehler(100, "image_url oder video_url fehlt");
+      // Instagram holt die Datei selbst – nur öffentliche Adressen (signierter Link des Seller-Systems)
+      let geholt = { status: 0, typ: null, groesse: 0 };
+      try {
+        const r = await fetch(quelle, { signal: AbortSignal.timeout(20_000) });
+        geholt = { status: r.status, typ: r.headers.get("content-type"), groesse: (await r.arrayBuffer()).byteLength };
+      } catch {}
+      if (geholt.status !== 200 || !geholt.groesse) return igFehler(9004, "Media download has failed. The media URI doesn't meet our requirements.", "OAuthException", 400, { error_subcode: 2207052 });
+      const id = `cont${++igNb.n}`;
+      igNb.container.set(id, { id, video: !!f.get("video_url"), quelle, ...geholt, at: new Date().toISOString(), veroeffentlicht: null });
+      return [200, { id }];
+    }
+    const c = igNb.container.get(f.get("creation_id") ?? "");
+    if (!c) return igFehler(9007, "Media ID is not available", "OAuthException", 400, { error_subcode: 2207027 });
+    if (c.veroeffentlicht) return [200, { id: c.veroeffentlicht }];
+    c.veroeffentlicht = `media${igNb.n}`;
+    igNb.posts.push({ at: new Date().toISOString(), id: c.veroeffentlicht, video: c.video, typ: c.typ, groesse: c.groesse });
+    return [200, { id: c.veroeffentlicht }];
+  }
+  const c = /^\/instagram-graph\/(cont\d+)$/.exec(p);
+  if (c && req.method === "GET") return igNb.container.has(c[1]) ? [200, { id: c[1], status_code: "FINISHED", status: "Finished: Media has been uploaded and it is complete." }] : igFehler(100, "Object does not exist");
+  return [404, { error: { message: `Unbekannter Instagram-Pfad (Testdienst): ${p}`, code: 100 } }];
 }
 
 /** YouTube-Pfade, die eigene Kopfzeilen brauchen (Weiterleitung, Location, 308). Liefert true, wenn beantwortet. */
@@ -2040,10 +2125,12 @@ const WB_MOTIVE = ["sanduhr", "banane", "kirsche", "lineal", "wasserhahn", "weck
 
 // Ohne „Studie/Forscher“: Sätze für Hook, Fear Activation, Zusammenfassung und CTA (dort ohne Quelle erlaubt)
 const SATZ_ALLTAG = SATZ.filter((x) => !/Studie|Forscher/.test(x));
-// Feste Szenenzahl je Abschnitt (5 Punkte): Vollbild 22 Szenen, Whiteboard je Abschnitt eine Szene (9) – schneller Render
+// Feste Szenenzahl je Abschnitt (5 Punkte): Vollbild 22 Szenen; Whiteboard (B36.10) kurze Szenen mit 1–2 Sätzen
+// (~25–30 Wörter, 6–12 s) – zusammen 63 Szenen für 10–12 Minuten
 const PLAN_VOLL = { hook: 2, angst: 2, zusammenfassung: 2, cta: 1, punkt: 3 };
+const PLAN_WB = { hook: 4, angst: 6, zusammenfassung: 5, cta: 3, punkt: 9 };
 function abschnittPlan(wb) {
-  const plan = [["hook"], ["angst"], ...[1, 2, 3, 4, 5].map((p) => [`punkt-${p}`]), ["zusammenfassung"], ["cta"]].map(([a]) => [a, wb ? 1 : PLAN_VOLL[a.startsWith("punkt-") ? "punkt" : a]]);
+  const plan = [["hook"], ["angst"], ...[1, 2, 3, 4, 5].map((p) => [`punkt-${p}`]), ["zusammenfassung"], ["cta"]].map(([a]) => [a, (wb ? PLAN_WB : PLAN_VOLL)[a.startsWith("punkt-") ? "punkt" : a]]);
   let nr = 0;
   return Object.fromEntries(plan.map(([a, n]) => [a, { start: (nr += n) - n + 1, anzahl: n }]));
 }
@@ -2081,11 +2168,14 @@ function videoAntwort(text) {
         // B36.9 Whiteboard: Layout, Texte, 3–5 Motive (wiederkehrende Schlüssel, Figur aus dem Kanalprofil, eine Ablehnung)
         const layout = WB_LAYOUTS[(nr - 1) % WB_LAYOUTS.length];
         const zahl = { "3er": 3, "4er": 4, "5er": 5, "figur-liste": 1, gegenueberstellung: 2 }[layout];
+        // Schlüsselwort je Motiv aus dem Szenentext (in Sprechreihenfolge) – dort erscheint das Motiv (Wortzeiten)
+        const worte = satz.split(" ").slice(0, -2).map((x) => x.replace(/[.,;:!?]/g, ""));
+        const wort = (i) => worte[Math.min(worte.length - 1, Math.floor(((i + 1) * worte.length) / (zahl + 1)))];
         const motive = Array.from({ length: zahl }, (_, i) => {
-          if (layout === "figur-liste" && figur) return { key: figur, beschreibung: "Figur aus dem Kanalprofil" };
-          if (nr === 2 && i === 0) return { key: "verboten", beschreibung: "TESTABLEHNUNG Motiv" };
+          if (layout === "figur-liste" && figur) return { key: figur, beschreibung: "Figur aus dem Kanalprofil", wort: wort(i) };
+          if (nr === 2 && i === 0) return { key: "verboten", beschreibung: "TESTABLEHNUNG Motiv", wort: wort(i) };
           const key = WB_MOTIVE[(nr + i * 3) % WB_MOTIVE.length];
-          return { key, beschreibung: `Cartoon ${key} mit Comic-Gesicht` };
+          return { key, beschreibung: `Cartoon ${key} mit Comic-Gesicht`, wort: wort(i) };
         });
         szenen.push({
           text: satz, quelle_ids: punkt ? [`Q${punkt}`] : [], layout,
@@ -2099,11 +2189,34 @@ function videoAntwort(text) {
     }
     return { text: JSON.stringify({ szenen }), usage: { input_tokens: 5000, output_tokens: Math.round(ziel * 1.6) } };
   }
+  const st = /^\[video:story:(\w+)\]/.exec(text);
+  if (st) return { text: JSON.stringify(storyAntwort(st[1], text)), usage: { input_tokens: 1500, output_tokens: 220 } };
   if (text.startsWith("[video:package]")) {
     const json = { titel: ["5 Gründe, über die keiner spricht", "Warum die Nähe verschwindet – und was hilft", "Das sagen Studien über Nähe im Alltag", "Kein Thema? Doch! 5 ehrliche Gründe", "Nähe zurückgewinnen: 5 Gründe verstehen"], beschreibung: "In diesem Video schauen wir uns fünf Gründe an, die Studien immer wieder finden.\n\nOhne Vorwürfe, mit konkreten Tipps für den Alltag.", tags: ["Beziehung", "Partnerschaft", "Nähe", "Studien", "Paare", "Alltag", "Kommunikation", "Stress", "Tipps", "Psychologie", "Liebe", "Vertrauen"], thumbnail_text: "5 Gründe keiner spricht" };
     return { text: JSON.stringify(json), usage: { input_tokens: 4000, output_tokens: 800 } };
   }
   return null;
+}
+
+/** B37 Story: kurze Texte je Inhaltsart, nur aus den „Bestätigten Fakten“ des Prompts (erste Zeile mit „€“). Thema mit
+ *  „TESTREGEL“ = Claude schreibt auch nach der Korrektur „kostenlose Zählung“ (prüft die Sperre im Seller-System). Bei
+ *  „Vorige Fassung“ (Neu erzeugen) eine andere Formulierung. */
+function storyAntwort(art, text) {
+  const thema = (/Thema: (.*)/.exec(text)?.[1] ?? "Testthema").trim();
+  const fakten = (/Bestätigte Fakten[^\n]*\n([\s\S]*?)\n\n/.exec(text)?.[1] ?? "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const preis = fakten.find((x) => /€/.test(x)) ?? null;
+  const neu = /Vorige Fassung/.test(text);
+  const keine = { art: "keine", frage: "", optionen: [] };
+  const a = {
+    preis: { ueberschrift: neu ? "Faire Prep-Preise" : "Prep zum Festpreis", text: preis ? `${preis}. Enthalten: Etikett, Polybeutel und Packen.` : "Preise auf Anfrage.", cta: "Jetzt anfragen", werbung: true, motiv: { key: "preisschild", beschreibung: "Ein Preisschild aus Papier" }, sticker: keine },
+    leistung: { ueberschrift: neu ? "Wir packen für dich" : "Lagerung und Versand", text: fakten.find((x) => !/€/.test(x)) ?? "Prep und Versand an Amazon für Händler.", cta: "Mehr erfahren", werbung: true, motiv: { key: "karton", beschreibung: "Ein brauner Versandkarton" }, sticker: keine },
+    tipp: { ueberschrift: neu ? "Kleiner Prep-Tipp" : "Tipp: FNSKU richtig", text: "Das FNSKU-Etikett gehört auf jede Einheit, nicht auf den Umkarton.", cta: "", werbung: false, motiv: { key: "etikett", beschreibung: "Ein weißes Etikett mit Strichcode-Symbol ohne Zahlen" }, sticker: keine },
+    einblick: { ueberschrift: "Ein Blick ins Lager", text: "Sortierte Regale, kurze Wege: so bleibt jede Sendung im Plan.", cta: "", werbung: false, motiv: { key: "regal", beschreibung: "Ein Lagerregal" }, sticker: keine },
+    umfrage: { ueberschrift: "Deine Meinung?", text: "Wie bereitest du deine Ware für Amazon vor?", cta: "", werbung: false, motiv: { key: "fragezeichen", beschreibung: "Ein großes Fragezeichen" }, sticker: { art: "umfrage", frage: "Wer macht dein Prep?", optionen: ["Ich selbst", "Prep Center"] } },
+    cta: { ueberschrift: "Platz frei im Lager", text: "Du suchst ein Prep Center für FBA-Sendungen? Schreib uns.", cta: "Jetzt anfragen", werbung: true, motiv: { key: "briefumschlag", beschreibung: "Ein Briefumschlag" }, sticker: keine },
+  }[art] ?? { ueberschrift: thema.slice(0, 40), text: "Ein kurzer Tipp für Händler.", cta: "", werbung: false, motiv: { key: "gluehbirne", beschreibung: "Eine Glühbirne" }, sticker: keine };
+  if (/TESTREGEL/.test(thema)) a.text = "Inklusive kostenloser Zählung jeder Einheit.";
+  return a;
 }
 
 function fuelltextAlltag(n, start) {

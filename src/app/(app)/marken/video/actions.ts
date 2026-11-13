@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { VideoFreigabe } from "@/db/tables/video";
 import { requireArea } from "@/lib/auth/session";
+import type { InstagramProfil, StoryInhaltsart } from "@/db/tables/video";
 import { BILD_MODELLE, istBildModell, istVideoModell, type VideoPreise } from "@/lib/video/logic";
+import { STORY_ARTEN, uhrzeitenAus } from "@/lib/video/story-logic";
 
 // B36 Seite „Video“: Kanäle, neues Video, Freigaben, „Schritt wiederholen“, „Privat hochladen“, Worker-Token, Preise.
 // Zugangsdaten (Claude, ElevenLabs, OpenAI, Google-App) nur unter Anbindungen – nie hier, nie im Chat.
@@ -51,6 +53,9 @@ export async function kanalSpeichernAction(fd: FormData) {
       figuren: txt(fd, "figuren", 3000) || null,
       bildQualitaet: txt(fd, "bildQualitaet", 10) || "medium",
       aktiv: fd.get("aktiv") !== "0",
+      plattform: txt(fd, "plattform", 20) || "youtube",
+      tempo: txt(fd, "tempo", 10) || "normal",
+      instagram: fd.get("plattform") === "instagram" ? instagramAus(fd) : null,
     });
   } catch (e) {
     if (e instanceof VideoFehler) zurueck(e.message, kanalId, "#kanal");
@@ -268,4 +273,114 @@ export async function motiveNeuAction(fd: FormData) {
     const { motiveNeu } = await import("@/lib/video/service");
     return motiveNeu(s, id(fd), fd.getAll("motiv").map((x) => String(x).slice(0, 60)));
   }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
+}
+
+
+// ---- B37 Instagram-Stories ------------------------------------------------------------------------------------------
+
+const farbe = (fd: FormData, k: string, standard: string) => (/^#[0-9a-f]{6}$/i.test(txt(fd, k, 7)) ? txt(fd, k, 7) : standard);
+
+/** Instagram-Felder des Kanalprofils (Zeitplan, Inhaltsarten, Gestaltung, Freigabe, Limit, Fakten). */
+function instagramAus(fd: FormData): InstagramProfil {
+  const limit = txt(fd, "ig_limit", 12).replace(",", ".");
+  return {
+    tage: [1, 2, 3, 4, 5, 6, 7].filter((t) => fd.get(`ig_tag_${t}`) === "1"),
+    uhrzeiten: uhrzeitenAus(txt(fd, "ig_uhrzeiten", 100)),
+    inhaltsarten: (Object.keys(STORY_ARTEN) as StoryInhaltsart[]).filter((a) => fd.get(`ig_art_${a}`) === "1"),
+    farben: { grund: farbe(fd, "ig_grund", "#ffffff"), akzent: farbe(fd, "ig_akzent", "#d62828"), text: farbe(fd, "ig_text", "#181818") },
+    hand: fd.get("ig_hand") === "1",
+    hinweis: txt(fd, "ig_hinweis", 300) || null,
+    werbung: fd.get("ig_werbung") === "1",
+    freigabeModus: fd.get("ig_freigabe") === "stichprobe" ? "stichprobe" : fd.get("ig_freigabe") === "automatisch" ? "automatisch" : "jedes_mal",
+    monatslimit: limit && Number.isFinite(Number(limit)) && Number(limit) >= 0 ? Math.round(Number(limit) * 100) / 100 : null,
+    fakten: txt(fd, "ig_fakten", 4000) || null,
+  };
+}
+
+const story = () => import("@/lib/video/story");
+
+export async function themenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  await mitFehler(async () => `${await (await story()).themenSpeichern(s, kanal, txt(fd, "themen", 20_000))} Themen gespeichert.`, kanal, "#stories");
+}
+
+export async function storiesErzeugenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  await mitFehler(async () => {
+    const r = await (await story()).storiesAusThemen(s, kanal);
+    return r.limit ? `${r.neu} Stories angelegt – dann Monatslimit erreicht, Erzeugung gestoppt.` : `${r.neu} Stories angelegt – der Worker erzeugt sie, danach erscheinen sie hier zur Freigabe.`;
+  }, kanal, "#stories");
+}
+
+export async function storiesPlanenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  await mitFehler(async () => {
+    if (s.readOnly) return "Nur ansehen – nichts geändert.";
+    const r = await (await story()).storiesPlanen(s.tenantId, { kanalId: kanal });
+    return r.limit.length ? `Monatslimit erreicht – keine neuen Stories (${r.neu} angelegt).` : r.neu ? `${r.neu} Stories für die nächsten 36 Stunden angelegt.` : "Für die nächsten 36 Stunden ist schon alles geplant.";
+  }, kanal, "#stories");
+}
+
+export async function fotoAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  const dateien = fd.getAll("fotos").filter((x): x is File => typeof x !== "string");
+  await mitFehler(async () => `${await (await story()).fotosHochladen(s, kanal, dateien, fd.get("ohnePersonen") === "1")} Foto(s) gespeichert.`, kanal, "#fotos");
+}
+
+export async function fotoLoeschenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    await (await story()).fotoLoeschen(s, id(fd));
+    return "Foto gelöscht.";
+  }, id(fd, "kanalId"), "#fotos");
+}
+
+export async function storyFreigebenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => (await story()).storyFreigeben(s, id(fd)), id(fd, "kanalId"), `#s-${id(fd)}`);
+}
+
+export async function storyAblehnenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => (await story()).storyAblehnen(s, id(fd)), id(fd, "kanalId"), `#s-${id(fd)}`);
+}
+
+export async function storyNeuAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => (await story()).storyNeu(s, id(fd), { motivNeu: fd.get("motivNeu") === "1", hinweis: txt(fd, "hinweis", 1000) || null }), id(fd, "kanalId"), `#s-${id(fd)}`);
+}
+
+export async function storyGepostetAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => (await story()).storyManuellGepostet(s, id(fd)), id(fd, "kanalId"), `#s-${id(fd)}`);
+}
+
+export async function storyErneutAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => (await story()).storyErneutPosten(s, id(fd)), id(fd, "kanalId"), `#s-${id(fd)}`);
+}
+
+/** „Fällige jetzt posten“: Planzeit erreicht + freigegeben → posten (sonst alle 5 Min. automatisch). */
+export async function storiesPostenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  await mitFehler(async () => {
+    if (s.readOnly) return "Nur ansehen – nichts geändert.";
+    const r = await (await story()).storiesPosten(s.tenantId);
+    return `Gepostet: ${r.gepostet}, nicht gepostet: ${r.fehler}, Erinnerungen: ${r.erinnert}.`;
+  }, kanal, "#stories");
+}
+
+export async function instagramTrennenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const kanal = id(fd, "kanalId");
+  await mitFehler(async () => {
+    if (s.role !== "owner" || s.readOnly) return "Nur der Inhaber.";
+    await (await story()).kanalInstagramSetzen(s.tenantId, kanal, null);
+    return "Instagram getrennt – Stories werden ab jetzt von Hand gepostet.";
+  }, kanal, "#kanal");
 }

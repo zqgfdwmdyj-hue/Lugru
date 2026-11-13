@@ -5,13 +5,13 @@ import type { SchrittStand, VideoFreigabe, VideoKosten, VideoSchritt } from "@/d
 // Status. Der Worker (Python, unter-der-decke/) macht die eigentliche Arbeit; hier steht nur, was als Nächstes dran ist.
 
 export const SCHRITTE: VideoSchritt[] = ["research", "script", "voice", "visuals", "render", "package", "upload"];
-export const SCHRITT_TEXT: Record<VideoSchritt, string> = { research: "Recherche", script: "Skript", voice: "Sprache", visuals: "Bilder", render: "Render", package: "Paket", upload: "Upload (privat)" };
-export const FREIGABE_TEXT: Record<VideoFreigabe, string> = { gliederung: "Gliederung + Quellen", skript: "Skript", szenen: "Szenen-Übersicht (Motive)", vorschau: "Vorschau-Video + Thumbnail + Titel" };
+export const SCHRITT_TEXT: Record<VideoSchritt, string> = { research: "Recherche", script: "Skript", voice: "Sprache", visuals: "Bilder", render: "Render", package: "Paket", upload: "Upload (privat)", story: "Story" };
+export const FREIGABE_TEXT: Record<VideoFreigabe, string> = { gliederung: "Gliederung + Quellen", skript: "Skript", szenen: "Szenen-Übersicht (Motive)", vorschau: "Vorschau-Video + Thumbnail + Titel", story: "Story-Vorschau" };
 /** Nach welchem Schritt welcher Freigabe-Punkt kommt (B36.3; Szenen-Übersicht vor dem Render: B36.9). */
 export const FREIGABE_NACH: Partial<Record<VideoSchritt, VideoFreigabe>> = { research: "gliederung", script: "skript", visuals: "szenen", package: "vorschau" };
-export const FREIGABE_VOR: Record<VideoFreigabe, VideoSchritt> = { gliederung: "script", skript: "voice", szenen: "render", vorschau: "upload" };
+export const FREIGABE_VOR: Record<VideoFreigabe, VideoSchritt> = { gliederung: "script", skript: "voice", szenen: "render", vorschau: "upload", story: "story" };
 /** Ohne Eintrag im Kanal: die drei Freigaben aus B36.3 an, die Szenen-Übersicht (neu mit B36.9) aus. */
-export const FREIGABE_STANDARD: Record<VideoFreigabe, boolean> = { gliederung: true, skript: true, szenen: false, vorschau: true };
+export const FREIGABE_STANDARD: Record<VideoFreigabe, boolean> = { gliederung: true, skript: true, szenen: false, vorschau: true, story: true };
 export const freigabeAktiv = (freigaben: Partial<Record<VideoFreigabe, boolean>>, f: VideoFreigabe) => freigaben[f] ?? FREIGABE_STANDARD[f];
 
 /** Bildstile je Kanal. */
@@ -23,6 +23,12 @@ export type VideoStil = keyof typeof VIDEO_STILE;
 export const istVideoStil = (x: unknown): x is VideoStil => typeof x === "string" && x in VIDEO_STILE;
 /** Whiteboard: im Mittel 4 Motive je Szene (Schätzung ohne Wiederverwendung aus der Bibliothek = Obergrenze). */
 export const MOTIVE_JE_SZENE = 4;
+/** B36.10 Whiteboard-Tempo: kurze Szenen (1–2 Sätze, 6–12 s Sprecherzeit) → bei 10–12 Min. 55–80 Szenen. */
+export const WB_SZENEN = [55, 80] as const;
+/** Zeichenzeit je Motiv nach Kanalprofil „Tempo“ (Sekunden). */
+export const TEMPO_SEK = { ruhig: 2.5, normal: 2.0, schnell: 1.5 } as const;
+/** Neue (zu bezahlende) Motive je kurzer Szene im Schnitt – der Rest kehrt aus vorigen Szenen/der Bibliothek wieder. */
+export const NEUE_MOTIVE_JE_SZENE = 1.5;
 /** Layout-Vorlagen der Collage (B36.9.1). */
 export const WHITEBOARD_LAYOUTS = ["3er", "4er", "5er", "figur-liste", "gegenueberstellung"] as const;
 
@@ -40,8 +46,9 @@ export function figurenAus(text: string | null | undefined): { key: string; besc
 
 /** Mindestens frei auf dem Worker, sonst kein Lauf (B36.6); Warnung, wenn der Worker so lange schweigt. */
 export const WORKER_MIN_FREI_GB = 3;
-/** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ältere Worker wiederholen abgebrochene Aufrufe nicht. */
-export const WORKER_VERSION_AKTUELL = "1.1.0";
+/** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
+ *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. */
+export const WORKER_VERSION_AKTUELL = "1.2.0";
 /** true, wenn der Worker eine ältere Version meldet (oder gar keine). */
 export function workerVeraltet(version: string | null | undefined): boolean {
   const teile = (v: string) => v.split(".").map((x) => Number.parseInt(x, 10) || 0);
@@ -198,7 +205,9 @@ export function typischFuer(stil: string | null = "vollbild") {
   const k = (x: number) => Math.round(x / 1000) * 1000;
   const szenen = Math.round(w / 65);
   const wb = stil === "whiteboard";
-  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? szenen * MOTIVE_JE_SZENE : 0, websuchen: 12, eingabeTokens: k(80_000 + w * 20), ausgabeTokens: k(5_000 + w * 6) };
+  // Whiteboard (B36.10): ~68 kurze Szenen, je ~1,5 neue Motive (Obergrenze der Schätzung ohne Bibliothek)
+  const wbSzenen = (WB_SZENEN[0] + WB_SZENEN[1]) / 2;
+  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? Math.round(wbSzenen * NEUE_MOTIVE_JE_SZENE) : 0, websuchen: 12, eingabeTokens: k(80_000 + w * 20), ausgabeTokens: k(5_000 + w * 6) };
 }
 
 /** Typischer Lauf (1.500–1.700 Wörter): ~10.600 Zeichen Sprache, ~25 Bilder, ~112k/15k Tokens. */
@@ -212,7 +221,7 @@ export function kostenSchaetzung(p: VideoPreise, menge: ReturnType<typeof typisc
     { art: "Websuche", betrag: p.websucheJe1000 !== null ? (menge.websuchen / 1000) * p.websucheJe1000 : null },
     { art: "Sprache (ElevenLabs)", betrag: p.elevenlabsJe1000Zeichen !== null ? (menge.zeichen / 1000) * p.elevenlabsJe1000Zeichen : null },
     ...(menge.bilder > 0 ? [{ art: `Bilder (${bm})`, betrag: p.bildJeStueck !== null ? menge.bilder * p.bildJeStueck : null }] : []),
-    ...(menge.motive > 0 ? [{ art: `Motive (${bm}, höchstens ${menge.motive})`, betrag: motivPreis(p) != null ? menge.motive * (motivPreis(p) as number) : null }] : []),
+    ...(menge.motive > 0 ? [{ art: `Motive (${bm}, ca. ${menge.motive} neue)`, betrag: motivPreis(p) != null ? menge.motive * (motivPreis(p) as number) : null }] : []),
   ];
   return { summe: Math.round(pos.reduce((a, x) => a + (x.betrag ?? 0), 0) * 100) / 100, positionen: pos.map((x) => ({ ...x, betrag: x.betrag === null ? null : Math.round(x.betrag * 100) / 100 })), fehlend: pos.filter((x) => x.betrag === null).map((x) => x.art) };
 }

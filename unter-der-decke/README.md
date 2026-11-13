@@ -17,11 +17,12 @@ Der Worker macht aus einem Thema ein fertiges YouTube-Video (Länge je Kanal, St
 |---|---|---|
 | research | Erst die Gliederung (kleine Websuche), dann je Punkt ein Aufruf für die Quellen | Claude + Websuche |
 | script | Skript abschnittsweise: Hook, Fear Activation, jeder Punkt (5–7) einzeln, Zusammenfassung, CTA – je Abschnitt ein kurzer Aufruf; zusammen fest 1.500–1.700 Wörter (≈ 10–12 Min.), JSON je Szene; Endprüfung (Wörter, 5–7 Punkte, jede Studie in der Quellenliste) mit Nachbesserung nur der betroffenen Abschnitte | Claude |
-| voice | Sprache je Szene (ElevenLabs) | ElevenLabs |
+| voice | Sprache je Szene (ElevenLabs); Whiteboard mit Wortzeiten (`/with-timestamps`, gleicher Preis) | ElevenLabs |
 | visuals | Vollbild: Symbolbild je Szene (OpenAI GPT Image, Modell wählt das Seller-System, 1536×1024). Whiteboard: 3–5 Einzelmotive je Szene (1024×1024, transparent, Bibliothek) + Szenen-Übersicht; bei Ablehnung Ersatzmotiv | OpenAI |
 | render | ffmpeg + Pillow: Vollbild mit eingebrannten Untertiteln; Whiteboard mit Aufdeck-Animation, Hand und blassem Vorgänger, ohne eingebrannte Untertitel; optional Musik | – |
 | package | Thumbnail 1280×720 (max. 4 Wörter), 5 Titel, Beschreibung mit Kapiteln + Quellen, Tags; Dateien ins Seller-System | Claude |
 | upload | YouTube, **privat** (nur mit Schalter „Privat hochladen“ und freigegebener Vorschau) | – |
+| story | Nur Instagram-Kanäle (B37): kurzer Story-Text (nur „Bestätigte Fakten“ aus dem Kanalprofil, Regelprüfung mit einer Korrektur-Runde), Motiv aus der Bibliothek oder eigenes Lager-Foto, Hochformat 1080×1920; mit Hand-Animation als MP4 (5–15 s, ohne Ton), sonst PNG; dazu ein Vorschaubild | Claude + ggf. ein Motiv |
 
 Die Zielgruppe steht im Kanalprofil (Seller-System) und fließt in jeden Prompt; die Skriptlänge ist für alle Kanäle fest
 (1.500–1.700 Wörter). Beim Anlegen eines Videos
@@ -56,8 +57,14 @@ Im Kanalprofil (Seller-System → Video) „Stil der Bilder: Whiteboard-Collage�
 - **Texte setzt die Pipeline selbst** in der Schrift Anton (`schriften/`, mit Umlauten): Überschrift schwarz,
   Aussagesatz im roten Balken, Kernaussage rot, „Schritt N: …“ im schwarzen Kasten, Stichpunkte mit orangem Punkt.
   Das Bildmodell zeichnet nie Schrift.
-- **Animation:** Elemente werden nacheinander von links nach rechts „aufgezeichnet“, die Hand folgt der Kante. Die
-  vorige Szene bleibt mit 15 % als blasser Hintergrund stehen.
+- **Tempo (B36.10):** kurze Szenen mit 1–2 Sätzen (6–12 s Sprache, bei 10–12 Min. 55–80 Szenen); je Motiv ein
+  Schlüsselwort aus dem Szenentext. Jedes Motiv erscheint, wenn sein Wort gesprochen wird (Wortzeiten von ElevenLabs),
+  sonst gleichmäßig verteilt. Zeichenzeit je Motiv nach Kanalprofil „Tempo“: ruhig 2,5 s · normal 2,0 s · schnell
+  1,5 s. Lücken über 2,6 s füllt der Worker mit Hervorhebungen (unterstreichen, einkreisen, Pfeil). Vor dem Render prüft
+  er jede Szene: mehr als 3 s ohne neue Aktion → Hinweis in der Szenen-Übersicht.
+- **Animation:** Motive werden „aufgezeichnet“ (die Hand folgt der Kante), Texte erscheinen mit kurzem Pop, Szenen-
+  wechsel mit 0,3 s Wisch; über jede Szene läuft ein sanfter Zoom (`VIDEO_ZOOM`, Standard 0,07 = 7 %). Die vorige
+  Szene bleibt mit 15 % als blasser Hintergrund stehen.
 - **Untertitel** werden nicht eingebrannt, sondern beim privaten Upload als YouTube-Untertitel („Deutsch“)
   mitgeschickt. Dafür braucht der YouTube-Zugang das Recht „Untertitel“ (bei bestehender Verbindung einmal neu
   verbinden).
@@ -108,9 +115,19 @@ Seller-System → **Marken & Content → Video** → Abschnitt „Worker“ → 
    `C:\video\unter-der-decke\.venv\Scripts\pythonw.exe`, Argument `worker.py`, „Starten in“ = der Ordner.
    Die beiden Variablen dauerhaft setzen: Systemsteuerung → „Umgebungsvariablen für dieses Konto bearbeiten“.
 
+## Instagram-Stories (B37)
+
+Für Kanäle mit Plattform „Instagram“ (Seller-System → Video → Kanalprofil) erzeugt der Worker Stories statt Videos –
+ein Auftrag je Story, nacheinander wie die Videos. Gestaltung (Farben, Hand ja/nein, Hinweistext, Werbekennzeichnung)
+und die **Bestätigten Fakten** kommen aus dem Kanalprofil; der Worker erfindet keine Preise oder Leistungen. Motive
+landen in derselben Kanal-Bibliothek (`motive/`) und kosten nur einmal; „Neu erzeugen“ schreibt einen neuen Text und
+behält das Motiv, „Motiv neu“ erzeugt genau ein neues. Eigene Lager-Fotos (Inhaltsart „Einblick“) holt der Worker vom
+Seller-System, ohne Bildanbieter. Posten übernimmt das Seller-System (Instagram-API oder Erinnerung zum Posten von Hand).
+Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
+
 ## Aktualisieren (neue Version)
 
-Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.1.0`). Ist der Worker älter als das
+Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.0`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
 **Mit Docker Desktop** (Ordner wurde nach `C:\video\unter-der-decke` kopiert):
@@ -144,6 +161,7 @@ Halb fertige Aufträge laufen danach mit „Schritt wiederholen“ auf der Seite
 | `VIDEO_POLL_S` | Abfrage-Takt in Sekunden | `30` |
 | `MIN_FREI_GB` / `WARN_FREI_GB` | unter 3 GB frei kein Lauf, unter 5 GB Warnung | `3` / `5` |
 | `VIDEO_FPS` | Bilder je Sekunde im Video | `25` |
+| `VIDEO_ZOOM` | Whiteboard: sanfter Zoom je Szene (0 = aus) | `0.07` |
 | `KI_TIMEOUT_S` | Zeitlimit je Aufruf an Claude/ElevenLabs (Sekunden); mit Websuche doppelt, Bilder mind. 180 | `120` |
 | `CLAUDE_MODELL` | Claude-Modell nur zum Übersteuern (sonst gilt die Wahl auf der Seite Video, Standard Opus 5.5) | leer |
 | `AUFBEWAHREN_TAGE` | Projekte spätestens nach … Tagen löschen | `14` |

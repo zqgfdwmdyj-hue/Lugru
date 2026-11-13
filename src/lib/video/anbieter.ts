@@ -35,13 +35,14 @@ async function ziel(tenantId: string, anbieter: string, pfad: string[], request:
     return { anbieter, url: `${basis(process.env.ANTHROPIC_BASE_URL, "https://api.anthropic.com")}/v1/messages`, kopf };
   }
   if (anbieter === "elevenlabs") {
-    const m = /^v1\/text-to-speech\/([A-Za-z0-9]{6,40})$/.exec(p);
+    // B36.10: „/with-timestamps“ liefert Audio (base64) + Zeichenzeiten → Motive erscheinen beim Schlüsselwort (gleicher Preis)
+    const m = /^v1\/text-to-speech\/([A-Za-z0-9]{6,40})(\/with-timestamps)?$/.exec(p);
     if (!m) return { fehler: "Pfad nicht erlaubt", status: 404 };
     const k = await getIntegration(tenantId, "elevenlabs");
     if (!k?.apiKey) return { fehler: "ElevenLabs-Schlüssel fehlt (Anbindungen → ElevenLabs)", status: 424 };
     const fmt = new URLSearchParams(q).get("output_format");
     const query = fmt && /^[a-z0-9_]{3,30}$/.test(fmt) ? `?output_format=${fmt}` : "";
-    return { anbieter, url: `${basis(process.env.ELEVENLABS_BASE_URL, "https://api.elevenlabs.io")}/v1/text-to-speech/${m[1]}${query}`, kopf: { "xi-api-key": k.apiKey, "content-type": "application/json", accept: "audio/mpeg" } };
+    return { anbieter, url: `${basis(process.env.ELEVENLABS_BASE_URL, "https://api.elevenlabs.io")}/v1/text-to-speech/${m[1]}${m[2] ?? ""}${query}`, kopf: { "xi-api-key": k.apiKey, "content-type": "application/json", accept: m[2] ? "application/json" : "audio/mpeg" } };
   }
   if (anbieter === "openai") {
     // generations: Bild aus Text (JSON); edits: Motiv mit Stil-Referenzbildern (multipart, B36.9)
