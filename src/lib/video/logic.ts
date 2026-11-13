@@ -5,7 +5,7 @@ import type { SchrittStand, VideoFreigabe, VideoKosten, VideoSchritt } from "@/d
 // Status. Der Worker (Python, unter-der-decke/) macht die eigentliche Arbeit; hier steht nur, was als Nächstes dran ist.
 
 export const SCHRITTE: VideoSchritt[] = ["research", "script", "voice", "visuals", "render", "package", "upload"];
-export const SCHRITT_TEXT: Record<VideoSchritt, string> = { research: "Recherche", script: "Skript", voice: "Sprache", visuals: "Bilder", render: "Render", package: "Paket", upload: "Upload (privat)", story: "Story" };
+export const SCHRITT_TEXT: Record<VideoSchritt, string> = { research: "Recherche", script: "Skript", voice: "Sprache", visuals: "Bilder", render: "Render", package: "Paket", upload: "Upload (privat)", story: "Story", probe: "Probeszene" };
 export const FREIGABE_TEXT: Record<VideoFreigabe, string> = { gliederung: "Gliederung + Quellen", skript: "Skript", szenen: "Szenen-Übersicht (Motive)", vorschau: "Vorschau-Video + Thumbnail + Titel", story: "Story-Vorschau" };
 /** Nach welchem Schritt welcher Freigabe-Punkt kommt (B36.3; Szenen-Übersicht vor dem Render: B36.9). */
 export const FREIGABE_NACH: Partial<Record<VideoSchritt, VideoFreigabe>> = { research: "gliederung", script: "skript", visuals: "szenen", package: "vorschau" };
@@ -49,12 +49,56 @@ export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
  *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
  *  ein neuer Versuch mit doppeltem Platz). */
-export const WORKER_VERSION_AKTUELL = "1.2.1";
+export const WORKER_VERSION_AKTUELL = "1.3.0";
+/** Ab 1.3.0: Probeszene (20 s), echtes Zeichnen (Motive vektorisiert), feste Hand mit Stiftspitze, Sprechtempo und
+ *  gekürzte Pausen – „Probeszene“ und „Neu vertonen & zeichnen“ brauchen diese Version. */
+export const WORKER_AB_PROBE = "1.3.0";
+export const PROBE_SEK = 20;
 
 /** Mindest-Platz (max_tokens) je Claude-Aufruf über die Brücke: Opus 5.5 und Sonnet 5.5 denken immer mit, und das Denken
  *  zählt zu max_tokens (ebenso der Filter-Code der Websuche). Ältere Worker schickten 1.200–6.000 → „Antwort abgeschnitten
  *  (max_tokens)“. max_tokens ist nur eine Obergrenze – bezahlt wird, was Claude wirklich schreibt. */
 export const CLAUDE_PLATZ_MIN = 16000;
+/** Sprechtempo (ElevenLabs voice_settings.speed): erlaubt 0,7–1,2; Standard 1,1 (1,0 ergab beim ersten Video ≈ 95 Wörter/Min). */
+export const SPRECHTEMPO = { min: 0.7, max: 1.2, standard: 1.1 } as const;
+export const sprechtempoAus = (v: unknown): number => {
+  const n = typeof v === "number" ? v : Number.parseFloat(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(Math.min(SPRECHTEMPO.max, Math.max(SPRECHTEMPO.min, n)) * 100) / 100 : SPRECHTEMPO.standard;
+};
+/** Probeszene / Neu vertonen: nur Videos mit Skript und Motiven, sobald kein Schritt läuft. */
+export function probeMoeglich(a: { art: string; status: string; skript: { motive?: unknown[] | null; text?: string }[] | null }, stil: string | null | undefined): boolean {
+  return a.art === "video" && stil === "whiteboard" && ["fertig", "freigabe", "fehler"].includes(a.status) && !!a.skript?.some((s) => (s.motive?.length ?? 0) > 0);
+}
+/** Szenen der Probe ab Nummer „ab“ (1-basiert): so viele, bis ca. PROBE_SEK zusammen sind (≈ 2,5 Wörter/s), höchstens 5. */
+export function probeSzenen(skript: { text?: string | null }[], ab: number): number[] {
+  const out: number[] = [];
+  let sek = 0;
+  for (let i = Math.max(1, ab); i <= skript.length && out.length < 5 && sek < PROBE_SEK - 1; i++) {
+    out.push(i);
+    sek += (skript[i - 1].text ?? "").split(/\s+/).filter(Boolean).length / 2.5 + 0.3;
+  }
+  return out;
+}
+
+/** Wörter je Minute: Ziel 145–155, unter 135 Warnung bei der Vorschau-Freigabe. */
+export const WPM = { ziel: [145, 155] as const, warnung: 135 };
+export function woerterProMinute(skript: { text?: string | null }[] | null | undefined, sekunden: number | null | undefined): number | null {
+  if (!skript?.length || !sekunden || sekunden <= 0) return null;
+  const w = skript.reduce((n, s) => n + (s.text ?? "").split(/\s+/).filter(Boolean).length, 0);
+  return Math.round((w / sekunden) * 60);
+}
+const STIMME_FELDER = ["stability", "similarity_boost", "style", "use_speaker_boost", "speed"] as const;
+/** Brücke: voice_settings einer TTS-Anfrage mit den gespeicherten Einstellungen der Stimme ergänzen (sonst setzt
+ *  ElevenLabs fehlende Felder auf Standard und die Stimme klingt anders); speed auf 0,7–1,2 begrenzt. null = nichts zu tun. */
+export function stimmeMitTempo(body: Record<string, unknown>, gespeichert: Record<string, unknown> | null): Record<string, unknown> | null {
+  const vs = body.voice_settings;
+  if (!vs || typeof vs !== "object") return null;
+  const basis = Object.fromEntries(STIMME_FELDER.filter((k) => gespeichert && gespeichert[k] !== undefined).map((k) => [k, gespeichert![k]]));
+  const neu: Record<string, unknown> = { ...basis, ...(vs as Record<string, unknown>) };
+  if (neu.speed !== undefined) neu.speed = sprechtempoAus(neu.speed);
+  return { ...body, voice_settings: neu };
+}
+
 /** Hebt max_tokens einer Claude-Anfrage auf mindestens CLAUDE_PLATZ_MIN; null = nichts zu ändern. */
 export function claudeMitPlatz(body: Record<string, unknown>): Record<string, unknown> | null {
   const n = body.max_tokens;

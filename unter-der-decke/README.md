@@ -133,6 +133,20 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
+**1.3.0:** echtes Zeichnen statt Wisch-Maske, feste Hand, Sprechtempo, Probeszene.
+- Jedes Motiv wird einmal vektorisiert (Mittellinien der Konturen → Pfade, gespeichert neben dem Motiv in der
+  Kanal-Bibliothek als `<motiv>.striche.json` und zum Ansehen `<motiv>.svg`). Im Video fährt der Stift die Pfade Strich
+  für Strich ab, danach wird die Farbe kurz eingeblendet. Gezeichnet wird, solange über das Motiv gesprochen wird.
+- Neue Whiteboard-Motive werden als „schwarze Strichzeichnung, klare Konturen, weißer Hintergrund, keine Flächen“
+  bestellt (Kanalprofil „Motive“, umstellbar auf farbige Clipart). Vorhandene Motive bleiben und werden auch gezeichnet.
+- Die Hand kommt fest aus `grafik/hand.png` (transparent); ihr Ankerpunkt ist die Stiftspitze (`grafik/hand.json`) und
+  sitzt immer genau auf dem Endpunkt des Strichs. Eigene Hand: PNG ersetzen und die Spitze in `hand.json` eintragen.
+- Sprache mit dem Sprechtempo aus dem Kanalprofil (ElevenLabs `speed`, Standard 1,1); Stille vor/nach jeder Szene wird
+  gekürzt, zwischen zwei Szenen höchstens 0,3 s Pause. Nach dem Vertonen stehen die Wörter/Min auf der Seite.
+- „Probeszene“ auf der Seite Video: rendert ca. 20 s ab einer gewählten Szene mit allen neuen Einstellungen – das Video
+  bleibt, wie es ist. Passt es, „Neu vertonen & zeichnen“ (Skript und Motive bleiben, Probe-Sprache wird weiterverwendet).
+- Neu in `requirements.txt`: numpy (für das Vektorisieren). Docker baut es mit; ohne Docker `pip install -r requirements.txt`.
+
 **1.2.1:** mehr Platz für Claude-Antworten. Opus 5.5 und Sonnet 5.5 denken bei jedem Aufruf mit, das zählt zum
 Antwort-Limit – darum mindestens 16.000 Tokens; wird eine Antwort trotzdem abgeschnitten, holt der Worker sie einmal mit
 doppeltem Platz neu. Das Seller-System hebt den Platz auch für ältere Worker an. Bezahlt wird nur, was Claude schreibt.

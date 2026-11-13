@@ -1844,7 +1844,35 @@ Gliederung hatte nur 3.000 Tokens Platz, Stories 1.200.
 | „Punkt 3“ scheitert 5-mal (Testnachbau) | ✅ automatisch (`b36-video.spec.ts › Abnahme B36.7`): Status „wartet“, `start_ab` ≈ +10 Min., 1. automatischer Versuch vermerkt, kein „Fehler“-Hinweis, Hinweis „Störung beim Anbieter in „Skript“: Skript – Punkt 3 … (1/3)“; „Jetzt neu versuchen“ holt nur Punkt 3 und die Abschnitte danach |
 | Platz je Claude-Aufruf | ✅ automatisch: alle Video-Aufrufe im Nachbau mit `max_tokens` ≥ 16.000; Unit: Brücke hebt 1.200/3.000 auf 16.000, Worker wiederholt einmal mit 32.000 (`test_claude_abgeschnitten_einmal_mit_mehr_platz`) |
 
-## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
+**Nachtrag 13.11.: Sprechtempo, echtes Zeichnen, Hand, Probeszene** (Rückmeldung zum ersten „Unter der Decke“-Video:
+1.122 Wörter in 704 s ≈ 95 Wörter/Min., Motive wurden aufgewischt statt gezeichnet, keine Hand zu sehen).
+Ursachen: ElevenLabs sprach mit Tempo 1,0, jede Szenen-Datei hatte vorn/hinten Stille (≈ 0,3–0,5 s), dazu 0,35 s Pause
+zwischen den Szenen → bis zu 1,2 s Stille je Szenenwechsel; das „Zeichnen“ war eine wandernde Maske über dem fertigen
+Bild. Die Hand kam vom Bildmodell (ohne Prüfung auf Hintergrund/Spitze) und die Stiftspitze wurde geraten – im Bild lag
+sie daneben oder war weiß auf weiß.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| 1a. Sprechtempo | ❌ 1,0 fest | ✅ Kanalprofil **„Sprechtempo“** 0,7–1,2 (Standard **1,1**), geht als `voice_settings.speed` an ElevenLabs; die Brücke ergänzt die gespeicherten Stimmeinstellungen der Stimme (Stabilität, Ähnlichkeit …), damit sich nur das Tempo ändert, nicht der Klang | `video.ts › sprechtempo`, `schritte.py › sprechtempo`, `anbieter.ts › stimmeEinstellungen`, `logic.ts › stimmeMitTempo` |
+| 1b. Pausen zwischen Szenen | ❌ 0,35 s + Stille in jeder Datei (≈ 1,2 s) | ✅ Stille vorn/hinten anhand der Zeichenzeiten abgeschnitten (bleiben 0,05 s / 0,08 s), Pause 0,15 s → **höchstens 0,3 s** zwischen zwei Szenen | `schritte.py › PAUSE_S, _sprache_holen`, `medien.py › zuschneiden`, `whiteboard.py › sprech_grenzen` |
+| 1c. Wörter/Min. | ❌ – | ✅ nach dem Vertonen berechnet (Skript-Wörter ÷ Dauer), in der Liste je Video (`vd-wpm`, Ziel 145–155) und bei der **Vorschau-Freigabe als Warnung unter 135** („Nur N Wörter/Min … Sprechtempo im Kanalprofil erhöhen und neu vertonen“) | `logic.ts › woerterProMinute, WPM`, `page.tsx › vd-wpm-warnung` |
+| 2a. Motive vektorisieren | ❌ – | ✅ jedes Motiv wird vor dem Render in Striche zerlegt (Mittellinie je Linie: Tinte → Verdünnen → Pfade → vereinfachen → Reihenfolge nach nächstem Anfang; Strichbreite aus der Linienstärke), Ergebnis als SVG + JSON in der Kanal-Bibliothek gespeichert. potrace/vtracer verworfen: beide zeichnen jede Linie als zwei Umrisse (doppelte Hand-Wege) | `udd/strich.py › vektorisieren, svg`, `Bibliothek.striche` |
+| 2b. Bild-Prompt | ❌ „Filzstift, farbig“ | ✅ „**Schwarze Strichzeichnung, klare Konturen, weißer Hintergrund, keine Flächen** …“ (Glühbirne/Logo bleiben farbig); Kanalprofil „Motiv-Stil“: Strichzeichnung (Standard) oder farbig wie bisher | `schritte.py › STRICH_STIL, motiv_strich`, `vd-k-motivstil` |
+| 2c. Strich für Strich, dann Farbe | ❌ Wisch-Maske | ✅ jeder Strich wird als Pfad nachgezogen (Stift zwischen Strichen 3× schneller), danach blendet die Farbe/Füllung in 0,35 s ein | `strich.py › Zeichner`, `whiteboard.py › animation_takt` |
+| 2d. Zeichendauer an der Sprache | ⚠️ fest 1,5–2,5 s | ✅ je Motiv: Zeit bis zum nächsten Element × 0,92, mindestens Tempo-Wert × 0,6 bzw. 1,2 s, höchstens 7 s (innerhalb der Szene) | `whiteboard.py › _zeichendauern` |
+| 3. Hand | ❌ vom Bildmodell, Spitze geraten | ✅ feste Hand im Worker (`grafik/hand.png`, transparenter Hintergrund, Stiftspitze als Ankerpunkt in `hand.json`); die Spitze sitzt in jedem Bild **genau auf dem Endpunkt des aktuellen Strichs**; beim Einblenden der Farbe keine Hand. Gilt auch für Stories | `whiteboard.py › Hand, hand_laden`, `story.py` |
+| 4. Probeszene (20 s) | ❌ – | ✅ an fertigen Whiteboard-Videos Bereich **„Probeszene (20 s)“**: Szene wählen → Worker vertont mit dem aktuellen Sprechtempo und zeichnet neu ab dieser Szene, bis ca. 20 s erreicht sind, lädt `probe.mp4` hoch; das Video selbst bleibt unverändert (Status/Freigaben werden wiederhergestellt). Anzeige mit Wörter/Min., Tempo, Zahl der Striche | `service.ts › probeAnfordern, schrittMelden`, `schritte.py › probe`, `page.tsx › vd-probe` |
+| 5. Danach ganzes Video neu | ❌ – | ✅ Knopf **„Neu vertonen & zeichnen“**: Skript und Motive bleiben (keine neuen Claude-/Bildkosten), nur Sprache (Probeszenen werden wiederverwendet) und Render neu, danach wieder Vorschau-Freigabe | `service.ts › neuVertonen` |
+| Worker | 1.2.1 | **1.3.0** (neu: `numpy`, Ordner `grafik/`); Probeszene erst ab 1.3.0, sonst Hinweis „Worker veraltet“ | `udd/__init__.py`, `WORKER_AB_PROBE` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Sprechtempo und Pausen | ✅ automatisch (`test_sprache_mit_tempo_stille_gekuerzt_und_woerter_pro_minute`, e2e Whiteboard): ElevenLabs bekommt `speed` 1,1 und die gespeicherte Stabilität 0,42; Stille vor/nach jeder Szene abgeschnitten, Lücke zwischen Szenen ≤ 0,3 s; Testvideo **WPM_E2E Wörter/Min.** |
+| Warnung unter 135 Wörter/Min. | ✅ automatisch (e2e Probeszene): Video mit 95 Wörtern/Min. in der Vorschau-Freigabe → Warnung „Nur 95 Wörter/Min (Ziel 145–155)“ |
+| Echte Striche statt Wisch-Maske | ✅ automatisch (`test_vektorisieren_mittellinie_je_linie_ein_pfad`, `test_zeichner_strich_fuer_strich_dann_farbe_hand_am_endpunkt`): Rechteck + Linie → 2 Pfade (nicht 4 Umrisse); halbe Länge = halber Strich, Farbe erst danach; alle Bild-Prompts außer Glühbirne beginnen mit „Schwarze Strichzeichnung“, kein „Filzstift“ mehr |
+| Hand folgt dem Strich | ✅ automatisch (`test_hand_png_transparent_mit_stiftspitze_als_anker`, `test_animation_hand_folgt_dem_strich`): Hand-PNG mit transparentem Rand, Spitze = dunkler Stiftpunkt; im Bild liegt die Spitze auf dem Strich-Endpunkt; im fertigen MP4 ist die Hand in den ersten Szenen sichtbar (Hautfarbe in HAND_E2E Einzelbildern) |
+| Probeszene 20 s | ✅ automatisch (e2e „Nachtrag 13.11. Probeszene“): Tempo 1,15 im Kanalprofil, Probe ab Szene 3 → `probe.mp4` 1920×1080, ≤ 20,3 s, Hand sichtbar, Status des Videos unverändert, keine neuen Bilder; „Neu vertonen & zeichnen“ vertont nur die übrigen Szenen nach und ergibt ≥ 135 Wörter/Min. |
+| Vorschau vor dem Neu-Rendern | ⚠️ lokal mit 3 Testszenen und Ersatzstimme gebaut (20 s, an Ludwig geschickt). Die echte Szene aus „Vakuumpumpe“ geht nur auf dem Worker (Motive und Stimme liegen dort) – siehe To-dos | und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
 Leistungen stehen **nicht im Code**: sie kommen nur aus dem Kanalprofil-Feld „Bestätigte Fakten“ (pflegst du).
@@ -2961,3 +2989,13 @@ nie in Chats oder Mails.
      Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
 186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
      der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.
+187. **Worker auf v1.3.0 aktualisieren** (Nachtrag 13.11.: Sprechtempo, echtes Zeichnen, Hand): wie bei 180 – Ordner
+     `unter-der-decke` neu holen (enthält jetzt den Unterordner `grafik/` mit der Hand und braucht `numpy`), in
+     PowerShell im Ordner `C:\video\unter-der-decke`: `docker stop video-worker; docker rm video-worker; docker build -t
+     video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.3.0`.
+188. **Kanalprofil „Unter der Decke“**: Sprechtempo **1,1** (Standard) und Motiv-Stil „Strichzeichnung“ prüfen, speichern.
+189. **Probeszene am Video „Vakuumpumpe“**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen →
+     „Probeszene erzeugen“. Nach 1–3 Min. erscheint das 20-s-Video mit Wörter/Min. Ansehen: Tempo, Striche, Hand.
+     Passt es nicht, Sprechtempo im Kanalprofil ändern (z. B. 1,15) und noch einmal. Passt es: **„Neu vertonen &
+     zeichnen“** – Skript und Motive bleiben, nur Sprache und Render kosten. Bei schon vorhandenen bunten Motiven
+     werden die Konturen aus diesen Bildern gezogen; neue Motive kommen als Strichzeichnung.

@@ -11,11 +11,12 @@ import io
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+from . import strich
 from .projekt import schreiben_atomar
 
 B, H = 1920, 1080
@@ -94,6 +95,23 @@ class Bibliothek:
             (self.ordner / e["datei"]).unlink(missing_ok=True)
             self._speichern()
 
+    def striche(self, key: str) -> dict | None:
+        """Pfade zum Nachzeichnen (strich.vektorisieren), einmal je Motiv berechnet und neben dem PNG gespeichert
+        (<key>.striche.json, zum Ansehen <key>.svg). Neu, wenn sich das Motiv (Hash) oder der Algorithmus ändert."""
+        if not self.hat(key):
+            return None
+        merk = self.merkmal(key)
+        pfad = self.ordner / f"{key}.striche.json"
+        if pfad.exists():
+            d = strich.laden(pfad.read_text(encoding="utf-8"))
+            if d and d.get("hash") == merk:
+                return d
+        d = strich.vektorisieren(self.bild(key))
+        d["hash"] = merk
+        schreiben_atomar(pfad, json.dumps(d, separators=(",", ":")).encode("utf-8"))
+        schreiben_atomar(self.ordner / f"{key}.svg", strich.svg(d).encode("utf-8"))
+        return d
+
     def liste(self) -> list[dict[str, str]]:
         """Für den Skript-Prompt: wiederverwendbare Motive (ohne interne wie die Hand)."""
         return [{"key": k, "beschreibung": v.get("beschreibung", "")} for k, v in sorted(self.index.items()) if not k.startswith("_") and (self.ordner / v["datei"]).exists()]
@@ -157,6 +175,35 @@ def hand_vorbereiten(img: Image.Image, hoehe: int = 380) -> Image.Image:
     return img.resize((max(1, round(img.width * f)), hoehe), Image.LANCZOS)
 
 
+GRAFIK = Path(__file__).resolve().parent.parent / "grafik"
+
+
+@dataclass
+class Hand:
+    """Hand mit Stift; spitze = Pixel der Stiftspitze im Bild (Ankerpunkt: liegt immer genau auf dem Strich-Endpunkt)."""
+
+    bild: Image.Image
+    spitze: tuple[float, float]
+
+    def setzen(self, rahmen: Image.Image, x: float, y: float) -> None:
+        _einsetzen(rahmen, self.bild, round(x - self.spitze[0]), round(y - self.spitze[1]))
+
+
+def hand_laden(hoehe: int = 380) -> Hand:
+    """Feste Hand aus grafik/hand.png (transparenter Hintergrund) mit der Stiftspitze aus grafik/hand.json. Fehlt die
+    Datei, die gezeichnete Ersatz-Hand (Spitze bei 10/10)."""
+    try:
+        img = Image.open(GRAFIK / "hand.png").convert("RGBA")
+        sx, sy = (float(v) for v in json.loads((GRAFIK / "hand.json").read_text(encoding="utf-8"))["spitze"])
+    except (OSError, ValueError, KeyError, TypeError):
+        img, sx, sy = hand_gezeichnet(), 10.0, 10.0
+    box = img.getchannel("A").getbbox() or (0, 0, img.width, img.height)
+    img = img.crop(box)
+    sx, sy = sx - box[0], sy - box[1]
+    f = hoehe / max(1, img.height)
+    return Hand(img.resize((max(1, round(img.width * f)), hoehe), Image.LANCZOS), (sx * f, sy * f))
+
+
 # ---- Layout ----------------------------------------------------------------------------------------------------------
 
 
@@ -165,6 +212,7 @@ class Element:
     art: str  # text | motiv | punkt
     ebene: Image.Image  # RGBA, nur der Bereich des Elements
     pos: tuple[int, int]
+    striche: dict | None = field(default=None, repr=False)  # Motiv: Pfade zum Nachzeichnen (strich.vektorisieren)
 
     @property
     def box(self) -> tuple[int, int, int, int]:
@@ -269,9 +317,9 @@ def slots(layout: str, n: int, bereich: tuple[int, int, int, int]) -> list[tuple
     return [links, rechts] + mitte
 
 
-def elemente(szene: dict, motive: list[Image.Image]) -> list[Element]:
+def elemente(szene: dict, motive: list[Image.Image], striche: list[dict | None] | None = None) -> list[Element]:
     """Alle Elemente einer Szene in Aufdeck-Reihenfolge: Kopf (Überschrift, roter Balken) → Motive → Liste → Fuß
-    (Kernaussage rot, Schritt im Kasten)."""
+    (Kernaussage rot, Schritt im Kasten). striche: je Motiv die Pfade zum Nachzeichnen (sonst Aufdecken von links)."""
     els: list[Element] = []
     y = 34
     if (szene.get("ueberschrift") or "").strip():
@@ -304,8 +352,10 @@ def elemente(szene: dict, motive: list[Image.Image]) -> list[Element]:
     bereich = (RAND, y + 6, B - RAND, unten - 6)
     lay = layout_wahl(szene.get("layout"), len(motive))
     boxen = slots(lay, len(motive), bereich)
-    for m, box in zip(motive, boxen):
-        els.append(_einpassen(m, box))
+    for i, (m, box) in enumerate(zip(motive, boxen)):
+        e = _einpassen(m, box)
+        e.striche = striche[i] if striche and i < len(striche) else None
+        els.append(e)
     liste = [x.strip() for x in (szene.get("liste") or []) if str(x).strip()][:4]
     if lay == "figur-liste" and liste:
         x0 = bereich[0] + round((bereich[2] - bereich[0]) * 0.45)
@@ -398,6 +448,10 @@ PUNKT_S = 0.6
 HERVOR_S = 0.6
 HERVOR_MAX = 6  # Hervorhebungen je Szene
 FORMEN = ("unterstreichen", "kreis", "pfeil")
+# Echtes Zeichnen: Zeichendauer je Motiv an die Sprache gekoppelt – bis kurz vor dem nächsten Element bzw. dem Sprechende
+ZEICHNEN_ANTEIL = 0.92
+ZEICHNEN_MIN = 1.2
+ZEICHNEN_MAX = 7.0
 
 
 def draw_s(tempo: str | None) -> float:
@@ -436,6 +490,23 @@ def wortzeiten(text: str, alignment: dict | None) -> list[tuple[str, float]]:
     return [(w, t) for w, t in out if w]
 
 
+def sprech_grenzen(alignment: dict | None) -> tuple[float, float] | None:
+    """Anfang des ersten und Ende des letzten gesprochenen Zeichens (ElevenLabs-Ausrichtung) – zum Kürzen der Stille."""
+    if not alignment:
+        return None
+    zeichen = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    enden = alignment.get("character_end_times_seconds") or []
+    if not zeichen or len(zeichen) != len(starts):
+        return None
+    idx = [i for i, c in enumerate(zeichen) if not str(c).isspace()]
+    if not idx:
+        return None
+    a, b = idx[0], idx[-1]
+    ende = float(enden[b]) if len(enden) == len(zeichen) else float(starts[b]) + 0.12
+    return float(starts[a]), max(float(starts[a]) + 0.1, ende)
+
+
 @dataclass
 class Ereignis:
     start: float
@@ -447,6 +518,20 @@ class Ereignis:
 
 def _dauer(art: str, ds: float) -> float:
     return {"text": POP_S, "punkt": PUNKT_S, "motiv": ds}.get(art, HERVOR_S)
+
+
+def _zeichendauern(ereignisse: list[Ereignis], ende: float, dauer: float, ds: float) -> None:
+    """Zeichendauer je Motiv an die Sprechdauer koppeln: das Motiv wird gezeichnet, solange darüber gesprochen wird –
+    bis kurz vor dem nächsten Element (bzw. dem Sprechende der Szene). Mindestens das Tempo des Kanals (ds·0,6, nie unter
+    ZEICHNEN_MIN), höchstens ZEICHNEN_MAX; immer innerhalb der Szene."""
+    haupt = sorted((e for e in ereignisse if e.art != "hervorhebung"), key=lambda e: e.start)
+    unten = max(ZEICHNEN_MIN, ds * 0.6)
+    for k, e in enumerate(haupt):
+        if e.art != "motiv":
+            continue
+        naechster = next((x.start for x in haupt[k + 1 :] if x.start > e.start + 0.05), ende)
+        d = min(ZEICHNEN_MAX, max(unten, (naechster - e.start) * ZEICHNEN_ANTEIL))
+        e.dauer = round(max(0.5, min(d, dauer - e.start - 0.05)), 3)
 
 
 def takt_plan(arten: list[str], woerter: list[str | None], dauer: float, ds: float, zeiten: list[tuple[str, float]]) -> tuple[list[Ereignis], dict]:
@@ -493,6 +578,7 @@ def takt_plan(arten: list[str], woerter: list[str | None], dauer: float, ds: flo
         lo = WISCH_S if k == 0 else starts[k - 1] + 0.5
         starts[k] = min(max(starts[k], lo), max(lo, ende - 0.3))
     ereignisse = [Ereignis(round(s, 3), a, k, _dauer(a, ds)) for k, (s, a) in enumerate(zip(starts, arten))]
+    _zeichendauern(ereignisse, ende, dauer, ds)
     # Lücken füllen: Stillstand = Zeit, in der nichts gezeichnet wird (nach dem Wisch, zwischen Ende und nächstem Start).
     # Hervorhebung bereits gezeichneter Elemente (Texte unterstreichen, Motive einkreisen/Pfeil); steht noch nichts im Bild
     # (Szenenanfang), kommt das nächste Element früher – lieber etwas vor seinem Wort als Stillstand.
@@ -508,6 +594,7 @@ def takt_plan(arten: list[str], woerter: list[str | None], dauer: float, ds: flo
                 break
             erstes = min(folgende, key=lambda e: e.start)
             erstes.start = round(a + min(1.0, groesse / 2), 3)
+            _zeichendauern(ereignisse, ende, dauer, ds)
             continue
         if hervor >= HERVOR_MAX:
             break
@@ -518,7 +605,8 @@ def takt_plan(arten: list[str], woerter: list[str | None], dauer: float, ds: flo
         hervor += 1
     ereignisse.sort(key=lambda e: e.start)
     max_pause = max((g for g, _a, _b in stillstand(ereignisse, dauer)), default=0.0)
-    kenn = {"ereignisse": len(ereignisse), "maxPause": round(max_pause, 2), "mittel": round(dauer / max(1, len(ereignisse)), 2), "hervorhebungen": hervor, "drawS": ds}
+    motive = [e.dauer for e in ereignisse if e.art == "motiv"]
+    kenn = {"ereignisse": len(ereignisse), "maxPause": round(max_pause, 2), "mittel": round(dauer / max(1, len(ereignisse)), 2), "hervorhebungen": hervor, "drawS": ds, "zeichnenS": round(sum(motive) / len(motive), 2) if motive else 0}
     return ereignisse, kenn
 
 
@@ -583,12 +671,17 @@ def _zeichnen(bild: Image.Image, e: Element, p: float) -> tuple[int, int]:
     return e.pos[0] + breite, round(e.pos[1] + e.ebene.height * 0.5)
 
 
-def animation_takt(grund: Image.Image, els: list[Element], ereignisse: list[Ereignis], dauer: float, fps: int, hand: Image.Image | None, ordner: Path, vorher: Image.Image | None = None) -> tuple[list[tuple[str, float]], Image.Image]:
-    """B36.10: Szene nach Zeitplan – Wisch vom vorigen Szenenbild (0,3 s), Motive in draw_s „aufgezeichnet“ (Hand folgt),
-    Texte mit Pop, Hervorhebungen (unterstreichen, einkreisen, Pfeil). Mehrere Ereignisse dürfen sich überlappen.
-    Nur bewegte Bilder werden einzeln gespeichert, Standbilder bekommen eine Dauer (ffmpeg concat); den sanften Zoom
-    legt ffmpeg beim Clip darüber. Liefert (Bild, Dauer)-Liste und das fertige Szenenbild (mit Hervorhebungen)."""
+def animation_takt(grund: Image.Image, els: list[Element], ereignisse: list[Ereignis], dauer: float, fps: int, hand: Hand | Image.Image | None, ordner: Path, vorher: Image.Image | None = None) -> tuple[list[tuple[str, float]], Image.Image]:
+    """B36.10: Szene nach Zeitplan – Wisch vom vorigen Szenenbild (0,3 s), Motive Strich für Strich gezeichnet (Pfade aus
+    strich.vektorisieren, danach Farbe kurz eingeblendet; ohne Pfade von links aufgedeckt), Texte mit Pop, Hervorhebungen
+    (unterstreichen, einkreisen, Pfeil). Die Hand sitzt mit der Stiftspitze genau auf dem aktuellen Strich-Endpunkt.
+    Mehrere Ereignisse dürfen sich überlappen. Nur bewegte Bilder werden einzeln gespeichert, Standbilder bekommen eine
+    Dauer (ffmpeg concat); den sanften Zoom legt ffmpeg beim Clip darüber. Liefert (Bild, Dauer)-Liste und das fertige
+    Szenenbild (mit Hervorhebungen)."""
     ordner.mkdir(parents=True, exist_ok=True)
+    if isinstance(hand, Image.Image):  # alte Aufrufer: Spitze bei 4 %/4 %
+        hand = Hand(hand, (hand.width * 0.04, hand.height * 0.04))
+    zeichner: dict[int, strich.Zeichner] = {}
     schritt = 1 / max(1, fps)
     # Zeitpunkte mit Bewegung: Wisch + jedes Ereignis über seine Dauer
     aktiv: list[tuple[float, float]] = [(0.0, WISCH_S)] if vorher is not None else []
@@ -622,6 +715,14 @@ def animation_takt(grund: Image.Image, els: list[Element], ereignisse: list[Erei
             elif e.art == "text" and p < 1:
                 img, xy = _pop(el, p)
                 _einsetzen(rahmen, img, *xy)
+            elif p < 1 and e.art == "motiv" and el.striche and el.striche.get("striche"):
+                z = zeichner.get(id(e))
+                if z is None:
+                    z = zeichner[id(e)] = strich.Zeichner(el.ebene, el.striche, farbe_anteil=min(0.4, strich.FARBE_S / max(0.5, e.dauer)))
+                ebene, sp = z.zustand(p)
+                rahmen.alpha_composite(ebene, el.pos)
+                if sp is not None:
+                    spitze = (el.pos[0] + sp[0], el.pos[1] + sp[1])
             elif p < 1:
                 spitze = _zeichnen(rahmen, el, p)
             else:
@@ -633,7 +734,7 @@ def animation_takt(grund: Image.Image, els: list[Element], ereignisse: list[Erei
             if kante < bw:
                 rahmen.paste(vorher_rgba.crop((kante, 0, bw, bh)), (kante, 0))
         if hand is not None and spitze is not None:
-            _einsetzen(rahmen, hand, round(spitze[0] - hand.width * 0.04), round(spitze[1] - hand.height * 0.04))
+            hand.setzen(rahmen, *spitze)
         d = (zeitpunkte[k + 1] if k + 1 < len(zeitpunkte) else dauer) - t
         name = f"{len(liste):05d}.jpg"
         rahmen.convert("RGB").save(ordner / name, quality=88)

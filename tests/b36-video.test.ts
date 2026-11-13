@@ -118,12 +118,13 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.2.1");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.3.0");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
     expect(workerVeraltet("1.2.0")).toBe(true); // 1.2.1: mehr Platz für Claude
-    expect(workerVeraltet("1.2.1")).toBe(false);
+    expect(workerVeraltet("1.2.1")).toBe(true); // 1.3.0: echtes Zeichnen, Probeszene
+    expect(workerVeraltet("1.3.0")).toBe(false);
     expect(workerVeraltet("2.0")).toBe(false);
     // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
     expect(workerVeraltet("1.2.0", WORKER_AB_TAKT)).toBe(false);
@@ -230,5 +231,42 @@ describe("Brücke: Platz für Claude-Antworten", () => {
     expect(claudeMitPlatz({ max_tokens: 16000 })).toBeNull();
     expect(claudeMitPlatz({ max_tokens: 32000 })).toBeNull();
     expect(claudeMitPlatz({ messages: [] })).toBeNull();
+  });
+});
+
+describe("Sprechtempo, Wörter/Min, Probeszene (13.11.)", () => {
+  it("Sprechtempo 0,7–1,2, Standard 1,1; Komma oder Punkt", async () => {
+    const { sprechtempoAus, SPRECHTEMPO } = await import("@/lib/video/logic");
+    expect(SPRECHTEMPO.standard).toBe(1.1);
+    expect([sprechtempoAus("1,15"), sprechtempoAus(1.5), sprechtempoAus("0.5"), sprechtempoAus(""), sprechtempoAus(null)]).toEqual([1.15, 1.2, 0.7, 1.1, 1.1]);
+  });
+  it("Wörter/Min aus Skript und Dauer: erstes Video 1.122 Wörter in 704 s ≈ 96 → Warnung unter 135", async () => {
+    const { woerterProMinute, WPM } = await import("@/lib/video/logic");
+    const skript = Array.from({ length: 11 }, (_, i) => ({ text: Array.from({ length: i === 0 ? 122 : 100 }, () => "wort").join(" ") }));
+    const wpm = woerterProMinute(skript, 704)!;
+    expect(wpm).toBe(96);
+    expect(wpm < WPM.warnung).toBe(true);
+    expect(woerterProMinute(skript, 450)).toBe(150);
+    expect(woerterProMinute([], 100)).toBeNull();
+    expect(woerterProMinute(skript, 0)).toBeNull();
+  });
+  it("Brücke: voice_settings mit den gespeicherten Einstellungen der Stimme ergänzen, speed begrenzt", async () => {
+    const { stimmeMitTempo } = await import("@/lib/video/logic");
+    const gespeichert = { stability: 0.42, similarity_boost: 0.8, style: 0.1, use_speaker_boost: true, speed: 1, fremd: "x" };
+    expect(stimmeMitTempo({ text: "Hallo", voice_settings: { speed: 1.1 } }, gespeichert)).toEqual({ text: "Hallo", voice_settings: { stability: 0.42, similarity_boost: 0.8, style: 0.1, use_speaker_boost: true, speed: 1.1 } });
+    expect(stimmeMitTempo({ text: "Hallo", voice_settings: { speed: 2 } }, null)).toEqual({ text: "Hallo", voice_settings: { speed: 1.2 } });
+    expect(stimmeMitTempo({ text: "Hallo" }, gespeichert)).toBeNull();
+  });
+  it("Probeszene: nur Whiteboard mit Motiven, sobald kein Schritt läuft; ca. 20 s ab der gewählten Szene", async () => {
+    const { probeMoeglich, probeSzenen, WORKER_AB_PROBE, workerVeraltet } = await import("@/lib/video/logic");
+    const skript = Array.from({ length: 10 }, (_, i) => ({ text: Array.from({ length: 20 }, () => "wort").join(" "), motive: i === 0 ? [] : [{ key: "m" }] }));
+    expect(probeMoeglich({ art: "video", status: "fertig", skript }, "whiteboard")).toBe(true);
+    expect(probeMoeglich({ art: "video", status: "laeuft", skript }, "whiteboard")).toBe(false);
+    expect(probeMoeglich({ art: "video", status: "fertig", skript }, "vollbild")).toBe(false);
+    expect(probeMoeglich({ art: "video", status: "fertig", skript: [{ text: "x", motive: [] }] }, "whiteboard")).toBe(false);
+    expect(probeSzenen(skript, 3)).toEqual([3, 4, 5]); // 3 × (8 s + 0,3 s) ≥ 19 s
+    expect(probeSzenen(skript, 10)).toEqual([10]);
+    expect(probeSzenen(Array.from({ length: 9 }, () => ({ text: "kurz" })), 1)).toHaveLength(5); // höchstens 5 Szenen
+    expect(workerVeraltet("1.2.1", WORKER_AB_PROBE)).toBe(true);
   });
 });

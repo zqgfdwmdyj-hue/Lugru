@@ -298,25 +298,33 @@ def test_wortzeiten_aus_elevenlabs_ausrichtung():
     assert wb.wortzeiten(text, None) == [] and wb.wortzeiten(text, {"characters": ["a"], "character_start_times_seconds": []}) == []
 
 
-def test_takt_plan_motive_beim_schluesselwort_und_kurze_zeichenzeit():
+def test_takt_plan_motive_beim_schluesselwort_zeichnen_solange_gesprochen_wird():
     text = "Erst kommt die Sanduhr, dann nach einer Weile der Wecker und zum Schluss das Glas."
     zeiten = wb.wortzeiten(text, _ausrichtung(text, 0.1))  # ~8,4 s Sprache
     arten = ["text", "motiv", "motiv", "motiv"]
     plan, k = wb.takt_plan(arten, [None, "Sanduhr", "Wecker", "Glas"], 9.0, wb.draw_s("normal"), zeiten)
     motive = [e for e in plan if e.art == "motiv"]
-    assert [round(e.start, 1) for e in motive] == [round(text.index(w) * 0.1, 1) for w in ("Sanduhr", "Wecker", "Glas")]
-    assert all(e.dauer == 2.0 for e in motive)  # Tempo „normal“: 2,0 s je Motiv, nicht auf die Szene gedehnt
+    starts = [round(text.index(w) * 0.1, 1) for w in ("Sanduhr", "Wecker", "Glas")]
+    assert [round(e.start, 1) for e in motive] == starts
+    # Echtes Zeichnen: jedes Motiv wird gezeichnet, bis das nächste kommt (bzw. bis kurz vor Szenenende) – an die Sprache gekoppelt
+    bis = starts[1:] + [9.0 - 0.25]
+    erwartet = [round(min(wb.ZEICHNEN_MAX, max(wb.ZEICHNEN_MIN, (b - a) * wb.ZEICHNEN_ANTEIL)), 2) for a, b in zip(starts, bis)]
+    assert [round(e.dauer, 2) for e in motive] == pytest.approx(erwartet, abs=0.06)
+    assert motive[1].dauer > 2.0 and k["zeichnenS"] == pytest.approx(sum(e.dauer for e in motive) / 3, abs=0.01)
     assert plan[0].art == "text" and plan[0].start == wb.WISCH_S  # Überschrift gleich zu Beginn
     assert k["maxPause"] <= wb.MAX_PAUSE and k["drawS"] == 2.0
     assert wb.draw_s("ruhig") == 2.5 and wb.draw_s("schnell") == 1.5 and wb.draw_s(None) == 2.0
 
 
 def test_takt_plan_fuellt_luecken_mit_hervorhebungen_und_verteilt_ohne_wortzeiten():
-    # 12 s Szene, nur zwei Motive ohne Wortzeiten → gleichmäßig verteilt, Lücken > 2,6 s mit Hervorhebungen gefüllt
+    # 12 s Szene, zwei Motive ohne Wortzeiten → gleichmäßig verteilt, je Motiv gezeichnet bis zum nächsten: kaum Stillstand
     plan, k = wb.takt_plan(["motiv", "motiv"], [None, None], 12.0, 1.5, [])
+    assert k["maxPause"] <= 1.0 and all(e.dauer > 5 for e in plan if e.art == "motiv")
+    # nur Texte (kurzer Pop): Lücken > 2,6 s werden mit Hervorhebungen gefüllt
+    plan, k = wb.takt_plan(["text", "text"], [None, None], 12.0, 1.5, [])
     assert k["hervorhebungen"] >= 2 and k["maxPause"] <= wb.MAX_PAUSE
     hervor = [e for e in plan if e.art == "hervorhebung"]
-    assert {e.form for e in hervor} <= {"kreis", "pfeil"} and all(e.index in (0, 1) for e in hervor)
+    assert {e.form for e in hervor} <= {"unterstreichen"} and all(e.index in (0, 1) for e in hervor)
     starts = [e.start for e in plan]
     assert starts == sorted(starts)
     # Zu leere Szene (nur ein Text, sehr lang) → Pause bleibt über 3 s und wird gemeldet
@@ -823,3 +831,191 @@ def test_claude_abgeschnitten_einmal_mit_mehr_platz(monkeypatch):
     with pytest.raises(RuntimeError, match=r"Recherche – Gliederung: Antwort von Claude abgeschnitten \(max_tokens 32000\)"):
         ki.fragen(None, "claude-opus-5-5", "x", was="Recherche – Gliederung", log=None)  # type: ignore[arg-type]
     assert gesehen == [16000, 32000]
+
+
+# ---- Echtes Zeichnen, Hand mit Ankerpunkt, Sprechtempo, Probeszene (13.11.) ----------------------------------------
+
+def test_vektorisieren_mittellinie_je_linie_ein_pfad():
+    """Konturen → Mittellinien-Pfade: jede Linie genau einmal (potrace/vtracer lieferten zwei Umrisse je Linie)."""
+    from PIL import ImageDraw
+
+    from udd import strich
+
+    img = Image.new("RGBA", (420, 320), (255, 255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.line((60, 250, 360, 250), fill=(20, 20, 20, 255), width=12)
+    d.ellipse((130, 30, 290, 150), outline=(20, 20, 20, 255), width=10)
+    daten = strich.vektorisieren(img)
+    assert not daten["umriss"] and 1 <= len(daten["striche"]) <= 6
+    laengen = [strich._laenge(s["p"]) for s in daten["striche"]]
+    erwartet = 300 + 2 * 3.1416 * ((80**2 + 60**2) / 2) ** 0.5  # Linie + Ellipsenumfang
+    assert 0.8 * erwartet < sum(laengen) < 1.2 * erwartet  # nicht doppelt
+    gerade = max(daten["striche"], key=lambda s: abs(s["p"][-1][0] - s["p"][0][0]))
+    assert abs(gerade["p"][0][1] - 250) < 4 and abs(abs(gerade["p"][-1][0] - gerade["p"][0][0]) - 300) < 20
+    assert all(10 <= s["b"] <= 32 for s in daten["striche"])  # Pinsel deckt die Linienbreite
+    # Motiv ohne Konturen: Umriss wird gezeichnet
+    flaeche = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    ImageDraw.Draw(flaeche).rectangle((40, 40, 160, 160), fill=(240, 160, 30, 255))
+    u = strich.vektorisieren(flaeche)
+    assert u["umriss"] and sum(strich._laenge(s["p"]) for s in u["striche"]) > 380
+    assert "<polyline" in strich.svg(daten) and strich.laden(json.dumps(daten)) == daten
+
+
+def test_zeichner_strich_fuer_strich_dann_farbe_hand_am_endpunkt():
+    from PIL import ImageDraw
+
+    from udd import strich
+
+    img = Image.new("RGBA", (300, 240), (0, 0, 0, 0))
+    ImageDraw.Draw(img).rounded_rectangle((20, 20, 280, 220), 20, fill=(240, 140, 20, 255), outline=(20, 20, 20, 255), width=10)
+    z = strich.Zeichner(img, strich.vektorisieren(img), farbe_anteil=0.2)
+
+    def orange(e, deckend=200):
+        return sum(1 for p in e.getdata() if p[3] > deckend and p[0] > 200 and 100 < p[1] < 180 and p[2] < 60)
+
+    def sichtbar(e):
+        return sum(1 for p in e.getdata() if p[3] > 128)
+
+    e1, s1 = z.zustand(0.15)
+    e2, s2 = z.zustand(0.5)
+    e3, s3 = z.zustand(0.9)
+    e4, s4 = z.zustand(1.0)
+    assert s1 and s2 and s3 is None and s4 is None  # Hand nur, solange Striche gezeichnet werden
+    assert 0 < sichtbar(e1) < sichtbar(e2) and orange(e1) == 0 and orange(e2) == 0  # erst nur Konturen, keine Fläche
+    assert orange(e3) == 0 < orange(e3, 60) and orange(e4) > 0  # Farbe wird danach eingeblendet (bei 90 % halb)
+    assert list(e4.getdata()) == list(img.getdata())  # am Ende genau das Motiv
+    # Stiftspitze liegt auf einer schon gezeichneten Kontur
+    x, y = round(s2[0]), round(s2[1])
+    nah = [e2.getpixel((min(299, max(0, x + dx)), min(239, max(0, y + dy))))[3] for dx in range(-6, 7) for dy in range(-6, 7)]
+    assert max(nah) > 200
+
+
+def test_hand_png_transparent_mit_stiftspitze_als_anker():
+    h = wb.hand_laden(380)
+    assert h.bild.height == 380 and h.bild.getchannel("A").getextrema()[0] == 0  # transparenter Hintergrund
+    sx, sy = h.spitze
+    assert sx < h.bild.width * 0.1 and sy < h.bild.height * 0.1  # Spitze oben links
+    rahmen = Image.new("RGBA", (900, 700), (255, 255, 255, 255))
+    h.setzen(rahmen, 400, 300)
+    dunkel = [rahmen.getpixel((400 + dx, 300 + dy)) for dx in range(-4, 5) for dy in range(-4, 5)]
+    assert min(sum(p[:3]) for p in dunkel) < 200  # genau am Ankerpunkt sitzt die schwarze Stiftspitze
+    assert rahmen.convert("RGB").getbbox() is not None
+    box = Image.eval(rahmen.convert("L"), lambda v: 255 if v < 250 else 0).getbbox()
+    assert abs(box[0] - 400) < 12 and abs(box[1] - 300) < 12  # Hand liegt rechts unterhalb der Spitze
+
+
+def test_animation_hand_folgt_dem_strich(tmp_path, monkeypatch):
+    from PIL import ImageDraw
+
+    from udd import strich
+
+    motiv = Image.new("RGBA", (400, 300), (0, 0, 0, 0))
+    ImageDraw.Draw(motiv).line((30, 150, 370, 150), fill=(20, 20, 20, 255), width=14)
+    s = {"motive": [{"key": "m", "wort": None}], "layout": "figur-liste"}
+    els = wb.elemente(s, [motiv], [strich.vektorisieren(motiv)])
+    plan, _k = wb.takt_plan([e.art for e in els], [None], 4.0, 1.5, [])
+    punkte = []
+    monkeypatch.setattr(wb.Hand, "setzen", lambda self, r, x, y: punkte.append((x, y)))
+    wb.animation_takt(wb.hintergrund(None), els, plan, 4.0, 10, wb.hand_laden(), tmp_path)
+    el = els[0]
+    assert len(punkte) >= 5
+    # jede Handposition liegt auf der Linie (y = Mitte des Strichs), x wandert von links nach rechts
+    f = el.ebene.width / 400
+    assert all(abs(y - (el.pos[1] + 150 * f)) < 4 for _x, y in punkte)
+    assert [x for x, _y in punkte] == sorted(x for x, _y in punkte)
+
+
+class _Antwort:
+    def __init__(self, daten: dict, status: int = 200):
+        self.status_code, self._d = status, daten
+
+    def json(self):
+        return self._d
+
+
+def _tts_antwort(text: str, tmp: Path, vorn: float = 0.4, sprechen: float = 2.0, hinten: float = 0.6) -> dict:
+    import base64
+
+    mp3 = tmp / f"tts-{abs(hash(text))}.mp3"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", f"{vorn + sprechen + hinten:.2f}", "-c:a", "libmp3lame", "-b:a", "64k", str(mp3)], check=True)
+    zeichen = list(text)
+    je = sprechen / len(zeichen)
+    ausr = {"characters": zeichen, "character_start_times_seconds": [vorn + i * je for i in range(len(zeichen))], "character_end_times_seconds": [vorn + (i + 1) * je for i in range(len(zeichen))]}
+    return {"audio_base64": base64.b64encode(mp3.read_bytes()).decode(), "alignment": ausr}
+
+
+class _TtsSeller:
+    def __init__(self, tmp: Path):
+        self.tmp, self.koerper, self.hochgeladen, self.meldungen = tmp, [], {}, []
+
+    def anbieter(self, _id, anbieter, pfad, koerper, **_kw):
+        assert anbieter == "elevenlabs" and pfad.endswith("/with-timestamps?output_format=mp3_44100_128")
+        self.koerper.append(koerper)
+        return _Antwort(_tts_antwort(koerper["text"], self.tmp))
+
+    def datei_hochladen(self, _id, art, pfad):
+        self.hochgeladen[art] = Path(pfad)
+
+    def schritt(self, *_a, **_kw):
+        self.meldungen.append(_kw.get("fortschritt"))
+        return {"weiter": True}
+
+
+def _tts_lauf(tmp: Path, kanal: dict | None = None, skript: list | None = None, probe: dict | None = None):
+    from udd import whiteboard as wbm
+    from udd.konfig import Konfig
+
+    l = Lauf.__new__(Lauf)
+    l.id = "probe-1"
+    l.k = Konfig("http://example.invalid", "vw_x", tmp, tmp, 1, 1, 1, 5, "", 1, "ffmpeg", shutil.which("ffprobe") or "ffprobe")
+    l.kanal = {"name": "Testkanal", "slug": "testkanal", "stimmeId": "TESTSTIMME01", "stil": "whiteboard", "tempo": "normal", **(kanal or {})}
+    l.whiteboard = True
+    l.streng = False
+    l.p = Projekt(tmp, "testkanal", l.id)
+    l._bib = wbm.Bibliothek(tmp / "testkanal" / "motive")
+    l.daten = {"skript": skript or []}
+    l.a = {"id": l.id, "probe": probe}
+    l.seller = _TtsSeller(tmp)
+    return l
+
+
+def test_sprache_mit_tempo_stille_gekuerzt_und_woerter_pro_minute(tmp_path):
+    from udd import schritte as sch
+
+    l = _tts_lauf(tmp_path)
+    text = "Eine Vakuumpumpe saugt die Luft aus dem Beutel."
+    k = sch._sprache_holen(l, 0, text)
+    assert l.seller.koerper[-1]["voice_settings"] == {"speed": 1.1}  # Standard-Sprechtempo
+    e = l.p.state["voice"][k]
+    # 0,4 s Stille vorn und 0,6 s hinten → auf 0,05 / 0,08 s gekürzt: 2,0 + 0,13 s (± ein MP3-Rahmen)
+    assert abs(e["dauer"] - 2.13) < 0.08
+    zeiten = json.loads((l.p.ordner / e["zeiten"]).read_text())
+    assert abs(zeiten[0][1] - sch.VOR_S) < 0.02  # Wortzeiten mitverschoben
+    # gleiche Einstellung → nicht noch einmal bezahlt; anderes Tempo → neue Datei, auf 0,7–1,2 begrenzt
+    assert sch._sprache_holen(l, 0, text) == k and len(l.seller.koerper) == 1
+    l.kanal["sprechtempo"] = 1.5
+    assert sch._sprache_holen(l, 0, text) != k and l.seller.koerper[-1]["voice_settings"] == {"speed": 1.2}
+    assert sch.sprechtempo({"sprechtempo": "0,9"}) == 1.1 and sch.sprechtempo({"sprechtempo": 0.5}) == 0.7  # Text mit Komma → Standard
+    # Pause zwischen zwei Szenen höchstens 0,3 s
+    assert sch.NACH_S + sch.PAUSE_S + sch.VOR_S <= 0.3
+    assert sch.woerter_pro_minute([{"text": "eins zwei drei vier fünf", "dauer": 2.0}]) == 150.0
+
+
+def test_probeszene_20s_neue_technik_mit_hand(tmp_path):
+    from udd import schritte as sch
+
+    text = "Die Pumpe zieht die Luft aus dem Beutel und spart viel Platz im Karton bei jeder Sendung."
+    skript = [{"nr": i, "text": f"Teil {i}: {text}", "ueberschrift": f"Teil {i}", "layout": "figur-liste", "motive": [{"key": "pumpe", "wort": "Pumpe"}]} for i in range(1, 9)]
+    l = _tts_lauf(tmp_path, skript=skript, probe={"szene": 2})
+    l.bib.merken("pumpe", wb.freistellen(_png(True, (60, 60, 60))), "Pumpe")
+    d, _h = sch.probe(l)
+    p = d["probe"]
+    assert p["szenen"][0] == 2 and len(p["szenen"]) >= 2 and p["sprechtempo"] == 1.1
+    assert p["dauerSek"] <= 20.0 and p["woerterProMin"] and p["woerterProMin"] > 135
+    datei = l.seller.hochgeladen["probe"]
+    info = medien.video_info(l.k.ffprobe, datei)
+    assert (info["breite"], info["hoehe"]) == (1920, 1080) and info["dauer"] <= 20.2
+    # Sprache wurde mit dem Kanal-Sprechtempo geholt und liegt für das spätere Neu-Rendern bereit
+    assert all(k["voice_settings"]["speed"] == 1.1 for k in l.seller.koerper)
+    assert len(l.p.state["voice"]) == len(p["szenen"])
+    assert (l.bib.ordner / "pumpe.striche.json").exists() and (l.bib.ordner / "pumpe.svg").exists()

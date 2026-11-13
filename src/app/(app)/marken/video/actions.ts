@@ -55,6 +55,8 @@ export async function kanalSpeichernAction(fd: FormData) {
       aktiv: fd.get("aktiv") !== "0",
       plattform: txt(fd, "plattform", 20) || "youtube",
       tempo: txt(fd, "tempo", 10) || "normal",
+      sprechtempo: txt(fd, "sprechtempo", 10) || null,
+      motivStil: txt(fd, "motivStil", 10) || "strich",
       instagram: fd.get("plattform") === "instagram" ? instagramAus(fd) : null,
     });
   } catch (e) {
@@ -125,6 +127,22 @@ export async function taktNeuAction(fd: FormData) {
   await mitFehler(async () => {
     const { imTaktNeu } = await import("@/lib/video/service");
     return imTaktNeu(s, id(fd), { gleicherText: fd.get("text") !== "neu", hinweis: txt(fd, "hinweis", 2000) || null });
+  }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
+}
+
+export async function probeAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { probeAnfordern } = await import("@/lib/video/service");
+    return probeAnfordern(s, id(fd), Number(txt(fd, "szene", 5)) || 1);
+  }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
+}
+
+export async function neuVertonenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { neuVertonen } = await import("@/lib/video/service");
+    return neuVertonen(s, id(fd));
   }, txt(fd, "kanal", 40) || null, `#a-${id(fd)}`);
 }
 

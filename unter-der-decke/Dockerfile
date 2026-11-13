@@ -12,6 +12,8 @@ COPY filter.json worker.py ./
 COPY udd ./udd
 # feste Schrift für alle Texte im Whiteboard-Stil (Anton, SIL Open Font License – siehe schriften/OFL-Anton.txt)
 COPY schriften ./schriften
+# feste Hand mit Stift (transparent) und Ankerpunkt der Stiftspitze (grafik/hand.json)
+COPY grafik ./grafik
 
 # Arbeitsdateien und Musik liegen außerhalb des Containers (Volumes), damit ein Neustart dort weitermacht.
 ENV ARBEITSORDNER=/arbeit MUSIKORDNER=/musik PYTHONUNBUFFERED=1

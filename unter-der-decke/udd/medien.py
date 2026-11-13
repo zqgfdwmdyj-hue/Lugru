@@ -257,6 +257,16 @@ def clip_bilder(ffmpeg: str, ordner: Path, bilder: list[tuple[str, float]], ton:
     )
 
 
+def kuerzen(ffmpeg: str, quelle: Path, ziel: Path, sekunden: float) -> None:
+    """Video auf die ersten „sekunden“ kürzen (Probeszene), mit sanftem Ausblenden des Tons am Ende."""
+    _lauf([ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(quelle), "-t", f"{sekunden:.3f}", "-af", f"afade=t=out:st={max(0.0, sekunden - 0.4):.3f}:d=0.4", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(ziel)])
+
+
+def zuschneiden(ffmpeg: str, quelle: Path, ziel: Path, von: float, bis: float) -> None:
+    """Sprache auf den gesprochenen Teil kürzen (Stille am Anfang/Ende weg), als MP3."""
+    _lauf([ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(quelle), "-af", f"atrim=start={max(0.0, von):.3f}:end={bis:.3f},asetpts=PTS-STARTPTS", "-c:a", "libmp3lame", "-b:a", "128k", "-ar", "44100", str(ziel)])
+
+
 def zusammenfuegen(ffmpeg: str, ordner: Path, clips: list[str], ziel: str) -> None:
     liste = ordner / "liste.txt"
     liste.write_text("".join(f"file '{c}'\n" for c in clips), encoding="utf-8")

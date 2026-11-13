@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
-import { bildModellFehlt, bildModellReihenfolge, claudeMitPlatz, claudeNutzung, kostenPosition, schluesselAbgelehnt, type BildModell } from "./logic";
+import { bildModellFehlt, bildModellReihenfolge, claudeMitPlatz, claudeNutzung, kostenPosition, stimmeMitTempo, schluesselAbgelehnt, type BildModell } from "./logic";
 import { kostenBuchen, videoEinstellungen, type Worker } from "./service";
 
 // B36 Anbieter-Brücke: Der Worker ruft Claude, ElevenLabs und OpenAI über das Seller-System auf. Die Schlüssel bleiben
@@ -54,6 +54,25 @@ async function ziel(tenantId: string, anbieter: string, pfad: string[], request:
   return { fehler: "Unbekannter Anbieter", status: 404 };
 }
 
+// Gespeicherte Einstellungen je Stimme (10 Min. gemerkt): die Brücke ergänzt damit voice_settings (Sprechtempo)
+const stimmenCache = new Map<string, { bis: number; werte: Record<string, unknown> | null }>();
+async function stimmeEinstellungen(tenantId: string, z: Ziel): Promise<Record<string, unknown> | null> {
+  const stimme = /\/v1\/text-to-speech\/([A-Za-z0-9]+)/.exec(z.url)?.[1];
+  if (!stimme) return null;
+  const k = `${tenantId}:${stimme}`;
+  const c = stimmenCache.get(k);
+  if (c && c.bis > Date.now()) return c.werte;
+  let werte: Record<string, unknown> | null = null;
+  try {
+    const r = await fetch(`${basis(process.env.ELEVENLABS_BASE_URL, "https://api.elevenlabs.io")}/v1/voices/${stimme}/settings`, { headers: { "xi-api-key": z.kopf["xi-api-key"] ?? "" }, signal: AbortSignal.timeout(15_000) });
+    if (r.ok) werte = (await r.json()) as Record<string, unknown>;
+  } catch {
+    werte = null;
+  }
+  stimmenCache.set(k, { bis: Date.now() + 10 * 60_000, werte });
+  return werte;
+}
+
 const fehler = (status: number, text: string) => Response.json({ type: "error", error: { type: "seller_bruecke", message: text } }, { status });
 
 /** Prüft, ob der Text erlaubt ist (Bildideen und Sprache laufen ohnehin durch den Filter im Worker). */
@@ -97,7 +116,8 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
     return new Response(r.daten, { status: r.res.status, headers: antwortKopf(r.res) });
   }
   // Claude: mindestens CLAUDE_PLATZ_MIN Tokens Platz (Denken zählt mit) – hilft auch Workern vor 1.2.1
-  const mehrPlatz = z.anbieter === "anthropic" ? claudeMitPlatz(body) : null;
+  // ElevenLabs: Sprechtempo (voice_settings.speed) mit den gespeicherten Einstellungen der Stimme zusammenführen
+  const mehrPlatz = z.anbieter === "anthropic" ? claudeMitPlatz(body) : z.anbieter === "elevenlabs" && body.voice_settings ? stimmeMitTempo(body, await stimmeEinstellungen(w.tenantId, z)) : null;
   const raus = mehrPlatz ? JSON.stringify(mehrPlatz) : roh;
   let res: Response;
   try {

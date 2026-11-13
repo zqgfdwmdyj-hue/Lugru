@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, numeric, pgTable, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, users } from "./core";
 
 /**
@@ -7,10 +7,12 @@ import { createdAt, id, tenantId, users } from "./core";
  * Aufträge selbst ab (Token, Abfrage alle ~30 s) – keine offenen Ports am PC. Upload auf YouTube immer privat.
  */
 
-export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload" | "story";
+export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload" | "story" | "probe";
+/** Probeszene (20 s): ab Szene „szene“ mit dem aktuellen Kanalprofil gerendert; „vorher“ = Stand des Videos davor. */
+export type ProbeErgebnis = { szenen: number[]; dauerSek: number; woerterProMin: number | null; sprechtempo: number; striche?: number | null };
 export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau" | "story";
 /** autoVersuche/autoUm: Anbieter-Störung – das Seller-System versucht den Schritt selbst noch einmal (Anzahl, Zeitpunkt). */
-export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string; autoVersuche?: number | null; autoUm?: string | null };
+export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string; autoVersuche?: number | null; autoUm?: string | null; szene?: number | null; vorher?: { status: string; schritt: string; freigabeOffen: string | null } | null; ergebnis?: ProbeErgebnis | null };
 /** gefunden: URL stammt direkt aus den Suchtreffern der Recherche. */
 export type VideoQuelle = { id: string; titel: string; url: string | null; jahr: number | null; art: string | null; autoren?: string | null; gefunden?: boolean };
 export type VideoGliederung = { hook?: string | null; angst?: string | null; punkte: { titel: string; kern?: string; quelle_ids?: string[] }[]; fazit?: string | null; cta?: string | null };
@@ -73,6 +75,10 @@ export const videoKanaele = pgTable(
     plattform: text("plattform", { enum: ["youtube", "instagram"] }).notNull().default("youtube"),
     /** B36.10 Tempo der Zeichen-Animation je Motiv: ruhig 2,5 s · normal 2,0 s · schnell 1,5 s. */
     tempo: text("tempo", { enum: ["ruhig", "normal", "schnell"] }).notNull().default("normal"),
+    /** ElevenLabs voice_settings.speed (0,7–1,2). Ziel 145–155 Wörter/Min; 1,0 ergab beim ersten Video ≈ 95. */
+    sprechtempo: real("sprechtempo").notNull().default(1.1),
+    /** Whiteboard-Motive: „strich“ = schwarze Strichzeichnung (wird Strich für Strich nachgezeichnet), „farbig“ = Clipart. */
+    motivStil: text("motiv_stil", { enum: ["strich", "farbig"] }).notNull().default("strich"),
     /** B37 Instagram: Zeitplan, Inhaltsarten, Farben, Freigabe-Modus, Monatslimit, Fakten, Themenliste. */
     instagram: jsonb("instagram").$type<InstagramProfil>().notNull().default({}),
     /** Wiederkehrende Figuren, eine je Zeile „kurzname: Beschreibung“ (einmal festgelegt, immer gleich gezeichnet). */

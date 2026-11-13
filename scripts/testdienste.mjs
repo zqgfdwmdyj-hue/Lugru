@@ -794,6 +794,8 @@ async function route(req, url, body) {
   if (p.startsWith("/ebrief/")) return ebrief(req, p, parsed());
   // B36 Video: ElevenLabs, OpenAI-Bilder, YouTube
   if (p.startsWith("/elevenlabs/v1/text-to-speech/") && req.method === "POST") return elevenNb(req, p, parsed());
+  // Gespeicherte Einstellungen einer Stimme (die Brücke übernimmt sie, damit „speed“ nur das Tempo ändert)
+  if (/^\/elevenlabs\/v1\/voices\/[A-Za-z0-9]+\/settings$/.test(p) && req.method === "GET") return req.headers["xi-api-key"] ? [200, { stability: 0.42, similarity_boost: 0.8, style: 0.1, use_speaker_boost: true, speed: 1 }] : [401, { detail: { message: "Invalid API key" } }];
   if (p === "/openai/v1/images/generations" && req.method === "POST") return openaiBildNb(req, parsed());
   if (p === "/openai/v1/models" && req.method === "GET") return openaiModelleNb(req);
   if (p.startsWith("/youtube")) return youtubeNb(req, url, p, body);
@@ -1916,15 +1918,20 @@ async function elevenNb(req, p, b) {
   const stimme = p.replace(/\/with-timestamps$/, "").split("/").pop();
   const text = String(b.text ?? "");
   if (!text) return [422, { detail: { message: "text fehlt" } }];
-  videoNb.eleven.push({ at: new Date().toISOString(), stimme, zeichen: text.length, hash: createHash("sha256").update(text).digest("hex").slice(0, 12), zeiten });
+  const vs = b.voice_settings && typeof b.voice_settings === "object" ? b.voice_settings : null;
+  const speed = typeof vs?.speed === "number" ? vs.speed : 1;
+  videoNb.eleven.push({ at: new Date().toISOString(), stimme, zeichen: text.length, hash: createHash("sha256").update(text).digest("hex").slice(0, 12), zeiten, speed: vs ? speed : null, stability: vs?.stability ?? null });
   if (videoNb.verzoegerungMs) await warte(videoNb.verzoegerungMs);
   const woerter = text.split(/\s+/).filter(Boolean).length;
-  const dauer = woerter / 2.6;
+  // Wie Ela: bei speed 1,0 ≈ 138 Wörter/Min, dazu Stille vorn (0,3 s) und hinten (0,4 s)
+  const VORN = 0.3, HINTEN = 0.4;
+  const sprechen = woerter / (2.3 * speed);
+  const dauer = VORN + sprechen + HINTEN;
   if (!zeiten) return [200, stilleMp3(dauer), "audio/mpeg"];
   // Wie die echte API: JSON mit Audio (Base64) und Zeichen-Ausrichtung (Start/Ende je Zeichen, hier gleichmäßig)
   const zeichen = [...text];
-  const je = dauer / Math.max(1, zeichen.length);
-  const alignment = { characters: zeichen, character_start_times_seconds: zeichen.map((_, i) => Math.round(i * je * 1000) / 1000), character_end_times_seconds: zeichen.map((_, i) => Math.round((i + 1) * je * 1000) / 1000) };
+  const je = sprechen / Math.max(1, zeichen.length);
+  const alignment = { characters: zeichen, character_start_times_seconds: zeichen.map((_, i) => Math.round((VORN + i * je) * 1000) / 1000), character_end_times_seconds: zeichen.map((_, i) => Math.round((VORN + (i + 1) * je) * 1000) / 1000) };
   return [200, { audio_base64: stilleMp3(dauer).toString("base64"), alignment, normalized_alignment: alignment }];
 }
 

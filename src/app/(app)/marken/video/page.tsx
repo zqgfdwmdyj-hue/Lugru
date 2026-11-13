@@ -6,9 +6,9 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
-import { anzeigeStatus, AUTO_NEU_MIN, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_AB_TAKT, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
+import { anzeigeStatus, AUTO_NEU_MIN, probeMoeglich, PROBE_SEK, SPRECHTEMPO, WORKER_AB_PROBE, woerterProMinute, WPM, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_AB_TAKT, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
-import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, neuVertonenAction, preiseAction, probeAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
 import { StoriesBereich } from "./stories";
 import { FREIGABE_MODI, profilMitVorgaben, STORY_ARTEN, tokenStand } from "@/lib/video/story-logic";
@@ -98,7 +98,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
       </div>
       {worker && worker.zuletztGesehen && workerVeraltet(worker.version) && (
         <div className="notice notice-warn small" data-testid="vd-worker-alt">
-          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): Er kennt keine Instagram-Stories und zeichnet Whiteboard-Motive noch nicht im Takt der Sprache (B36.10). Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
+          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): {workerVeraltet(worker.version, WORKER_AB_TAKT) ? "Er kennt keine Instagram-Stories und zeichnet Whiteboard-Motive noch nicht im Takt der Sprache (B36.10)." : "Er zeichnet Motive noch nicht Strich für Strich mit fester Hand, kennt kein Sprechtempo und keine Probeszene (Nachtrag 13.11.)."} Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
         </div>
       )}
       {fehlend.length > 0 && (
@@ -122,7 +122,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
         <section className="card card-pad stack" style={{ gap: 8 }} id="neu" data-testid="vd-neu">
           <h2 style={{ margin: 0 }}>Neues Video · {kanal.name}</h2>
           <p className="small muted" style={{ margin: 0 }} data-testid="vd-ziel">
-            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {whiteboard ? `${WB_SZENEN[0]}–${WB_SZENEN[1]} kurze Szenen (je 1–2 Sätze) · Whiteboard-Collage, Tempo ${kanal.tempo} (${TEMPO_SEK[kanal.tempo]} s je Motiv, bis ${typisch.motive} neue Motive, Wiederverwendung aus der Bibliothek spart)` : `${ziel.szenen[0]}–${ziel.szenen[1]} Szenen/Bilder`}{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
+            Ziel: {ziel.minuten[0]}–{ziel.minuten[1]} Min. · {ziel.woerter[0].toLocaleString("de-DE")}–{ziel.woerter[1].toLocaleString("de-DE")} Wörter · {whiteboard ? `${WB_SZENEN[0]}–${WB_SZENEN[1]} kurze Szenen (je 1–2 Sätze) · Whiteboard-Collage, Motive ${kanal.motivStil === "farbig" ? "farbig" : "als Strichzeichnung"} Strich für Strich gezeichnet, solange darüber gesprochen wird (mind. ${String(Math.max(1.2, TEMPO_SEK[kanal.tempo] * 0.6)).replace(".", ",")} s, bis ${typisch.motive} neue Motive, Wiederverwendung aus der Bibliothek spart) · Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}` : `${ziel.szenen[0]}–${ziel.szenen[1]} Szenen/Bilder`}{kanal.zielgruppe ? ` · Zielgruppe: ${kanal.zielgruppe}` : " · Zielgruppe noch nicht eingetragen (Kanalprofil)"}
           </p>
           <form action={auftragAction} className="stack small" style={{ gap: 8 }}>
             <input type="hidden" name="kanalId" value={kanal.id} />
@@ -314,6 +314,12 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                         <select className="input" name="titelWahl" defaultValue={String(a.paket.titelGewaehlt ?? 0)}>{a.paket.titel.map((t, i) => <option key={i} value={i}>{t}</option>)}</select>
                       </label>
                     )}
+                    {offen === "vorschau" && (() => {
+                      const wpm = woerterProMinute(a.skript, a.dauerSek);
+                      return wpm != null && wpm < WPM.warnung ? (
+                        <div className="notice notice-warn" data-testid="vd-wpm-warnung">Nur {wpm} Wörter/Min (Ziel {WPM.ziel[0]}–{WPM.ziel[1]}) – das Video wirkt langsam. Vorschlag: im Kanalprofil „Sprechtempo“ erhöhen, unten „Probeszene“ ansehen, dann „Neu vertonen & zeichnen“.</div>
+                      ) : null;
+                    })()}
                     {offen !== "vorschau" && <label className="stack" style={{ gap: 2 }}>Anmerkung für den nächsten Schritt (optional)<input className="input" name="hinweis" maxLength={2000} /></label>}
                     <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                       <button className="btn btn-primary" type="submit" data-testid="vd-freigeben">{FREIGABE_TEXT[offen]} freigeben</button>
@@ -345,6 +351,57 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                     )
                   )}
                 </div>
+                {(() => {
+                  const wpm = a.schritte.voice?.status === "fertig" ? woerterProMinute(a.skript, a.dauerSek) : null;
+                  return wpm != null ? (
+                    <div className="small" data-testid="vd-wpm" data-wpm={wpm}>Sprechtempo: <strong>{wpm} Wörter/Min</strong> (Ziel {WPM.ziel[0]}–{WPM.ziel[1]}, Kanalprofil „Sprechtempo“ {String(kanal.sprechtempo).replace(".", ",")}){wpm < WPM.warnung ? <span className="badge badge-warn" style={{ marginLeft: 6 }}>zu langsam</span> : null}</div>
+                  ) : null;
+                })()}
+                {kanal.stil === "whiteboard" && a.art === "video" && !!a.skript?.some((x) => (x.motive?.length ?? 0) > 0) && (() => {
+                  const p = a.schritte.probe;
+                  const laeuft = a.schritt === "probe" && (a.status === "wartet" || a.status === "laeuft");
+                  const moeglich = probeMoeglich(a, kanal.stil) && !s.readOnly;
+                  if (!moeglich && !laeuft && !p?.ergebnis) return null;
+                  const skript = a.skript!;
+                  const erste = Math.max(1, skript.findIndex((x) => (x.motive?.length ?? 0) > 0) + 1);
+                  const nr = (z: number[]) => (z.length > 1 ? `Szenen ${z[0]}–${z[z.length - 1]}` : `Szene ${z[0]}`);
+                  const zeichen = skript.reduce((n, x) => n + x.text.length, 0);
+                  const preis = cfg.preise.elevenlabsJe1000Zeichen;
+                  return (
+                    <details open={laeuft || !!p} data-testid="vd-probe">
+                      <summary className="small"><strong>Probeszene ({PROBE_SEK} s)</strong> – neues Sprechtempo, echtes Zeichnen und Hand ansehen, bevor das ganze Video neu entsteht</summary>
+                      <div className="stack small" style={{ gap: 6, marginTop: 6 }}>
+                        {laeuft && <span className="notice" data-testid="vd-probe-laeuft">Probeszene ab Szene {p?.szene ?? 1} wird gerendert – das Video selbst bleibt, wie es ist.</span>}
+                        {!laeuft && p?.status === "fehler" && <span className="notice notice-warn" data-testid="vd-probe-fehler">Probeszene nicht geklappt: {p.fehler}</span>}
+                        {!laeuft && p?.ergebnis && a.dateien.probe && (
+                          <>
+                            <video controls preload="metadata" src={`/api/video/${a.id}/probe?v=${a.dateien.probe.groesse}`} style={{ width: "100%", maxWidth: 960, borderRadius: 6 }} data-testid="vd-probe-video" />
+                            <span data-testid="vd-probe-info">{nr(p.ergebnis.szenen)} · {String(p.ergebnis.dauerSek).replace(".", ",")} s · {p.ergebnis.woerterProMin ?? "–"} Wörter/Min (Ziel {WPM.ziel[0]}–{WPM.ziel[1]}) · Sprechtempo {String(p.ergebnis.sprechtempo).replace(".", ",")} · Motive Strich für Strich gezeichnet, Hand an der Stiftspitze</span>
+                          </>
+                        )}
+                        {moeglich && (
+                          <form action={probeAction} className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "end" }}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <input type="hidden" name="kanal" value={kanal.id} />
+                            <label className="stack" style={{ gap: 2, minWidth: 220, flex: 1 }}>Ab Szene
+                              <select className="input" name="szene" defaultValue={String(p?.szene ?? erste)} data-testid="vd-probe-szene">{skript.map((x, i) => <option key={i} value={i + 1}>{i + 1}: {x.text.slice(0, 60)}{x.text.length > 60 ? " …" : ""}</option>)}</select>
+                            </label>
+                            <button className="btn btn-sm" type="submit" data-testid="vd-probe-start">{p?.ergebnis ? "Neue Probeszene" : "Probeszene rendern"}</button>
+                          </form>
+                        )}
+                        {moeglich && p?.ergebnis && (
+                          <form action={neuVertonenAction} className="stack" style={{ gap: 4 }}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <input type="hidden" name="kanal" value={kanal.id} />
+                            <span className="muted">Skript und Motive bleiben. Neu: Sprache mit Sprechtempo {String(kanal.sprechtempo).replace(".", ",")} (ca. {preis != null ? usd((zeichen / 1000) * preis) : "Preis fehlt"}), Bilder-Übersicht und Render mit echtem Zeichnen. Freigaben laufen wie eingestellt, Upload wieder von Hand.</span>
+                            <div><ConfirmButton className="btn btn-sm btn-primary" confirm="Ganzes Video neu vertonen und zeichnen?" testid="vd-neu-vertonen">Passt – ganzes Video neu vertonen &amp; zeichnen</ConfirmButton></div>
+                          </form>
+                        )}
+                        {worker && workerVeraltet(worker.version, WORKER_AB_PROBE) && <span className="notice notice-warn small">Erst den Worker am PC auf v{WORKER_VERSION_AKTUELL} aktualisieren – ältere Worker können keine Probeszene.</span>}
+                      </div>
+                    </details>
+                  );
+                })()}
                 {kanal.stil === "whiteboard" && taktNeuMoeglich(a.status) && !!a.skript?.length && !!a.gliederung && !s.readOnly && (() => {
                   const zeichen = a.skript.reduce((n, x) => n + x.text.trim().length + 2, 0);
                   const bekannt = new Set(a.skript.flatMap((x) => (x.motive ?? []).map((m) => m.key))).size;
@@ -426,8 +483,16 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
             <label className="stack" style={{ gap: 2, width: 220 }}>Plattform
               <select className="input" name="plattform" defaultValue={kanal?.plattform ?? "youtube"} data-testid="vd-k-plattform"><option value="youtube">YouTube (Videos 16:9)</option><option value="instagram">Instagram (Stories 9:16)</option></select>
             </label>
-            <label className="stack" style={{ gap: 2, width: 260 }}>Tempo der Zeichen-Animation
-              <select className="input" name="tempo" defaultValue={kanal?.tempo ?? "normal"} data-testid="vd-k-tempo"><option value="ruhig">ruhig (2,5 s je Motiv)</option><option value="normal">normal (2,0 s)</option><option value="schnell">schnell (1,5 s)</option></select>
+            <label className="stack" style={{ gap: 2, width: 260 }}>Zeichnen (mindestens je Motiv)
+              <select className="input" name="tempo" defaultValue={kanal?.tempo ?? "normal"} data-testid="vd-k-tempo"><option value="ruhig">ruhig (mind. 1,5 s)</option><option value="normal">normal (mind. 1,2 s)</option><option value="schnell">schnell (mind. 1,2 s)</option></select>
+              <span className="muted small">Gezeichnet wird, solange über das Motiv gesprochen wird.</span>
+            </label>
+            <label className="stack" style={{ gap: 2, width: 200 }}>Sprechtempo (ElevenLabs)
+              <input className="input" name="sprechtempo" type="number" step="0.05" min={SPRECHTEMPO.min} max={SPRECHTEMPO.max} defaultValue={String(kanal?.sprechtempo ?? SPRECHTEMPO.standard)} data-testid="vd-k-sprechtempo" />
+              <span className="muted small">{SPRECHTEMPO.min}–{SPRECHTEMPO.max}, Standard {String(SPRECHTEMPO.standard).replace(".", ",")}; Ziel {WPM.ziel[0]}–{WPM.ziel[1]} Wörter/Min</span>
+            </label>
+            <label className="stack" style={{ gap: 2, width: 260 }}>Motive (Whiteboard)
+              <select className="input" name="motivStil" defaultValue={kanal?.motivStil ?? "strich"} data-testid="vd-k-motivstil"><option value="strich">Strichzeichnung – wird Strich für Strich gezeichnet</option><option value="farbig">farbige Clipart (Konturen gezeichnet, Farbe danach)</option></select>
             </label>
           </div>
           <label className="stack" style={{ gap: 2 }}>Themenbereich<input className="input" name="themenbereich" defaultValue={kanal?.themenbereich ?? ""} data-testid="vd-k-thema" /></label>

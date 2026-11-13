@@ -25,7 +25,10 @@ from .seller import Seller
 
 REIHENFOLGE = ["research", "script", "voice", "visuals", "render", "package", "upload"]
 MODELL_STANDARD = "claude-opus-5-5"
-PAUSE_S = 0.4  # kurze Pause nach jeder Szene
+# Pause zwischen zwei Szenen: Stille vor/nach der Sprache wird auf VOR_S/NACH_S gekürzt, dazu PAUSE_S → höchstens 0,3 s
+PAUSE_S = 0.15
+VOR_S = 0.05
+NACH_S = 0.08
 PRIVAT = "private"  # Sichtbarkeit beim Upload – fest, im System nicht änderbar
 ABSCHNITTE = ["hook", "angst"] + [f"punkt-{i}" for i in range(1, 8)] + ["zusammenfassung", "cta"]
 # Skriptlänge fest für alle Kanäle: 1.500–1.700 Wörter (Entscheidung 12.11.; ≈ 10–12 Min. bei 145 Wörtern/Min.).
@@ -629,40 +632,86 @@ def script(l: Lauf) -> tuple[dict, list[str]]:
 # ---- 3 voice -------------------------------------------------------------------------------------------------------
 
 
+SPRACH_MODELL = "eleven_multilingual_v2"
+TEMPO_STANDARD = 1.1  # ElevenLabs voice_settings.speed (0,7–1,2); 1,0 war beim ersten Video ≈ 95 Wörter/Min
+WPM_ZIEL = (145, 155)
+WPM_WARNUNG = 135
+
+
+def sprechtempo(kanal: dict) -> float:
+    """Sprechtempo aus dem Kanalprofil (ElevenLabs speed), auf 0,7–1,2 begrenzt; Standard 1,1."""
+    roh = kanal.get("sprechtempo")
+    try:
+        v = float(roh) if roh is not None else TEMPO_STANDARD
+    except (TypeError, ValueError):
+        v = TEMPO_STANDARD
+    return round(min(1.2, max(0.7, v)), 2)
+
+
+def voice_key(l: Lauf, text: str) -> str:
+    """Schlüssel der Sprachdatei einer Szene: Stimme, Modell, Text, Sprechtempo und Schnitt – ändert sich etwas davon,
+    wird neu vertont, sonst wiederverwendet (nie doppelt bezahlt)."""
+    stimme = (l.kanal.get("stimmeId") or "").strip()
+    return kurz_hash(stimme, SPRACH_MODELL, text, f"tempo{sprechtempo(l.kanal):.2f}", "schnitt1")
+
+
+def woerter_pro_minute(szenen: list[dict]) -> float | None:
+    """Wörter je Minute über alle Szenen (Szenendauer inkl. Pause = Videolänge)."""
+    sek = sum(float(s.get("dauer") or 0) for s in szenen)
+    return round(sum(woerter(s.get("text") or "") for s in szenen) / sek * 60, 1) if sek > 0 else None
+
+
+def _sprache_holen(l: Lauf, i: int, text: str) -> str:
+    """Sprache einer Szene (einmal bezahlt): ElevenLabs mit Wortzeiten und Sprechtempo; die Stille vor und nach dem
+    Gesprochenen wird gekürzt (Wortzeiten werden mitverschoben). Liefert den Schlüssel."""
+    schluessel = voice_key(l, text)
+    if l.p.datei_vorhanden("voice", schluessel):
+        return schluessel
+    stimme = (l.kanal.get("stimmeId") or "").strip()
+    pfad = f"v1/text-to-speech/{stimme}/with-timestamps?output_format=mp3_44100_128"
+    koerper = {"text": text, "model_id": SPRACH_MODELL, "voice_settings": {"speed": sprechtempo(l.kanal)}}
+    r = l.seller.anbieter(l.id, "elevenlabs", pfad, koerper, timeout=netz.TIMEOUT_S, was=f"Sprache – Szene {i + 1}")
+    if r.status_code != 200:
+        raise RuntimeError(f"ElevenLabs (Szene {i + 1}): {_fehlertext(r)}")
+    j = r.json()
+    ausrichtung = j.get("alignment") or j.get("normalized_alignment")
+    rel = f"voice/{i + 1:03d}-{schluessel}.mp3"
+    roh = l.p.pfad(f"voice/{i + 1:03d}-{schluessel}.roh.mp3")
+    schreiben_atomar(roh, base64.b64decode(j.get("audio_base64") or ""))
+    grenzen = wb.sprech_grenzen(ausrichtung)
+    versatz = 0.0
+    if grenzen:
+        versatz = max(0.0, grenzen[0] - VOR_S)
+        medien.zuschneiden(l.k.ffmpeg, roh, l.p.pfad(rel), versatz, min(medien.dauer(l.k.ffprobe, roh), grenzen[1] + NACH_S))
+        roh.unlink(missing_ok=True)
+    else:
+        roh.replace(l.p.pfad(rel))
+    extra: dict[str, Any] = {}
+    zeiten = wb.wortzeiten(text, ausrichtung)
+    if zeiten:
+        rel_z = f"voice/{i + 1:03d}-{schluessel}.json"
+        schreiben_atomar(l.p.pfad(rel_z), json.dumps([(w, round(max(0.0, t - versatz), 3)) for w, t in zeiten]).encode("utf-8"))
+        extra["zeiten"] = rel_z
+    l.p.datei_merken("voice", schluessel, rel, dauer=round(medien.dauer(l.k.ffprobe, l.p.pfad(rel)), 3), **extra)
+    return schluessel
+
+
 def voice(l: Lauf) -> tuple[dict, list[str]]:
     szenen = l.daten.get("skript") or []
-    stimme = (l.kanal.get("stimmeId") or "").strip()
-    if not stimme:
+    if not (l.kanal.get("stimmeId") or "").strip():
         raise RuntimeError("Im Kanalprofil fehlt die Stimme (ElevenLabs-Voice-ID).")
-    modell = "eleven_multilingual_v2"
     for i, s in enumerate(szenen):
-        schluessel = kurz_hash(stimme, modell, s["text"])
-        datei = l.p.datei_vorhanden("voice", schluessel)
-        if not datei:
-            # Whiteboard (B36.10): mit Wortzeiten – Motive erscheinen, wenn ihr Schlüsselwort gesprochen wird (gleicher Preis)
-            pfad = f"v1/text-to-speech/{stimme}{'/with-timestamps' if l.whiteboard else ''}?output_format=mp3_44100_128"
-            r = l.seller.anbieter(l.id, "elevenlabs", pfad, {"text": s["text"], "model_id": modell}, timeout=netz.TIMEOUT_S, was=f"Sprache – Szene {i + 1}")
-            if r.status_code != 200:
-                raise RuntimeError(f"ElevenLabs (Szene {i + 1}): {_fehlertext(r)}")
-            rel = f"voice/{i + 1:03d}-{schluessel}.mp3"
-            extra: dict[str, Any] = {}
-            if l.whiteboard:
-                j = r.json()
-                schreiben_atomar(l.p.pfad(rel), base64.b64decode(j.get("audio_base64") or ""))
-                zeiten = wb.wortzeiten(s["text"], j.get("alignment") or j.get("normalized_alignment"))
-                if zeiten:
-                    rel_z = f"voice/{i + 1:03d}-{schluessel}.json"
-                    schreiben_atomar(l.p.pfad(rel_z), json.dumps(zeiten).encode("utf-8"))
-                    extra["zeiten"] = rel_z
-            else:
-                schreiben_atomar(l.p.pfad(rel), r.content)
-            l.p.datei_merken("voice", schluessel, rel, dauer=round(medien.dauer(l.k.ffprobe, l.p.pfad(rel)), 3), **extra)
+        schluessel = _sprache_holen(l, i, s["text"])
         s["dauer"] = round(l.p.state["voice"][schluessel]["dauer"] + PAUSE_S, 3)
         s["_voice"] = schluessel
         l.fortschritt("voice", i + 1, len(szenen))
     gesamt = round(sum(s["dauer"] for s in szenen))
-    l.p.markieren("voice")
-    return {"skript": _ohne_intern(szenen), "dauerSek": gesamt}, []
+    wpm = woerter_pro_minute(szenen)
+    hinweise = []
+    if wpm is not None and wpm < WPM_WARNUNG:
+        hinweise.append(f"Sprechtempo {wpm:.0f} Wörter/Min (Ziel {WPM_ZIEL[0]}–{WPM_ZIEL[1]}) – im Kanalprofil „Sprechtempo“ erhöhen.")
+    l.p.markieren("voice", hinweise=hinweise)
+    return {"skript": _ohne_intern(szenen), "dauerSek": gesamt, "woerterProMin": wpm}, hinweise
 
 
 # ---- 4 visuals -----------------------------------------------------------------------------------------------------
@@ -689,10 +738,21 @@ def _bild_holen(l: Lauf, prompt: str, was: str = "Bild") -> bytes | None:
 # ---- 4b visuals im Stil Whiteboard-Collage (B36.9) -------------------------------------------------------------------
 
 STANDARD_CLIPART = "Bunte Cartoon-Clipart mit kräftigen schwarzen Umrissen und flachen Farben, Comic-Gesichter, freundlich"
-HAND_PROMPT = "Eine rechte Hand im Comic-Stil hält einen schwarzen Filzstift; die Stiftspitze zeigt nach oben links, die Hand kommt von unten rechts. Kräftige schwarze Umrisse, flache Farben"
+# Echtes Zeichnen: Motive als Strichzeichnung, damit die Konturen sauber vektorisiert und nachgezeichnet werden können
+STRICH_STIL = "Schwarze Strichzeichnung, klare geschlossene Konturen, gleichmäßige Linienstärke, weißer Hintergrund, keine Flächen, keine Füllfarben, keine Schattierung, keine Verläufe"
+
+
+def motiv_strich(l: Lauf) -> bool:
+    """Whiteboard-Motive als Strichzeichnung (Kanalprofil „Motive“, Standard) statt farbiger Clipart."""
+    return bool(getattr(l, "whiteboard", False)) and (l.kanal.get("motivStil") or "strich") != "farbig"
 
 
 def _motiv_prompt(l: Lauf, beschreibung: str) -> str:
+    if motiv_strich(l):
+        return (
+            f"{STRICH_STIL}. Einzelnes Motiv: {beschreibung}. Nur dieses eine Motiv, mittig und ganz sichtbar. "
+            "Keine Schrift, keine Buchstaben, keine Zahlen. Keine erkennbaren realen Personen, keine Nacktheit."
+        )
     stil = (l.kanal.get("bildstil") or STANDARD_CLIPART).strip()
     return (
         f"{stil}. Einzelnes Motiv: {beschreibung}. Freigestellt auf transparentem Hintergrund, nur dieses eine Motiv, mittig und ganz sichtbar. "
@@ -705,7 +765,8 @@ def _motiv_holen(l: Lauf, prompt: str, was: str = "Motiv") -> bytes | None:
     q = l.kanal.get("bildQualitaet") or "medium"
     refs = l.referenzen()
     if refs:
-        felder = {"model": BILD_MODELL, "prompt": prompt + " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt).", "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
+        stil = " Figuren und Formen wie in den Referenzbildern, aber als schwarze Strichzeichnung ohne Flächen (nur den Stil übernehmen, nicht deren Inhalt)." if motiv_strich(l) else " Zeichenstil genau wie in den Referenzbildern (nur den Stil übernehmen, nicht deren Inhalt)."
+        felder = {"model": BILD_MODELL, "prompt": prompt + stil, "size": "1024x1024", "quality": q, "background": "transparent", "n": "1"}
         r = l.seller.anbieter_datei(l.id, "openai", "v1/images/edits", felder, [("image[]", name, daten, typ) for name, daten, typ in refs], timeout=BILD_TIMEOUT_S, was=was)
     else:
         r = l.seller.anbieter(l.id, "openai", "v1/images/generations", {"model": BILD_MODELL, "prompt": prompt, "size": "1024x1024", "quality": q, "background": "transparent", "n": 1}, timeout=BILD_TIMEOUT_S, was=was)
@@ -717,17 +778,9 @@ def _motiv_holen(l: Lauf, prompt: str, was: str = "Motiv") -> bytes | None:
     raise RuntimeError(f"Bildanbieter: {text}")
 
 
-def _wb_hand(l: Lauf, hinweise: list[str]):
-    """Hand mit Stift: einmal je Kanal erzeugt (Bibliothek „_hand“), sonst gezeichneter Ersatz."""
-    if not l.bib.hat("_hand"):
-        try:
-            daten = _motiv_holen(l, _motiv_prompt(l, HAND_PROMPT), "Motiv „Hand mit Stift“")
-        except RuntimeError as e:
-            daten = None
-            hinweise.append(f"Hand mit Stift nicht erzeugt ({e}) – gezeichnete Ersatz-Hand.")
-        if daten:
-            l.bib.merken("_hand", wb.freistellen(daten), "Hand mit Stift")
-    return wb.hand_vorbereiten(l.bib.bild("_hand") if l.bib.hat("_hand") else wb.hand_gezeichnet())
+def _striche(l: Lauf, s: dict) -> list:
+    """Pfade zum Nachzeichnen je Motiv der Szene (einmal je Motiv vektorisiert, in der Bibliothek gespeichert)."""
+    return [l.bib.striche(m["key"]) for m in s.get("motive") or [] if l.bib.hat(m["key"])]
 
 
 def _wb_szenenbilder(l: Lauf, szenen: list[dict]) -> list:
@@ -746,8 +799,7 @@ def _wb_szenenbilder(l: Lauf, szenen: list[dict]) -> list:
 
 def _wortzeiten(l: Lauf, s: dict) -> list[tuple[str, float]]:
     """Wortzeiten einer Szene aus der Sprache (B36.10), sonst leer → Ereignisse gleichmäßig verteilt."""
-    stimme = (l.kanal.get("stimmeId") or "").strip()
-    e = l.p.state["voice"].get(kurz_hash(stimme, "eleven_multilingual_v2", s["text"])) or {}
+    e = l.p.state["voice"].get(voice_key(l, s["text"])) or {}
     if not e.get("zeiten") or not (l.p.ordner / e["zeiten"]).exists():
         return []
     try:
@@ -757,8 +809,7 @@ def _wortzeiten(l: Lauf, s: dict) -> list[tuple[str, float]]:
 
 
 def _szenen_dauer(l: Lauf, s: dict) -> float:
-    stimme = (l.kanal.get("stimmeId") or "").strip()
-    e = l.p.state["voice"].get(kurz_hash(stimme, "eleven_multilingual_v2", s["text"])) or {}
+    e = l.p.state["voice"].get(voice_key(l, s["text"])) or {}
     return float(e.get("dauer") or s.get("dauer") or 8.0) + PAUSE_S
 
 
@@ -798,7 +849,6 @@ def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
         erledigt[runde] = neu
         l.p.speichern()
     vorher = set(l.bib.index)
-    hand = _wb_hand(l, hinweise)
     figuren = {f["key"]: f["beschreibung"] for f in (l.kanal.get("figuren") or []) if f.get("key")}
     gesamt = sum(len(s.get("motive") or []) for s in szenen) or 1
     n = 0
@@ -837,7 +887,6 @@ def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
         b.save(ordner / f"{i:03d}.png")
     wb.uebersicht([(s.get("nr") or i, b, ", ".join(m["key"] for m in s.get("motive") or [])) for i, (s, b) in enumerate(zip(szenen, fertige), 1)], l.p.pfad("uebersicht.jpg"))
     l.seller.datei_hochladen(l.id, "uebersicht", l.p.pfad("uebersicht.jpg"))
-    del hand
     l.p.markieren("visuals", hinweise=hinweise)
     return {"skript": _ohne_intern(szenen)}, hinweise
 
@@ -880,8 +929,7 @@ def visuals(l: Lauf) -> tuple[dict, list[str]]:
 
 
 def _schluessel_szene(l: Lauf, s: dict) -> tuple[str, str]:
-    stimme = (l.kanal.get("stimmeId") or "").strip()
-    v = kurz_hash(stimme, "eleven_multilingual_v2", s["text"])
+    v = voice_key(l, s["text"])
     stil = (l.kanal.get("bildstil") or "Moderne, ruhige Illustration in warmen Farben").strip()
     idee = ERSATZ_BILDIDEE if bild_treffer(s.get("bildidee") or "", l.streng) else (s.get("bildidee") or "")
     b = kurz_hash(f"{stil}. {idee}. Symbolbild ohne Text und ohne Schrift, keine erkennbaren realen Personen, keine Nacktheit.")
@@ -889,8 +937,7 @@ def _schluessel_szene(l: Lauf, s: dict) -> tuple[str, str]:
 
 
 def _ton(l: Lauf, s: dict):
-    stimme = (l.kanal.get("stimmeId") or "").strip()
-    v = kurz_hash(stimme, "eleven_multilingual_v2", s["text"])
+    v = voice_key(l, s["text"])
     return v, l.p.datei_vorhanden("voice", v)
 
 
@@ -901,7 +948,7 @@ def render_wb(l: Lauf) -> tuple[dict, list[str]]:
     szenen = l.daten.get("skript") or []
     clips = l.p.pfad("clips", "x").parent
     hinweise: list[str] = []
-    hand = wb.hand_vorbereiten(l.bib.bild("_hand") if l.bib.hat("_hand") else wb.hand_gezeichnet())
+    hand = wb.hand_laden()
     namen: list[str] = []
     srt_gesamt: list[str] = []
     t, nr = 0.0, 1
@@ -921,10 +968,10 @@ def render_wb(l: Lauf) -> tuple[dict, list[str]]:
         name = f"{i + 1:03d}"
         inhalt = json.dumps({k: s.get(k) for k in ("layout", "ueberschrift", "balken", "kernaussage", "schrittText", "liste")}, ensure_ascii=False, sort_keys=True)
         grund = wb.hintergrund(vorher)
-        els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or []])
+        els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or []], _striche(l, s))
         plan, s["takt"] = _wb_takt(l, s, els)
         anker = (0.5, 0.35, 0.65)[i % 3]  # leichter Schwenk: Zoom mal mittig, mal nach links, mal nach rechts
-        key = kurz_hash(vorher_key, v, inhalt, *[l.bib.merkmal(m["key"]) for m in s.get("motive") or []], str(l.k.fps), json.dumps([e.__dict__ for e in plan]), str(ZOOM), str(anker), "wb2")
+        key = kurz_hash(vorher_key, v, inhalt, *[l.bib.merkmal(m["key"]) for m in s.get("motive") or []], str(l.k.fps), json.dumps([e.__dict__ for e in plan]), str(ZOOM), str(anker), "wb3-" + wb.strich.VERSION)
         if l.p.state["clips"].get(name, {}).get("key") == key and (clips / f"{name}.mp4").exists():
             vorher = wb.fertig_takt(grund, els, plan)
         else:
@@ -1266,6 +1313,77 @@ def _untertitel_hochladen(z: dict, video_id: str, srt, sprache: str) -> str | No
     return f"Untertitel nicht hochgeladen ({_fehlertext(r)}){zusatz}; untertitel.srt kann in YouTube Studio von Hand hochgeladen werden."
 
 
+# ---- Probeszene (20 s) ------------------------------------------------------------------------------------------------
+
+PROBE_S = 20.0
+
+
+def probe(l: Lauf) -> tuple[dict, list[str]]:
+    """Probeszene: ab Szene n so viele Szenen, bis etwa 20 s zusammen sind (höchstens 5), mit dem aktuellen Kanalprofil
+    neu vertont (Sprechtempo, gekürzte Pausen – die Sprachdateien werden beim späteren Neu-Rendern wiederverwendet) und
+    mit echtem Zeichnen und Hand gerendert. Ergebnis: probe.mp4 (≤ 20 s) auf dem Seller-System; das Video selbst bleibt."""
+    if not l.whiteboard:
+        raise RuntimeError("Probeszene gibt es nur im Stil Whiteboard.")
+    szenen = l.daten.get("skript") or []
+    if not szenen:
+        raise RuntimeError("Kein Skript vorhanden.")
+    if not (l.kanal.get("stimmeId") or "").strip():
+        raise RuntimeError("Im Kanalprofil fehlt die Stimme (ElevenLabs-Voice-ID).")
+    start = max(1, min(len(szenen), int((l.a.get("probe") or {}).get("szene") or 1)))
+    ordner = l.p.pfad("probe", "x").parent
+    shutil.rmtree(ordner, ignore_errors=True)
+    ordner.mkdir(parents=True, exist_ok=True)
+    hand = wb.hand_laden()
+    hinweise: list[str] = []
+    # blasser Hintergrund: fertiges Bild der Szene davor (wie im Video)
+    vorher = None
+    if start > 1:
+        s0 = szenen[start - 2]
+        if all(l.bib.hat(m["key"]) for m in s0.get("motive") or []):
+            els0 = wb.elemente(s0, [l.bib.bild(m["key"]) for m in s0.get("motive") or []])
+            vorher = wb.fertig_takt(wb.hintergrund(None), els0, _wb_takt(l, s0, els0)[0])
+    namen: list[str] = []
+    nummern: list[int] = []
+    gesamt, w, striche = 0.0, 0, 0
+    for i in range(start - 1, len(szenen)):
+        s = szenen[i]
+        fehlend = [m["key"] for m in s.get("motive") or [] if not l.bib.hat(m["key"])]
+        if fehlend:
+            raise RuntimeError(f"Szene {i + 1}: Motiv(e) {', '.join(fehlend)} fehlen in der Bibliothek – erst Schritt „Bilder“ ausführen.")
+        v = _sprache_holen(l, i, s["text"])
+        laenge = l.p.state["voice"][v]["dauer"] + PAUSE_S
+        s["dauer"] = round(laenge, 3)
+        pfade = _striche(l, s)
+        striche += sum(len((d or {}).get("striche") or []) for d in pfade)
+        els = wb.elemente(s, [l.bib.bild(m["key"]) for m in s.get("motive") or []], pfade)
+        plan, _k = _wb_takt(l, s, els)
+        name = f"{i + 1:03d}"
+        bilder = ordner / f"b{name}"
+        liste, vorher = wb.animation_takt(wb.hintergrund(vorher), els, plan, laenge, l.k.fps, hand, bilder, vorher)
+        ton = l.p.datei_vorhanden("voice", v)
+        medien.clip_bilder(l.k.ffmpeg, bilder, liste, "../../" + ton.relative_to(l.p.ordner).as_posix(), f"../{name}.mp4", laenge, l.k.fps, zoom=ZOOM, anker=(0.5, 0.35, 0.65)[i % 3])
+        shutil.rmtree(bilder, ignore_errors=True)
+        namen.append(f"{name}.mp4")
+        nummern.append(i + 1)
+        gesamt += laenge
+        w += woerter(s["text"])
+        l.fortschritt("probe", min(len(nummern), 5), 5)
+        if gesamt >= PROBE_S - 1 or len(nummern) >= 5:
+            break
+    medien.zusammenfuegen(l.k.ffmpeg, ordner, namen, "probe-voll.mp4")
+    dauer = min(gesamt, PROBE_S)
+    medien.kuerzen(l.k.ffmpeg, ordner / "probe-voll.mp4", ordner / "probe.mp4", dauer)
+    l.seller.datei_hochladen(l.id, "probe", ordner / "probe.mp4")
+    wpm = round(w / gesamt * 60, 1) if gesamt > 0 else None
+    if wpm is not None and wpm < WPM_WARNUNG:
+        hinweise.append(f"Probeszene: {wpm:.0f} Wörter/Min (Ziel {WPM_ZIEL[0]}–{WPM_ZIEL[1]}) – Sprechtempo im Kanalprofil erhöhen.")
+    for f in ordner.glob("*.mp4"):
+        if f.name != "probe.mp4":
+            f.unlink(missing_ok=True)
+    l.p.speichern()
+    return {"probe": {"szenen": nummern, "dauerSek": round(dauer, 1), "woerterProMin": wpm, "sprechtempo": sprechtempo(l.kanal), "striche": striche}}, hinweise
+
+
 # ---- Ablauf --------------------------------------------------------------------------------------------------------
 
 def story(l: Lauf) -> tuple[dict, list[str]]:
@@ -1274,7 +1392,7 @@ def story(l: Lauf) -> tuple[dict, list[str]]:
     return st.story(l)
 
 
-SCHRITTE: dict[str, Callable[[Lauf], tuple[dict, list[str]]]] = {"research": research, "script": script, "voice": voice, "visuals": visuals, "render": render, "package": package, "upload": upload, "story": story}
+SCHRITTE: dict[str, Callable[[Lauf], tuple[dict, list[str]]]] = {"research": research, "script": script, "voice": voice, "visuals": visuals, "render": render, "package": package, "upload": upload, "story": story, "probe": probe}
 
 
 def _ohne_intern(szenen: list[dict]) -> list[dict]:

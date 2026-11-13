@@ -17,7 +17,7 @@ function versiegeln(plain: string) {
   const data = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), data.toString("base64url")].join(".");
 }
-type VideoNb = { modellFehler: string[]; eleven: { hash: string; zeichen: number; stimme: string; zeiten?: boolean }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
+type VideoNb = { modellFehler: string[]; eleven: { hash: string; zeichen: number; stimme: string; zeiten?: boolean; speed?: number | null; stability?: number | null }[]; bilder: { prompt: string; abgelehnt: boolean; model: string; size: string; quality: string }[]; youtube: { id: string; titel: string; sichtbarkeit: string; beschreibung: string; tags: string[]; thumbnail: boolean }[] };
 /** Einfarbiges PNG (erfundenes Testfoto) – ohne Bildbibliothek. */
 function pngFarbe(w: number, h: number, rgb: [number, number, number]): Buffer {
   const crc = (b: Buffer) => {
@@ -256,7 +256,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.2.1)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.3.0)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);
@@ -524,6 +524,8 @@ test.describe("B36 Video-Pipeline", () => {
     expect(motive.filter((mm) => mm.wort && szenen.some((x) => x.text.includes(mm.wort!))).length).toBeGreaterThan(motive.length * 0.8);
     expect((await nachbau()).eleven.length).toBe(szenen.length);
     expect((await nachbau()).eleven.every((e) => e.zeiten)).toBe(true);
+    // Sprechtempo 1,1 (Kanal-Standard) – die Brücke ergänzt die gespeicherten Einstellungen der Stimme (Klang bleibt)
+    expect((await nachbau()).eleven.every((e) => e.speed === 1.1 && e.stability === 0.42)).toBe(true);
     // Takt-Prüfung vor dem Render: keine Szene mit mehr als 3 s ohne neue Aktion, Ø höchstens alle 3 s eine Aktion,
     // Zeichenzeit je Motiv aus dem Kanalprofil („schnell“ = 1,5 s)
     for (const x of szenen) {
@@ -550,12 +552,13 @@ test.describe("B36 Video-Pipeline", () => {
     // Ausweichen: das fehlende Modell nur einmal versucht (danach gemerkt), nicht bei jedem Motiv
     expect(nb.modellFehler).toEqual(["gpt-image-2.5-sunburst"]);
     const prompts = nb.bilder.map((b) => b.prompt);
-    expect(prompts.filter((p) => p.includes("hält einen schwarzen Filzstift"))).toHaveLength(1); // Hand einmal je Kanal
+    expect(prompts.filter((p) => p.includes("Filzstift"))).toHaveLength(0); // Hand ist fest eingebaut (grafik/hand.png), kein Bild bezahlt
+    expect(prompts.filter((p) => !p.includes("Glühbirne")).every((p) => p.startsWith("Schwarze Strichzeichnung"))).toBe(true); // Motive als Strichzeichnung
     expect(prompts.some((p) => p.includes("Mann um die 60 mit Hut"))).toBe(true); // feste Figur aus dem Profil
     expect(prompts.every((p) => p.includes("Keine Schrift"))).toBe(true); // Texte setzt die Pipeline selbst
     expect(nb.bilder.filter((b) => b.abgelehnt)).toHaveLength(1);
     expect(keys).toContain("ersatz"); // abgelehntes Motiv → Ersatzmotiv
-    expect(nb.bilder.length).toBe(new Set(keys).size + 2); // je Schlüssel einmal + Hand + die Ablehnung
+    expect(nb.bilder.length).toBe(new Set(keys).size + 1); // je Schlüssel einmal + die Ablehnung (keine Hand mehr)
     expect(keys.length).toBeGreaterThan(new Set(keys).size); // Motive kommen mehrfach vor (Wiederverwendung)
     // Seite: Übersicht + Motive zum Neu-Erzeugen
     await page.goto(`/marken/video?kanal=${a.kanal_id}`);
@@ -587,8 +590,12 @@ test.describe("B36 Video-Pipeline", () => {
       const roh = execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]);
       const px = (x: number, y: number) => [roh[(y * 192 + x) * 3], roh[(y * 192 + x) * 3 + 1], roh[(y * 192 + x) * 3 + 2]];
       let weiss = 0;
-      for (let i = 0; i < roh.length; i += 3) if (roh[i] > 235 && roh[i + 1] > 235 && roh[i + 2] > 235) weiss++;
-      return { px, weiss: weiss / (roh.length / 3) };
+      let haut = 0;
+      for (let i = 0; i < roh.length; i += 3) {
+        if (roh[i] > 235 && roh[i + 1] > 235 && roh[i + 2] > 235) weiss++;
+        if (Math.abs(roh[i] - 246) < 18 && Math.abs(roh[i + 1] - 206) < 18 && Math.abs(roh[i + 2] - 174) < 18) haut++;
+      }
+      return { px, weiss: weiss / (roh.length / 3), haut };
     };
     const d1 = (a.skript as unknown as Szene[])[0].dauer;
     const d2 = (a.skript as unknown as Szene[])[1].dauer;
@@ -597,6 +604,9 @@ test.describe("B36 Video-Pipeline", () => {
     expect(ende1.weiss).toBeGreaterThan(0.4);
     expect(ende1.weiss).toBeLessThan(0.97); // Überschrift + Motive gezeichnet, Hintergrund weiß
     for (let y = 96; y <= 104; y++) for (let x = 0; x < 192; x += 4) expect(Math.min(...ende1.px(x, y))).toBeGreaterThan(200); // keine eingebrannten Untertitel unten
+    // Die Hand ist zu sehen, solange gezeichnet wird (Befund 13.11.: im ersten echten Video fehlte sie)
+    const mitHand = Array.from({ length: Math.floor((d1 + d2) / 0.25) }, (_, i) => bild(0.3 + i * 0.25).haut).filter((h) => h > 25).length;
+    expect(mitHand, "Bilder mit sichtbarer Hand in Szene 1–2").toBeGreaterThan(4);
     const ende2 = bild(d1 + d2 - 1);
     const [r, g, b] = ende2.px(20, 8);
     expect(r > 170 && g < 90 && b < 90, `roter Balken oben (${r},${g},${b})`).toBe(true);
@@ -674,6 +684,106 @@ test.describe("B36 Video-Pipeline", () => {
     expect(a.dateien.mp4).toBeTruthy();
     expect(a.kosten_ist).toBeGreaterThan(vorher.kosten_ist); // nur Skript, Paket und Sprache dazu
     console.log(`B36.10 neu im Takt: ${vorher.skript!.length} → ${a.skript!.length} Szenen, Kosten ${vorher.kosten_ist.toFixed(2)} $ → ${a.kosten_ist.toFixed(2)} $, neue Bilder 0`);
+    await workerStoppen();
+  });
+
+  test("Nachtrag 13.11. Probeszene: 20 s ab Szene 3 mit Sprechtempo, gekürzten Pausen, echtem Zeichnen und Hand – Video bleibt; „Neu vertonen & zeichnen“ nutzt die Probe-Sprache; Warnung unter 135 Wörtern/Min", async ({ page }) => {
+    test.setTimeout(420_000);
+    if (!T) [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const KANAL3 = `Testkanal Whiteboard ${m}`;
+    type P = { szenen: number[]; dauerSek: number; woerterProMin: number | null; sprechtempo: number; striche?: number | null };
+    const lies = async () => (await sql<{ id: string; kanal_id: string; status: string; schritt: string; freigabe_offen: string | null; dauer_sek: number | null; skript: { text: string }[] | null; dateien: Record<string, unknown>; schritte: Record<string, { status: string; fehler?: string | null; szene?: number; ergebnis?: P | null }> }>("select a.id, a.kanal_id, a.status, a.schritt, a.freigabe_offen, a.dauer_sek, a.skript, a.dateien, a.schritte from video_auftraege a join video_kanaele k on k.id = a.kanal_id where a.tenant_id = $1 and k.name = $2 order by a.created_at desc limit 1", [T, KANAL3]))[0];
+    const vorher = await lies();
+    test.skip(!vorher || vorher.status !== "fertig", "braucht das fertige Whiteboard-Video aus den Tests davor");
+    page.on("dialog", (d) => d.accept());
+    await anmelden(page, "inhaber");
+    await page.goto(`/marken/video?kanal=${vorher.kanal_id}`);
+    // Kanalprofil: Sprechtempo (Standard 1,1) – hier 1,15
+    await expect(page.getByTestId("vd-k-sprechtempo")).toHaveValue("1.1");
+    await expect(page.getByTestId("vd-k-motivstil")).toHaveValue("strich");
+    await sql("update video_kanaele set sprechtempo = 1.15 where tenant_id = $1 and id = $2", [T, vorher.kanal_id]);
+    await page.reload();
+    const karte = page.locator(`#a-${vorher.id}`);
+    await expect(karte.getByTestId("vd-wpm")).toContainText("Wörter/Min");
+    const bereich = karte.getByTestId("vd-probe");
+    if (!(await bereich.evaluate((d) => (d as HTMLDetailsElement).open))) await bereich.locator("summary").click();
+    await karte.getByTestId("vd-probe-szene").selectOption("3");
+    const eleven0 = (await nachbau()).eleven.length;
+    const bilder0 = (await nachbau()).bilder.length;
+    await Promise.all([aktion(page), karte.getByTestId("vd-probe-start").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Probeszene angefordert (Szenen 3–");
+    await expect(page.getByTestId("vd-meldung")).toContainText("Sprechtempo 1,15");
+    let a = await lies();
+    expect([a.status, a.schritt, a.schritte.probe?.szene]).toEqual(["wartet", "probe", 3]);
+    if (!token) throw new Error("kein Worker-Token aus den Tests davor");
+    await sql("update video_auftraege set status = 'abgebrochen' where tenant_id = $1 and status in ('wartet', 'laeuft') and id <> $2", [T, vorher.id]);
+    await workerStoppen();
+    workerStarten();
+    for (const bis = Date.now() + 240_000; (a = await lies()).schritte.probe?.status !== "fertig" || a.status !== "fertig"; ) {
+      if (a.schritte.probe?.status === "fehler") throw new Error(`Probeszene: ${a.schritte.probe.fehler}\n${log.slice(-3000)}`);
+      if (Date.now() > bis) throw new Error(`Zeitüberschreitung Probeszene (${a.status}/${a.schritt})\n${log.slice(-3000)}`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    // Video bleibt, wie es war (Status, Schritt); Ergebnis der Probe gemerkt
+    expect([a.status, a.schritt, a.freigabe_offen]).toEqual([vorher.status, vorher.schritt, vorher.freigabe_offen]);
+    const erg = a.schritte.probe!.ergebnis!;
+    expect(erg.szenen[0]).toBe(3);
+    expect(erg.dauerSek).toBeLessThanOrEqual(20);
+    expect(erg.sprechtempo).toBe(1.15);
+    expect(erg.woerterProMin!).toBeGreaterThanOrEqual(135);
+    expect(erg.striche!).toBeGreaterThan(0);
+    const nb = await nachbau();
+    const neu = nb.eleven.slice(eleven0);
+    expect(neu).toHaveLength(erg.szenen.length); // nur die Probeszenen vertont
+    expect(neu.every((e) => e.speed === 1.15 && e.stability === 0.42)).toBe(true); // Tempo + gespeicherter Klang der Stimme
+    expect(nb.bilder.length).toBe(bilder0); // keine Bilder bezahlt
+    // Datei: ≤ 20 s, 1920×1080, Hand sichtbar
+    const mp4 = path.join(E2E_ENV.MEDIA_DIR, "video", T, a.id, "probe.mp4");
+    const info = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=width,height", "-of", "json", mp4]).toString()) as { format: { duration: string }; streams: { width?: number; height?: number }[] };
+    expect(info.streams.find((x) => x.width)).toMatchObject({ width: 1920, height: 1080 });
+    expect(Number(info.format.duration)).toBeLessThanOrEqual(20.3);
+    const haut = (t: number) => {
+      const roh = execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]);
+      let n = 0;
+      for (let i = 0; i < roh.length; i += 3) if (Math.abs(roh[i] - 246) < 18 && Math.abs(roh[i + 1] - 206) < 18 && Math.abs(roh[i + 2] - 174) < 18) n++;
+      return n;
+    };
+    expect(Array.from({ length: 30 }, (_, i) => haut(0.3 + i * 0.5)).filter((h) => h > 25).length, "Bilder mit Hand in der Probeszene").toBeGreaterThan(3);
+    // Seite: Video, Kennzahlen
+    await page.reload();
+    if (!(await bereich.evaluate((d) => (d as HTMLDetailsElement).open))) await bereich.locator("summary").click();
+    await expect(karte.getByTestId("vd-probe-video")).toBeVisible();
+    await expect(karte.getByTestId("vd-probe-info")).toContainText(`Szenen 3–${erg.szenen.at(-1)}`);
+    await expect(karte.getByTestId("vd-probe-info")).toContainText("Wörter/Min");
+    await expect(karte.getByTestId("vd-probe-info")).toContainText("Sprechtempo 1,15");
+    expect((await page.request.get(`/api/video/${a.id}/probe`)).headers()["content-type"]).toBe("video/mp4");
+    // Warnung bei der Vorschau-Freigabe unter 135 Wörtern/Min (z. B. erstes echtes Video: ≈ 95)
+    const w = a.skript!.reduce((n, x) => n + x.text.split(/\s+/).filter(Boolean).length, 0);
+    await sql("update video_auftraege set status = 'freigabe', freigabe_offen = 'vorschau', dauer_sek = $2 where id = $1", [a.id, Math.round((w / 95) * 60)]);
+    await page.reload();
+    await expect(karte.getByTestId("vd-wpm-warnung")).toContainText("Nur 95 Wörter/Min (Ziel 145–155)");
+    await expect(karte.getByTestId("vd-wpm")).toContainText("zu langsam");
+    await sql("update video_auftraege set status = $2, freigabe_offen = null, dauer_sek = $3 where id = $1", [a.id, vorher.status, vorher.dauer_sek]);
+    // „Passt – ganzes Video neu vertonen & zeichnen“: Skript/Motive bleiben, Probe-Sprache wird wiederverwendet
+    await page.reload();
+    if (!(await bereich.evaluate((d) => (d as HTMLDetailsElement).open))) await bereich.locator("summary").click();
+    await Promise.all([aktion(page), karte.getByTestId("vd-neu-vertonen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Wird neu vertont und gezeichnet – Skript und Motive bleiben, Sprechtempo 1,15");
+    a = await lies();
+    expect([a.status, a.schritt]).toEqual(["wartet", "voice"]);
+    for (const bis = Date.now() + 300_000; (a = await lies()).freigabe_offen !== "szenen"; ) {
+      if (a.status === "fehler") throw new Error(`Fehler (${a.schritt}): ${a.schritte[a.schritt]?.fehler}\n${log.slice(-3000)}`);
+      if (Date.now() > bis) throw new Error(`Zeitüberschreitung bis zur Szenen-Übersicht (${a.status}/${a.schritt})\n${log.slice(-3000)}`);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const nb2 = await nachbau();
+    expect(nb2.eleven.length - nb.eleven.length).toBe(a.skript!.length - erg.szenen.length); // Probe-Szenen nicht doppelt bezahlt
+    expect(nb2.bilder.length).toBe(bilder0); // Motive aus der Bibliothek
+    await page.reload();
+    const wpm = Number(await karte.getByTestId("vd-wpm").getAttribute("data-wpm"));
+    expect(wpm).toBeGreaterThanOrEqual(135);
+    console.log(`Probeszene: ${erg.szenen.length} Szenen, ${erg.dauerSek} s, ${erg.woerterProMin} Wörter/Min, ${erg.striche} Striche; ganzes Video danach ${wpm} Wörter/Min`);
+    await sql("update video_auftraege set status = 'abgebrochen' where id = $1", [a.id]);
     await workerStoppen();
   });
 

@@ -259,7 +259,7 @@ def story(l: "Lauf") -> tuple[dict, list[str]]:
     if ig.get("hand", True):
         bilder = ordner / "bilder"
         shutil.rmtree(bilder, ignore_errors=True)
-        hand = wb.hand_vorbereiten(l.bib.bild("_hand") if l.bib.hat("_hand") else wb.hand_gezeichnet(), 420)
+        hand = wb.hand_laden(420)
         liste, _ = wb.animation_takt(grund, els, plan, dauer, l.k.fps, hand, bilder, None)
         medien.clip_bilder(l.k.ffmpeg, bilder, liste, None, "../story.mp4", dauer, l.k.fps, zoom=0.03, anker=0.5, breite=SB, hoehe=SH)
         shutil.rmtree(bilder, ignore_errors=True)

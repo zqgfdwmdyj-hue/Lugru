@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/12 Abläufe | – | 6 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/14 Abläufe | – | 7 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -555,6 +555,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | B36.10 Tempo (13.11.): Whiteboard-Kanal mit Tempo „schnell“, Skript in kurzen Szenen, Sprache mit Wortzeiten, Szenen-Übersicht, Render | mindestens 55 Szenen mit je höchstens 2 Sätzen; Schlüsselwort je Motiv aus dem Szenentext; jede Szene bei ElevenLabs „with-timestamps“; je Szene höchstens 3 s ohne neue Aktion, im Schnitt höchstens alle 3 s eine Aktion, Zeichenzeit 1,5 s; Lücken mit Unterstreichen/Einkreisen/Pfeil gefüllt; Hinweis „Takt: N Szenen, Ø alle … s“ in der Szenen-Übersicht; Video mit Zoom, beginnt leer, keine eingebrannten Untertitel | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B37 Instagram-Stories Abnahme 1–6: Kanal „Testkanal Instagram“ (täglich 12:00, Freigabe jedes Mal, Limit 5 $, Fakten), 5 Themen + eigenes Foto, Stories erzeugen, Handy-Vorschau, Regelverstoß, Neu erzeugen/Motiv neu/Ablehnen, Freigeben, Instagram verbinden, posten mit Fehlern und abgelaufenem Zugang, Limit | 5 Stories + 1 Regel-Test als MP4 1080×1920 (5–15 s) zur Freigabe; Einblick mit eigenem Foto ohne Bildanbieter; Handy zeigt alle ohne seitliches Scrollen; Preis nur aus den Fakten, „Enthalten:“, keine „kostenlose Zählung“/Komplettpreis/Versicherung, „Werbung“ bei Preis/Leistung/CTA; Regelverstoß → Hinweis + Freigabe gesperrt; Neu erzeugen ohne neues Motiv, „Motiv neu“ genau 1 Bild; Ablehnen = nichts gepostet; ohne Verbindung „von Hand posten“; nach Verbindung zur Planzeit gepostet (Datei über signierten 24-h-Link, falsche Signatur 404); 4 Fehlversuche → „nicht gepostet“ + Meldung; abgelaufener Zugang sofort gemeldet; Erneut posten; Kosten je Story > 0, Monatslimit sperrt Erzeugen/Planen, wartende Story „Monatslimit erreicht“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36.10 Nachtrag: fertiges, privat hochgeladenes Whiteboard-Video → „Im neuen Takt neu machen“ (gleicher Text), Szenen-Übersicht freigeben | Kostenschätzung vorab (Sprache mit Wortzeiten, Motive aus der Bibliothek); Auftrag ab Skript, YouTube-ID und „Privat hochladen“ zurückgesetzt, alter Text als eigenes Skript; keine neue Recherche/Websuche; mindestens 55 kurze Szenen; Sprache je Szene einmal mit Wortzeiten; kein neues Motiv bezahlt; neues Video fertig, Upload erst wieder von Hand | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| Nachtrag 13.11. Sprechtempo/Zeichnen/Hand: Whiteboard-Video mit Sprechtempo 1,1 und Motiv-Stil Strichzeichnung rendern | ElevenLabs mit speed 1,1 und den gespeicherten Stimmeinstellungen (Stabilität bleibt); Stille vor/nach jeder Szene abgeschnitten, höchstens 0,3 s zwischen Szenen; Wörter/Min. ≥ 135 im Auftrag; alle Motiv-Prompts außer Glühbirne „Schwarze Strichzeichnung … keine Flächen“, kein „Filzstift“; keine Hand vom Bildmodell; Hand im MP4 sichtbar | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| Nachtrag 13.11. Probeszene: fertiges Whiteboard-Video, Sprechtempo 1,15, „Probeszene (20 s)“ ab Szene 3, danach Warnung unter 135 Wörter/Min. und „Neu vertonen & zeichnen“ | probe.mp4 1920×1080, höchstens 20,3 s, Hand sichtbar; ElevenLabs speed 1,15; keine neuen Bilder; Status und Freigaben des Videos unverändert, Ergebnis mit Wörter/Min. auf der Seite; Vorschau-Freigabe mit 95 Wörtern/Min. zeigt Warnung; Neu vertonen vertont nur die übrigen Szenen, ergibt ≥ 135 Wörter/Min. | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ | Status „wartet“ statt „Fehler“, neuer Versuch automatisch in 10 Min. (danach 30, 60), Hinweis „Störung beim Anbieter in „Skript“ … (1/3)“; „Jetzt neu versuchen“ holt nur den fehlenden Abschnitt und die danach; alle Claude-Aufrufe mit mindestens 16.000 Tokens Platz (Denken zählt mit) | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ | Abbrüche/529 nach 2, 4, 8, 16 s wiederholt (Log „neuer Versuch“); nach 5 Fehlversuchen Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“; fertige Abschnitte als Dateien im Projektordner; Wiederholen holt nur Punkt 3 bis CTA; Skript 1.500–1.700 Wörter, 5 Punkte, alle Studien in der Quellenliste; Sprache je Szene genau einmal bezahlt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel | Bilder mit gpt-image-2.5-flare, nie gpt-image-1; Wahl gespeichert und bei jedem Bild benutzt, Kosten-Zeile nennt das Modell; gesperrtes Modell einmal versucht, dann Flare; Test „Schlüssel gültig. Bildmodell für Videos: …“ bzw. „Schlüssel abgelehnt (HTTP 401)“; Brücke 401 „OpenAI-Schlüssel abgelehnt … neu eintragen“ ohne Schlüsselteile | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
@@ -565,6 +567,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - – Offen: Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
 - – Offen: vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - – Offen: B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
+- – Offen: Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.3.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
 - – Offen: B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 
 ### Team & Verwaltung › VA & Delegation (`/delegation`)
@@ -747,7 +750,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (187 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 187 nicht gelaufen.
+**Automatisch** (189 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 189 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -873,6 +876,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): B36.10 Tempo (13.11.): Whiteboard-Kanal mit Tempo „schnell“, Skript in kurzen Szenen, Sprache mit Wortzeiten, Szenen-Übersicht, Render – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B37 Instagram-Stories Abnahme 1–6: Kanal „Testkanal Instagram“ (täglich 12:00, Freigabe jedes Mal, Limit 5 $, Fakten), 5 Themen + eigenes Foto, Stories erzeugen, Handy-Vorschau, Regelverstoß, Neu erzeugen/Motiv neu/Ablehnen, Freigeben, Instagram verbinden, posten mit Fehlern und abgelaufenem Zugang, Limit – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36.10 Nachtrag: fertiges, privat hochgeladenes Whiteboard-Video → „Im neuen Takt neu machen“ (gleicher Text), Szenen-Übersicht freigeben – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 13.11. Sprechtempo/Zeichnen/Hand: Whiteboard-Video mit Sprechtempo 1,1 und Motiv-Stil Strichzeichnung rendern – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 13.11. Probeszene: fertiges Whiteboard-Video, Sprechtempo 1,15, „Probeszene (20 s)“ ab Szene 3, danach Warnung unter 135 Wörter/Min. und „Neu vertonen & zeichnen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel – im letzten Lauf nicht gelaufen
@@ -1006,6 +1011,7 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Video (YouTube): Worker unter Windows (Docker Desktop bzw. Python + ffmpeg) – Einrichtung am Arbeits-PC
 - Video (YouTube): vidIQ Stufe 2 (eigene API) und Shorts – nicht Teil dieses Auftrags
 - Video (YouTube): B36.10 Sichtprüfung am echten Video (Takt, Zoom, Wisch, Hervorhebungen)
+- Video (YouTube): Nachtrag 13.11.: Probeszene am echten Video „Vakuumpumpe“ (Worker 1.3.0, echte Stimme und Motive) ansehen, dann neu vertonen & zeichnen
 - Video (YouTube): B37 echtes Instagram-Konto: Meta-App, App-Prüfung (instagram_business_content_publish), öffentliche https-Adresse, erste Story live
 - VA & Delegation: VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen
 - Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs

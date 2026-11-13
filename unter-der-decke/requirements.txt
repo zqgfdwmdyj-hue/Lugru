@@ -1,3 +1,4 @@
 anthropic>=2.8,<3
 requests>=2.31,<3
 Pillow>=10.2,<12
+numpy>=1.26,<3
