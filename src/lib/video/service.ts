@@ -12,7 +12,7 @@ import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
 import { storySperre } from "./story-sperre";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -177,7 +177,7 @@ export async function imTaktNeu(s: Session, id: string, o: { gleicherText: boole
   const { a, kanal } = await auftragFuer(s, id);
   if (a.art !== "video") throw new VideoFehler("Nur für Videos.");
   if (kanal.stil !== "whiteboard") throw new VideoFehler("Nur für Whiteboard-Videos (Takt nach B36.10).");
-  if (a.status !== "fertig" && a.status !== "fehler") throw new VideoFehler("Erst wenn das Video fertig ist oder im Fehler steht.");
+  if (!taktNeuMoeglich(a.status)) throw new VideoFehler("Gerade läuft noch ein Schritt – neu machen geht, sobald das Video fertig ist, auf eine Freigabe wartet oder abgebrochen wurde.");
   if (!a.skript?.length || !a.gliederung) throw new VideoFehler("Kein Skript bzw. keine Gliederung vorhanden – bitte ein neues Video anlegen.");
   const w = await workerZuletzt(s.tenantId);
   if (w && workerVeraltet(w.version)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren, sonst entsteht wieder der alte Takt (nichts geändert).`);

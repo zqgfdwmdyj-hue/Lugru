@@ -6,7 +6,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
-import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -337,13 +337,13 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                     )
                   )}
                 </div>
-                {kanal.stil === "whiteboard" && (a.status === "fertig" || a.status === "fehler") && !!a.skript?.length && !!a.gliederung && !s.readOnly && (() => {
+                {kanal.stil === "whiteboard" && taktNeuMoeglich(a.status) && !!a.skript?.length && !!a.gliederung && !s.readOnly && (() => {
                   const zeichen = a.skript.reduce((n, x) => n + x.text.trim().length + 2, 0);
                   const bekannt = new Set(a.skript.flatMap((x) => (x.motive ?? []).map((m) => m.key))).size;
                   const sch = taktNeuSchaetzung(cfg.preise, cfg.modell, zeichen, bekannt);
                   const alt = (a.skript.length < WB_SZENEN[0]) || a.skript.some((x) => !x.takt);
                   return (
-                    <details open={alt && a.status === "fertig"} data-testid="vd-takt-neu">
+                    <details open={alt && a.status !== "abgebrochen"} data-testid="vd-takt-neu">
                       <summary className="small"><strong>Im neuen Takt neu machen</strong>{alt ? ` – dieses Video hat ${a.skript.length} lange Szenen ohne Takt` : ""}</summary>
                       <form action={taktNeuAction} className="stack small" style={{ gap: 6, marginTop: 6 }}>
                         <input type="hidden" name="id" value={a.id} />

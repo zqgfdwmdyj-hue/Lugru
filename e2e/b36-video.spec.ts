@@ -553,6 +553,7 @@ test.describe("B36 Video-Pipeline", () => {
     const karte = page.getByTestId("vd-auftrag").first();
     await expect(karte.getByTestId("vd-status")).toContainText("Szenen-Übersicht");
     await expect(karte.getByTestId("vd-uebersicht")).toBeVisible();
+    await expect(karte.getByTestId("vd-takt-neu")).toHaveCount(1); // „Im neuen Takt neu machen“ auch bei offener Freigabe
     expect((await page.request.get(`/api/video/${a.id}/uebersicht`)).headers()["content-type"]).toBe("image/jpeg");
     const neu = szenen[0].motive.find((mm) => mm.key !== "ersatz" && mm.key !== "testmann")!.key;
     await karte.getByTestId(`vd-motiv-${neu}`).first().check();

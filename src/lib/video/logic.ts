@@ -218,6 +218,10 @@ export const TYPISCH = typischFuer();
  * Recherche), Skript in kurzen Szenen + Paket neu (Claude, ca. 70.000 Tokens Eingabe / 6.000 Ausgabe), Sprache neu mit
  * Wortzeiten (alle Zeichen – neue Szenen-Aufteilung), Motive nur neue: die bisherigen liegen in der Kanal-Bibliothek.
  */
+/** „Im neuen Takt neu machen“ geht, sobald kein Lauf aktiv ist: fertig, Fehler, wartet auf eine Freigabe (z. B. die
+ *  Vorschau gefiel nicht) oder abgebrochen. */
+export const taktNeuMoeglich = (status: string) => status === "fertig" || status === "fehler" || status === "freigabe" || status === "abgebrochen";
+
 export function taktNeuSchaetzung(p: VideoPreise, modell: string | null, zeichen: number, bekannteMotive: number): { summe: number; positionen: { art: string; betrag: number | null }[]; neueMotive: number; fehlend: string[] } {
   const c = claudePreis(p, modell);
   const neueMotive = Math.max(10, Math.round(((WB_SZENEN[0] + WB_SZENEN[1]) / 2) * NEUE_MOTIVE_JE_SZENE) - bekannteMotive);

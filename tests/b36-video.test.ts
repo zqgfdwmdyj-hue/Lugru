@@ -179,6 +179,11 @@ describe("Seller-System rechnet nicht (B36.2/Abnahme 7)", () => {
 });
 
 describe("B36.10 „Im neuen Takt neu machen“ – Kostenschätzung", () => {
+  it("geht bei fertig, Fehler, wartender Freigabe und abgebrochen – nicht während ein Schritt läuft oder wartet", async () => {
+    const { taktNeuMoeglich } = await import("@/lib/video/logic");
+    expect(["fertig", "fehler", "freigabe", "abgebrochen"].every(taktNeuMoeglich)).toBe(true);
+    expect(["wartet", "laeuft"].some(taktNeuMoeglich)).toBe(false);
+  });
   it("ohne Recherche/Websuche: Claude für Skript+Paket, Sprache für alle Zeichen, nur neue Motive (Rest aus der Bibliothek)", async () => {
     const { taktNeuSchaetzung, VIDEO_PREISE_STANDARD } = await import("@/lib/video/logic");
     const p = { ...VIDEO_PREISE_STANDARD, claudeEingabeJeMio: 4, claudeAusgabeJeMio: 20, elevenlabsJe1000Zeichen: 0.18, motivJeStueck: 0.02 };

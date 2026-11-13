@@ -1819,7 +1819,7 @@ schreiben“ erscheint nur während der Skript-Freigabe, ein neues Video hätte 
 | Was bleibt (kostet nichts) | – | Gliederung + Quellen (keine Recherche, keine Websuche), alle Motive der Kanal-Bibliothek, Hand, Referenzbilder | `service.ts › imTaktNeu` |
 | Was neu kostet | – | Skript in kurzen Szenen + Paket (Claude), Sprache mit Wortzeiten (alle Zeichen – die Szenen sind neu geschnitten), nur neue Motive | `logic.ts › taktNeuSchaetzung` |
 | YouTube | – | bisheriges Video bleibt privat in YouTube Studio (selbst löschen); „Privat hochladen“ wieder aus, neuer Upload erst nach Vorschau; der Worker verwirft die alte YouTube-ID | `imTaktNeu`, `schritte.py › ausfuehren` |
-| Schutz | – | nur mit Worker v1.2.0 (sonst entstünde wieder der alte Takt), nur Whiteboard, nur fertig/Fehler | `imTaktNeu` |
+| Schutz | – | nur mit Worker v1.2.0 (sonst entstünde wieder der alte Takt), nur Whiteboard; sobald kein Schritt läuft: fertig, Fehler, wartet auf Freigabe (z. B. Vorschau gefiel nicht) oder abgebrochen (Nachtrag: vorher nur fertig/Fehler – ein Video mit offener Vorschau-Freigabe zeigte den Bereich nicht) | `taktNeuMoeglich`, `imTaktNeu` |
 
 | Abnahme | Ergebnis |
 |---|---|
