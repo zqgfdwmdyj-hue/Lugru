@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_AB_TAKT, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -118,12 +118,16 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.2.0");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.2.1");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
-    expect(workerVeraltet("1.2.0")).toBe(false);
+    expect(workerVeraltet("1.2.0")).toBe(true); // 1.2.1: mehr Platz für Claude
+    expect(workerVeraltet("1.2.1")).toBe(false);
     expect(workerVeraltet("2.0")).toBe(false);
+    // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
+    expect(workerVeraltet("1.2.0", WORKER_AB_TAKT)).toBe(false);
+    expect(workerVeraltet("1.1.2", WORKER_AB_TAKT)).toBe(true);
   });
   it("Länge fest für alle Kanäle: 1.500–1.700 Wörter ≈ 10–12 Min., 15–34 Szenen", () => {
     expect(SKRIPT_WOERTER).toEqual([1500, 1700]);
@@ -194,5 +198,37 @@ describe("B36.10 „Im neuen Takt neu machen“ – Kostenschätzung", () => {
     expect(s.positionen.some((x) => /Websuche|Recherche/.test(x.art))).toBe(false);
     // große Bibliothek: mindestens 10 neue Motive eingeplant; fehlender Sprachpreis wird genannt
     expect(taktNeuSchaetzung({ ...p, elevenlabsJe1000Zeichen: null }, null, 10_000, 500)).toMatchObject({ neueMotive: 10, fehlend: ["Sprache mit Wortzeiten"] });
+  });
+});
+
+describe("Anbieter-Störung: automatisch später neu", () => {
+  it("erkennt vorübergehende Störungen (nach 5 Versuchen, HTTP 429/5xx), nicht abgelehnte Schlüssel", async () => {
+    const { anbieterStoerung } = await import("@/lib/video/logic");
+    expect(anbieterStoerung("Skript – Punkt 5: nach 5 Versuchen nicht geklappt (HTTP 503: credential validation failed)")).toBe(true);
+    expect(anbieterStoerung("ElevenLabs (Szene 4): HTTP 529: overloaded")).toBe(true);
+    expect(anbieterStoerung("Bildanbieter: HTTP 429: rate limit")).toBe(true);
+    expect(anbieterStoerung("OpenAI-Schlüssel abgelehnt (HTTP 401) – unter Anbindungen → OpenAI neu eintragen")).toBe(false);
+    expect(anbieterStoerung("Im Kanalprofil fehlt die Stimme (ElevenLabs-Voice-ID).")).toBe(false);
+    expect(anbieterStoerung(null)).toBe(false);
+  });
+  it("nach 10, 30, 60 Minuten – danach bleibt der Fehler stehen", async () => {
+    const { autoNeuUm } = await import("@/lib/video/logic");
+    const t = new Date("2026-11-13T10:00:00Z");
+    const f = "Skript – Punkt 5: nach 5 Versuchen nicht geklappt (HTTP 503: credential validation failed)";
+    expect([0, 1, 2].map((n) => (autoNeuUm(f, n, t)!.getTime() - t.getTime()) / 60_000)).toEqual([10, 30, 60]);
+    expect(autoNeuUm(f, 3, t)).toBeNull();
+    expect(autoNeuUm("Kein Skript", 0, t)).toBeNull();
+  });
+});
+
+describe("Brücke: Platz für Claude-Antworten", () => {
+  it("hebt max_tokens auf mindestens 16.000 (Denken zählt mit), größere Werte bleiben", async () => {
+    const { claudeMitPlatz, CLAUDE_PLATZ_MIN } = await import("@/lib/video/logic");
+    expect(CLAUDE_PLATZ_MIN).toBe(16000);
+    expect(claudeMitPlatz({ model: "claude-opus-5-5", max_tokens: 3000, messages: [] })).toEqual({ model: "claude-opus-5-5", max_tokens: 16000, messages: [] });
+    expect(claudeMitPlatz({ max_tokens: 1200 })?.max_tokens).toBe(16000);
+    expect(claudeMitPlatz({ max_tokens: 16000 })).toBeNull();
+    expect(claudeMitPlatz({ max_tokens: 32000 })).toBeNull();
+    expect(claudeMitPlatz({ messages: [] })).toBeNull();
   });
 });

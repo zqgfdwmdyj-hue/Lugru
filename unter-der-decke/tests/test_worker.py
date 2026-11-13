@@ -797,3 +797,29 @@ def test_takt_plan_stillstand_am_szenenanfang_ohne_fertiges_element():
     luecken = wb.stillstand(plan, 9.5)
     assert all(g <= wb.MAX_PAUSE for g, _a, _b in luecken)
     assert wb.stillstand([], 2.0) == [(1.7, wb.WISCH_S, 2.0)]
+
+
+def test_claude_abgeschnitten_einmal_mit_mehr_platz(monkeypatch):
+    """Betrieb: „Recherche – Gliederung: Antwort von Claude abgeschnitten (max_tokens)“ – das Denken der aktuellen Modelle
+    zählt zu max_tokens. Mindestens 16.000 Tokens Platz; abgeschnitten → einmal neu mit doppeltem Platz, dann Fehler."""
+    from types import SimpleNamespace
+
+    from udd import ki
+
+    gesehen: list[int] = []
+    plan = ["max_tokens", "end_turn"]
+
+    def einmal(_c, _n, kw, _f):
+        gesehen.append(kw["max_tokens"])
+        stop = plan.pop(0) if plan else "max_tokens"
+        return SimpleNamespace(stop_reason=stop, content=[SimpleNamespace(type="text", text='{"punkte": []}')])
+
+    monkeypatch.setattr(ki, "_einmal", einmal)
+    logs: list[str] = []
+    text, _ = ki.fragen(None, "claude-opus-5-5", "x", was="Recherche – Gliederung", websuche=3, max_tokens=3000, log=logs.append)  # type: ignore[arg-type]
+    assert text == '{"punkte": []}' and gesehen == [16000, 32000]
+    assert "Recherche – Gliederung: Antwort abgeschnitten – neuer Versuch mit mehr Platz (32000 Tokens)" in logs
+    gesehen.clear()
+    with pytest.raises(RuntimeError, match=r"Recherche – Gliederung: Antwort von Claude abgeschnitten \(max_tokens 32000\)"):
+        ki.fragen(None, "claude-opus-5-5", "x", was="Recherche – Gliederung", log=None)  # type: ignore[arg-type]
+    assert gesehen == [16000, 32000]

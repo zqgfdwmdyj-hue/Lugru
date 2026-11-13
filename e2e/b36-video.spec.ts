@@ -54,9 +54,9 @@ async function warteStoriesFehler<S extends { thema: string; status: string }>(l
   }
 }
 
-const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[] }>);
+const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[] }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
-type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
+type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
 
 const PY = process.env.VIDEO_WORKER_PYTHON || "python3";
 const THEMA = "Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht";
@@ -188,18 +188,25 @@ test.describe("B36 Video-Pipeline", () => {
     // Recherche abschnittsweise: Gliederung + je Punkt ein eigener Aufruf mit Websuche; „Punkt 2“ nach 529 wiederholt
     expect(ki.filter((k) => /^\[video:research:punkt-\d\]/.test(k.text) && k.tools.includes("web_search")).length).toBeGreaterThanOrEqual(5);
     expect((await nachbau()).claude.filter((x) => x === "research:punkt-2")).toHaveLength(2);
+    // Platz je Claude-Aufruf: mindestens 16.000 Tokens (Opus/Sonnet 5.5 denken mit, das zählt zu max_tokens)
+    expect(Math.min(...(await nachbau()).maxTokens.map((n) => n ?? 0))).toBeGreaterThanOrEqual(16000);
     expect(recherche.text).toContain("beziehung ohne nähe"); // vidIQ fließt in die Recherche
     expect(recherche.text).toContain("Zielgruppe: Männer ab 55"); // Zielgruppe aus dem Kanalprofil
     expect(recherche.text).toContain("(10–12 Minuten)");
     await Promise.all([aktion(page), karte.getByTestId("vd-freigeben").click()]);
 
-    // Skript abschnittsweise: „Punkt 3“ scheitert 5-mal → Schritt-Fehler mit Abschnittsname; fertige Abschnitte liegen als
-    // Dateien im Projektordner; der Hook wurde nach einem Abbruch mitten im Stream automatisch neu geholt
+    // Skript abschnittsweise: „Punkt 3“ scheitert 5-mal → Anbieter-Störung mit Abschnittsname; das Seller-System plant
+    // selbst einen neuen Versuch in 10 Min. (statt „Fehler“); fertige Abschnitte liegen als Dateien im Projektordner; der
+    // Hook wurde nach einem Abbruch mitten im Stream automatisch neu geholt
     let a = await auftrag();
-    for (const bis = Date.now() + 120_000; a.status !== "fehler" && Date.now() < bis; a = await auftrag()) await new Promise((r) => setTimeout(r, 250));
-    expect(a.status, log.slice(-2000)).toBe("fehler");
+    for (const bis = Date.now() + 120_000; a.schritte.script?.status !== "fehler" && a.status !== "fehler" && Date.now() < bis; a = await auftrag()) await new Promise((r) => setTimeout(r, 250));
+    expect(a.status, log.slice(-2000)).toBe("wartet");
     expect(a.schritt).toBe("script");
     expect(a.schritte.script?.fehler).toContain("Skript – Punkt 3: nach 5 Versuchen nicht geklappt");
+    expect(a.schritte.script?.autoVersuche).toBe(1);
+    const [{ start_ab: startAb }] = await sql<{ start_ab: Date }>("select start_ab from video_auftraege where id = $1", [a.id]);
+    expect(Math.round((new Date(startAb).getTime() - Date.now()) / 60_000)).toBeGreaterThanOrEqual(9);
+    expect(new Date(a.schritte.script!.autoUm!).getTime()).toBe(new Date(startAb).getTime());
     let abschnitte = (await nachbau()).claude;
     const anzahl = (k: string) => abschnitte.filter((x) => x === k).length;
     expect([anzahl("script:hook"), anzahl("script:angst"), anzahl("script:punkt-1"), anzahl("script:punkt-3"), anzahl("script:punkt-4")]).toEqual([2, 1, 1, 5, 0]);
@@ -209,9 +216,11 @@ test.describe("B36 Video-Pipeline", () => {
     const skriptOrdner = path.join(arbeit, "projekte", slug1, a.id, "skript");
     expect(readdirSync(skriptOrdner).flatMap((h) => readdirSync(path.join(skriptOrdner, h))).sort()).toEqual(["angst.json", "hook.json", "punkt-1.json", "punkt-2.json"]);
     await page.reload();
-    await expect(karte.getByTestId("vd-fehler")).toContainText("Skript – Punkt 3");
-    // „Schritt wiederholen“: nur der fehlende Abschnitt und die danach werden geholt
-    await Promise.all([aktion(page), karte.getByTestId("vd-wiederholen").click()]);
+    await expect(karte.getByTestId("vd-fehler")).toHaveCount(0);
+    await expect(karte.getByTestId("vd-auto-neu")).toContainText("Störung beim Anbieter in „Skript“: Skript – Punkt 3");
+    await expect(karte.getByTestId("vd-auto-neu")).toContainText("(1/3)");
+    // „Jetzt neu versuchen“ statt 10 Min. warten: nur der fehlende Abschnitt und die danach werden geholt
+    await Promise.all([aktion(page), karte.getByTestId("vd-jetzt-neu").click()]);
 
     // Abnahme 2: Skript mit 5–7 Punkten, Länge fest 1.500–1.700 Wörter, alle Studien in der Quellenliste
     a = await warteAuf("Freigabe Skript", (x) => x.freigabe_offen === "skript");
@@ -247,7 +256,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.2.0)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.2.1)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);

@@ -3,6 +3,11 @@
 Jeder Aufruf wird gestreamt und hat ein Zeitlimit (KI_TIMEOUT_S, Standard 120 s; mit Websuche doppelt so lang, weil die
 Suche selbst Zeit braucht). Verbindungsabbruch, Zeitüberschreitung, 429 und 5xx wiederholt netz.mit_wiederholung
 (2, 4, 8, 16 s) – das SDK selbst wiederholt nichts, damit es keine doppelten Wartezeiten gibt.
+
+Platz für die Antwort (max_tokens): Die aktuellen Modelle (Opus 5.5, Sonnet 5.5) denken bei jedem Aufruf mit, und das
+Denken zählt zu max_tokens – ebenso der Code, mit dem die Websuche Treffer filtert. Darum mindestens PLATZ Tokens; wird
+eine Antwort trotzdem abgeschnitten, gibt es genau einen neuen Versuch mit doppeltem Platz (höchstens PLATZ_MAX).
+max_tokens ist nur eine Obergrenze – bezahlt wird, was Claude wirklich schreibt.
 """
 
 from __future__ import annotations
@@ -20,6 +25,9 @@ except ImportError:  # pragma: no cover
     import httpx  # type: ignore[no-redef]
 
 from . import netz
+
+PLATZ = 16000
+PLATZ_MAX = 32000
 
 
 def client(seller_url: str, token: str, auftrag_id: str) -> anthropic.Anthropic:
@@ -60,13 +68,44 @@ def fragen(
     system: str | None = None,
     schema: dict | None = None,
     websuche: int = 0,
-    max_tokens: int = 4000,
+    max_tokens: int = PLATZ,
     effort: str = "medium",
     timeout_s: float | None = None,
     log: Callable[[str], None] | None = print,
 ) -> tuple[str, list[str]]:
     """Eine Anfrage (Streaming, Zeitlimit, Wiederholung), bei Websuche mit Fortsetzen nach „pause_turn“.
-    Liefert Text und gefundene URLs. Fehler nennen „was“ (z. B. „Skript – Punkt 3“)."""
+    Liefert Text und gefundene URLs. Fehler nennen „was“ (z. B. „Skript – Punkt 3“).
+    Abgeschnitten (max_tokens) → einmal neu mit doppeltem Platz."""
+    platz = max(max_tokens, PLATZ)
+    while True:
+        try:
+            return _fragen(c, modell, prompt, was=was, system=system, schema=schema, websuche=websuche, max_tokens=platz, effort=effort, timeout_s=timeout_s, log=log)
+        except Abgeschnitten:
+            if platz >= PLATZ_MAX:
+                raise
+            platz = min(platz * 2, PLATZ_MAX)
+            if log:
+                log(f"{was}: Antwort abgeschnitten – neuer Versuch mit mehr Platz ({platz} Tokens)")
+
+
+class Abgeschnitten(RuntimeError):
+    pass
+
+
+def _fragen(
+    c: anthropic.Anthropic,
+    modell: str,
+    prompt: str,
+    *,
+    was: str,
+    system: str | None,
+    schema: dict | None,
+    websuche: int,
+    max_tokens: int,
+    effort: str,
+    timeout_s: float | None,
+    log: Callable[[str], None] | None,
+) -> tuple[str, list[str]]:
     nachrichten: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
     kw: dict[str, Any] = {"model": modell, "max_tokens": max_tokens, "output_config": {"effort": effort}}
     if system:
@@ -94,7 +133,7 @@ def fragen(
     if nachricht.stop_reason == "refusal":
         raise RuntimeError(f"{was}: Claude hat die Anfrage abgelehnt (Thema prüfen)")
     if nachricht.stop_reason == "max_tokens":
-        raise RuntimeError(f"{was}: Antwort von Claude abgeschnitten (max_tokens)")
+        raise Abgeschnitten(f"{was}: Antwort von Claude abgeschnitten (max_tokens {max_tokens})")
     return "\n".join(t for t in texte if t), urls
 
 

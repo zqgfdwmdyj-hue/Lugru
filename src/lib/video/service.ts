@@ -12,7 +12,7 @@ import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
 import { storySperre } from "./story-sperre";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, autoNeuUm, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_AB_TAKT, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -180,7 +180,7 @@ export async function imTaktNeu(s: Session, id: string, o: { gleicherText: boole
   if (!taktNeuMoeglich(a.status)) throw new VideoFehler("Gerade läuft noch ein Schritt – neu machen geht, sobald das Video fertig ist, auf eine Freigabe wartet oder abgebrochen wurde.");
   if (!a.skript?.length || !a.gliederung) throw new VideoFehler("Kein Skript bzw. keine Gliederung vorhanden – bitte ein neues Video anlegen.");
   const w = await workerZuletzt(s.tenantId);
-  if (w && workerVeraltet(w.version)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren, sonst entsteht wieder der alte Takt (nichts geändert).`);
+  if (w && workerVeraltet(w.version, WORKER_AB_TAKT)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren, sonst entsteht wieder der alte Takt (nichts geändert).`);
   const text = a.skript.map((x) => x.text.trim()).filter(Boolean).join("\n\n").slice(0, VORLAGE_MAX);
   const cfg = await videoEinstellungen(s.tenantId);
   const bekannt = new Set(a.skript.flatMap((x) => (x.motive ?? []).map((m) => m.key))).size;
@@ -210,9 +210,14 @@ export async function motiveNeu(s: Session, id: string, keys: string[]) {
   return `${neu.length} Motiv${neu.length === 1 ? "" : "e"} werden neu erzeugt – danach kommt die Szenen-Übersicht wieder.`;
 }
 
-/** Nach Fehler: denselben Schritt erneut (bereits bezahlte Dateien nutzt der Worker weiter). */
+/** Nach Fehler: denselben Schritt erneut (bereits bezahlte Dateien nutzt der Worker weiter). Wartet der Schritt auf
+ *  den automatischen neuen Versuch nach einer Anbieter-Störung: sofort statt zum geplanten Zeitpunkt. */
 export async function schrittWiederholen(s: Session, id: string) {
   const { a } = await auftragFuer(s, id);
+  if (a.status === "wartet" && a.schritte[a.schritt]?.autoUm) {
+    await aendern(id, { startAb: null, schritte: { ...a.schritte, [a.schritt]: { ...a.schritte[a.schritt]!, autoUm: null } } });
+    return;
+  }
   if (a.status !== "fehler") throw new VideoFehler("Nur nach einem Fehler.");
   const schritte = { ...a.schritte, [a.schritt]: { status: "offen" as const } };
   await aendern(id, { status: "wartet", wiederholen: a.schritt, schritte });
@@ -371,7 +376,7 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
   let grund: string | undefined;
   for (const k of kandidaten) {
     // B37: Stories erst ab Worker 1.2.0 (ältere kennen den Schritt nicht) und nur unter dem Monatslimit des Kanals
-    if (k.art === "story" && workerVeraltet(w.version)) {
+    if (k.art === "story" && workerVeraltet(w.version, WORKER_AB_TAKT)) {
       grund = `Worker v${w.version ?? "?"} kann keine Stories – bitte auf v${WORKER_VERSION_AKTUELL} aktualisieren`;
       continue;
     }
@@ -409,7 +414,7 @@ export async function schrittMelden(w: Worker, id: string, m: SchrittMeldung): P
   if (a.status !== "laeuft" || a.workerId !== w.id) return { weiter: false, status: a.status, naechster: null, freigabe: a.freigabeOffen };
   const hinweise = Array.isArray(m.hinweise) ? m.hinweise.filter((x) => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 300)) : null;
   const vorher = a.schritte[m.schritt];
-  const stand: SchrittStand = { status: m.status, fortschritt: m.fortschritt ?? null, fehler: m.fehler?.slice(0, 1000) ?? null, hinweise: hinweise ?? (m.status === "laeuft" ? (vorher?.hinweise ?? null) : null), am: jetzt().toISOString() };
+  const stand: SchrittStand = { status: m.status, fortschritt: m.fortschritt ?? null, fehler: m.fehler?.slice(0, 1000) ?? null, hinweise: hinweise ?? (m.status === "laeuft" ? (vorher?.hinweise ?? null) : null), am: jetzt().toISOString(), autoVersuche: m.status === "fertig" ? null : (vorher?.autoVersuche ?? null) };
   const schritte = { ...a.schritte, [m.schritt]: stand };
   const werte: Partial<typeof A.$inferInsert> = { schritte, zuletztVomWorker: jetzt(), workerId: w.id };
   if (m.status === "laeuft") {
@@ -417,6 +422,14 @@ export async function schrittMelden(w: Worker, id: string, m: SchrittMeldung): P
     return { weiter: true, status: "laeuft", naechster: m.schritt, freigabe: null };
   }
   if (m.status === "fehler") {
+    // Anbieter-Störung: später automatisch noch einmal (10/30/60 Min.) statt sofort „Fehler“
+    const bisher = vorher?.autoVersuche ?? 0;
+    const um = autoNeuUm(stand.fehler, bisher);
+    if (um) {
+      const s2 = { ...schritte, [m.schritt]: { ...stand, autoVersuche: bisher + 1, autoUm: um.toISOString() } };
+      await aendern(id, { ...werte, schritte: s2, status: "wartet", schritt: m.schritt, wiederholen: m.schritt, startAb: um });
+      return { weiter: false, status: "wartet", naechster: null, freigabe: null };
+    }
     await aendern(id, { ...werte, status: "fehler", schritt: m.schritt });
     return { weiter: false, status: "fehler", naechster: null, freigabe: null };
   }

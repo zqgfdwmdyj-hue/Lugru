@@ -116,7 +116,7 @@ def _text_holen(l: "Lauf", st: dict) -> tuple[dict, list[str]]:
         return e["story"], e["regeln"]
     korrektur = None
     for _versuch in range(2):
-        text, _ = ki.fragen(l.claude, l.modell, _prompt(l, st, korrektur), was="Story – Text", schema=STORY_SCHEMA, max_tokens=1200)
+        text, _ = ki.fragen(l.claude, l.modell, _prompt(l, st, korrektur), was="Story – Text", schema=STORY_SCHEMA)
         s = ki.json_aus(text)
         regeln = story_regeln(_text(s), art, werbung_an, bool(s.get("werbung")))
         if not regeln:

@@ -47,13 +47,27 @@ export function figurenAus(text: string | null | undefined): { key: string; besc
 /** Mindestens frei auf dem Worker, sonst kein Lauf (B36.6); Warnung, wenn der Worker so lange schweigt. */
 export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
- *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. */
-export const WORKER_VERSION_AKTUELL = "1.2.0";
-/** true, wenn der Worker eine ältere Version meldet (oder gar keine). */
-export function workerVeraltet(version: string | null | undefined): boolean {
+ *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
+ *  ein neuer Versuch mit doppeltem Platz). */
+export const WORKER_VERSION_AKTUELL = "1.2.1";
+
+/** Mindest-Platz (max_tokens) je Claude-Aufruf über die Brücke: Opus 5.5 und Sonnet 5.5 denken immer mit, und das Denken
+ *  zählt zu max_tokens (ebenso der Filter-Code der Websuche). Ältere Worker schickten 1.200–6.000 → „Antwort abgeschnitten
+ *  (max_tokens)“. max_tokens ist nur eine Obergrenze – bezahlt wird, was Claude wirklich schreibt. */
+export const CLAUDE_PLATZ_MIN = 16000;
+/** Hebt max_tokens einer Claude-Anfrage auf mindestens CLAUDE_PLATZ_MIN; null = nichts zu ändern. */
+export function claudeMitPlatz(body: Record<string, unknown>): Record<string, unknown> | null {
+  const n = body.max_tokens;
+  if (typeof n !== "number" || n >= CLAUDE_PLATZ_MIN) return null;
+  return { ...body, max_tokens: CLAUDE_PLATZ_MIN };
+}
+/** Mindestversion für Stories (B37) und „Im neuen Takt neu machen“ (B36.10) – ältere Worker kennen beides nicht. */
+export const WORKER_AB_TAKT = "1.2.0";
+/** true, wenn der Worker eine ältere Version als „ab“ meldet (oder gar keine). */
+export function workerVeraltet(version: string | null | undefined, ab: string = WORKER_VERSION_AKTUELL): boolean {
   const teile = (v: string) => v.split(".").map((x) => Number.parseInt(x, 10) || 0);
   if (!version) return true;
-  const [a, b] = [teile(version), teile(WORKER_VERSION_AKTUELL)];
+  const [a, b] = [teile(version), teile(ab)];
   for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
   return false;
 }
@@ -218,6 +232,25 @@ export const TYPISCH = typischFuer();
  * Recherche), Skript in kurzen Szenen + Paket neu (Claude, ca. 70.000 Tokens Eingabe / 6.000 Ausgabe), Sprache neu mit
  * Wortzeiten (alle Zeichen – neue Szenen-Aufteilung), Motive nur neue: die bisherigen liegen in der Kanal-Bibliothek.
  */
+/**
+ * Anbieter-Störung (Claude, ElevenLabs oder OpenAI kurz nicht erreichbar, z. B. „HTTP 503: credential validation failed“):
+ * Der Worker hat schon 2/4/8/16 s wiederholt. Dann versucht das Seller-System den Schritt selbst noch einmal – nach 10,
+ * 30 und 60 Minuten –, bevor er als Fehler stehen bleibt. Fertige Teile bleiben, nichts wird doppelt bezahlt. Nicht bei
+ * abgelehntem Schlüssel (401/403) oder abgelehntem Inhalt – da hilft Warten nicht.
+ */
+export const AUTO_NEU_MIN = [10, 30, 60] as const;
+export function anbieterStoerung(fehler: string | null | undefined): boolean {
+  const t = fehler ?? "";
+  if (/\bHTTP 40[13]\b|Schlüssel abgelehnt/i.test(t)) return false;
+  return /nach \d+ Versuchen nicht geklappt/.test(t) || /\bHTTP (429|5\d\d)\b/.test(t);
+}
+/** Zeitpunkt des nächsten automatischen Versuchs (null = keiner mehr bzw. keine Störung). */
+export function autoNeuUm(fehler: string | null | undefined, bisher: number, jetzt = new Date()): Date | null {
+  if (!anbieterStoerung(fehler)) return null;
+  const min = AUTO_NEU_MIN[bisher];
+  return min === undefined ? null : new Date(jetzt.getTime() + min * 60_000);
+}
+
 /** „Im neuen Takt neu machen“ geht, sobald kein Lauf aktiv ist: fertig, Fehler, wartet auf eine Freigabe (z. B. die
  *  Vorschau gefiel nicht) oder abgebrochen. */
 export const taktNeuMoeglich = (status: string) => status === "fertig" || status === "fehler" || status === "freigabe" || status === "abgebrochen";

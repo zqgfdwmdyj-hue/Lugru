@@ -1718,7 +1718,7 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] });
       // Bildmodelle, die es „im Konto nicht gibt“ (zusätzlich zum abgeschalteten gpt-image-1) – prüft das Ausweichen der Brücke
       if (Array.isArray(b.bildModelleGesperrt)) videoNb.bildModelleGesperrt = b.bildModelleGesperrt.map(String);
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
@@ -1726,7 +1726,7 @@ http
       if (b.stoerung) videoNb.stoerungen[b.stoerung.schluessel] = { art: b.stoerung.art, anzahl: b.stoerung.anzahl ?? 1 };
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler });
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler });
     if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
       // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
       const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
@@ -1791,7 +1791,7 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] };
 
 /** Video-Pipeline: Claude-Abschnitte mitschreiben und auf Wunsch stören – „abbruch“ (Antwort beginnt, dann wird die
  *  Verbindung ohne Abschluss geschlossen = „incomplete chunked read“), 529/429/503 als Fehlerantwort. */
@@ -1810,6 +1810,7 @@ function videoStoerungRoh(req, res, url, body) {
     if (!m) return false;
     schluessel = m[2] ? `${m[1]}:${m[2]}` : m[1];
     videoNb.claude.push(schluessel);
+    videoNb.maxTokens.push(b.max_tokens ?? null); // Platz je Aufruf (Brücke hebt auf mindestens 16.000)
   } else if (url.pathname.startsWith("/elevenlabs/v1/text-to-speech/")) schluessel = "eleven";
   else return false;
   const st = videoNb.stoerungen[schluessel];

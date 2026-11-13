@@ -263,7 +263,7 @@ def research(l: Lauf) -> tuple[dict, list[str]]:
             "Wähle Punkte, zu denen es belastbare Studien gibt – die Quellen je Punkt suchst du im nächsten Schritt.",
             'Antworte am Ende NUR mit JSON in diesem Format: {"hook": "…", "angst": "…", "punkte": [{"titel": "…", "kern": "…"}], "fazit": "…", "cta": "…"}',
         )
-        text, _ = ki.fragen(l.claude, l.modell, prompt, was="Recherche – Gliederung", websuche=3, max_tokens=3000)
+        text, _ = ki.fragen(l.claude, l.modell, prompt, was="Recherche – Gliederung", websuche=3)
         d = ki.json_aus(text)
         punkte = [{"titel": str(p["titel"]).strip(), "kern": str(p.get("kern") or "").strip()} for p in d.get("punkte", []) if isinstance(p, dict) and p.get("titel")]
         if not punkte:
@@ -287,7 +287,7 @@ def research(l: Lauf) -> tuple[dict, list[str]]:
                 'Antworte am Ende NUR mit JSON in diesem Format: {"kern": "Kernaussage des Punktes mit den wichtigsten Zahlen", '
                 '"quellen": [{"titel": "…", "url": "https://…", "jahr": 2021, "art": "Studie", "autoren": "…"}]}',
             )
-            text, urls = ki.fragen(l.claude, l.modell, prompt, was=f"Recherche – Quellen {abschnitt_name(name)}", websuche=3, max_tokens=3000)
+            text, urls = ki.fragen(l.claude, l.modell, prompt, was=f"Recherche – Quellen {abschnitt_name(name)}", websuche=3)
             d = ki.json_aus(text)
             gefunden = {_url(u) for u in urls}
             quellen = [
@@ -542,7 +542,7 @@ def _abschnitt_schreiben(l: Lauf, name: str, ziel_abschnitt: tuple[int, int], g:
     )
     schema = _ohne_abschnitt(WB_SKRIPT_SCHEMA if l.whiteboard else SKRIPT_SCHEMA)
     was = f"Skript – {abschnitt_name(name)}"
-    text, _ = ki.fragen(l.claude, l.modell, prompt, was=was, schema=schema, max_tokens=6000 if l.whiteboard else 4000)
+    text, _ = ki.fragen(l.claude, l.modell, prompt, was=was, schema=schema)
     szenen = [{**s, "abschnitt": name} for s in ki.json_aus(text).get("szenen", []) if str(s.get("text", "")).strip()]
     if not szenen:
         raise RuntimeError(f"{was}: Antwort ohne Text")
@@ -1040,7 +1040,7 @@ def _paket_erzeugen(l: Lauf) -> dict:
     prompt = basis
     d: dict = {}
     for _ in range(2):
-        text, _u = ki.fragen(l.claude, l.modell, prompt, was="Paket (Titel, Beschreibung, Tags)", schema=PAKET_SCHEMA, max_tokens=4000, effort="low")
+        text, _u = ki.fragen(l.claude, l.modell, prompt, was="Paket (Titel, Beschreibung, Tags)", schema=PAKET_SCHEMA, effort="low")
         d = ki.json_aus(text)
         treffer = [t for t in d.get("titel", []) + [d.get("thumbnail_text", "")] if titel_treffer(t)]
         if not treffer:

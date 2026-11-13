@@ -6,7 +6,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
-import { anzeigeStatus, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
+import { anzeigeStatus, AUTO_NEU_MIN, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_AB_TAKT, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { abbrechenAction, ablageAction, auftragAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, preiseAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
@@ -183,9 +183,17 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                 <div style={{ height: 6, background: "var(--surface-2, #eee)", borderRadius: 3 }} aria-label="Fortschritt"><div style={{ width: `${fortschrittProzent(a.schritte, a.hochladen)}%`, height: 6, background: "var(--accent, #2563eb)", borderRadius: 3 }} /></div>
                 {a.status === "fehler" && (
                   <div className="notice notice-warn small" data-testid="vd-fehler">
-                    Fehler in „{SCHRITT_TEXT[a.schritt]}“: {stand?.fehler ?? "unbekannt"}
+                    Fehler in „{SCHRITT_TEXT[a.schritt]}“: {stand?.fehler ?? "unbekannt"}{stand?.autoVersuche ? ` (auch nach ${stand.autoVersuche} automatischen neuen Versuchen)` : ""}
                     {!s.readOnly && (
                       <form action={wiederholenAction} style={{ display: "inline", marginLeft: 8 }}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="kanal" value={kanal.id} /><button className="btn btn-sm" type="submit" data-testid="vd-wiederholen">Schritt wiederholen</button></form>
+                    )}
+                  </div>
+                )}
+                {a.status === "wartet" && stand?.autoUm && (
+                  <div className="notice notice-warn small" data-testid="vd-auto-neu">
+                    Störung beim Anbieter in „{SCHRITT_TEXT[a.schritt]}“: {stand.fehler ?? "unbekannt"} – neuer Versuch automatisch {zeit(stand.autoUm)} ({stand.autoVersuche}/{AUTO_NEU_MIN.length}). Fertige Teile bleiben, nichts wird doppelt bezahlt.
+                    {!s.readOnly && (
+                      <form action={wiederholenAction} style={{ display: "inline", marginLeft: 8 }}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="kanal" value={kanal.id} /><button className="btn btn-sm" type="submit" data-testid="vd-jetzt-neu">Jetzt neu versuchen</button></form>
                     )}
                   </div>
                 )}
@@ -353,7 +361,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                         <label><input type="radio" name="text" value="neu" data-testid="vd-takt-neu-text" /> Skript neu schreiben (gleiche Gliederung und Quellen)</label>
                         <label className="stack" style={{ gap: 2 }}>Anmerkung (optional)<input className="input" name="hinweis" maxLength={2000} placeholder="z. B. mehr Humor im Hook" /></label>
                         <span data-testid="vd-takt-kosten">Geschätzt ca. <strong>{usd(sch.summe)}</strong>: {sch.positionen.map((x) => `${x.art} ${usd(x.betrag)}`).join(" · ")}{sch.fehlend.length ? ` (Preis fehlt: ${sch.fehlend.join(", ")})` : ""}</span>
-                        {worker && workerVeraltet(worker.version) && <span className="notice notice-warn small">Erst den Worker am PC auf v{WORKER_VERSION_AKTUELL} aktualisieren – sonst entsteht wieder der alte Takt.</span>}
+                        {worker && workerVeraltet(worker.version, WORKER_AB_TAKT) && <span className="notice notice-warn small">Erst den Worker am PC auf v{WORKER_VERSION_AKTUELL} aktualisieren – sonst entsteht wieder der alte Takt.</span>}
                         <div><ConfirmButton className="btn btn-sm btn-primary" confirm={`Video im neuen Takt neu machen? Geschätzt ca. ${usd(sch.summe)} zusätzlich.`} testid="vd-takt-los">Im neuen Takt neu machen</ConfirmButton></div>
                       </form>
                     </details>

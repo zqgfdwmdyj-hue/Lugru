@@ -9,7 +9,8 @@ import { createdAt, id, tenantId, users } from "./core";
 
 export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload" | "story";
 export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau" | "story";
-export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string };
+/** autoVersuche/autoUm: Anbieter-Störung – das Seller-System versucht den Schritt selbst noch einmal (Anzahl, Zeitpunkt). */
+export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string; autoVersuche?: number | null; autoUm?: string | null };
 /** gefunden: URL stammt direkt aus den Suchtreffern der Recherche. */
 export type VideoQuelle = { id: string; titel: string; url: string | null; jahr: number | null; art: string | null; autoren?: string | null; gefunden?: boolean };
 export type VideoGliederung = { hook?: string | null; angst?: string | null; punkte: { titel: string; kern?: string; quelle_ids?: string[] }[]; fazit?: string | null; cta?: string | null };

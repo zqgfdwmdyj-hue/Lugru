@@ -1825,6 +1825,25 @@ schreiben“ erscheint nur während der Skript-Freigabe, ein neues Video hätte 
 |---|---|
 | Fertiges, hochgeladenes Whiteboard-Video „gleicher Text“ neu machen | ✅ automatisch (`b36-video.spec.ts › B36.10 „Im neuen Takt neu machen“`): Auftrag ab Skript, YouTube-ID/„Privat hochladen“ zurückgesetzt, alter Text als eigenes Skript in allen Skript-Aufrufen, **keine** neue Recherche/Websuche, 63 kurze Szenen, Sprache je Szene einmal mit Wortzeiten, **0 neue Motive** (alle aus der Bibliothek), neues Video fertig; Kosten im Nachbau 2,54 $ → 4,59 $ (nur Skript, Paket, Sprache) |
 
+**Nachtrag 13.11.: Fehler beim Anbieter und abgeschnittene Antworten** (Meldungen: „Skript – Punkt 5: nach 5 Versuchen
+nicht geklappt (HTTP 503: credential validation failed)“ und „Recherche – Gliederung: Antwort von Claude abgeschnitten
+(max_tokens)“). Der 503 kam von Anthropic selbst (die Brücke meldet eigene Fehler als 502; Hook bis Punkt 4 liefen mit
+demselben Schlüssel) – eine Störung, die länger dauerte als die 30 s Wiederholungen des Workers. „Abgeschnitten“: Opus 5.5
+und Sonnet 5.5 denken bei jedem Aufruf mit, das Denken zählt zu `max_tokens` (ebenso der Filter-Code der Websuche); die
+Gliederung hatte nur 3.000 Tokens Platz, Stories 1.200.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Störung beim Anbieter (nach 5 Versuchen, HTTP 429/5xx) | ❌ Schritt „Fehler“, von Hand wiederholen | ✅ Status „wartet“, neuer Versuch **automatisch nach 10, 30, 60 Min.**; Hinweis „Störung beim Anbieter in „Skript“ … neuer Versuch automatisch HH:MM (1/3). Fertige Teile bleiben, nichts wird doppelt bezahlt.“ + Knopf **„Jetzt neu versuchen“**; erst nach dem 3. Fehlversuch „Fehler“ (mit „auch nach 3 automatischen neuen Versuchen“) | `logic.ts › anbieterStoerung, autoNeuUm`, `service.ts › schrittMelden, schrittWiederholen`, `page.tsx › vd-auto-neu` |
+| Abgelehnter Schlüssel (401/403), fehlende Angaben, Inhalt | Fehler | unverändert sofort „Fehler“ – hier hilft Warten nicht | `anbieterStoerung` |
+| Platz für Claude-Antworten | 1.200–6.000 Tokens je Aufruf | **mindestens 16.000** (Brücke hebt kleinere Werte an – wirkt sofort, auch mit altem Worker); Worker 1.2.1: abgeschnitten → **einmal neu mit 32.000**, erst dann Fehler. `max_tokens` ist nur eine Obergrenze – bezahlt wird, was Claude schreibt | `logic.ts › claudeMitPlatz`, `anbieter.ts › weiterleiten`, `ki.py › fragen` |
+| Worker-Version | aktuell 1.2.0 | aktuell **1.2.1** (Hinweis „veraltet“ auf der Seite); Stories und „Im neuen Takt“ gehen weiter ab 1.2.0 | `WORKER_VERSION_AKTUELL`, `WORKER_AB_TAKT` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| „Punkt 3“ scheitert 5-mal (Testnachbau) | ✅ automatisch (`b36-video.spec.ts › Abnahme B36.7`): Status „wartet“, `start_ab` ≈ +10 Min., 1. automatischer Versuch vermerkt, kein „Fehler“-Hinweis, Hinweis „Störung beim Anbieter in „Skript“: Skript – Punkt 3 … (1/3)“; „Jetzt neu versuchen“ holt nur Punkt 3 und die Abschnitte danach |
+| Platz je Claude-Aufruf | ✅ automatisch: alle Video-Aufrufe im Nachbau mit `max_tokens` ≥ 16.000; Unit: Brücke hebt 1.200/3.000 auf 16.000, Worker wiederholt einmal mit 32.000 (`test_claude_abgeschnitten_einmal_mit_mehr_platz`) |
+
 ## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und

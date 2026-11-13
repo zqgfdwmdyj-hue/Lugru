@@ -130,8 +130,15 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 
 ## Aktualisieren (neue Version)
 
-Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.0`). Ist der Worker älter als das
+Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
+
+**1.2.1:** mehr Platz für Claude-Antworten. Opus 5.5 und Sonnet 5.5 denken bei jedem Aufruf mit, das zählt zum
+Antwort-Limit – darum mindestens 16.000 Tokens; wird eine Antwort trotzdem abgeschnitten, holt der Worker sie einmal mit
+doppeltem Platz neu. Das Seller-System hebt den Platz auch für ältere Worker an. Bezahlt wird nur, was Claude schreibt.
+
+**Störung beim Anbieter** („nach 5 Versuchen nicht geklappt“, HTTP 429/5xx): Das Seller-System versucht den Schritt
+selbst nach 10, 30 und 60 Minuten neu (Hinweis auf der Seite, Knopf „Jetzt neu versuchen“); fertige Abschnitte bleiben.
 
 **Mit Docker Desktop** (Ordner wurde nach `C:\video\unter-der-decke` kopiert):
 

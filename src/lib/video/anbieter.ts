@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
-import { bildModellFehlt, bildModellReihenfolge, claudeNutzung, kostenPosition, schluesselAbgelehnt, type BildModell } from "./logic";
+import { bildModellFehlt, bildModellReihenfolge, claudeMitPlatz, claudeNutzung, kostenPosition, schluesselAbgelehnt, type BildModell } from "./logic";
 import { kostenBuchen, videoEinstellungen, type Worker } from "./service";
 
 // B36 Anbieter-Brücke: Der Worker ruft Claude, ElevenLabs und OpenAI über das Seller-System auf. Die Schlüssel bleiben
@@ -96,9 +96,12 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
     if (r.res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("openai", preise, { bilder: typeof body.n === "number" ? body.n : 1, motiv: body.size === "1024x1024", bildModell: r.modell }));
     return new Response(r.daten, { status: r.res.status, headers: antwortKopf(r.res) });
   }
+  // Claude: mindestens CLAUDE_PLATZ_MIN Tokens Platz (Denken zählt mit) – hilft auch Workern vor 1.2.1
+  const mehrPlatz = z.anbieter === "anthropic" ? claudeMitPlatz(body) : null;
+  const raus = mehrPlatz ? JSON.stringify(mehrPlatz) : roh;
   let res: Response;
   try {
-    res = await fetch(z.url, { method: "POST", headers: z.kopf, body: roh, signal: AbortSignal.any([request.signal, AbortSignal.timeout(z.anbieter === "anthropic" ? 600_000 : 180_000)]) });
+    res = await fetch(z.url, { method: "POST", headers: z.kopf, body: raus, signal: AbortSignal.any([request.signal, AbortSignal.timeout(z.anbieter === "anthropic" ? 600_000 : 180_000)]) });
   } catch (e) {
     return fehler(502, `Anbieter nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
   }
