@@ -605,6 +605,18 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "pexels",
+    name: "Pexels (Videoclips für Videos) – optional",
+    purpose: "Echte, kostenlose Stock-Videoclips zwischen den Bildern für Kanäle im Stil „Vollbild“ (Kanalprofil → „Videoclips von Pexels“). Der Worker sucht über das Seller-System – der Schlüssel bleibt hier.",
+    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "Schlüssel von pexels.com/api", help: "Nur den Schlüssel einfügen – nie im Chat." }],
+    setup: [
+      "pexels.com → kostenloses Konto anlegen → pexels.com/api → „Your API Key“ anfordern (sofort, kostenlos) und hier eintragen.",
+      "„Verbindung testen“ macht eine Probesuche.",
+      "Grenzen: 200 Anfragen pro Stunde, 20.000 pro Monat – je Video werden etwa 20–40 Suchen gebraucht.",
+      "Die Clips sind frei nutzbar (Pexels-Lizenz). Die Filmer werden automatisch in der YouTube-Beschreibung genannt.",
+    ],
+  },
+  {
     provider: "instagram",
     name: "Instagram (Stories für Kanäle)",
     purpose: "Automatisches Posten freigegebener Stories (Marken & Content → Video, Instagram-Kanal) über die Instagram-API mit Instagram-Login. Ohne Anbindung entstehen die Stories trotzdem – du postest sie dann von Hand.",

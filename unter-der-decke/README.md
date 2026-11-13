@@ -53,7 +53,7 @@ Im Kanalprofil (Seller-System → Video) „Stil der Bilder: Whiteboard-Collage�
   Figur links + Liste, Gegenüberstellung.
 - **Bibliothek:** jedes Motiv liegt danach im Kanalordner unter `motive/` (mit `index.json`) und wird in späteren
   Szenen und Videos wiederverwendet, ohne neu zu kosten. Wiederkehrende Figuren stehen im Kanalprofil („kurzname:
-  Beschreibung“) und werden einmal gezeichnet. Die Hand mit Stift wird einmal je Kanal erzeugt.
+  Beschreibung“) und werden einmal gezeichnet. Die Hand mit Stift ist ein festes Foto (`grafik/hand.png`).
 - **Texte setzt die Pipeline selbst** in der Schrift Anton (`schriften/`, mit Umlauten): Überschrift schwarz,
   Aussagesatz im roten Balken, Kernaussage rot, „Schritt N: …“ im schwarzen Kasten, Stichpunkte mit orangem Punkt.
   Das Bildmodell zeichnet nie Schrift.
@@ -133,6 +133,27 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
+**1.4.0:** Vollbild in Bewegung statt Bilderwechsel, Pexels-Clips, echte Hand.
+- **Stil „Vollbild“** (Rückmeldung 13.11.: „eher ein Bilderwechsel als ein Video“): statt einem Standbild je Szene
+  kommt etwa alle 6 s ein neues Bild (Kanalprofil „Bildwechsel alle … s“, 4–10 s). Je Szene plant Claude 1–6 Bilder
+  bzw. Clips, jedes mit einem Schlüsselwort; das Bild wechselt, wenn das Wort gesprochen wird (ElevenLabs-Wortzeiten).
+  Ein Aufruf deckt bis zu 25 Szenen ab. Das erste Bild jeder Szene ist das bisherige Szenenbild (schon bezahlt).
+- Jedes Bild fährt: langsam hinein-/herauszoomen oder schwenken (6 Varianten, weich beschleunigt, aus 4K gerechnet –
+  ruckelt nicht). Zwischen allen Bildern weiche Übergänge (Blende, Wisch, Kreis, 0,5 s). Die Einblendung (Kernaussage,
+  Studie) steht oben links still und blendet weich ein, das Bild läuft darunter weiter. Untertitel wie bisher.
+- **Videoclips von Pexels** (Kanalprofil „Echte Videoclips von Pexels einmischen“, kostenlos): jedes zweite Element
+  darf ein echter Clip sein. Gesucht wird über das Seller-System (Anbindungen → Pexels, Schlüssel nur dort im sicheren
+  Formular), die Datei lädt der Worker direkt von Pexels (nur pexels.com/vimeo, bis 250 MB, im Projekt zwischengespeichert).
+  Jeder Clip kommt im Video nur einmal vor; die Filmer stehen am Ende der Beschreibung („Videos: Pexels (pexels.com) – …“).
+  Ohne Pexels-Schlüssel nimmt der Worker Bilder und meldet es als Hinweis.
+- „Probeszene“ gibt es jetzt auch für Vollbild-Kanäle (ca. 20 s, mit Bildern, Kamerafahrt, Clips). Passt es,
+  „Neu bebildern & rendern“: Skript und Sprache bleiben, neu entstehen nur Bildplan, fehlende Bilder und der Render.
+- **Whiteboard-Hand:** `grafik/hand.png` ist jetzt ein freigestelltes Foto einer echten Hand mit Stift
+  (Stiftspitze unten links, Unterarm läuft oben rechts aus dem Bild). `hand.json`: `spitze` = Stiftspitze in Pixeln,
+  `hand_hoehe` = Höhe der Hand ohne Unterarm (danach wird skaliert).
+- Neue Ordner/Dateien: `udd/bewegt.py`, `grafik/hand.png` + `grafik/hand.json` (ersetzt). Beim Aktualisieren den ganzen
+  Ordner `unter-der-decke` ersetzen und neu bauen (siehe unten).
+
 **1.3.0:** echtes Zeichnen statt Wisch-Maske, feste Hand, Sprechtempo, Probeszene.
 - Jedes Motiv wird einmal vektorisiert (Mittellinien der Konturen → Pfade, gespeichert neben dem Motiv in der
   Kanal-Bibliothek als `<motiv>.striche.json` und zum Ansehen `<motiv>.svg`). Im Video fährt der Stift die Pfade Strich
@@ -190,6 +211,7 @@ Halb fertige Aufträge laufen danach mit „Schritt wiederholen“ auf der Seite
 | `CLAUDE_MODELL` | Claude-Modell nur zum Übersteuern (sonst gilt die Wahl auf der Seite Video, Standard Opus 5.5) | leer |
 | `AUFBEWAHREN_TAGE` | Projekte spätestens nach … Tagen löschen | `14` |
 | `FFMPEG` / `FFPROBE` | Pfad, falls nicht im PATH | `ffmpeg` / `ffprobe` |
+| `UDD_CLIP_HOSTS` | nur für Tests: weitere Hosts, von denen Clips geladen werden dürfen (kommagetrennt) | leer |
 
 ## Ablage der fertigen Videos
 

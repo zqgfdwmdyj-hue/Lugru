@@ -21,6 +21,7 @@ class Konfig:
     aufbewahren_tage: int
     ffmpeg: str
     ffprobe: str
+    clip_hosts: tuple[str, ...] = ()  # zusätzlich erlaubte Hosts für Clip-Downloads (nur Testumgebung)
 
 
 def laden() -> Konfig:
@@ -45,4 +46,5 @@ def laden() -> Konfig:
         aufbewahren_tage=int(os.environ.get("AUFBEWAHREN_TAGE", "14")),
         ffmpeg=os.environ.get("FFMPEG", "ffmpeg"),
         ffprobe=os.environ.get("FFPROBE", "ffprobe"),
+        clip_hosts=tuple(h.strip().lower() for h in os.environ.get("UDD_CLIP_HOSTS", "").split(",") if h.strip()),
     )

@@ -1867,12 +1867,41 @@ sie daneben oder war weiß auf weiß.
 
 | Abnahme | Ergebnis |
 |---|---|
-| Sprechtempo und Pausen | ✅ automatisch (`test_sprache_mit_tempo_stille_gekuerzt_und_woerter_pro_minute`, e2e Whiteboard): ElevenLabs bekommt `speed` 1,1 und die gespeicherte Stabilität 0,42; Stille vor/nach jeder Szene abgeschnitten, Lücke zwischen Szenen ≤ 0,3 s; Testvideo **WPM_E2E Wörter/Min.** |
+| Sprechtempo und Pausen | ✅ automatisch (`test_sprache_mit_tempo_stille_gekuerzt_und_woerter_pro_minute`, e2e Whiteboard): ElevenLabs bekommt `speed` 1,1 und die gespeicherte Stabilität 0,42; Stille vor/nach jeder Szene abgeschnitten, Lücke zwischen Szenen ≤ 0,3 s; Testvideo **154 Wörter/Min.** |
 | Warnung unter 135 Wörter/Min. | ✅ automatisch (e2e Probeszene): Video mit 95 Wörtern/Min. in der Vorschau-Freigabe → Warnung „Nur 95 Wörter/Min (Ziel 145–155)“ |
 | Echte Striche statt Wisch-Maske | ✅ automatisch (`test_vektorisieren_mittellinie_je_linie_ein_pfad`, `test_zeichner_strich_fuer_strich_dann_farbe_hand_am_endpunkt`): Rechteck + Linie → 2 Pfade (nicht 4 Umrisse); halbe Länge = halber Strich, Farbe erst danach; alle Bild-Prompts außer Glühbirne beginnen mit „Schwarze Strichzeichnung“, kein „Filzstift“ mehr |
-| Hand folgt dem Strich | ✅ automatisch (`test_hand_png_transparent_mit_stiftspitze_als_anker`, `test_animation_hand_folgt_dem_strich`): Hand-PNG mit transparentem Rand, Spitze = dunkler Stiftpunkt; im Bild liegt die Spitze auf dem Strich-Endpunkt; im fertigen MP4 ist die Hand in den ersten Szenen sichtbar (Hautfarbe in HAND_E2E Einzelbildern) |
+| Hand folgt dem Strich | ✅ automatisch (`test_hand_png_transparent_mit_stiftspitze_als_anker`, `test_animation_hand_folgt_dem_strich`): Hand-PNG mit transparentem Rand, Spitze = dunkler Stiftpunkt; im Bild liegt die Spitze auf dem Strich-Endpunkt; im fertigen MP4 ist die Hand in den ersten Szenen sichtbar (Hautfarbe in 50 von 91 Einzelbildern der Szenen 1–2) |
 | Probeszene 20 s | ✅ automatisch (e2e „Nachtrag 13.11. Probeszene“): Tempo 1,15 im Kanalprofil, Probe ab Szene 3 → `probe.mp4` 1920×1080, ≤ 20,3 s, Hand sichtbar, Status des Videos unverändert, keine neuen Bilder; „Neu vertonen & zeichnen“ vertont nur die übrigen Szenen nach und ergibt ≥ 135 Wörter/Min. |
-| Vorschau vor dem Neu-Rendern | ⚠️ lokal mit 3 Testszenen und Ersatzstimme gebaut (20 s, an Ludwig geschickt). Die echte Szene aus „Vakuumpumpe“ geht nur auf dem Worker (Motive und Stimme liegen dort) – siehe To-dos | und automatische Stories (13.11.) – im Reiter „Video“
+| Vorschau vor dem Neu-Rendern | ⚠️ lokal mit 3 Testszenen und Ersatzstimme gebaut (20 s, an Ludwig geschickt). Die echte Szene aus „Vakuumpumpe“ geht nur auf dem Worker (Motive und Stimme liegen dort) – siehe To-dos |
+
+**Nachtrag 13.11. (2): echte Hand, Vollbild in Bewegung, Pexels-Clips** (Rückmeldungen: drei Fotos „Meine Hand. Soll
+für das Whiteboarding hergenommen werden“ und „Bei Zeitlux ist es eher ein Bilderwechsel als ein Video“; Auswahl:
+Bildwechsel alle 5–7 s, Stock-Clips von Pexels).
+Ursache Bilderwechsel: Stil „Vollbild“ zeigte je Szene **ein** Standbild (Ø 20–30 s) ohne jede Bewegung, harte Schnitte,
+die Einblendung war ins Bild eingebrannt.
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| 1. Hand | ❌ gezeichnete Hand | ✅ Foto deiner Hand freigestellt (Hintergrund und Papier entfernt, Unterarm bis zum Bildrand verlängert), Stiftspitze als Ankerpunkt, Größe nach der Handhöhe; gilt für Whiteboard und Stories | `grafik/hand.png`, `grafik/hand.json`, `whiteboard.py › hand_laden` |
+| 2a. Bildwechsel | ❌ 1 Bild je Szene | ✅ etwa **alle 6 s** ein neues Bild oder ein Clip (Kanalprofil „Bildwechsel alle … s“, 4–10 s); gewechselt wird beim Schlüsselwort (Wortzeiten von ElevenLabs), sonst gleichmäßig; jedes Stück ≥ 2,5 s | `bewegt.py › anzahl, zeiten` |
+| 2b. Bildplan | ❌ – | ✅ Claude plant je Szene die Elemente (Bild/Clip, Bildidee, Pexels-Suchbegriff, Schlüsselwort) – ein Aufruf je 25 Szenen, gespeichert; das erste Bild jeder Szene ist das bisherige (schon bezahlte) Szenenbild | `schritte.py › BILDPLAN_SCHEMA, _bildplan` |
+| 2c. Kamerafahrt | ❌ Standbild | ✅ jedes Bild zoomt hinein/heraus oder schwenkt (6 Varianten, weich, aus 4K gerechnet → ruckelfrei) | `bewegt.py › kenburns, segment_bild` |
+| 2d. Übergänge | ❌ harter Schnitt | ✅ weiche Übergänge 0,5 s (Blende, Wisch links/rechts, Kreis) | `bewegt.py › szene, UEBERGAENGE` |
+| 2e. Einblendung | ⚠️ ins Bild eingebrannt | ✅ eigene Ebene oben links, blendet weich ein, das Bild fährt darunter weiter; Untertitel wie bisher | `medien.py › band_png` |
+| 3. Pexels-Clips | ❌ – | ✅ Anbindung **Pexels** (Schlüssel nur im sicheren Formular, „Verbindung testen“). Suche über die Seller-Brücke (Schlüssel bleibt im Seller-System), Datei lädt der Worker direkt von Pexels (nur pexels.com/vimeo über https, ≤ 250 MB). Jeder Clip nur einmal je Video, Filmer am Ende der Beschreibung; ohne Schlüssel Bilder statt Clips + Hinweis | `clients/pexels.ts`, `anbieter.ts › pexelsSuche`, `schritte.py › _clip_holen, clip_nachweis` |
+| 4. Kanalprofil + Kosten | ❌ – | ✅ „Bildwechsel alle … s“ und „Echte Videoclips von Pexels einmischen“; die Kosten-Schätzung rechnet die zusätzlichen Bilder mit (10–12 Min. ≈ 107 Bilder, mit Clips ≈ 64) | `vd-k-bewegt`, `logic.ts › bilderVollbild, typischFuer` |
+| 5. Probeszene / neu | ⚠️ nur Whiteboard | ✅ auch Vollbild: „Probeszene (20 s)“ mit Bildplan, Kamerafahrt, Clips; danach **„Neu bebildern & rendern“** (Skript und Sprache bleiben) | `schritte.py › _probe_vollbild`, `service.ts › neuVertonen` |
+| Worker | 1.3.0 | **1.4.0** (neu `udd/bewegt.py`, `grafik/hand.png` ersetzt); Vollbild-Probe erst ab 1.4.0 | `WORKER_AB_BEWEGT` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Bildwechsel alle ~6 s | ✅ automatisch (e2e B36.7, `test_vollbild_probe_bilder_alle_6s_mit_kamerafahrt_und_pexels_clips`): 22 Szenen (639 s) → **106 Bilder/Clips**, im Schnitt **alle 6,0 s** ein neuer Bildinhalt (vorher 22 Standbilder, Ø 29 s); jedes Element startet nach dem vorigen, das erste bei 0 s; ein Bildplan-Aufruf |
+| Kamerafahrt | ✅ automatisch (e2e B36.7): im ersten Bild verschiebt sich der Bildausschnitt zwischen 0,9 s und ~3 s (mittlerer Streifen, Ø Grauwert-Abstand 17,7 bei Schwelle 3) |
+| Pexels-Clips + Nachweis | ✅ automatisch (e2e B36.7): **44 Clips** (≈ 42 %), 44 verschiedene Dateien, jede genau einmal geladen; Suche immer Querformat, ≤ 15 Treffer; Beschreibung endet mit „Videos: Pexels (pexels.com) – …“. Ohne Schlüssel: Bilder statt Clips + Hinweis (`test_vollbild_ohne_pexels_schluessel_bilder_statt_clips`) |
+| Jedes Bild einmal bezahlt | ✅ automatisch (e2e B36.7): Bildaufrufe = verschiedene Bilder + 1 Ablehnung (Ersatzbild) |
+| Echte Hand | ✅ automatisch (`test_hand_png_transparent_mit_stiftspitze_als_anker`, e2e Whiteboard + Probeszene): Spitze unten links, Hautfläche > 20.000 px, im fertigen Video in 50 von 91 Einzelbildern der Szenen 1–2 sichtbar, in der Probeszene in 17 von 30; unterer Rand frei (keine Untertitel) |
+
+## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
 Leistungen stehen **nicht im Code**: sie kommen nur aus dem Kanalprofil-Feld „Bestätigte Fakten“ (pflegst du).
@@ -2989,13 +3018,20 @@ nie in Chats oder Mails.
      Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
 186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
      der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.
-187. **Worker auf v1.3.0 aktualisieren** (Nachtrag 13.11.: Sprechtempo, echtes Zeichnen, Hand): wie bei 180 – Ordner
-     `unter-der-decke` neu holen (enthält jetzt den Unterordner `grafik/` mit der Hand und braucht `numpy`), in
-     PowerShell im Ordner `C:\video\unter-der-decke`: `docker stop video-worker; docker rm video-worker; docker build -t
-     video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.3.0`.
+187. **Worker auf v1.4.0 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
+     Bewegung, Pexels): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den Unterordner `grafik/` mit deiner
+     Hand und braucht `numpy`), in PowerShell im Ordner `C:\video\unter-der-decke`: `docker stop video-worker; docker rm
+     video-worker; docker build -t video-worker .` und `docker run …` wie im README. Auf der Seite Video steht danach `v1.4.0`.
 188. **Kanalprofil „Unter der Decke“**: Sprechtempo **1,1** (Standard) und Motiv-Stil „Strichzeichnung“ prüfen, speichern.
 189. **Probeszene am Video „Vakuumpumpe“**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen →
      „Probeszene erzeugen“. Nach 1–3 Min. erscheint das 20-s-Video mit Wörter/Min. Ansehen: Tempo, Striche, Hand.
      Passt es nicht, Sprechtempo im Kanalprofil ändern (z. B. 1,15) und noch einmal. Passt es: **„Neu vertonen &
      zeichnen“** – Skript und Motive bleiben, nur Sprache und Render kosten. Bei schon vorhandenen bunten Motiven
      werden die Konturen aus diesen Bildern gezogen; neue Motive kommen als Strichzeichnung.
+190. **Pexels-Schlüssel eintragen** (kostenlos): auf pexels.com/api anmelden → „Your API Key“ kopieren → Seller-System
+     → Anbindungen → **Pexels** → im sicheren Formular einfügen → „Verbindung testen“. Nicht in den Chat oder in Dateien.
+191. **Kanalprofil des Uhren-Kanals (Zeitlux)**: „Bildwechsel alle **6** s“ (Standard) lassen, Haken bei „Echte
+     Videoclips von Pexels einmischen“ setzen, speichern. Die Kosten-Schätzung zeigt danach mehr Bilder (≈ 2–4 $ mehr je Video).
+192. **Probeszene am Zeitlux-Video**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen → erzeugen.
+     Nach 2–4 Min. ansehen: Bildwechsel, Kamerafahrt, Übergänge, Clips. Passt es: **„Neu bebildern & rendern“** – Skript
+     und Sprache bleiben, neu kosten nur die zusätzlichen Bilder. Danach wieder Vorschau-Freigabe, Upload bleibt privat.

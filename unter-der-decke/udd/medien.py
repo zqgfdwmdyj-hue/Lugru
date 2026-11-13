@@ -68,6 +68,20 @@ def szenenbild(quelle: Path, einblendung: str | None, ziel: Path) -> None:
     bild.save(ziel, "PNG")
 
 
+def band_png(einblendung: str, ziel: Path) -> None:
+    """B36.11: Einblendung (Kernaussage/Studie) als eigene, transparente Ebene 1920×1080 – sie bleibt stehen, während
+    das Bild darunter fährt, und blendet weich ein."""
+    bild = Image.new("RGBA", (BREITE, HOEHE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(bild, "RGBA")
+    f = schrift(46)
+    zeilen = _umbrechen(d, einblendung.strip(), f, 1100)[:3]
+    h = 30 + 62 * len(zeilen)
+    d.rounded_rectangle((60, 60, 60 + 1180, 60 + h), radius=18, fill=(10, 14, 24, 200))
+    for i, z in enumerate(zeilen):
+        d.text((90, 75 + i * 62), z, font=f, fill=(255, 255, 255, 255))
+    bild.save(ziel, "PNG")
+
+
 def ersatzbild(text: str, ziel: Path, breite: int = 1536, hoehe: int = 1024) -> None:
     """Lokales Ersatzbild (wenn der Bildanbieter ablehnt): ruhiger Verlauf mit kurzem Stichwort, keine Personen."""
     bild = Image.new("RGB", (breite, hoehe))

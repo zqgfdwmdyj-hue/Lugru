@@ -74,12 +74,16 @@ describe("Kosten (B36.3)", () => {
     const p = { ...VIDEO_PREISE_STANDARD, elevenlabsJe1000Zeichen: 0.18, bildJeStueck: 0.04 };
     const sonnet = kostenSchaetzung(p, TYPISCH, "claude-sonnet-5-5");
     expect(sonnet.fehlend).toEqual([]);
-    // Fest 1.500–1.700 Wörter, abschnittsweise: 112k/15k Tokens, 12 Suchen (Gliederung + je Punkt), 10.600 Zeichen, 25 Bilder
-    expect(TYPISCH).toEqual({ zeichen: 10_600, bilder: 25, motive: 0, websuchen: 12, eingabeTokens: 112_000, ausgabeTokens: 15_000 });
-    expect(sonnet.summe).toBeCloseTo(0.224 + 0.15 + 0.12 + 1.908 + 1.0, 2);
+    // Fest 1.500–1.700 Wörter, abschnittsweise: 118k/19k Tokens (inkl. Bildplan), 12 Suchen, 10.600 Zeichen,
+    // B36.11: alle 6 s ein Bild über ~640 s Sprechzeit = 107 Bilder (vorher 25 Standbilder)
+    expect(TYPISCH).toEqual({ zeichen: 10_600, bilder: 107, motive: 0, websuchen: 12, eingabeTokens: 118_000, ausgabeTokens: 19_000 });
+    expect(sonnet.summe).toBeCloseTo(0.236 + 0.19 + 0.12 + 1.908 + 4.28, 2);
     // Standard ist Opus 5.5 (4 $/20 $ je Mio. Tokens): nur der Claude-Anteil ist teurer
     expect(VIDEO_MODELL_STANDARD).toBe("claude-opus-5-5");
-    expect(kostenSchaetzung(p).summe).toBeCloseTo(0.448 + 0.3 + 0.12 + 1.908 + 1.0, 2);
+    expect(kostenSchaetzung(p).summe).toBeCloseTo(0.472 + 0.38 + 0.12 + 1.908 + 4.28, 2);
+    // mit Pexels-Clips ~40 % weniger Bilder, mit Bildwechsel alle 8 s entsprechend weniger
+    expect(typischFuer("vollbild", { stockClips: true }).bilder).toBe(64);
+    expect(typischFuer("vollbild", { bildSek: 8 }).bilder).toBe(80);
     // Whiteboard: statt 25 Bildern Einzelmotive (neue je Video, Rest aus der Bibliothek), eigener Preis je Motiv
     const wb = typischFuer("whiteboard");
     // B36.10: 55–80 kurze Szenen, Motive kehren wieder – im Schnitt 1,5 neue (bezahlte) Motive je Szene
@@ -118,13 +122,14 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.3.0");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.4.0");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
     expect(workerVeraltet("1.2.0")).toBe(true); // 1.2.1: mehr Platz für Claude
     expect(workerVeraltet("1.2.1")).toBe(true); // 1.3.0: echtes Zeichnen, Probeszene
-    expect(workerVeraltet("1.3.0")).toBe(false);
+    expect(workerVeraltet("1.3.0")).toBe(true); // 1.4.0: Vollbild in Bewegung (Bildwechsel, Kamerafahrt, Pexels)
+    expect(workerVeraltet("1.4.0")).toBe(false);
     expect(workerVeraltet("2.0")).toBe(false);
     // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
     expect(workerVeraltet("1.2.0", WORKER_AB_TAKT)).toBe(false);
@@ -257,16 +262,35 @@ describe("Sprechtempo, Wörter/Min, Probeszene (13.11.)", () => {
     expect(stimmeMitTempo({ text: "Hallo", voice_settings: { speed: 2 } }, null)).toEqual({ text: "Hallo", voice_settings: { speed: 1.2 } });
     expect(stimmeMitTempo({ text: "Hallo" }, gespeichert)).toBeNull();
   });
-  it("Probeszene: nur Whiteboard mit Motiven, sobald kein Schritt läuft; ca. 20 s ab der gewählten Szene", async () => {
+  it("Probeszene: Whiteboard mit Motiven bzw. Vollbild mit Skript, sobald kein Schritt läuft; ca. 20 s ab der gewählten Szene", async () => {
     const { probeMoeglich, probeSzenen, WORKER_AB_PROBE, workerVeraltet } = await import("@/lib/video/logic");
     const skript = Array.from({ length: 10 }, (_, i) => ({ text: Array.from({ length: 20 }, () => "wort").join(" "), motive: i === 0 ? [] : [{ key: "m" }] }));
     expect(probeMoeglich({ art: "video", status: "fertig", skript }, "whiteboard")).toBe(true);
     expect(probeMoeglich({ art: "video", status: "laeuft", skript }, "whiteboard")).toBe(false);
-    expect(probeMoeglich({ art: "video", status: "fertig", skript }, "vollbild")).toBe(false);
+    expect(probeMoeglich({ art: "video", status: "fertig", skript }, "vollbild")).toBe(true); // B36.11: auch Vollbild
+    expect(probeMoeglich({ art: "video", status: "fertig", skript: [] }, "vollbild")).toBe(false);
+    expect(probeMoeglich({ art: "story", status: "fertig", skript }, "vollbild")).toBe(false);
     expect(probeMoeglich({ art: "video", status: "fertig", skript: [{ text: "x", motive: [] }] }, "whiteboard")).toBe(false);
     expect(probeSzenen(skript, 3)).toEqual([3, 4, 5]); // 3 × (8 s + 0,3 s) ≥ 19 s
     expect(probeSzenen(skript, 10)).toEqual([10]);
     expect(probeSzenen(Array.from({ length: 9 }, () => ({ text: "kurz" })), 1)).toHaveLength(5); // höchstens 5 Szenen
     expect(workerVeraltet("1.2.1", WORKER_AB_PROBE)).toBe(true);
+  });
+});
+
+describe("B36.11 Vollbild in Bewegung (13.11.)", () => {
+  it("Bildwechsel alle N s: Anzahl Bilder, Grenzen 4–10 s, Clips sparen Bilder, Worker-Version je Stil", async () => {
+    const { bilderVollbild, bildSekAus, BILD_SEK, workerAbProbe, WORKER_AB_BEWEGT, WORKER_AB_PROBE, probeMoeglich } = await import("@/lib/video/logic");
+    expect(BILD_SEK.standard).toBe(6);
+    expect(bilderVollbild(600)).toBe(100); // 10 Min. → alle 6 s ein Bild
+    expect(bilderVollbild(600, 5)).toBe(120);
+    expect(bilderVollbild(600, 6, true)).toBe(60); // ~40 % werden kostenlose Pexels-Clips
+    expect(bildSekAus("7,5")).toBe(7.5);
+    expect(bildSekAus(2)).toBe(4);
+    expect(bildSekAus(30)).toBe(10);
+    expect(bildSekAus("abc")).toBe(6);
+    expect(workerAbProbe("whiteboard")).toBe(WORKER_AB_PROBE);
+    expect(workerAbProbe("vollbild")).toBe(WORKER_AB_BEWEGT);
+    expect(probeMoeglich({ art: "video", status: "freigabe", skript: [{ text: "Ein Satz." }] }, "vollbild")).toBe(true);
   });
 });

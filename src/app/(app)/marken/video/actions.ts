@@ -57,6 +57,8 @@ export async function kanalSpeichernAction(fd: FormData) {
       tempo: txt(fd, "tempo", 10) || "normal",
       sprechtempo: txt(fd, "sprechtempo", 10) || null,
       motivStil: txt(fd, "motivStil", 10) || "strich",
+      bildSek: txt(fd, "bildSek", 10) || null,
+      stockClips: fd.get("stockClips") === "on",
       instagram: fd.get("plattform") === "instagram" ? instagramAus(fd) : null,
     });
   } catch (e) {

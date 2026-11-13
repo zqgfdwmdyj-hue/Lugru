@@ -134,6 +134,15 @@ class Seller:
 
         return netz.mit_wiederholung(einmal, was or f"{anbieter} {pfad}", log=self.log)
 
+    def anbieter_holen(self, auftrag_id: str, anbieter: str, pfad: str, params: dict[str, Any], timeout: float = netz.TIMEOUT_S, was: str | None = None) -> requests.Response:
+        """Anbieter-Brücke lesend (GET, B36.11: Pexels-Videosuche) – rohe Antwort; Wiederholung wie bei anbieter()."""
+
+        def einmal() -> requests.Response:
+            r = self.s.get(f"{self.url}/api/video-worker/anbieter/{anbieter}/{pfad}", params=params, headers={"x-auftrag": auftrag_id}, timeout=(20, timeout), stream=True)
+            return netz.lesen(netz.status_pruefen(r), timeout)
+
+        return netz.mit_wiederholung(einmal, was or f"{anbieter} {pfad}", log=self.log)
+
     def anbieter(self, auftrag_id: str, anbieter: str, pfad: str, body: dict[str, Any], timeout: float = netz.TIMEOUT_S, was: str | None = None) -> requests.Response:
         """Anbieter-Brücke (ElevenLabs, OpenAI) – liefert die rohe Antwort (Status 2xx/4xx prüft der Aufrufer).
         Gestreamt mit Zeitlimit; Abbruch, Zeitüberschreitung, 429 und 5xx bis zu 4 Mal wiederholt (2, 4, 8, 16 s)."""

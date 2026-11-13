@@ -55,7 +55,7 @@ function kiAnswer(req, b) {
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
   // B36 Video-Pipeline (Worker über die Anbieter-Brücke): feste erfundene Gliederung/Skript/Paket, auf Wunsch als Stream.
-  const video = /^\[video:(research|script|package|story)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
+  const video = /^\[video:(research|script|package|story|bildplan)(?::[\w-]+)?\]/.test(text) ? videoAntwort(text) : null;
   if (video) {
     if (b.stream) return [200, videoSse(b, video), "text/event-stream"];
     const content = [...(video.suche ? [{ type: "server_tool_use", id: "srvtoolu_test_1", name: "web_search", input: { query: "Studie" } }, { type: "web_search_tool_result", tool_use_id: "srvtoolu_test_1", content: video.suche.map((x) => ({ type: "web_search_result", url: x.url, title: x.title, encrypted_content: "test", page_age: null })) }] : []), { type: "text", text: video.text }];
@@ -797,6 +797,9 @@ async function route(req, url, body) {
   // Gespeicherte Einstellungen einer Stimme (die Brücke übernimmt sie, damit „speed“ nur das Tempo ändert)
   if (/^\/elevenlabs\/v1\/voices\/[A-Za-z0-9]+\/settings$/.test(p) && req.method === "GET") return req.headers["xi-api-key"] ? [200, { stability: 0.42, similarity_boost: 0.8, style: 0.1, use_speaker_boost: true, speed: 1 }] : [401, { detail: { message: "Invalid API key" } }];
   if (p === "/openai/v1/images/generations" && req.method === "POST") return openaiBildNb(req, parsed());
+  // B36.11 Pexels: Videosuche (Schlüssel im Kopf „Authorization“) und die Clip-Dateien (CDN-Nachbau, ohne Schlüssel)
+  if (p === "/pexels/videos/search" && req.method === "GET") return pexelsSucheNb(req, url);
+  if (/^\/pexels-datei\/\d+\.mp4$/.test(p) && req.method === "GET") return pexelsDateiNb();
   if (p === "/openai/v1/models" && req.method === "GET") return openaiModelleNb(req);
   if (p.startsWith("/youtube")) return youtubeNb(req, url, p, body);
   if (p.startsWith("/instagram-api/") || p.startsWith("/instagram-graph/")) return instagramNb(req, url, p, body);
@@ -1720,7 +1723,7 @@ http
     if (url.pathname === "/__gesund") return send(200, { ok: true });
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] });
+      if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0 });
       // Bildmodelle, die es „im Konto nicht gibt“ (zusätzlich zum abgeschalteten gpt-image-1) – prüft das Ausweichen der Brücke
       if (Array.isArray(b.bildModelleGesperrt)) videoNb.bildModelleGesperrt = b.bildModelleGesperrt.map(String);
       if (typeof b.verzoegerungMs === "number") videoNb.verzoegerungMs = b.verzoegerungMs;
@@ -1728,7 +1731,7 @@ http
       if (b.stoerung) videoNb.stoerungen[b.stoerung.schluessel] = { art: b.stoerung.art, anzahl: b.stoerung.anzahl ?? 1 };
       return send(200, { ok: true });
     }
-    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler });
+    if (url.pathname === "/__video") return send(200, { eleven: videoNb.eleven, bilder: videoNb.bilder, youtube: videoNb.youtube, claude: videoNb.claude, maxTokens: videoNb.maxTokens, stoerungen: videoNb.stoerungen, modellFehler: videoNb.modellFehler, bildplaene: videoNb.bildplaene, pexels: videoNb.pexels, pexelsDateien: videoNb.pexelsDateien });
     if (url.pathname === "/openai/v1/images/edits" && req.method === "POST") {
       // B36.9: Motiv mit Stil-Referenzbildern (multipart) – Felder wie beim echten Endpunkt
       const form = await new Request("http://nb/", { method: "POST", headers: { "content-type": String(req.headers["content-type"] ?? "") }, body: roh }).formData().catch(() => null);
@@ -1793,7 +1796,7 @@ http
 // B36 Video-Pipeline: Nachbau ElevenLabs (stille MP3 je nach Textlänge), OpenAI-Bilder (PNG 1536×1024; Bildidee mit
 // „TESTABLEHNUNG“ = Ablehnung wie der Sicherheitsfilter), YouTube (Anmeldung, resumable Upload, Sichtbarkeit,
 // Thumbnail) und die Claude-Antworten für [video:research|script|package] (auch als Stream wie die echte API).
-var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [] };
+var videoNb = { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, verzoegerungMs: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0 };
 
 /** Video-Pipeline: Claude-Abschnitte mitschreiben und auf Wunsch stören – „abbruch“ (Antwort beginnt, dann wird die
  *  Verbindung ohne Abschluss geschlossen = „incomplete chunked read“), 529/429/503 als Fehlerantwort. */
@@ -1808,7 +1811,7 @@ function videoStoerungRoh(req, res, url, body) {
     }
     const last = (b.messages ?? []).filter((m) => m.role === "user").at(-1);
     const text = typeof last?.content === "string" ? last.content : (last?.content ?? []).filter((x) => x.type === "text").map((x) => x.text).join(" ");
-    const m = /^\[video:(research|script|package|story)(?::([\w-]+))?\]/.exec(text ?? "");
+    const m = /^\[video:(research|script|package|story|bildplan)(?::([\w-]+))?\]/.exec(text ?? "");
     if (!m) return false;
     schluessel = m[2] ? `${m[1]}:${m[2]}` : m[1];
     videoNb.claude.push(schluessel);
@@ -1848,9 +1851,12 @@ async function testPng(farbe) {
   if (pngCache.has(farbe)) return pngCache.get(farbe);
   const { deflateSync } = await import("node:zlib");
   const [w, h] = [1536, 1024];
+  // Fläche in der Bildfarbe mit hellem Rechteck in der Mitte und dunklen Streifen: Kamerafahrt (B36.11) wird messbar
   const zeile = Buffer.alloc(1 + w * 3);
-  for (let x = 0; x < w; x++) zeile.set(farbe, 1 + x * 3);
-  const roh = Buffer.concat(Array.from({ length: h }, () => zeile));
+  for (let x = 0; x < w; x++) zeile.set(x % 192 < 24 ? [30, 30, 30] : farbe, 1 + x * 3);
+  const mitte = Buffer.from(zeile);
+  for (let x = Math.round(w * 0.35); x < Math.round(w * 0.65); x++) mitte.set([250, 250, 250], 1 + x * 3);
+  const roh = Buffer.concat(Array.from({ length: h }, (_, y) => (y > h * 0.35 && y < h * 0.65 ? mitte : zeile)));
   const chunk = (typ, daten) => {
     const len = Buffer.alloc(4);
     len.writeUInt32BE(daten.length);
@@ -1967,7 +1973,10 @@ async function openaiBildNb(req, b, extra = {}) {
   if (abgelehnt) return [400, { error: { message: "Your request was rejected as a result of our safety system.", type: "image_generation_user_error", code: "moderation_blocked" } }];
   const h = createHash("sha256").update(prompt).digest();
   const farbe = [40 + (h[0] % 120), 60 + (h[1] % 120), 80 + (h[2] % 120)];
-  const png = b.background === "transparent" || b.size === "1024x1024" ? await motivPng(farbe, b.background === "transparent") : await testPng(farbe);
+  const motiv = b.background === "transparent" || b.size === "1024x1024";
+  // Motive nie hautfarben (Rot > Grün > Blau), damit die Ablaufprüfung die Foto-Hand sicher erkennt
+  if (motiv && farbe[0] > farbe[1] && farbe[1] > farbe[2]) farbe.reverse();
+  const png = motiv ? await motivPng(farbe, b.background === "transparent") : await testPng(farbe);
   return [200, { created: Math.floor(Date.now() / 1000), data: [{ b64_json: png.toString("base64") }], usage: { total_tokens: 1000 } }];
 }
 
@@ -2199,11 +2208,52 @@ function videoAntwort(text) {
   }
   const st = /^\[video:story:(\w+)\]/.exec(text);
   if (st) return { text: JSON.stringify(storyAntwort(st[1], text)), usage: { input_tokens: 1500, output_tokens: 220 } };
+  if (text.startsWith("[video:bildplan]")) {
+    // B36.11: je Szene genau n Elemente; mit Clips erlaubt jedes zweite ein Clip; Schlüsselwort aus dem Szenentext
+    const clips = /„clip“ für ein echtes gefilmtes Video/.test(text);
+    const szenen = [];
+    for (const m of text.matchAll(/^Szene (\d+) \(n=(\d+), [\d.]+ s\): (.*)$/gm)) {
+      const woerter = m[3].replace(/\s+\[bisherige Bildidee:.*$/, "").split(/\s+/).filter((w) => w.replace(/[^\p{L}]/gu, "").length > 3);
+      const n = Number(m[2]);
+      szenen.push({ nr: Number(m[1]), bilder: Array.from({ length: n }, (_, k) => ({ art: clips && k % 2 === 1 ? "clip" : "bild", idee: `Testmotiv ${m[1]}.${k + 1}: ruhige Detailaufnahme`, suche: `test clip ${m[1]} ${k + 1}`, wort: k === 0 ? (m[3].split(/\s+/)[0] ?? "") : (woerter[Math.min(woerter.length - 1, Math.round(((k / n) * woerter.length)))] ?? "") })) });
+    }
+    videoNb.bildplaene.push({ szenen: szenen.length, clips });
+    return { text: JSON.stringify({ szenen }), usage: { input_tokens: 3000, output_tokens: 900 } };
+  }
   if (text.startsWith("[video:package]")) {
     const json = { titel: ["5 Gründe, über die keiner spricht", "Warum die Nähe verschwindet – und was hilft", "Das sagen Studien über Nähe im Alltag", "Kein Thema? Doch! 5 ehrliche Gründe", "Nähe zurückgewinnen: 5 Gründe verstehen"], beschreibung: "In diesem Video schauen wir uns fünf Gründe an, die Studien immer wieder finden.\n\nOhne Vorwürfe, mit konkreten Tipps für den Alltag.", tags: ["Beziehung", "Partnerschaft", "Nähe", "Studien", "Paare", "Alltag", "Kommunikation", "Stress", "Tipps", "Psychologie", "Liebe", "Vertrauen"], thumbnail_text: "5 Gründe keiner spricht" };
     return { text: JSON.stringify(json), usage: { input_tokens: 4000, output_tokens: 800 } };
   }
   return null;
+}
+
+/** B36.11 Pexels-Nachbau: je Suche 2 erfundene Querformat-Videos (8 s) mit Filmer-Namen; Dateien zeigen auf den CDN-Nachbau. */
+function pexelsSucheNb(req, url) {
+  if (!String(req.headers.authorization ?? "").trim()) return [401, { error: "Authorization field missing" }];
+  const q = url.searchParams.get("query") ?? "";
+  videoNb.pexels.push({ query: q, orientation: url.searchParams.get("orientation"), perPage: Number(url.searchParams.get("per_page") ?? 0) });
+  const h = createHash("sha256").update(q).digest();
+  const basis = `http://${req.headers.host}`;
+  const videos = [0, 1].map((k) => {
+    const id = 100000 + ((h[0] << 8) + h[1]) * 2 + k;
+    return { id, width: 1920, height: 1080, duration: 8, url: `https://www.pexels.com/video/test-${id}/`, user: { id: 7, name: `Testfilmer ${(h[2] % 9) + 1}`, url: "https://www.pexels.com/@test" }, video_files: [{ id: id * 10, quality: "sd", file_type: "video/mp4", width: 960, height: 540, link: `${basis}/pexels-datei/${id}.mp4` }, { id: id * 10 + 1, quality: "hd", file_type: "video/mp4", width: 1920, height: 1080, link: `${basis}/pexels-datei/${id}.mp4` }] };
+  });
+  return [200, { page: 1, per_page: videos.length, total_results: 1234, videos }];
+}
+
+let pexelsClip = null;
+/** Ein kleines Test-Video (Farbbalken mit Bewegung, 4 s) – einmal mit ffmpeg erzeugt, für alle Clip-Abrufe. */
+async function pexelsDateiNb() {
+  if (!pexelsClip) {
+    const { spawnSync } = await import("node:child_process");
+    const { tmpdir } = await import("node:os");
+    const { readFileSync } = await import("node:fs");
+    const ziel = `${tmpdir()}/testdienste-pexels-${process.pid}.mp4`;
+    spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25", "-t", "4", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", ziel]);
+    pexelsClip = readFileSync(ziel);
+  }
+  videoNb.pexelsDateien++;
+  return [200, pexelsClip, "video/mp4"];
 }
 
 /** B37 Story: kurze Texte je Inhaltsart, nur aus den „Bestätigten Fakten“ des Prompts (erste Zeile mit „€“). Thema mit

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -891,17 +892,21 @@ def test_zeichner_strich_fuer_strich_dann_farbe_hand_am_endpunkt():
 
 
 def test_hand_png_transparent_mit_stiftspitze_als_anker():
+    # Ludwigs Hand (Foto, freigestellt): Stiftspitze unten links, Hand + Unterarm laufen nach rechts oben aus dem Bild
     h = wb.hand_laden(380)
-    assert h.bild.height == 380 and h.bild.getchannel("A").getextrema()[0] == 0  # transparenter Hintergrund
+    a = h.bild.getchannel("A")
+    assert a.getextrema()[0] == 0 and a.getpixel((h.bild.width - 1, h.bild.height - 1)) == 0  # transparenter Hintergrund
     sx, sy = h.spitze
-    assert sx < h.bild.width * 0.1 and sy < h.bild.height * 0.1  # Spitze oben links
-    rahmen = Image.new("RGBA", (900, 700), (255, 255, 255, 255))
-    h.setzen(rahmen, 400, 300)
-    dunkel = [rahmen.getpixel((400 + dx, 300 + dy)) for dx in range(-4, 5) for dy in range(-4, 5)]
+    assert sx < h.bild.width * 0.15 and sy > h.bild.height * 0.85  # Spitze unten links
+    assert 360 < h.bild.height < 1100 and h.bild.width > 600  # Hand ≈ 380 px hoch, Unterarm läuft weiter
+    rahmen = Image.new("RGBA", (1920, 1080), (255, 255, 255, 255))
+    h.setzen(rahmen, 400, 900)
+    dunkel = [rahmen.getpixel((400 + dx, 900 + dy)) for dx in range(-5, 6) for dy in range(-8, 3)]
     assert min(sum(p[:3]) for p in dunkel) < 200  # genau am Ankerpunkt sitzt die schwarze Stiftspitze
-    assert rahmen.convert("RGB").getbbox() is not None
     box = Image.eval(rahmen.convert("L"), lambda v: 255 if v < 250 else 0).getbbox()
-    assert abs(box[0] - 400) < 12 and abs(box[1] - 300) < 12  # Hand liegt rechts unterhalb der Spitze
+    assert box[3] - 900 < 25 and 400 - 160 < box[0] < 400 and box[2] > 1200  # Hand oberhalb der Spitze, Finger etwas links davon, Unterarm nach rechts
+    haut = sum(1 for p in rahmen.convert("RGB").getdata() if p[0] - p[1] > 20 and p[1] - p[2] > 12 and 110 < p[0] < 240)
+    assert haut > 20000  # echte Hautfarbe sichtbar
 
 
 def test_animation_hand_folgt_dem_strich(tmp_path, monkeypatch):
@@ -1019,3 +1024,141 @@ def test_probeszene_20s_neue_technik_mit_hand(tmp_path):
     assert all(k["voice_settings"]["speed"] == 1.1 for k in l.seller.koerper)
     assert len(l.p.state["voice"]) == len(p["szenen"])
     assert (l.bib.ordner / "pumpe.striche.json").exists() and (l.bib.ordner / "pumpe.svg").exists()
+
+
+# ---- B36.11 Vollbild in Bewegung ---------------------------------------------------------------------------------------
+
+
+def test_bewegt_anzahl_und_zeiten_beim_schluesselwort():
+    from udd import bewegt
+
+    assert bewegt.anzahl(28, 6) == 5 and bewegt.anzahl(20, 6) == 3 and bewegt.anzahl(4, 6) == 1 and bewegt.anzahl(80, 6) == 6
+    assert bewegt.anzahl(6, 4) == 2 and bewegt.bild_sek({"bildSek": 20}) == 10 and bewegt.bild_sek({}) == 6
+    wz = [("die", 0.0), ("uhr", 0.5), ("tickt", 1.0), ("hier", 2.0), ("das", 6.4), ("werk", 7.1), ("glas", 12.2)]
+    z = bewegt.zeiten(18.0, 3, wz, ["Die", "Werk", "Glas"])
+    assert z[0][0] == 0 and abs(z[1][0] - 7.1) < 0.01 and abs(z[2][0] - 12.2) < 0.01  # beim Schlüsselwort
+    assert abs(sum(d for _s, d in z) - 18.0) < 0.01
+    z2 = bewegt.zeiten(18.0, 3)  # ohne Wortzeiten gleichmäßig
+    assert [round(s) for s, _d in z2] == [0, 6, 12]
+    z3 = bewegt.zeiten(10.0, 3, wz, ["Die", "Uhr", "tickt"])  # zu früh → mindestens 2,5 s je Bild
+    assert all(d >= bewegt.MIN_SEG - 0.01 for _s, d in z3)
+
+
+def test_bewegt_clip_waehlen_lang_genug_1920_nicht_doppelt():
+    from udd import bewegt
+
+    videos = [
+        {"id": 1, "duration": 3, "video_files": [{"link": "https://videos.pexels.com/1.mp4", "width": 1920, "height": 1080, "file_type": "video/mp4"}]},
+        {"id": 2, "duration": 12, "video_files": [{"link": "https://videos.pexels.com/2a.mp4", "width": 960, "height": 540, "file_type": "video/mp4"}, {"link": "https://videos.pexels.com/2b.mp4", "width": 1920, "height": 1080, "file_type": "video/mp4"}, {"link": "https://videos.pexels.com/2c.mp4", "width": 3840, "height": 2160, "file_type": "video/mp4"}]},
+        {"id": 3, "duration": 15, "video_files": [{"link": "https://videos.pexels.com/3.mp4", "width": 1080, "height": 1920, "file_type": "video/mp4"}]},  # Hochformat
+    ]
+    v, f = bewegt.clip_waehlen(videos, 6.5, set())
+    assert v["id"] == 2 and f["link"].endswith("2b.mp4")  # lang genug, 1920 px statt 4K
+    v, f = bewegt.clip_waehlen(videos, 6.5, {"2"})
+    assert v["id"] == 1  # 2 schon benutzt, Hochformat nie
+    assert bewegt.clip_waehlen(videos, 6.5, {"1", "2"}) is None
+
+
+class _VbSeller(_TtsSeller):
+    def __init__(self, tmp: Path, pexels: bool = True):
+        super().__init__(tmp)
+        self.bilder, self.suchen, self.pexels = [], [], pexels
+
+    def anbieter(self, _id, anbieter, pfad, koerper, **_kw):
+        if anbieter == "openai":
+            import base64
+            import io
+
+            self.bilder.append(koerper["prompt"])
+            buf = io.BytesIO()
+            farbe = (len(self.bilder) * 40 % 255, 90, 160)
+            Image.new("RGB", (1536, 1024), farbe).save(buf, "PNG")
+            from PIL import ImageDraw
+
+            img = Image.open(io.BytesIO(buf.getvalue()))
+            ImageDraw.Draw(img).rectangle((300, 300, 900, 700), fill=(250, 250, 250))
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            return _Antwort({"data": [{"b64_json": base64.b64encode(buf.getvalue()).decode()}]})
+        return super().anbieter(_id, anbieter, pfad, koerper, **_kw)
+
+    def anbieter_holen(self, _id, anbieter, pfad, params, **_kw):
+        assert anbieter == "pexels" and pfad == "videos/search" and params["orientation"] == "landscape"
+        self.suchen.append(params["query"])
+        if not self.pexels:
+            return _Antwort({"error": {"message": "Pexels-Schlüssel fehlt (Anbindungen → Pexels)"}}, 424)
+        n = len(self.suchen)
+        return _Antwort({"videos": [{"id": 1000 + n, "duration": 10, "url": f"https://www.pexels.com/video/{1000 + n}/", "user": {"name": f"Testfilmer {n}"}, "video_files": [{"link": f"https://videos.pexels.com/{1000 + n}.mp4", "width": 1920, "height": 1080, "file_type": "video/mp4"}]}]})
+
+
+def _vb_lauf(tmp: Path, monkeypatch, kanal: dict | None = None, pexels: bool = True, probe: dict | None = None):
+    from udd import schritte as sch
+
+    text = "Eine alte Uhr tickt leise. Das Werk ist sauber geölt, die Zeiger laufen ruhig über das Zifferblatt. So sieht ein guter Kauf aus."
+    skript = [{"nr": i, "abschnitt": "punkt-1", "text": f"Teil {i}: {text}", "bildidee": f"Uhr auf dem Tisch {i}", "einblendung": "Kernaussage: Zustand zählt" if i == 1 else ""} for i in range(1, 6)]
+    l = _tts_lauf(tmp, kanal={"stil": "vollbild", "bildSek": 6, "stockClips": True, **(kanal or {})}, skript=skript, probe=probe)
+    l.whiteboard = False
+    l.seller = _VbSeller(tmp, pexels)
+    l._claude, l.modell = object(), "test"
+    gefragt: list[str] = []
+
+    def fragen(_c, _m, prompt, **_kw):
+        gefragt.append(prompt)
+        szenen = []
+        for nr, n in re.findall(r"Szene (\d+) \(n=(\d+)", prompt):
+            szenen.append({"nr": int(nr), "bilder": [{"art": "clip" if k % 2 else "bild", "idee": f"Uhr Detail {nr}.{k}", "suche": f"watch closeup {nr} {k}", "wort": ["Teil", "Werk", "Zeiger", "Kauf"][k % 4]} for k in range(int(n))]})
+        return json.dumps({"szenen": szenen}), {}
+
+    monkeypatch.setattr(sch.ki, "fragen", fragen)
+    clip = tmp / "testclip.mp4"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=25", "-t", "3", "-pix_fmt", "yuv420p", str(clip)], check=True)
+    geladen: list[str] = []
+    monkeypatch.setattr(sch, "_clip_laden", lambda _l, url, ziel: (geladen.append(url), shutil.copy(clip, ziel)))
+    return l, gefragt, geladen
+
+
+def test_vollbild_probe_bilder_alle_6s_mit_kamerafahrt_und_pexels_clips(tmp_path, monkeypatch):
+    from udd import schritte as sch
+
+    l, gefragt, geladen = _vb_lauf(tmp_path, monkeypatch, probe={"szene": 1})
+    # Sprechzeit je Szene 14 s → 2 Bilder/Clips je Szene (alle ~6–7 s)
+    l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 14.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
+    d, h = sch.probe(l)
+    p = d["probe"]
+    assert p["szenen"][:2] == [1, 2] and p["bilder"] >= 1 and p["clips"] >= 1
+    assert len(gefragt) == 1 and "[video:bildplan]" in gefragt[0] and "n=2" in gefragt[0]
+    assert geladen and all("pexels.com" in u for u in geladen)
+    # erstes Bild jeder Szene = bisherige Bildidee (schon bezahltes Szenenbild wird wiederverwendet)
+    assert any("Uhr auf dem Tisch 1" in b for b in l.seller.bilder)
+    datei = l.seller.hochgeladen["probe"]
+    info = medien.video_info(l.k.ffprobe, datei)
+    assert (info["breite"], info["hoehe"]) == (1920, 1080) and 19 <= info["dauer"] <= 20.2
+
+    def bild(t: float) -> Image.Image:
+        roh = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(datei), "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"], capture_output=True, check=True).stdout
+        return Image.frombytes("RGB", (192, 108), roh)
+
+    from PIL import ImageChops, ImageStat
+
+    # Kamerafahrt: innerhalb eines Bildes ändert sich das Bild laufend (kein Standbild mehr)
+    a, b = bild(1.0), bild(3.5)
+    assert sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) > 3
+    # Plan je Szene gespeichert: 2 Elemente, Start beim Schlüsselwort, Clip mit Nachweis
+    s1 = l.daten["skript"][0]["bilder"]
+    assert len(s1) == 2 and s1[0]["start"] == 0 and s1[1]["art"] == "clip" and s1[1]["start"] > 2.5
+    assert "Testfilmer" in sch.clip_nachweis(l, l.daten["skript"])
+    # noch einmal: Plan, Bilder und Clips kommen aus dem Projekt – nichts doppelt bezahlt
+    n_bilder, n_such = len(l.seller.bilder), len(l.seller.suchen)
+    sch.probe(l)
+    assert len(gefragt) == 1 and len(l.seller.bilder) == n_bilder and len(l.seller.suchen) == n_such
+
+
+def test_vollbild_ohne_pexels_schluessel_bilder_statt_clips(tmp_path, monkeypatch):
+    from udd import schritte as sch
+
+    l, _g, geladen = _vb_lauf(tmp_path, monkeypatch, pexels=False, probe={"szene": 3})
+    l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 9.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
+    d, h = sch.probe(l)
+    assert d["probe"]["clips"] == 0 and d["probe"]["bilder"] >= 3 and not geladen
+    assert any("Pexels nicht verbunden" in x for x in h)
+    assert len(l.seller.suchen) == 1  # nach der ersten Absage nicht weiter gefragt

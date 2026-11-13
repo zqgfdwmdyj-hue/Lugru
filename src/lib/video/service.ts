@@ -12,7 +12,7 @@ import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
 import { storySperre } from "./story-sperre";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, autoNeuUm, PROBE_SEK, probeMoeglich, probeSzenen, sprechtempoAus, WORKER_AB_PROBE, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_AB_TAKT, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, autoNeuUm, PROBE_SEK, probeMoeglich, probeSzenen, sprechtempoAus, bildSekAus, bilderVollbild, workerAbProbe, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_AB_TAKT, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -58,7 +58,7 @@ export async function videoEinstellungenSpeichern(s: Session, patch: Partial<Vid
 
 // ---- Kanäle ------------------------------------------------------------------------------------------------------
 
-export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null; plattform?: string | null; tempo?: string | null; instagram?: InstagramProfil | null; sprechtempo?: number | string | null; motivStil?: string | null };
+export type KanalEingabe = { name: string; handle: string | null; sprache: string; themenbereich: string | null; zielgruppe?: string | null; stimmeId: string | null; bildstil: string | null; sicherheitsstufe: "normal" | "streng"; musik: string | null; freigaben: Partial<Record<VideoFreigabe, boolean>>; aktiv: boolean; stil?: string | null; figuren?: string | null; bildQualitaet?: string | null; plattform?: string | null; tempo?: string | null; instagram?: InstagramProfil | null; sprechtempo?: number | string | null; motivStil?: string | null; bildSek?: number | string | null; stockClips?: boolean | null };
 
 export const kanaele = (tenantId: string) => db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(asc(K.createdAt));
 
@@ -66,7 +66,7 @@ export async function kanalSpeichern(s: Session, id: string | null, e: KanalEing
   if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
   const name = e.name.trim().slice(0, 80);
   if (!name) throw new VideoFehler("Bitte einen Kanalnamen angeben.");
-  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium", plattform: e.plattform === "instagram" ? "instagram" : "youtube", tempo: e.tempo === "ruhig" || e.tempo === "schnell" ? e.tempo : "normal", sprechtempo: sprechtempoAus(e.sprechtempo), motivStil: e.motivStil === "farbig" ? "farbig" : "strich" } as const;
+  const werte = { name, handle: e.handle?.trim().slice(0, 80) || null, sprache: e.sprache.trim().slice(0, 10) || "de", themenbereich: e.themenbereich?.trim().slice(0, 500) || null, zielgruppe: e.zielgruppe?.trim().slice(0, 300) || null, stimmeId: e.stimmeId?.trim().slice(0, 80) || null, bildstil: e.bildstil?.trim().slice(0, 500) || null, sicherheitsstufe: e.sicherheitsstufe, musik: e.musik?.trim().replace(/[\\/]/g, "").slice(0, 120) || null, freigaben: { gliederung: e.freigaben.gliederung !== false, skript: e.freigaben.skript !== false, szenen: e.freigaben.szenen === true, vorschau: e.freigaben.vorschau !== false }, aktiv: e.aktiv, stil: istVideoStil(e.stil) ? e.stil : "vollbild", figuren: e.figuren?.trim().slice(0, 3000) || null, bildQualitaet: e.bildQualitaet === "low" || e.bildQualitaet === "high" ? e.bildQualitaet : "medium", plattform: e.plattform === "instagram" ? "instagram" : "youtube", tempo: e.tempo === "ruhig" || e.tempo === "schnell" ? e.tempo : "normal", sprechtempo: sprechtempoAus(e.sprechtempo), motivStil: e.motivStil === "farbig" ? "farbig" : "strich", bildSek: bildSekAus(e.bildSek), stockClips: e.stockClips === true } as const;
   // B37: Instagram-Profil nur übernehmen, wenn mitgeschickt (Themenliste bleibt beim Speichern des Profils erhalten)
   const instagram = e.instagram ? await instagramProfilMischen(s.tenantId, id, e.instagram) : undefined;
   if (id) {
@@ -106,7 +106,7 @@ export async function auftragAnlegen(s: Session, e: AuftragEingabe): Promise<str
   const [kanal] = await db.select().from(K).where(and(eq(K.tenantId, s.tenantId), eq(K.id, e.kanalId)));
   if (!kanal || !kanal.aktiv) throw new VideoFehler("Kanal nicht gefunden oder ausgeschaltet.");
   const cfg = await videoEinstellungen(s.tenantId);
-  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.stil), cfg.modell, cfg.bildModell);
+  const schaetzung = kostenSchaetzung(cfg.preise, typischFuer(kanal.stil, kanal), cfg.modell, cfg.bildModell);
   const vorlage = e.vorlage?.trim() || null;
   if (vorlage && vorlage.length > VORLAGE_MAX) throw new VideoFehler(`Vorlage/Skript ist zu lang (${vorlage.length.toLocaleString("de-DE")} Zeichen, höchstens ${VORLAGE_MAX.toLocaleString("de-DE")}).`);
   if (vorlage && vorlage.length < 200) throw new VideoFehler("Vorlage/Skript ist sehr kurz – bitte den ganzen Text einfügen (oder das Feld leer lassen).");
@@ -200,9 +200,9 @@ export async function imTaktNeu(s: Session, id: string, o: { gleicherText: boole
  *  rendern – das ganze Video bleibt, wie es ist. Kostet nur die Sprache dieser Szenen (wird beim Neu-Rendern wiederverwendet). */
 export async function probeAnfordern(s: Session, id: string, szene: number): Promise<string> {
   const { a, kanal } = await auftragFuer(s, id);
-  if (!probeMoeglich(a, kanal.stil)) throw new VideoFehler("Probeszene geht nur bei Whiteboard-Videos mit fertigen Motiven, sobald kein Schritt läuft.");
+  if (!probeMoeglich(a, kanal.stil)) throw new VideoFehler(kanal.stil === "whiteboard" ? "Probeszene geht nur bei Whiteboard-Videos mit fertigen Motiven, sobald kein Schritt läuft." : "Probeszene geht erst, wenn ein Skript da ist und kein Schritt läuft.");
   const w = await workerZuletzt(s.tenantId);
-  if (w && workerVeraltet(w.version, WORKER_AB_PROBE)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren (nichts geändert).`);
+  if (w && workerVeraltet(w.version, workerAbProbe(kanal.stil))) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren (nichts geändert).`);
   const n = Math.min(Math.max(1, Math.round(szene) || 1), a.skript!.length);
   const nummern = probeSzenen(a.skript!, n);
   const zeichen = nummern.reduce((x, i) => x + (a.skript![i - 1].text ?? "").length, 0);
@@ -211,6 +211,11 @@ export async function probeAnfordern(s: Session, id: string, szene: number): Pro
   const schritte = { ...a.schritte, probe: { status: "offen" as const, szene: n, vorher: { status: a.status, schritt: a.schritt, freigabeOffen: a.freigabeOffen }, ergebnis: null } };
   await aendern(id, { status: "wartet", schritt: "probe", wiederholen: "probe", startAb: null, schritte });
   const nr = nummern.length > 1 ? `Szenen ${nummern[0]}–${nummern.at(-1)}` : `Szene ${nummern[0]}`;
+  if (kanal.stil !== "whiteboard") {
+    const bilder = Math.ceil(PROBE_SEK / bildSekAus(kanal.bildSek)) + 1;
+    const bp = cfg.preise.bildJeStueck;
+    return `Probeszene angefordert (${nr}, ca. ${PROBE_SEK} s) – Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild mit Kamerafahrt${kanal.stockClips ? ", Pexels-Clips" : ""}. Kosten: Sprache${preis != null ? ` ca. ${((zeichen / 1000) * preis).toFixed(2)} $` : ""} + höchstens ${bilder} Bilder${bp != null ? ` (ca. ${(bilder * bp).toFixed(2)} $)` : ""} – beim Neu-Rendern wiederverwendet.`;
+  }
   return `Probeszene angefordert (${nr}, ca. ${PROBE_SEK} s) – Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, echtes Zeichnen, Hand. Kosten nur Sprache${preis != null ? `, ca. ${((zeichen / 1000) * preis).toFixed(2)} $` : ""}.`;
 }
 
@@ -218,13 +223,18 @@ export async function probeAnfordern(s: Session, id: string, szene: number): Pro
  *  Sprechtempo, Bilder/Render mit echtem Zeichnen. Freigaben laufen wieder wie eingestellt, Upload wieder von Hand. */
 export async function neuVertonen(s: Session, id: string): Promise<string> {
   const { a, kanal } = await auftragFuer(s, id);
-  if (!probeMoeglich(a, kanal.stil)) throw new VideoFehler("Neu vertonen geht nur bei Whiteboard-Videos mit fertigen Motiven, sobald kein Schritt läuft.");
+  if (!probeMoeglich(a, kanal.stil)) throw new VideoFehler(kanal.stil === "whiteboard" ? "Neu vertonen geht nur bei Whiteboard-Videos mit fertigen Motiven, sobald kein Schritt läuft." : "Neu bebildern geht erst, wenn ein Skript da ist und kein Schritt läuft.");
   const w = await workerZuletzt(s.tenantId);
-  if (w && workerVeraltet(w.version, WORKER_AB_PROBE)) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren (nichts geändert).`);
+  if (w && workerVeraltet(w.version, workerAbProbe(kanal.stil))) throw new VideoFehler(`Der Worker am PC ist v${w.version ?? "?"} – erst auf v${WORKER_VERSION_AKTUELL} aktualisieren (nichts geändert).`);
   const cfg = await videoEinstellungen(s.tenantId);
   const zeichen = a.skript!.reduce((x, z) => x + (z.text ?? "").length, 0);
   const preis = cfg.preise.elevenlabsJe1000Zeichen;
-  const kosten = preis != null ? (zeichen / 1000) * preis : 0;
+  const sprache = preis != null ? (zeichen / 1000) * preis : 0;
+  // Vollbild (B36.11): neue Bilder alle ~6 s (die schon bezahlten Szenenbilder und Probe-Bilder bleiben)
+  const sek = a.skript!.reduce((x, z) => x + (typeof z.dauer === "number" ? z.dauer : 0), 0) || (zeichen / 6.6 / 150) * 60;
+  const bilder = kanal.stil === "whiteboard" ? 0 : Math.max(0, bilderVollbild(sek, kanal.bildSek, kanal.stockClips) - a.skript!.length);
+  const bildKosten = cfg.preise.bildJeStueck != null ? bilder * cfg.preise.bildJeStueck : 0;
+  const kosten = sprache + bildKosten;
   const neu = ["voice", "visuals", "render", "package", "upload"] as const;
   const schritte = { ...a.schritte, ...Object.fromEntries(neu.map((x) => [x, { status: "offen" as const }])) };
   const { szenen: _s, vorschau: _v, ...freigegeben } = a.freigegeben;
@@ -232,7 +242,10 @@ export async function neuVertonen(s: Session, id: string): Promise<string> {
     status: "wartet", schritt: "voice", wiederholen: "voice", freigabeOffen: null, freigegeben, startAb: null, fertigAm: null, aufraeumen: false,
     hochladen: false, youtubeId: null, youtubeStatus: null, schritte, kostenSchaetzung: Math.round((a.kostenIst + kosten) * 100) / 100,
   });
-  return `Wird neu vertont und gezeichnet – Skript und Motive bleiben, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}${preis != null ? `, Sprache ca. ${kosten.toFixed(2)} $` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
+  if (kanal.stil !== "whiteboard") {
+    return `Wird neu bebildert und gerendert – Skript bleibt, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}, alle ${String(bildSekAus(kanal.bildSek)).replace(".", ",")} s ein neues Bild${kanal.stockClips ? " (teils Pexels-Clips)" : ""}: ca. ${bilder} neue Bilder${cfg.preise.bildJeStueck != null ? ` (${bildKosten.toFixed(2)} $)` : ""}${preis != null ? `, Sprache ca. ${sprache.toFixed(2)} $ (unverändertes Tempo: nichts)` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
+  }
+  return `Wird neu vertont und gezeichnet – Skript und Motive bleiben, Sprechtempo ${String(kanal.sprechtempo).replace(".", ",")}${preis != null ? `, Sprache ca. ${sprache.toFixed(2)} $` : ""}.${a.youtubeId ? " Das bisherige YouTube-Video bleibt privat in YouTube Studio." : ""}`;
 }
 
 /** Szenen-Übersicht (B36.9.6): ausgewählte Motive verwerfen und neu erzeugen lassen – alles andere bleibt (Bibliothek). */
@@ -389,7 +402,7 @@ function auftragFuerWorker(a: typeof A.$inferSelect, k: typeof K.$inferSelect, c
     art: a.art,
     // B37 Story: Inhalt/Thema, geplanter Zeitpunkt; Fakten/Farben/Hinweis aus dem Kanalprofil
     story: a.art === "story" ? { ...(a.story ?? { inhaltsart: "tipp" }), geplantFuer: a.geplantFuer?.toISOString() ?? null } : null,
-    kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik, plattform: k.plattform, tempo: k.tempo, sprechtempo: k.sprechtempo, motivStil: k.motivStil, instagram: k.plattform === "instagram" ? (() => { const { themen: _t, ...rest } = k.instagram; return rest; })() : null },
+    kanal: { id: k.id, slug: k.slug, name: k.name, handle: k.handle, sprache: k.sprache, themenbereich: k.themenbereich, zielgruppe: k.zielgruppe, stil: k.stil, figuren: figurenAus(k.figuren), bildQualitaet: k.bildQualitaet, referenzen: k.referenzen.map((r) => ({ nr: r.nr, groesse: r.groesse, hash: r.hash, typ: r.typ })), stimmeId: k.stimmeId, bildstil: k.bildstil, sicherheitsstufe: k.sicherheitsstufe, musik: k.musik, plattform: k.plattform, tempo: k.tempo, sprechtempo: k.sprechtempo, motivStil: k.motivStil, bildSek: k.bildSek, stockClips: k.stockClips, instagram: k.plattform === "instagram" ? (() => { const { themen: _t, ...rest } = k.instagram; return rest; })() : null },
     daten: { gliederung: a.gliederung, quellen: a.quellen, skript: a.skript, paket: a.paket },
     // Probeszene: ab welcher Szene (nur solange der Schritt „probe“ ansteht)
     probe: a.schritt === "probe" ? { szene: a.schritte.probe?.szene ?? 1 } : null,
@@ -409,15 +422,16 @@ export async function naechsterAuftrag(w: Worker): Promise<{ auftrag: ReturnType
   const [anderer] = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.status, "laeuft"), gte(A.zuletztVomWorker, still))).limit(1);
   if (anderer) return { auftrag: null, grund: "Ein anderer Auftrag läuft gerade (nur ein Render gleichzeitig)" };
   const kandidaten = await db
-    .select({ id: A.id, art: A.art, schritt: A.schritt })
+    .select({ id: A.id, art: A.art, schritt: A.schritt, stil: K.stil })
     .from(A)
+    .innerJoin(K, eq(K.id, A.kanalId))
     .where(and(eq(A.tenantId, w.tenantId), or(eq(A.status, "wartet"), and(eq(A.status, "laeuft"), or(isNull(A.zuletztVomWorker), lt(A.zuletztVomWorker, still)))), or(isNull(A.startAb), lte(A.startAb, jetzt()))))
     .orderBy(asc(A.createdAt))
     .limit(5);
   let grund: string | undefined;
   for (const k of kandidaten) {
     // B37: Stories erst ab Worker 1.2.0 (ältere kennen den Schritt nicht) und nur unter dem Monatslimit des Kanals
-    if (k.schritt === "probe" && workerVeraltet(w.version, WORKER_AB_PROBE)) {
+    if (k.schritt === "probe" && workerVeraltet(w.version, workerAbProbe(k.stil))) {
       grund = `Worker v${w.version ?? "?"} kann keine Probeszene – bitte auf v${WORKER_VERSION_AKTUELL} aktualisieren`;
       continue;
     }

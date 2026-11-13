@@ -9,7 +9,7 @@ import { createdAt, id, tenantId, users } from "./core";
 
 export type VideoSchritt = "research" | "script" | "voice" | "visuals" | "render" | "package" | "upload" | "story" | "probe";
 /** Probeszene (20 s): ab Szene „szene“ mit dem aktuellen Kanalprofil gerendert; „vorher“ = Stand des Videos davor. */
-export type ProbeErgebnis = { szenen: number[]; dauerSek: number; woerterProMin: number | null; sprechtempo: number; striche?: number | null };
+export type ProbeErgebnis = { szenen: number[]; dauerSek: number; woerterProMin: number | null; sprechtempo: number; striche?: number | null; bilder?: number | null; clips?: number | null };
 export type VideoFreigabe = "gliederung" | "skript" | "szenen" | "vorschau" | "story";
 /** autoVersuche/autoUm: Anbieter-Störung – das Seller-System versucht den Schritt selbst noch einmal (Anzahl, Zeitpunkt). */
 export type SchrittStand = { status: "offen" | "laeuft" | "fertig" | "fehler"; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; hinweise?: string[] | null; am?: string; autoVersuche?: number | null; autoUm?: string | null; szene?: number | null; vorher?: { status: string; schritt: string; freigabeOffen: string | null } | null; ergebnis?: ProbeErgebnis | null };
@@ -25,7 +25,10 @@ export type VideoSzene = {
   // nur Stil „whiteboard“: Texte setzt die Pipeline selbst (Schrift fest), Motive kommen einzeln vom Bildmodell
   layout?: string | null; ueberschrift?: string | null; balken?: string | null; kernaussage?: string | null; schrittText?: string | null; liste?: string[] | null; motive?: VideoMotiv[] | null;
   takt?: VideoTakt | null;
+  // nur Stil „vollbild“ (B36.11): Bildplan – alle ~6 s ein Bild (Kamerafahrt) oder ein Pexels-Clip, Start beim Schlüsselwort
+  bilder?: VideoBildplan[] | null;
 };
+export type VideoBildplan = { art: "bild" | "clip"; idee?: string | null; suche?: string | null; wort?: string | null; key?: string | null; clip?: string | null; start: number; dauer: number; ersatz?: boolean };
 /** B37 Instagram-Kanal: Zeitplan, Inhaltsarten, Gestaltung, Freigabe-Modus, Monatslimit, bestätigte Fakten, Themenliste.
  *  Fakten und Hinweistext pflegt Ludwig im Kanalprofil – keine Firmendaten oder Preise im Code. */
 export type StoryInhaltsart = "preis" | "leistung" | "tipp" | "einblick" | "umfrage" | "cta";
@@ -79,6 +82,10 @@ export const videoKanaele = pgTable(
     sprechtempo: real("sprechtempo").notNull().default(1.1),
     /** Whiteboard-Motive: „strich“ = schwarze Strichzeichnung (wird Strich für Strich nachgezeichnet), „farbig“ = Clipart. */
     motivStil: text("motiv_stil", { enum: ["strich", "farbig"] }).notNull().default("strich"),
+    /** B36.11 Stil „Vollbild“: alle N Sekunden ein neues Bild (4–10, Standard 6) – mit Kamerafahrt, statt Standbild je Szene. */
+    bildSek: real("bild_sek").notNull().default(6),
+    /** B36.11: echte Videoclips von Pexels zwischen den Bildern (kostenlos, Schlüssel unter Anbindungen → Pexels). */
+    stockClips: boolean("stock_clips").notNull().default(false),
     /** B37 Instagram: Zeitplan, Inhaltsarten, Farben, Freigabe-Modus, Monatslimit, Fakten, Themenliste. */
     instagram: jsonb("instagram").$type<InstagramProfil>().notNull().default({}),
     /** Wiederkehrende Figuren, eine je Zeile „kurzname: Beschreibung“ (einmal festgelegt, immer gleich gezeichnet). */

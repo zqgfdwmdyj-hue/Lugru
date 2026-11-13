@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 import requests
 
-from . import ki, medien, netz
+from . import bewegt, ki, medien, netz
 from . import whiteboard as wb
 from .filter import ERSATZ_BILDIDEE, bild_treffer, titel_treffer
 from .konfig import Konfig
@@ -891,38 +891,256 @@ def visuals_wb(l: Lauf) -> tuple[dict, list[str]]:
     return {"skript": _ohne_intern(szenen)}, hinweise
 
 
+def _vb_stil(l: Lauf) -> str:
+    return (l.kanal.get("bildstil") or "Moderne, ruhige Illustration in warmen Farben").strip()
+
+
+def _vb_prompt(l: Lauf, idee: str) -> str:
+    return f"{_vb_stil(l)}. {idee}. Symbolbild ohne Text und ohne Schrift, keine erkennbaren realen Personen, keine Nacktheit."
+
+
+def _vb_bild(l: Lauf, idee: str, nr: str, einblendung: str, hinweise: list[str], wo: str) -> str:
+    """Ein Symbolbild (bezahlt nur, wenn es den Prompt noch nicht gibt) → Schlüssel in state["bilder"]."""
+    treffer = bild_treffer(idee, l.streng)
+    if treffer:
+        hinweise.append(f"{wo}: Bildidee enthielt „{treffer}“ – Ersatzmotiv verwendet.")
+        idee = ERSATZ_BILDIDEE
+    prompt = _vb_prompt(l, idee)
+    schluessel = kurz_hash(prompt)
+    if not l.p.datei_vorhanden("bilder", schluessel):
+        ersatz = bool(treffer)
+        daten = _bild_holen(l, prompt, f"Bild – {wo}")
+        if daten is None:
+            hinweise.append(f"{wo}: Bildanbieter hat abgelehnt – Ersatzbild.")
+            ersatz = True
+            daten = _bild_holen(l, f"{_vb_stil(l)}. {ERSATZ_BILDIDEE}. Symbolbild ohne Text.", f"Ersatzbild – {wo}")
+        rel = f"bilder/{nr}-{schluessel}.png"
+        if daten is None:
+            medien.ersatzbild(einblendung, l.p.pfad(rel))
+        else:
+            schreiben_atomar(l.p.pfad(rel), daten)
+        l.p.datei_merken("bilder", schluessel, rel, ersatz=ersatz)
+    return schluessel
+
+
+# ---- 4c Vollbild in Bewegung (B36.11): Bildplan, Bilder alle ~6 s, Pexels-Clips ---------------------------------------
+
+BILDPLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "szenen": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "nr": {"type": "integer"},
+                    "bilder": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "art": {"type": "string", "enum": ["bild", "clip"]},
+                                "idee": {"type": "string"},
+                                "suche": {"type": "string"},
+                                "wort": {"type": "string"},
+                            },
+                            "required": ["art", "idee", "suche", "wort"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["nr", "bilder"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["szenen"],
+    "additionalProperties": False,
+}
+BILDPLAN_JE_AUFRUF = 25
+CLIP_HOSTS = ("pexels.com", "vimeo.com", "vimeocdn.com")
+
+
+def stock_clips(l: Lauf) -> bool:
+    return bool(l.kanal.get("stockClips"))
+
+
+def _bp_key(l: Lauf, s: dict, n: int) -> str:
+    return kurz_hash(s["text"], s.get("bildidee") or "", str(n), "clips" if stock_clips(l) else "bilder", "bp1")
+
+
+def _bildplan_holen(l: Lauf, auftrag: list[tuple[int, dict, int]]) -> dict[int, list[dict]]:
+    """Claude plant je Szene n Bilder/Clips in Sprechreihenfolge (ein Aufruf je 25 Szenen, wenig Denkaufwand)."""
+    clips = stock_clips(l)
+    def zeile(i: int, s: dict, n: int) -> str:
+        text = " ".join(s["text"].split())
+        idee = f"  [bisherige Bildidee: {s['bildidee']}]" if s.get("bildidee") else ""
+        return f"Szene {i + 1} (n={n}, {float(s.get('dauer') or 0):.0f} s): {text}{idee}"
+
+    zeilen = [zeile(i, s, n) for i, s, n in auftrag]
+    prompt = "\n\n".join(
+        [
+            "[video:bildplan]",
+            "Plane die Bebilderung eines YouTube-Videos im Stil „Vollbild“. Damit es ein Video ist und keine Diashow, wechselt das Bild "
+            "etwa alle 5–7 Sekunden. Liefere je Szene GENAU n Elemente in der Reihenfolge, in der gesprochen wird.",
+            l.kopf(),
+            "Je Element:\n"
+            "- art: " + ("„clip“ für ein echtes gefilmtes Video aus einer Stock-Datenbank (wenn eine reale Szene passt: Gegenstände in Bewegung, "
+            "Hände, Werkstatt, Stadt, Natur, Menschen von hinten/unscharf) – etwa jedes zweite bis dritte Element; „bild“ für abstrakte Aussagen, "
+            "Zahlen, Vergleiche, Symbolik." if clips else "immer „bild“.") + "\n"
+            "- idee: deutsche Bildidee für ein KI-Symbolbild (konkret, filmisch, abwechslungsreich: Totale, Nahaufnahme, Detail; keine Schrift, "
+            "keine Logos/Marken, keine erkennbaren realen Personen, keine Nacktheit). Auch bei „clip“ ausfüllen (Ersatz, falls kein Clip passt).\n"
+            "- suche: 2–4 englische Suchwörter für Stock-Videos (z. B. „watch mechanism closeup“). Auch bei „bild“ ausfüllen.\n"
+            "- wort: ein Wort aus dem Szenentext, bei dem das Element erscheint (beim ersten Element das erste Wort der Szene).\n"
+            "Das erste Element jeder Szene nimmt die bisherige Bildidee auf, wenn eine angegeben ist.",
+            "Szenen:\n" + "\n".join(zeilen),
+        ]
+    )
+    text, _u = ki.fragen(l.claude, l.modell, prompt, was="Bildplan (Bilder und Clips je Szene)", schema=BILDPLAN_SCHEMA, effort="low")
+    d = ki.json_aus(text)
+    return {int(x.get("nr") or 0): [b for b in x.get("bilder") or [] if isinstance(b, dict)] for x in d.get("szenen") or [] if isinstance(x, dict)}
+
+
+def _bildplan(l: Lauf, auswahl: list[tuple[int, dict]], sek: float) -> dict[int, list[dict]]:
+    """Bildplan je Szene (gemerkt im Projekt – ein Neustart kostet nichts). Fehlende Einträge werden aufgefüllt."""
+    plan: dict[int, list[dict]] = {}
+    fehlen: list[tuple[int, dict, int]] = []
+    for i, s in auswahl:
+        n = bewegt.anzahl(float(s.get("dauer") or 0), sek)
+        k = _bp_key(l, s, n)
+        if k in l.p.state["bildplan"]:
+            plan[i] = l.p.state["bildplan"][k]
+        else:
+            fehlen.append((i, s, n))
+    for a in range(0, len(fehlen), BILDPLAN_JE_AUFRUF):
+        teil = fehlen[a : a + BILDPLAN_JE_AUFRUF]
+        antwort = _bildplan_holen(l, teil)
+        for i, s, n in teil:
+            elemente = (antwort.get(i + 1) or [])[:n]
+            idee0 = s.get("bildidee") or ""
+            while len(elemente) < n:  # Claude lieferte zu wenige: Varianten der Bildidee
+                k = len(elemente)
+                elemente.append({"art": "bild", "idee": (idee0 or "ruhiges Symbolbild zum Thema") + (" – Detailaufnahme" if k % 2 else " – Totale"), "suche": "", "wort": ""})
+            if idee0 and elemente[0].get("art") == "bild":
+                elemente[0] = {**elemente[0], "idee": idee0}  # schon bezahltes Szenenbild wiederverwenden
+            if not stock_clips(l):
+                elemente = [{**e, "art": "bild"} for e in elemente]
+            plan[i] = elemente
+            l.p.state["bildplan"][_bp_key(l, s, n)] = elemente
+        l.p.speichern()
+    return plan
+
+
+def _clip_laden(l: Lauf, url: str, ziel) -> None:
+    """Clip-Datei direkt vom Anbieter (CDN) laden – ohne Worker-Token, nur von erlaubten Hosts."""
+    from urllib.parse import urlparse
+
+    u = urlparse(url)
+    host = (u.hostname or "").lower()
+    erlaubt = any(host == h or host.endswith("." + h) for h in CLIP_HOSTS) and u.scheme == "https"
+    if not (erlaubt or host in l.k.clip_hosts):
+        raise RuntimeError(f"Clip-Adresse nicht erlaubt: {host}")
+    tmp = ziel.with_suffix(".part")
+    with requests.get(url, stream=True, timeout=(20, 120)) as r:
+        if r.status_code != 200:
+            raise RuntimeError(f"Clip-Download HTTP {r.status_code}")
+        groesse = 0
+        with open(tmp, "wb") as f:
+            for block in r.iter_content(256 * 1024):
+                groesse += len(block)
+                if groesse > 250 * 1024**2:
+                    raise RuntimeError("Clip größer als 250 MB")
+                f.write(block)
+    tmp.replace(ziel)
+
+
+def _clip_holen(l: Lauf, suche: str, dauer: float, benutzt: set[str], hinweise: list[str], wo: str) -> str | None:
+    """Passenden Pexels-Clip suchen (über die Brücke – der Schlüssel bleibt im Seller-System) und laden. None = keiner."""
+    suche = re.sub(r"[^\w\s-]", " ", suche or "").strip()[:80]
+    if not suche or bild_treffer(suche, l.streng):
+        return None
+    treffer = l.p.state["pexels"].get(suche)
+    if treffer is None:
+        r = l.seller.anbieter_holen(l.id, "pexels", "videos/search", {"query": suche, "orientation": "landscape", "size": "medium", "per_page": 12}, was=f"Pexels-Suche – {wo}")
+        if r.status_code == 424:
+            raise _OhnePexels(_fehlertext(r))
+        if r.status_code != 200:
+            hinweise.append(f"{wo}: Pexels-Suche „{suche}“ fehlgeschlagen ({_fehlertext(r)}) – Bild statt Clip.")
+            return None
+        treffer = [
+            {"id": str(v.get("id")), "duration": v.get("duration"), "url": v.get("url"), "user": {"name": (v.get("user") or {}).get("name")}, "video_files": [{k: f.get(k) for k in ("link", "width", "height", "file_type")} for f in v.get("video_files") or []]}
+            for v in (r.json().get("videos") or [])[:12]
+        ]
+        l.p.state["pexels"][suche] = treffer
+        l.p.speichern()
+    wahl = bewegt.clip_waehlen(treffer, dauer, benutzt)
+    if not wahl:
+        return None
+    v, datei = wahl
+    vid = str(v["id"])
+    if not l.p.datei_vorhanden("stock", vid):
+        rel = f"stock/{vid}.mp4"
+        _clip_laden(l, datei["link"], l.p.pfad(rel))
+        l.p.datei_merken("stock", vid, rel, dauer=float(v.get("duration") or 0), url=v.get("url") or "", fotograf=((v.get("user") or {}).get("name") or "")[:80])
+    benutzt.add(vid)
+    return vid
+
+
+class _OhnePexels(Exception):
+    """Pexels ist im Seller-System nicht verbunden – alle Clips werden zu Bildern."""
+
+
 def visuals(l: Lauf) -> tuple[dict, list[str]]:
     if l.whiteboard:
         return visuals_wb(l)
     szenen = l.daten.get("skript") or []
-    stil = (l.kanal.get("bildstil") or "Moderne, ruhige Illustration in warmen Farben").strip()
     hinweise: list[str] = []
-    for i, s in enumerate(szenen):
-        idee = s.get("bildidee") or ""
-        treffer = bild_treffer(idee, l.streng)
-        if treffer:
-            hinweise.append(f"Szene {i + 1}: Bildidee enthielt „{treffer}“ – Ersatzmotiv verwendet.")
-            idee = ERSATZ_BILDIDEE
-        prompt = f"{stil}. {idee}. Symbolbild ohne Text und ohne Schrift, keine erkennbaren realen Personen, keine Nacktheit."
-        schluessel = kurz_hash(prompt)
-        ersatz = bool(treffer)
-        if not l.p.datei_vorhanden("bilder", schluessel):
-            daten = _bild_holen(l, prompt, f"Bild – Szene {i + 1}")
-            if daten is None:
-                hinweise.append(f"Szene {i + 1}: Bildanbieter hat abgelehnt – Ersatzbild.")
-                ersatz = True
-                daten = _bild_holen(l, f"{stil}. {ERSATZ_BILDIDEE}. Symbolbild ohne Text.", f"Ersatzbild – Szene {i + 1}")
-            rel = f"bilder/{i + 1:03d}-{schluessel}.png"
-            if daten is None:
-                medien.ersatzbild(s.get("einblendung") or "", l.p.pfad(rel))
-            else:
-                schreiben_atomar(l.p.pfad(rel), daten)
-            l.p.datei_merken("bilder", schluessel, rel, ersatz=ersatz)
-        s["ersatzbild"] = bool(l.p.state["bilder"][schluessel].get("ersatz"))
-        s["_bild"] = schluessel
-        l.fortschritt("visuals", i + 1, len(szenen))
+    for s in szenen:  # Dauer kommt aus der Sprache (Schritt davor)
+        v = l.p.state["voice"].get(voice_key(l, s["text"]))
+        if v and not s.get("dauer"):
+            s["dauer"] = round(float(v["dauer"]) + PAUSE_S, 3)
+    n_bilder, n_clips = _vb_bebildern(l, list(enumerate(szenen)), hinweise)
+    gesamt = sum(float(s.get("dauer") or 0) for s in szenen)
+    if gesamt > 0:
+        hinweise.append(f"Bebilderung: {n_bilder} Bilder und {n_clips} Clips für {gesamt / 60:.1f} Min. – im Schnitt alle {gesamt / max(1, n_bilder + n_clips):.1f} s ein neues Bild.")
     l.p.markieren("visuals", hinweise=hinweise)
     return {"skript": _ohne_intern(szenen)}, hinweise
+
+
+def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str]) -> tuple[int, int]:
+    """Bildplan holen und je Szene die Bilder (bezahlt nur Neues) bzw. Pexels-Clips besorgen → s["bilder"]."""
+    sek = bewegt.bild_sek(l.kanal)
+    plan = _bildplan(l, auswahl, sek)
+    pexels = stock_clips(l)
+    benutzt: set[str] = set()
+    n_bilder = n_clips = 0
+    for i, s in auswahl:
+        dauer = float(s.get("dauer") or 0) or 8.0
+        elemente = plan.get(i) or [{"art": "bild", "idee": s.get("bildidee") or "", "suche": "", "wort": ""}]
+        zeiten = bewegt.zeiten(dauer, len(elemente), _wortzeiten(l, s), [e.get("wort") for e in elemente])
+        aus: list[dict] = []
+        for k, (e, (start, laenge)) in enumerate(zip(elemente, zeiten)):
+            wo = f"Szene {i + 1}.{k + 1}"
+            eintrag = {"art": "bild", "idee": (e.get("idee") or s.get("bildidee") or "")[:300], "suche": (e.get("suche") or "")[:80], "wort": (e.get("wort") or "")[:40], "start": start, "dauer": laenge}
+            if e.get("art") == "clip" and pexels:
+                try:
+                    vid = _clip_holen(l, e.get("suche") or "", laenge + bewegt.UEBERGANG, benutzt, hinweise, wo)
+                except _OhnePexels as x:
+                    hinweise.append(f"Pexels nicht verbunden ({x}) – Bilder statt Clips. Schlüssel unter Anbindungen → Pexels eintragen.")
+                    pexels = False
+                    vid = None
+                if vid:
+                    eintrag.update(art="clip", clip=vid)
+                    n_clips += 1
+            if eintrag["art"] == "bild":
+                eintrag["key"] = _vb_bild(l, eintrag["idee"], f"{i + 1:03d}-{k + 1}", s.get("einblendung") or "", hinweise, wo)
+                eintrag["ersatz"] = bool(l.p.state["bilder"][eintrag["key"]].get("ersatz"))
+                n_bilder += 1
+            aus.append(eintrag)
+        s["bilder"] = aus
+        s["ersatzbild"] = any(x.get("ersatz") for x in aus)
+        l.fortschritt("visuals", i + 1, len(l.daten.get("skript") or auswahl))
+    return n_bilder, n_clips
 
 
 # ---- 5 render ------------------------------------------------------------------------------------------------------
@@ -1028,27 +1246,75 @@ def render(l: Lauf) -> tuple[dict, list[str]]:
     t = 0.0
     nr = 1
     for i, s in enumerate(szenen):
-        v, b = _schluessel_szene(l, s)
-        ton = l.p.datei_vorhanden("voice", v)
-        bild = l.p.datei_vorhanden("bilder", b)
-        if not ton or not bild:
-            raise RuntimeError(f"Szene {i + 1}: Sprache oder Bild fehlt – bitte Schritt „Sprache“/„Bilder“ wiederholen.")
+        v, ton = _ton(l, s)
+        if not ton:
+            raise RuntimeError(f"Szene {i + 1}: Sprache fehlt – bitte Schritt „Sprache“ wiederholen.")
         laenge = l.p.state["voice"][v]["dauer"] + PAUSE_S
         teile = medien.untertitel_teile(s["text"], laenge - PAUSE_S)
         srt_gesamt.append(medien.srt(teile, versatz=t, start_nr=nr))
         nr += len(teile)
         name = f"{i + 1:03d}"
-        key = kurz_hash(v, b, s.get("einblendung") or "", str(l.k.fps))
-        if not (l.p.state["clips"].get(name, {}).get("key") == key and (clips / f"{name}.mp4").exists()):
-            medien.szenenbild(bild, s.get("einblendung"), clips / f"{name}.png")
-            (clips / f"{name}.srt").write_text(medien.srt(teile), encoding="utf-8")
-            medien.clip(l.k.ffmpeg, clips, f"{name}.png", "../" + ton.relative_to(l.p.ordner).as_posix(), f"{name}.srt", f"{name}.mp4", laenge, l.k.fps)
-            l.p.state["clips"][name] = {"key": key}
-            l.p.speichern()
+        _vb_szene(l, i, s, clips, name, v, ton, laenge, teile)
         namen.append(f"{name}.mp4")
         t += laenge
         l.fortschritt("render", i + 1, len(szenen) + 1)
     return _render_abschluss(l, video, clips, namen, srt_gesamt, [], len(szenen))
+
+
+def _vb_elemente(l: Lauf, s: dict) -> list[dict]:
+    """Bilder/Clips einer Szene (Bildplan, B36.11). Skripte von vorher ohne Plan: das eine Szenenbild – dann
+    wenigstens mit Kamerafahrt statt Standbild."""
+    if s.get("bilder"):
+        return s["bilder"]
+    _v, b = _schluessel_szene(l, s)
+    return [{"art": "bild", "key": b, "start": 0.0, "dauer": float(s.get("dauer") or 1)}]
+
+
+def _vb_szene(l: Lauf, i: int, s: dict, ordner, name: str, v: str, ton, laenge: float, teile: list) -> None:
+    """Szene im Stil Vollbild: je Bild/Clip ein Stück (Kamerafahrt bzw. zugeschnittener Clip), weich überblendet,
+    Einblendung blendet ein, Untertitel eingebrannt. Gerechnete Stücke werden wiederverwendet (Schlüssel)."""
+    els = _vb_elemente(l, s)
+    summe = sum(max(0.5, float(e.get("dauer") or 0)) for e in els) or 1.0
+    dauern = [max(0.5, float(e.get("dauer") or 0)) * laenge / summe for e in els]
+    segmente: list[tuple[str, float]] = []
+    keys: list[str] = []
+    for k, (e, d) in enumerate(zip(els, dauern)):
+        lang = d + (bewegt.UEBERGANG if k < len(els) - 1 else 0.0)
+        datei = f"seg/{name}-{k + 1}.mp4"
+        if e.get("art") == "clip" and e.get("clip"):
+            quelle = l.p.datei_vorhanden("stock", str(e["clip"]))
+            if not quelle:
+                raise RuntimeError(f"Szene {i + 1}: Clip {e['clip']} fehlt – bitte Schritt „Bilder“ wiederholen.")
+            key = kurz_hash("clip", str(e["clip"]), f"{lang:.3f}", str(l.k.fps), "s1")
+        else:
+            quelle = l.p.datei_vorhanden("bilder", str(e.get("key") or ""))
+            if not quelle:
+                raise RuntimeError(f"Szene {i + 1}: Bild fehlt – bitte Schritt „Bilder“ wiederholen.")
+            variante = bewegt.VARIANTEN[(i * 2 + k) % len(bewegt.VARIANTEN)]
+            key = kurz_hash("bild", str(e.get("key")), f"{lang:.3f}", variante, str(l.k.fps), "s1")
+        ziel = ordner / datei
+        if not (l.p.state["clips"].get(datei, {}).get("key") == key and ziel.exists()):
+            ziel.parent.mkdir(parents=True, exist_ok=True)
+            if e.get("art") == "clip" and e.get("clip"):
+                bewegt.segment_clip(l.k.ffmpeg, quelle, ziel, lang, l.k.fps)
+            else:
+                bewegt.segment_bild(l.k.ffmpeg, quelle, ziel, lang, l.k.fps, variante)
+            l.p.state["clips"][datei] = {"key": key}
+        segmente.append((datei, d))
+        keys.append(key)
+    einbl = (s.get("einblendung") or "").strip()
+    key = kurz_hash(v, *keys, einbl, f"{laenge:.3f}", str(l.k.fps), "vb1")
+    if l.p.state["clips"].get(name, {}).get("key") == key and (ordner / f"{name}.mp4").exists():
+        return
+    band = None
+    if einbl:
+        band = f"{name}-band.png"
+        medien.band_png(einbl, ordner / band)
+    (ordner / f"{name}.srt").write_text(medien.srt(teile), encoding="utf-8")
+    ton_rel = os.path.relpath(ton, ordner).replace(os.sep, "/")
+    bewegt.szene(l.k.ffmpeg, ordner, segmente, band, ton_rel, f"{name}.srt", medien._STIL, f"{name}.mp4", laenge, l.k.fps, nr=i)
+    l.p.state["clips"][name] = {"key": key}
+    l.p.speichern()
 
 
 # ---- 6 package -----------------------------------------------------------------------------------------------------
@@ -1096,6 +1362,20 @@ def _paket_erzeugen(l: Lauf) -> dict:
     return d
 
 
+def clip_nachweis(l: Lauf, szenen: list[dict]) -> str:
+    """Pexels-Clips im Video: Nachweis in der Beschreibung (Pexels verlangt es nicht, bittet aber darum)."""
+    namen: list[str] = []
+    for s in szenen:
+        for e in s.get("bilder") or []:
+            if e.get("art") == "clip" and e.get("clip"):
+                f = (l.p.state["stock"].get(str(e["clip"])) or {}).get("fotograf") or ""
+                if f and f not in namen:
+                    namen.append(f)
+    if not namen and not any(e.get("art") == "clip" for s in szenen for e in s.get("bilder") or []):
+        return ""
+    return "Videos: Pexels (pexels.com)" + (f" – {', '.join(namen[:12])}" + (" u. a." if len(namen) > 12 else "") if namen else "")
+
+
 def package(l: Lauf) -> tuple[dict, list[str]]:
     szenen = l.daten.get("skript") or []
     gliederung = l.daten.get("gliederung") or {}
@@ -1129,6 +1409,9 @@ def package(l: Lauf) -> tuple[dict, list[str]]:
         beschreibung += "\n\nKapitel:\n" + medien.kapitel_text(kap)
     if q_text:
         beschreibung += "\n\nQuellen:\n" + q_text
+    nachweis = clip_nachweis(l, szenen)
+    if nachweis:
+        beschreibung += "\n\n" + nachweis
     beschreibung = beschreibung[:4900]
     tags: list[str] = []
     laenge = 0
@@ -1143,8 +1426,8 @@ def package(l: Lauf) -> tuple[dict, list[str]]:
     if szenen and l.whiteboard:
         erstes_bild = l.p.pfad("szenen", "001.png") if l.p.pfad("szenen", "001.png").exists() else None
     elif szenen:
-        _v, b = _schluessel_szene(l, szenen[0])
-        erstes_bild = l.p.datei_vorhanden("bilder", b)
+        erste = next((e for e in _vb_elemente(l, szenen[0]) if e.get("key")), None)
+        erstes_bild = l.p.datei_vorhanden("bilder", erste["key"]) if erste else None
     medien.thumbnail(erstes_bild, daumen or l.a["thema"], l.p.pfad("thumbnail.png"))
     skript_txt = "\n\n".join(f"[{s['abschnitt']}] {s['text']}" + (f"\n(Quellen: {', '.join(s.get('quelle_ids') or [])})" if s.get("quelle_ids") else "") for s in szenen)
     schreiben_atomar(l.p.pfad("skript.txt"), f"{l.a['thema']}\n\n{skript_txt}\n".encode("utf-8"))
@@ -1322,8 +1605,6 @@ def probe(l: Lauf) -> tuple[dict, list[str]]:
     """Probeszene: ab Szene n so viele Szenen, bis etwa 20 s zusammen sind (höchstens 5), mit dem aktuellen Kanalprofil
     neu vertont (Sprechtempo, gekürzte Pausen – die Sprachdateien werden beim späteren Neu-Rendern wiederverwendet) und
     mit echtem Zeichnen und Hand gerendert. Ergebnis: probe.mp4 (≤ 20 s) auf dem Seller-System; das Video selbst bleibt."""
-    if not l.whiteboard:
-        raise RuntimeError("Probeszene gibt es nur im Stil Whiteboard.")
     szenen = l.daten.get("skript") or []
     if not szenen:
         raise RuntimeError("Kein Skript vorhanden.")
@@ -1333,6 +1614,8 @@ def probe(l: Lauf) -> tuple[dict, list[str]]:
     ordner = l.p.pfad("probe", "x").parent
     shutil.rmtree(ordner, ignore_errors=True)
     ordner.mkdir(parents=True, exist_ok=True)
+    if not l.whiteboard:
+        return _probe_vollbild(l, szenen, start, ordner)
     hand = wb.hand_laden()
     hinweise: list[str] = []
     # blasser Hintergrund: fertiges Bild der Szene davor (wie im Video)
@@ -1382,6 +1665,48 @@ def probe(l: Lauf) -> tuple[dict, list[str]]:
             f.unlink(missing_ok=True)
     l.p.speichern()
     return {"probe": {"szenen": nummern, "dauerSek": round(dauer, 1), "woerterProMin": wpm, "sprechtempo": sprechtempo(l.kanal), "striche": striche}}, hinweise
+
+
+def _probe_vollbild(l: Lauf, szenen: list[dict], start: int, ordner) -> tuple[dict, list[str]]:
+    """Probeszene im Stil Vollbild (B36.11): Szenen ab n neu vertonen (bis ~20 s), mit dem Bildplan bebildern
+    (Bilder alle ~6 s, Clips), mit Kamerafahrt und Übergängen rendern. Bilder/Clips/Plan bleiben für das Neu-Rendern."""
+    hinweise: list[str] = []
+    auswahl: list[tuple[int, dict]] = []
+    gesamt, w = 0.0, 0
+    for i in range(start - 1, len(szenen)):
+        s = szenen[i]
+        v = _sprache_holen(l, i, s["text"])
+        s["dauer"] = round(l.p.state["voice"][v]["dauer"] + PAUSE_S, 3)
+        auswahl.append((i, s))
+        gesamt += s["dauer"]
+        w += woerter(s["text"])
+        if gesamt >= PROBE_S - 1 or len(auswahl) >= 5:
+            break
+    n_bilder, n_clips = _vb_bebildern(l, auswahl, hinweise)
+    namen: list[str] = []
+    for k, (i, s) in enumerate(auswahl):
+        v, ton = _ton(l, s)
+        laenge = l.p.state["voice"][v]["dauer"] + PAUSE_S
+        name = f"{i + 1:03d}"
+        _vb_szene(l, i, s, ordner, name, v, ton, laenge, medien.untertitel_teile(s["text"], laenge - PAUSE_S))
+        namen.append(f"{name}.mp4")
+        l.fortschritt("probe", k + 1, len(auswahl))
+    medien.zusammenfuegen(l.k.ffmpeg, ordner, namen, "probe-voll.mp4")
+    dauer = min(gesamt, PROBE_S)
+    medien.kuerzen(l.k.ffmpeg, ordner / "probe-voll.mp4", ordner / "probe.mp4", dauer)
+    l.seller.datei_hochladen(l.id, "probe", ordner / "probe.mp4")
+    wpm = round(w / gesamt * 60, 1) if gesamt > 0 else None
+    if wpm is not None and wpm < WPM_WARNUNG:
+        hinweise.append(f"Probeszene: {wpm:.0f} Wörter/Min (Ziel {WPM_ZIEL[0]}–{WPM_ZIEL[1]}) – Sprechtempo im Kanalprofil erhöhen.")
+    for f in list(ordner.glob("*.mp4")) + list(ordner.glob("*.png")) + list(ordner.glob("*.srt")):
+        if f.name != "probe.mp4":
+            f.unlink(missing_ok=True)
+    shutil.rmtree(ordner / "seg", ignore_errors=True)
+    for k2 in [k2 for k2 in l.p.state["clips"] if k2.startswith("seg/")]:
+        l.p.state["clips"].pop(k2, None)  # Probe-Stücke lagen im Probe-Ordner – nicht mit denen im Video verwechseln
+    l.p.speichern()
+    nummern = [i + 1 for i, _s in auswahl]
+    return {"probe": {"szenen": nummern, "dauerSek": round(dauer, 1), "woerterProMin": wpm, "sprechtempo": sprechtempo(l.kanal), "bilder": n_bilder, "clips": n_clips}}, hinweise
 
 
 # ---- Ablauf --------------------------------------------------------------------------------------------------------

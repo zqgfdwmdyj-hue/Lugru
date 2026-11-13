@@ -8,7 +8,7 @@ import { kostenBuchen, videoEinstellungen, type Worker } from "./service";
 // B36 Anbieter-Brücke: Der Worker ruft Claude, ElevenLabs und OpenAI über das Seller-System auf. Die Schlüssel bleiben
 // verschlüsselt hier (Anbindungen), der Worker kennt nur sein Worker-Token. Jeder Aufruf wird dem Auftrag (Kopf
 // „x-auftrag“) zugeordnet und die Kosten werden aus der Antwort gezählt (Tokens/Websuchen, Zeichen, Bilder).
-// Nur diese drei Pfade sind erlaubt – keine offene Weiterleitung.
+// Nur diese Pfade sind erlaubt – keine offene Weiterleitung (dazu lesend die Pexels-Videosuche, B36.11).
 // Bilder: Das Modell setzt die Brücke aus den Video-Einstellungen (die Angabe des Workers zählt nicht – so laufen auch
 // ältere Worker nach einer Abschaltung bei OpenAI weiter). Fehlt das Modell im Konto, nimmt sie das nächste.
 // Abgelehnter Schlüssel (401): eigene klare Meldung, nie der Text des Anbieters (der zeigt Teile des Schlüssels).
@@ -159,6 +159,45 @@ export async function weiterleiten(w: Worker, anbieter: string, pfad: string[], 
   }
   if (res.ok) await kostenBuchen(w.tenantId, auftragId, kostenPosition("elevenlabs", preise, { zeichen: String(body.text ?? "").length }));
   return new Response(daten, { status: res.status, headers: kopf });
+}
+
+/**
+ * B36.11 Pexels-Videosuche (nur lesend, GET): Der Worker sucht Stock-Clips über das Seller-System – der Schlüssel bleibt
+ * hier. Erlaubt ist nur /videos/search mit query/orientation/size/per_page; die Clip-Dateien lädt der Worker direkt
+ * vom Pexels-CDN (ohne Schlüssel). Kostet nichts – es wird nichts verbucht.
+ */
+export async function pexelsSuche(w: Worker, pfad: string[], request: Request): Promise<Response> {
+  const auftragId = request.headers.get("x-auftrag") ?? "";
+  if (!/^[0-9a-f-]{36}$/.test(auftragId)) return fehler(400, "Kopf x-auftrag fehlt");
+  const [a] = await db.select({ id: schema.videoAuftraege.id, status: schema.videoAuftraege.status }).from(schema.videoAuftraege).where(and(eq(schema.videoAuftraege.tenantId, w.tenantId), eq(schema.videoAuftraege.id, auftragId)));
+  if (!a) return fehler(404, "Auftrag nicht gefunden");
+  if (a.status === "abgebrochen") return fehler(409, "Auftrag abgebrochen");
+  if (pfad.join("/") !== "videos/search") return fehler(404, "Pfad nicht erlaubt");
+  const ein = new URL(request.url).searchParams;
+  const query = (ein.get("query") ?? "").trim();
+  if (!query || query.length > 100) return fehler(400, "query fehlt oder zu lang");
+  const raus = new URLSearchParams({ query });
+  const o = ein.get("orientation");
+  if (o && ["landscape", "portrait", "square"].includes(o)) raus.set("orientation", o);
+  const g = ein.get("size");
+  if (g && ["large", "medium", "small"].includes(g)) raus.set("size", g);
+  raus.set("per_page", String(Math.min(15, Math.max(1, Number(ein.get("per_page")) || 10))));
+  const k = await getIntegration(w.tenantId, "pexels");
+  if (!k?.apiKey) return fehler(424, "Pexels-Schlüssel fehlt (Anbindungen → Pexels)");
+  const { pexelsBasis } = await import("@/lib/integrations/clients/pexels");
+  let res: Response;
+  try {
+    res = await fetch(`${pexelsBasis()}/videos/search?${raus}`, { headers: { authorization: k.apiKey }, signal: AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]) });
+  } catch (e) {
+    return fehler(502, `Pexels nicht erreichbar: ${e instanceof Error ? e.message : "Fehler"}`);
+  }
+  if (res.status === 401 || res.status === 403) {
+    await res.body?.cancel().catch(() => undefined);
+    return fehler(401, "Pexels-Schlüssel abgelehnt – unter Anbindungen → Pexels neu eintragen.");
+  }
+  const daten = await res.arrayBuffer().catch(() => null);
+  if (!daten) return fehler(502, "Antwort von Pexels abgebrochen");
+  return new Response(daten, { status: res.status, headers: antwortKopf(res) });
 }
 
 function antwortKopf(res: Response): Headers {

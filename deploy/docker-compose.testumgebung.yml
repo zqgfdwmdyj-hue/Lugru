@@ -55,6 +55,7 @@ services:
       LEAD_WEB_BASE_URL: http://testdienste:4010/leadweb
       DISCORD_API_BASE_URL: http://testdienste:4010/discord-api
       ELEVENLABS_BASE_URL: http://testdienste:4010/elevenlabs
+      PEXELS_BASE_URL: http://testdienste:4010/pexels
       OPENAI_BASE_URL: http://testdienste:4010/openai
       YOUTUBE_AUTH_URL: http://testdienste:4010/youtube-auth
       YOUTUBE_TOKEN_URL: http://testdienste:4010/youtube-oauth/token

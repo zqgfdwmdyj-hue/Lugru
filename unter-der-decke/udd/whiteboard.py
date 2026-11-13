@@ -190,18 +190,21 @@ class Hand:
 
 
 def hand_laden(hoehe: int = 380) -> Hand:
-    """Feste Hand aus grafik/hand.png (transparenter Hintergrund) mit der Stiftspitze aus grafik/hand.json. Fehlt die
-    Datei, die gezeichnete Ersatz-Hand (Spitze bei 10/10)."""
+    """Feste Hand aus grafik/hand.png (Foto, freigestellt, transparenter Hintergrund) mit der Stiftspitze aus
+    grafik/hand.json. „hoehe“ = Höhe der Hand von der Stiftspitze bis zum Handrücken („hand_hoehe“ in hand.json);
+    der Unterarm darüber hinaus läuft aus dem Bild. Fehlt die Datei, die gezeichnete Ersatz-Hand (Spitze bei 10/10)."""
     try:
+        meta = json.loads((GRAFIK / "hand.json").read_text(encoding="utf-8"))
         img = Image.open(GRAFIK / "hand.png").convert("RGBA")
-        sx, sy = (float(v) for v in json.loads((GRAFIK / "hand.json").read_text(encoding="utf-8"))["spitze"])
+        sx, sy = (float(v) for v in meta["spitze"])
+        bezug = float(meta.get("hand_hoehe") or 0)
     except (OSError, ValueError, KeyError, TypeError):
-        img, sx, sy = hand_gezeichnet(), 10.0, 10.0
+        img, sx, sy, bezug = hand_gezeichnet(), 10.0, 10.0, 0.0
     box = img.getchannel("A").getbbox() or (0, 0, img.width, img.height)
     img = img.crop(box)
     sx, sy = sx - box[0], sy - box[1]
-    f = hoehe / max(1, img.height)
-    return Hand(img.resize((max(1, round(img.width * f)), hoehe), Image.LANCZOS), (sx * f, sy * f))
+    f = hoehe / max(1.0, bezug or img.height)
+    return Hand(img.resize((max(1, round(img.width * f)), max(1, round(img.height * f))), Image.LANCZOS), (sx * f, sy * f))
 
 
 # ---- Layout ----------------------------------------------------------------------------------------------------------

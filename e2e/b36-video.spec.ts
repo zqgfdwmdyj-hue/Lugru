@@ -54,9 +54,11 @@ async function warteStoriesFehler<S extends { thema: string; status: string }>(l
   }
 }
 
-const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[] }>);
+// Hautton der Foto-Hand (Ludwigs Hand, B36.10 13.11.): warm, Rot > Grün > Blau mit deutlichem Abstand – auch im Schatten
+const istHaut = (r: number, g: number, b: number) => r > 100 && r < 245 && r - g >= 18 && r - g <= 75 && g - b >= 10 && g - b <= 65;
+const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[]; pexels: { query: string; orientation: string | null; perPage: number }[]; pexelsDateien: number }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
-type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
+type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string; dauer?: number; bilder?: { art: "bild" | "clip"; key?: string | null; clip?: string | null; start: number; dauer: number }[] | null }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
 
 const PY = process.env.VIDEO_WORKER_PYTHON || "python3";
 const THEMA = "Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht";
@@ -75,7 +77,7 @@ test.describe("B36 Video-Pipeline", () => {
 
   const workerStarten = () => {
     worker = spawn(PY, [path.join(process.cwd(), "unter-der-decke", "worker.py")], {
-      env: { ...process.env, SELLER_URL: `http://localhost:${E2E_PORT}`, WORKER_TOKEN: token, ARBEITSORDNER: path.join(arbeit, "projekte"), MUSIKORDNER: path.join(arbeit, "musik"), VIDEO_POLL_S: "1", VIDEO_FPS: "2", MIN_FREI_GB: "0.1", WARN_FREI_GB: "0.1", PYTHONUNBUFFERED: "1", WIEDERHOLEN_FAKTOR: "0.01" },
+      env: { ...process.env, SELLER_URL: `http://localhost:${E2E_PORT}`, WORKER_TOKEN: token, ARBEITSORDNER: path.join(arbeit, "projekte"), MUSIKORDNER: path.join(arbeit, "musik"), VIDEO_POLL_S: "1", VIDEO_FPS: "2", MIN_FREI_GB: "0.1", WARN_FREI_GB: "0.1", PYTHONUNBUFFERED: "1", WIEDERHOLEN_FAKTOR: "0.01", UDD_CLIP_HOSTS: new URL(TD).hostname },
       stdio: ["ignore", "pipe", "pipe"],
     });
     worker.stdout?.on("data", (d) => (log += d));
@@ -111,7 +113,7 @@ test.describe("B36 Video-Pipeline", () => {
       for (const { id } of kanaeleIds) rmSync(path.join(E2E_ENV.MEDIA_DIR, "video", T, `kanal-${id}`), { recursive: true, force: true });
       await sql("delete from video_kanaele where tenant_id = $1 and name = any($2)", [T, namen]);
       await sql("delete from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
-      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai'${googleNeu ? ", 'google'" : ""}${igNeu ? ", 'instagram'" : ""})`, [T]);
+      await sql(`delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels'${googleNeu ? ", 'google'" : ""}${igNeu ? ", 'instagram'" : ""})`, [T]);
       await sql("update tenants set settings = settings - 'video' where id = $1", [T]);
     }
     rmSync(arbeit, { recursive: true, force: true });
@@ -121,8 +123,8 @@ test.describe("B36 Video-Pipeline", () => {
     test.setTimeout(600_000);
     [{ id: T }] = await sql<{ id: string }>("select tenant_id as id from lots where sku = 'TEST-SOCKEN' limit 1");
     // Zugänge wie über das sichere Formular (verschlüsselt), nur Testwerte. Claude-Schlüssel liegt aus den Testdaten vor.
-    await sql("delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai')", [T]);
-    await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" }))]);
+    await sql("delete from integrations where tenant_id = $1 and provider in ('elevenlabs', 'openai', 'pexels')", [T]);
+    await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'elevenlabs', 'Test', '{}'::jsonb, $2), ($1, 'openai', 'Test', '{}'::jsonb, $3), ($1, 'pexels', 'Test', '{}'::jsonb, $4)", [T, versiegeln(JSON.stringify({ apiKey: "test-elevenlabs-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-openai-schluessel" })), versiegeln(JSON.stringify({ apiKey: "test-pexels-schluessel" }))]);
     if (!(await sql("select 1 from integrations where tenant_id = $1 and provider = 'google'", [T])).length) {
       googleNeu = true;
       await sql("insert into integrations (tenant_id, provider, label, config, secret_encrypted) values ($1, 'google', 'Test', $2::jsonb, $3)", [T, JSON.stringify({ clientId: "test-google-client.apps.example.invalid" }), versiegeln(JSON.stringify({ clientSecret: "test-google-secret" }))]);
@@ -139,8 +141,12 @@ test.describe("B36 Video-Pipeline", () => {
     await expect(page.getByTestId("vd-k-laenge")).toContainText("fest 1.500–1.700 Wörter (≈ 10–12 Min.)"); // fest für alle Kanäle
     await page.getByTestId("vd-k-stimme").fill("testStimme01");
     await page.getByTestId("vd-k-stufe").selectOption("streng");
+    // B36.11 Vollbild in Bewegung: Bildwechsel alle 6 s (Standard) + echte Clips von Pexels
+    await expect(page.getByTestId("vd-k-bildsek")).toHaveValue("6");
+    await page.getByTestId("vd-k-stockclips").check();
     await Promise.all([aktion(page), page.getByTestId("vd-k-speichern").click()]);
     await expect(page.getByTestId("vd-meldung")).toContainText("Kanal angelegt");
+    expect((await sql<{ bild_sek: number; stock_clips: boolean }>("select bild_sek, stock_clips from video_kanaele where tenant_id = $1 and name = $2", [T, KANAL]))[0]).toEqual({ bild_sek: 6, stock_clips: true });
     await expect(page.getByTestId("vd-kanaele")).toContainText(KANAL);
 
     // Worker anlegen: Token nur einmal sichtbar
@@ -256,7 +262,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.3.0)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.4.0)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);
@@ -272,9 +278,26 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.bilder.every((b) => b.model === "gpt-image-2.5-flare" && b.size === "1536x1024" && b.quality === "medium")).toBe(true);
     expect(nb.modellFehler).toEqual([]);
     expect(nb.bilder.filter((b) => b.abgelehnt)).toHaveLength(1);
-    expect(nb.bilder.length).toBe(szenen + 1);
     expect(nb.bilder.some((b) => /\bbett\b/i.test(b.prompt))).toBe(false);
     expect(a.skript!.filter((s) => s.ersatzbild).length).toBeGreaterThanOrEqual(2); // abgelehnt + Filter „Bett“
+    // B36.11 Bildwechsel alle ~6 s statt ein Standbild je Szene: Bildplan (ein Claude-Aufruf), Bilder + Pexels-Clips
+    const plan = a.skript!.flatMap((s) => s.bilder ?? []);
+    const dauerGesamt = a.skript!.reduce((x, s) => x + (s.dauer ?? 0), 0);
+    expect(nb.claude.filter((c) => c === "bildplan").length).toBeGreaterThanOrEqual(1);
+    expect(plan.length).toBeGreaterThan(szenen * 2);
+    expect(dauerGesamt / plan.length).toBeGreaterThan(4);
+    expect(dauerGesamt / plan.length).toBeLessThan(8); // im Schnitt alle 4–8 s ein neues Bild/Clip
+    const clips = plan.filter((e) => e.art === "clip");
+    expect(clips.length).toBeGreaterThan(plan.length * 0.25);
+    expect(nb.pexels.length).toBeGreaterThanOrEqual(clips.length);
+    expect(nb.pexels.every((q) => q.orientation === "landscape" && q.perPage <= 15)).toBe(true);
+    expect(nb.pexelsDateien).toBe(new Set(clips.map((e) => e.clip)).size); // jeder Clip einmal geladen
+    const keys = new Set(plan.filter((e) => e.art === "bild").map((e) => e.key));
+    expect(nb.bilder.length).toBe(keys.size + 1); // je Bild einmal bezahlt + die eine Ablehnung (Ersatzbild)
+    for (const s of a.skript!) {
+      expect(s.bilder![0].start).toBe(0);
+      for (let k = 1; k < s.bilder!.length; k++) expect(s.bilder![k].start).toBeGreaterThan(s.bilder![k - 1].start);
+    }
 
     // Abnahme 3: MP4 ≈ 10–12 Min. (Nachbau spricht 156 Wörter/Min.), 1920×1080, Untertitel; Thumbnail 1280×720; 5 Titel, Beschreibung mit Kapiteln, Tags
     for (const art of ["mp4", "thumbnail", "skript", "quellen", "untertitel"]) expect(a.dateien[art]?.groesse, art).toBeGreaterThan(0);
@@ -283,6 +306,14 @@ test.describe("B36 Video-Pipeline", () => {
     expect([probe.streams[0].width, probe.streams[0].height]).toEqual([1920, 1080]);
     expect(Number(probe.format.duration)).toBeGreaterThanOrEqual(570);
     expect(Number(probe.format.duration)).toBeLessThanOrEqual(720);
+    // B36.11 Kamerafahrt: innerhalb des ersten Bilds bewegt sich das Bild (mittlerer Streifen, ohne Einblendung/Untertitel)
+    const ausschnitt = (t: number) => execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", path.join(ordner, "video.mp4"), "-frames:v", "1", "-vf", "scale=192:108,crop=192:38:0:43", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:"]);
+    const erstes = a.skript![0].bilder![0];
+    const [f1, f2] = [ausschnitt(0.9), ausschnitt(Math.min(erstes.dauer - 0.6, 3.5))];
+    let diff = 0;
+    for (let k = 0; k < f1.length; k++) diff += Math.abs(f1[k] - f2[k]);
+    expect(diff / f1.length, "Bild steht still – keine Kamerafahrt").toBeGreaterThan(3);
+    console.log(`Vollbild: ${szenen} Szenen, ${plan.length} Bilder/Clips (${clips.length} Clips), Ø ${(dauerGesamt / plan.length).toFixed(1)} s je Bild, Kamerafahrt Ø-Abstand ${(diff / f1.length).toFixed(1)}`);
     const thumb = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path.join(ordner, "thumbnail.png")]).toString()) as { streams: { width: number; height: number }[] };
     expect([thumb.streams[0].width, thumb.streams[0].height]).toEqual([1280, 720]);
     const srt = readFileSync(path.join(ordner, "untertitel.srt"), "utf8");
@@ -290,6 +321,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect(a.paket!.titel).toHaveLength(5);
     expect(a.paket!.beschreibung).toContain("Kapitel:\n0:00 Intro");
     expect(a.paket!.beschreibung).toContain("Quellen:");
+    expect(a.paket!.beschreibung).toMatch(/Videos: Pexels \(pexels\.com\) – Testfilmer \d/); // Filmer der Clips genannt
     expect(a.paket!.kapitel.length).toBeGreaterThanOrEqual(3);
     expect(a.paket!.tags.length).toBeGreaterThanOrEqual(10);
     await page.reload();
@@ -593,7 +625,7 @@ test.describe("B36 Video-Pipeline", () => {
       let haut = 0;
       for (let i = 0; i < roh.length; i += 3) {
         if (roh[i] > 235 && roh[i + 1] > 235 && roh[i + 2] > 235) weiss++;
-        if (Math.abs(roh[i] - 246) < 18 && Math.abs(roh[i + 1] - 206) < 18 && Math.abs(roh[i + 2] - 174) < 18) haut++;
+        if (istHaut(roh[i], roh[i + 1], roh[i + 2])) haut++;
       }
       return { px, weiss: weiss / (roh.length / 3), haut };
     };
@@ -603,10 +635,19 @@ test.describe("B36 Video-Pipeline", () => {
     const ende1 = bild(d1 - 1);
     expect(ende1.weiss).toBeGreaterThan(0.4);
     expect(ende1.weiss).toBeLessThan(0.97); // Überschrift + Motive gezeichnet, Hintergrund weiß
-    for (let y = 96; y <= 104; y++) for (let x = 0; x < 192; x += 4) expect(Math.min(...ende1.px(x, y))).toBeGreaterThan(200); // keine eingebrannten Untertitel unten
+    // keine eingebrannten Untertitel unten: über die ganze Szene ist der untere Rand fast überall weiß (die Hand darf
+    // ihn beim Zeichnen kurz streifen, Untertitel stünden in fast jedem Bild)
+    const unten = Array.from({ length: Math.max(3, Math.floor(d1 / 0.5) - 1) }, (_, i) => {
+      const f = bild(0.5 + i * 0.5);
+      let schmutzig = 0;
+      for (let y = 96; y <= 104; y++) for (let x = 0; x < 192; x += 4) if (Math.min(...f.px(x, y)) <= 200) schmutzig++;
+      return schmutzig / (9 * 48);
+    }).sort((x, y) => x - y);
+    expect(unten[Math.floor(unten.length / 2)], "unterer Rand (Median Anteil nicht weiß)").toBeLessThan(0.05);
     // Die Hand ist zu sehen, solange gezeichnet wird (Befund 13.11.: im ersten echten Video fehlte sie)
     const mitHand = Array.from({ length: Math.floor((d1 + d2) / 0.25) }, (_, i) => bild(0.3 + i * 0.25).haut).filter((h) => h > 25).length;
     expect(mitHand, "Bilder mit sichtbarer Hand in Szene 1–2").toBeGreaterThan(4);
+    console.log(`Whiteboard: Hand in ${mitHand} von ${Math.floor((d1 + d2) / 0.25)} Einzelbildern (Szene 1–2), unterer Rand Median ${(unten[Math.floor(unten.length / 2)] * 100).toFixed(1)} % nicht weiß`);
     const ende2 = bild(d1 + d2 - 1);
     const [r, g, b] = ende2.px(20, 8);
     expect(r > 170 && g < 90 && b < 90, `roter Balken oben (${r},${g},${b})`).toBe(true);
@@ -745,10 +786,12 @@ test.describe("B36 Video-Pipeline", () => {
     const haut = (t: number) => {
       const roh = execFileSync("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", mp4, "-frames:v", "1", "-vf", "scale=192:108", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:"]);
       let n = 0;
-      for (let i = 0; i < roh.length; i += 3) if (Math.abs(roh[i] - 246) < 18 && Math.abs(roh[i + 1] - 206) < 18 && Math.abs(roh[i + 2] - 174) < 18) n++;
+      for (let i = 0; i < roh.length; i += 3) if (istHaut(roh[i], roh[i + 1], roh[i + 2])) n++;
       return n;
     };
-    expect(Array.from({ length: 30 }, (_, i) => haut(0.3 + i * 0.5)).filter((h) => h > 25).length, "Bilder mit Hand in der Probeszene").toBeGreaterThan(3);
+    const handProbe = Array.from({ length: 30 }, (_, i) => haut(0.3 + i * 0.5)).filter((h) => h > 25).length;
+    expect(handProbe, "Bilder mit Hand in der Probeszene").toBeGreaterThan(3);
+    console.log(`Probeszene: Hand in ${handProbe} von 30 Einzelbildern`);
     // Seite: Video, Kennzahlen
     await page.reload();
     if (!(await bereich.evaluate((d) => (d as HTMLDetailsElement).open))) await bereich.locator("summary").click();
@@ -770,7 +813,8 @@ test.describe("B36 Video-Pipeline", () => {
     await Promise.all([aktion(page), karte.getByTestId("vd-neu-vertonen").click()]);
     await expect(page.getByTestId("vd-meldung")).toContainText("Wird neu vertont und gezeichnet – Skript und Motive bleiben, Sprechtempo 1,15");
     a = await lies();
-    expect([a.status, a.schritt]).toEqual(["wartet", "voice"]);
+    expect(a.schritt).toBe("voice"); // zurück auf „Sprache“ – der Worker kann ihn schon übernommen haben
+    expect(["wartet", "laeuft"]).toContain(a.status);
     for (const bis = Date.now() + 300_000; (a = await lies()).freigabe_offen !== "szenen"; ) {
       if (a.status === "fehler") throw new Error(`Fehler (${a.schritt}): ${a.schritte[a.schritt]?.fehler}\n${log.slice(-3000)}`);
       if (Date.now() > bis) throw new Error(`Zeitüberschreitung bis zur Szenen-Übersicht (${a.status}/${a.schritt})\n${log.slice(-3000)}`);

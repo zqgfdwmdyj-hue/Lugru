@@ -49,7 +49,10 @@ export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
  *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
  *  ein neuer Versuch mit doppeltem Platz). */
-export const WORKER_VERSION_AKTUELL = "1.3.0";
+export const WORKER_VERSION_AKTUELL = "1.4.0";
+/** Ab 1.4.0 (B36.11): Stil „Vollbild“ in Bewegung – Bildwechsel alle ~6 s mit Kamerafahrt, weiche Übergänge, Pexels-Clips;
+ *  Probeszene und „Neu bebildern & rendern“ auch für Vollbild. */
+export const WORKER_AB_BEWEGT = "1.4.0";
 /** Ab 1.3.0: Probeszene (20 s), echtes Zeichnen (Motive vektorisiert), feste Hand mit Stiftspitze, Sprechtempo und
  *  gekürzte Pausen – „Probeszene“ und „Neu vertonen & zeichnen“ brauchen diese Version. */
 export const WORKER_AB_PROBE = "1.3.0";
@@ -67,7 +70,25 @@ export const sprechtempoAus = (v: unknown): number => {
 };
 /** Probeszene / Neu vertonen: nur Videos mit Skript und Motiven, sobald kein Schritt läuft. */
 export function probeMoeglich(a: { art: string; status: string; skript: { motive?: unknown[] | null; text?: string }[] | null }, stil: string | null | undefined): boolean {
-  return a.art === "video" && stil === "whiteboard" && ["fertig", "freigabe", "fehler"].includes(a.status) && !!a.skript?.some((s) => (s.motive?.length ?? 0) > 0);
+  if (a.art !== "video" || !["fertig", "freigabe", "fehler"].includes(a.status) || !a.skript?.length) return false;
+  // Whiteboard: Motive müssen da sein; Vollbild (B36.11): ein Skript genügt – Bilder/Clips holt die Probe selbst
+  return stil === "whiteboard" ? a.skript.some((s) => (s.motive?.length ?? 0) > 0) : true;
+}
+/** Worker-Version, die Probeszene/Neu-Rendern für diesen Stil braucht. */
+export const workerAbProbe = (stil: string | null | undefined) => (stil === "whiteboard" ? WORKER_AB_PROBE : WORKER_AB_BEWEGT);
+
+/** B36.11 Stil „Vollbild“: Bildwechsel alle N Sekunden (Kanalprofil, 4–10 s, Standard 6) und Anteil Pexels-Clips. */
+export const BILD_SEK = { min: 4, max: 10, standard: 6 } as const;
+export const bildSekAus = (v: unknown): number => {
+  const n = typeof v === "number" ? v : Number.parseFloat(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(Math.min(BILD_SEK.max, Math.max(BILD_SEK.min, n)) * 2) / 2 : BILD_SEK.standard;
+};
+/** Ungefähr so viele Bilder werden bei Clips zu Pexels-Videos (kostenlos) – Schätzung für die Kosten. */
+export const CLIP_ANTEIL = 0.4;
+/** Bilder für ein Vollbild-Video: Sprechzeit / Bildwechsel, bei Clips ~40 % weniger. */
+export function bilderVollbild(sekunden: number, bildSek: number = BILD_SEK.standard, clips = false): number {
+  const n = Math.max(1, Math.round(sekunden / bildSekAus(bildSek)));
+  return Math.round(clips ? n * (1 - CLIP_ANTEIL) : n);
 }
 /** Szenen der Probe ab Nummer „ab“ (1-basiert): so viele, bis ca. PROBE_SEK zusammen sind (≈ 2,5 Wörter/s), höchstens 5. */
 export function probeSzenen(skript: { text?: string | null }[], ab: number): number[] {
@@ -257,15 +278,16 @@ export function laengeZiel(): LaengeZiel {
 /** Typischer Lauf: Zeichen Sprache (~6,6 je Wort), Bilder (1 je ~65 Wörter), Websuchen (Gliederung 3 + je Punkt bis 3),
  *  Tokens (abschnittsweise: ~12 kurze Aufrufe mit Gliederung/Quellen als Kontext).
  *  Whiteboard: statt eines Bildes je Szene ~4 Einzelmotive (ohne Wiederverwendung gerechnet = Obergrenze). */
-export function typischFuer(stil: string | null = "vollbild") {
+export function typischFuer(stil: string | null = "vollbild", vollbild: { bildSek?: number | null; stockClips?: boolean | null } = {}) {
   const z = laengeZiel();
   const w = (z.woerter[0] + z.woerter[1]) / 2;
   const k = (x: number) => Math.round(x / 1000) * 1000;
-  const szenen = Math.round(w / 65);
   const wb = stil === "whiteboard";
   // Whiteboard (B36.10): ~68 kurze Szenen, je ~1,5 neue Motive (Obergrenze der Schätzung ohne Bibliothek)
   const wbSzenen = (WB_SZENEN[0] + WB_SZENEN[1]) / 2;
-  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder: wb ? 0 : szenen, motive: wb ? Math.round(wbSzenen * NEUE_MOTIVE_JE_SZENE) : 0, websuchen: 12, eingabeTokens: k(80_000 + w * 20), ausgabeTokens: k(5_000 + w * 6) };
+  // Vollbild (B36.11): Bildwechsel alle ~6 s über die Sprechzeit (≈ 150 Wörter/Min.), Bildplan kostet ~1 Claude-Aufruf mehr
+  const bilder = wb ? 0 : bilderVollbild((w / 150) * 60, vollbild.bildSek ?? BILD_SEK.standard, !!vollbild.stockClips);
+  return { zeichen: Math.round((w * 6.6) / 100) * 100, bilder, motive: wb ? Math.round(wbSzenen * NEUE_MOTIVE_JE_SZENE) : 0, websuchen: 12, eingabeTokens: k(80_000 + w * 20 + (wb ? 0 : 6_000)), ausgabeTokens: k(5_000 + w * 6 + (wb ? 0 : 4_000)) };
 }
 
 /** Typischer Lauf (1.500–1.700 Wörter): ~10.600 Zeichen Sprache, ~25 Bilder, ~112k/15k Tokens. */
