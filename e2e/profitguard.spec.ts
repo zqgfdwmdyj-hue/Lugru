@@ -112,7 +112,7 @@ test.describe("ProfitGuard – Export einlesen, Abgleich, Importdatei", () => {
       // Spalte „Buy Box Price“ (Spalte 10) wird nicht verglichen – sie ist in ProfitGuard nur Anzeige.
       const ohneBb = (z: string) => z.split(",").filter((_, i) => i !== 9).join(",");
       expect(zeilen.map(ohneBb)).toContain([A, asin("A"), `Testartikel ${A} (erfunden)`, "Amazon.de", "24.99", "19.99", fmt(sA.max_soll), "Liquidation", "Active", "tag-A"].join(","));
-      if (sB) expect(zeilen.map(ohneBb)).toContain([B, asin("B"), `Testartikel ${B} (erfunden)`, "Amazon.de", "30.00", fmt(sB.min_soll), fmt(sB.max_soll), "Standard", "Paused", "tag-B"].join(","));
+      if (sB) expect(zeilen.map(ohneBb)).toContain([B, asin("B"), `Testartikel ${B} (erfunden)`, "Amazon.de", "30.00", fmt(sB.min_soll), fmt(sB.max_soll), "Standard", "Active", "tag-B"].join(",")); // mit Bestand wieder ins Repricing
       expect(datei).not.toContain(OHNE);
       // Alle Länder in einer Datei
       const alle = await page.request.get((await page.getByTestId("pg-datei-alle").getAttribute("href"))!);
@@ -130,7 +130,7 @@ test.describe("ProfitGuard – Export einlesen, Abgleich, Importdatei", () => {
       const up = page.getByTestId("profitguard-upload");
       await up.locator('input[type="file"]').setInputFiles({ name: `ProfitGuard_Export_${m}_neu.csv`, mimeType: "text/csv", buffer: Buffer.from(datei, "utf8") });
       await Promise.all([aktion(page), up.getByRole("button", { name: "ProfitGuard-Export einlesen" }).click()]);
-      await expect(page.getByTestId("profitguard-result")).toContainText("SKUs aus ProfitGuard eingelesen (DE");
+      await expect(page.getByTestId("profitguard-result")).toContainText("aus ProfitGuard eingelesen (DE");
       const r2 = JSON.parse(await c.call("repricer", { ansicht: "alle", suche: A, marktplatz: "DE" }));
       expect(r2.zeilen[0]).toMatchObject({ soll: { strategie: "Liquidation", min: 19.99 }, ist_profitguard: { strategie: "Liquidation", min: 19.99 } });
       expect(r2.zeilen[0].pruefen).toBeUndefined();

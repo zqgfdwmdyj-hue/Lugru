@@ -20,7 +20,7 @@ async function pgHochladen(page: Page, name: string, zeilen: { sku: string; stra
   await page.getByTestId("upload-dateien").setInputFiles([{ name, mimeType: "text/csv", buffer: Buffer.from(datei, "utf8") }]);
   await page.getByTestId("upload-los").click();
   await expect(page.getByTestId("upload-ergebnis")).toHaveAttribute("data-art", "profitguard", { timeout: 60_000 });
-  await expect(page.getByTestId("upload-ergebnis")).toContainText(`${zeilen.length} SKUs aus ProfitGuard eingelesen`);
+  await expect(page.getByTestId("upload-ergebnis")).toContainText(`${zeilen.length} SKU${zeilen.length === 1 ? "" : "s"} aus ProfitGuard eingelesen`);
 }
 
 async function grundlage(sku: string, o: { ek?: string; menge?: number; kind?: "purchase" | "return" | "unknown"; alter?: string | null; asin?: string | null; tageAlt?: number } = {}) {

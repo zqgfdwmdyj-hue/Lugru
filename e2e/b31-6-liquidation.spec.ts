@@ -20,7 +20,7 @@ async function pgHochladen(page: Page, name: string, z: { sku: string; strategie
   await page.getByTestId("upload-dateien").setInputFiles([{ name, mimeType: "text/csv", buffer: Buffer.from(datei, "utf8") }]);
   await page.getByTestId("upload-los").click();
   await expect(page.getByTestId("upload-ergebnis")).toHaveAttribute("data-art", "profitguard", { timeout: 60_000 });
-  await expect(page.getByTestId("upload-ergebnis")).toContainText("1 SKUs aus ProfitGuard eingelesen (DE 1)");
+  await expect(page.getByTestId("upload-ergebnis")).toContainText("1 SKU aus ProfitGuard eingelesen (DE 1)");
 }
 
 test.describe("B31.6 – Min unter Marge nur mit Liquidation", () => {
