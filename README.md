@@ -14,7 +14,8 @@ Mandanten (Firma); heute gibt es nur einen.
 - **Amazon FBA**: Inbound mit Scan-Ablauf und FNSKU-Etiketten, Ansprüche (7 Erkennungsregeln,
   Warteschlange mit Tageslimit, Nachweis-Mappe), Remissionen
 - **Einkauf & Buchhaltung**: Rechnungen (Google Drive, PDF-Auslesen, Zuordnung), COG-Export
-  für AccountOne, Repricer-Export für BQool
+  für AccountOne, Repricing über ProfitGuard (Abgleich mit dem ProfitGuard-Export, Importdatei mit
+  Freigabe; BQool ist abgelöst)
 - **Service**: Fälle & A-bis-Z, Retouren, Bewertungen
 - **Geld**: Gewinn je SKU/Kanal, Cash-Flow-Vorschau
 - **System**: Import aller Dateien, Einstellungen, Anbindungen (verschlüsselt), Hintergrund-Abrufe

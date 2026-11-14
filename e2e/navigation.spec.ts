@@ -73,9 +73,12 @@ test.describe("Navigation links", () => {
       await page.goto("/gewinn");
       await page.getByTestId("seitenleiste").locator('[data-section="amazon"] .nav-head').click();
       await page.getByTestId("seitenleiste").locator('[data-section="amazon"] [data-unter="angebote"] .nav-unter-head').click();
-      await page.getByTestId("seitenleiste").getByRole("link", { name: "Repricer (BQool)" }).click();
+      await page.getByTestId("seitenleiste").getByRole("link", { name: "Repricer", exact: true }).click();
       await page.waitForURL(/\/repricer/);
       await expect(page.getByTestId("seitenleiste").locator(".nav-group.open")).toHaveAttribute("data-section", "amazon");
+      // Repricer (ProfitGuard): Reiter Übersicht / Listing-Check / ProfitGuard-Datei; die BQool-Seiten gibt es nicht mehr
+      await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Übersicht", "Listing-Check", "ProfitGuard-Datei"]);
+      for (const alt of ["/repricer/bqool", "/repricer/leistung"]) expect((await page.request.get(alt)).status(), alt).toBe(404);
 
       // Abnahme 4: alle Gruppen zu → ohne Scrollen sichtbar (11 Gruppenköpfe + fester Kopf) bei 715 px
       await page.goto("/b2b");
@@ -180,7 +183,7 @@ test.describe("Navigation links", () => {
       // Einstellungen: ein Menüeintrag, Unterseiten als Reiter, Abschnitte über die Sprungleiste
       await page.goto("/einstellungen");
       await expect(page.getByTestId("sub-tabs").locator(".area-tab")).toHaveText(["Allgemein", "Anbindungen", "KI-Assistent", "Hintergrund & Importe", "Geräte: Handy & Tesla", "Apple Watch", "Benachrichtigungen", "Shop-Profile", "Abholung", "Drucker", "Testumgebung"]);
-      // Reiter „Hintergrund & Importe“: Abrufe, Amazon-Berichte, ArbitrageOne, BQool-Uploads – unter Anbindungen nur noch der Hinweis
+      // Reiter „Hintergrund & Importe“: Abrufe, Amazon-Berichte, ArbitrageOne – unter Anbindungen nur noch der Hinweis
       await page.getByTestId("sub-tabs").getByRole("link", { name: "Hintergrund & Importe" }).click();
       await page.waitForURL(/\/einstellungen\/hintergrund/);
       await expect(page.getByTestId("sub-tabs").locator(".area-tab.active")).toHaveText("Hintergrund & Importe");

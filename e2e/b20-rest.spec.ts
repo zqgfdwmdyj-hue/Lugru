@@ -1,10 +1,10 @@
 // B20.3/B20.6/B20.9 mit erfundenen Daten: Schwelle je Quelle zeigt den gültigen Wert (Platzhalter ist kein Wert);
 // neuer grüner Aufruf mail_markieren → „↩ Rückgängig“ im Verlauf und es wirkt; VA-Nachrichten mit Sprachkennzeichen;
-// BQool-Regel-Katalog mit „AI Win Sales Booster“ als Strategie.
+// Strategie-Katalog des Repricers (seit der BQool-Ablösung: ProfitGuard-Strategien statt BQool-Regeln wie „AI Win Sales Booster“).
 import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
 
 test.describe("B20 Rest", () => {
-  test("Schwelle je Quelle „gilt“, Rückgängig nach mail_markieren, Sprachkennzeichen, AI Win Sales Booster", async ({ page, browser, baseURL }) => {
+  test("Schwelle je Quelle „gilt“, Rückgängig nach mail_markieren, Sprachkennzeichen, Strategie-Katalog", async ({ page, browser, baseURL }) => {
     test.setTimeout(120_000);
     const m = marke();
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
@@ -37,10 +37,12 @@ test.describe("B20 Rest", () => {
     const tags = await page.getByTestId("va-sprache-tag").allTextContents();
     expect(tags).toEqual(expect.arrayContaining(["EN → DE", "DE"]));
 
-    // B20.9: Regel-Katalog nennt „AI Win Sales Booster“ als Strategie mit Erklärung
-    await page.goto("/repricer/bqool");
-    const katalog = page.getByTestId("bq-katalog");
-    await expect(katalog.locator('input[name="name"][value="AI Win Sales Booster"]')).toHaveCount(1);
-    await expect(katalog.locator('input[value*="Buy Box gewinnen"]')).toHaveCount(1);
+    // B20.9 (abgelöst durch ProfitGuard): Strategie-Katalog mit Logik, Stufen und dem Namen in ProfitGuard
+    await page.goto("/repricer/profitguard#strategien");
+    const katalog = page.getByTestId("pg-strategien");
+    for (const st of ["Standard", "Abverkauf", "Liquidation", "Schnelldreher"]) await expect(katalog.locator(`[data-testid="pg-strategie"][data-strategie="${st}"]`)).toContainText(`in ProfitGuard: „${st}“`);
+    await expect(katalog.locator('[data-testid="pg-strategie"][data-strategie="Liquidation"]')).toContainText("fester Min je SKU und Land");
+    await expect(katalog.locator('[data-testid="pg-strategie"][data-strategie="Standard"]')).toContainText("Mindestmarge nach Lagerdauer");
+    await expect(page.getByText("AI Win Sales Booster")).toHaveCount(0);
   });
 });

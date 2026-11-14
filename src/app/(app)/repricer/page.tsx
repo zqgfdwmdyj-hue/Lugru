@@ -214,6 +214,23 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
             )}
           </div>
         )}
+        {sp.zustand === "unbekannt" && (v?.zustandUnbekannt.length ?? 0) > 0 && (
+          <div className="notice notice-warn small stack" style={{ gap: 6 }} data-testid="zustand-unbekannt-liste">
+            <strong>Ohne Zustand – nicht im Abgleich und nicht in der Datei ({new Set(v!.zustandUnbekannt.map((u) => u.sku)).size})</strong>
+            <form id="zu-wahl" />
+            <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+              {[...new Map(v!.zustandUnbekannt.map((u) => [u.sku, u])).values()].slice(0, 200).map((u) => (
+                <label key={u.sku}><input type="checkbox" form="zu-wahl" name="wahl" value={`${u.land}|${u.sku}`} data-testid="zustand-unbekannt-wahl" /> {u.sku}{u.titel ? ` – ${u.titel.slice(0, 40)}` : ""}</label>
+              ))}
+            </div>
+            {session.role === "owner" && !session.readOnly && (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <select name="zustand" form="zu-wahl" defaultValue="" aria-label="Zustand"><option value="">Zustand …</option>{ZUSTAENDE.filter((x) => x !== "unbekannt").map((x) => <option key={x} value={x}>{ZUSTAND_TEXT[x as Zustand]}</option>)}</select>
+                <button className="btn btn-sm" type="submit" form="zu-wahl" formAction={zustandAction} data-testid="zustand-unbekannt-setzen">Zustand setzen</button>
+              </div>
+            )}
+          </div>
+        )}
         <div id="profitguard-upload" style={{ scrollMarginTop: 70 }}><ProfitguardUpload /></div>
       </section>
       <div style={{ display: "flex", gap: 6 }}>

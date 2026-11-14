@@ -585,7 +585,7 @@ Person per Claude → Beobachtungen, Wochenrückblick mit Wochenwahl, Therapie-B
 Feierabend; Reflexion per Claude und Oberfläche; Sitzung aus dem Kalender) und `b22-lugru` (SKU im Fenster → gekauft mit
 Menge 4 und EK 120,00 netto, außerhalb nicht; Deal-Wert ≥ 60 mit „Vorwissen“; Liste/Monatsbericht zählen den Kauf).
 
-## B23 – BQool-Upload: eine Adresse je Land (01.11.)
+## B23 – BQool-Upload: eine Adresse je Land (01.11.) (abgelöst durch ProfitGuard)
 
 | # | Punkt | vorher | nachher | Fundstelle |
 |---|---|---|---|---|
@@ -1145,7 +1145,7 @@ etwas melden kann. Sie stehen nicht mehr unter „Meldung offen“, beim Versand
 Migration 0132 als „von Hand erledigt“ (nichts gelöscht). Geprüft in `e2e/meldungen-schliessen.spec.ts` und
 `tests/meldung-ohne-kanal.test.ts`.
 
-## Nachtrag B31 (07.11.): BQool-Upload aus dem Seller-System, nicht über ArbitrageOne
+## Nachtrag B31 (07.11.): BQool-Upload aus dem Seller-System, nicht über ArbitrageOne (abgelöst durch ProfitGuard)
 
 Befund 07.11.: Der ArbitrageOne-Lauf versuchte täglich den Export „BQool“ und scheiterte (Vergleichswerkzeug, das
 erst die BQool-Datei hochgeladen braucht). Die eigene BQool-Datei wurde nie hochgeladen: Der Upload lief bisher nur
@@ -1184,7 +1184,7 @@ Regression: `bqool-dateien`, `bqool-upload-erkennung`, `b24-automatik`, `b27-aut
 `bqool_stand`), `anbindungen_status` (Block `bqool`, drei neue Abrufe), `bqool_export_vorschau` (Hinweis folgt der
 Einstellung „Min in der Datei“) → Claude erhält `notifications/tools/list_changed`.
 
-### B31.5 (Ergänzung 07.11.): BQool-Berichte „Listing Performance“ und „Daily Sales“
+### B31.5 (Ergänzung 07.11.): BQool-Berichte „Listing Performance“ und „Daily Sales“ (abgelöst durch ProfitGuard)
 
 Vorher wurde keiner der beiden Berichte erkannt (Upload landete als unbekanntes Format). Jetzt:
 
@@ -1215,7 +1215,7 @@ Zahl der Zeilen ohne SKU und die Spalten – dann bitte eine Datei-Zeile (ohne P
 `bqool_bericht`), `anbindungen_status` (Abruf „BQool: Berichte“) → `notifications/tools/list_changed`.
 
 
-### B31.6 (Ergänzung 08.11.): Min unter Mindestmarge nur mit Regel „Liquidation“
+### B31.6 (Ergänzung 08.11.): Min unter Mindestmarge nur mit Regel „Liquidation“ (BQool-Teil abgelöst durch ProfitGuard – Logik gilt weiter)
 
 Befund 08.11.: Ein Min unter dem effektiven Min der Regel (Marge unter 10 % bei ia, 7 % bei „Abverkauf DE“, 4 % bei
 „Abverkauf“) setzt BQool bei der nächsten Preisberechnung auf den Margen-Wert zurück; nur „Liquidation“ nimmt den
@@ -1248,7 +1248,7 @@ neuen Min, Rückkehr-Zähler, Test-Erkennung, Texte). Regression: `bqool-dateien
 Hinweis) und `repricer` (Beschreibung, Felder `regel_seit`, `liquidation_wegen_min_unter_marge`) →
 `notifications/tools/list_changed`.
 
-### B31.6a/b, B31.7, B31.8 (Ergänzung 08.11.): „Liquidation bis“, Regel-Leiter, Zustand, Schnelldreher
+### B31.6a/b, B31.7, B31.8 (Ergänzung 08.11.): „Liquidation bis“, Regel-Leiter, Zustand, Schnelldreher (BQool-Teil abgelöst durch ProfitGuard – Logik gilt weiter)
 
 Prüfung vorher (Stand vor diesem Nachtrag): Liquidation hatte kein Enddatum, die Rückkehr ging auf die „ursprüngliche
 Regel“, einen Zustand der Ware und ein Schnelldreher-Kennzeichen gab es nicht (alles ❌). Hinweis zu B31.6 umgesetzt:
@@ -1286,7 +1286,7 @@ Unit-Tests: `tests/b31-6ab-7-8-leiter.test.ts` (Stufen, Wechsel, Liquidation-Min
 Ablauf, frühere Rückkehr, Zustand aus Texten/Befunden/Reihenfolge, Zielpreis, eBay-Vergleich, Schnelldreher-Kriterien
 und Ende, Morgenbericht-Zeilen), `tests/b31-6-liquidation.test.ts` (Buy-Box-Bedingung, laufende Liquidation).
 
-## B32 Listing-Check: regelmäßige Analyse aller Listings (08.11.)
+## B32 Listing-Check: regelmäßige Analyse aller Listings (08.11.) (BQool-Teil abgelöst durch ProfitGuard – Logik gilt weiter)
 
 Prüfung vorher: ❌ – es gab keinen regelmäßigen Check; Befunde wie „Min über Buy Box“ oder „pausiert trotz Nachfrage“
 fielen nur zufällig auf.
@@ -1362,7 +1362,7 @@ Unit-Tests: `tests/druck-logik.test.ts` (Raster, Medien, Rechte, Symbol, Wartesc
 **Werkzeuge Druckagent:** keine neuen Claude-Werkzeuge – Drucken bleibt im System (kein ändernder Zugriff für Claude),
 deshalb kein `notifications/tools/list_changed`.
 
-## B33 BQool-Formel, Regel-Katalog und Min-Verhalten (08.11.)
+## B33 BQool-Formel, Regel-Katalog und Min-Verhalten (08.11.) (abgelöst durch ProfitGuard)
 
 Prüfung vorher: effektiver Min = Break-even-Formel mit EK netto, Fix- und Zusatzkosten und den **DE-Gebühren für alle
 Länder**; Katalog mit einer Staffel je Regel (ia 10/8/7/5/3/1/0, Abverkauf DE 7/5/3/1/0, FR/IT/ES 4/3/2/1/0), ohne
@@ -1977,6 +1977,31 @@ Anbindung über die **Instagram-API mit Instagram-Login** (Business-Konto, Faceb
 
 Neue Claude-Werkzeuge: **keine** (kein `list_changed` nötig).
 
+## BQool-Ablösung: Repricing über ProfitGuard (ProfitPath) (14.11.)
+
+BQool ist als Repricer abgelöst; die Abschnitte B23, B31, B31.5, B33 und „BQool-Upload: Keine Erfolgsmeldung“ sind
+deshalb als „abgelöst durch ProfitGuard“ markiert. Die Logik aus B31.6–B31.8 und B32 (Liquidation, Regel-Leiter,
+Zustand, Schnelldreher, Listing-Check) gilt weiter, nur Ist und Datei laufen über ProfitGuard.
+
+| Thema | Stand | Fundstelle |
+|---|---|---|
+| Ist-Stand je SKU und Land | ✅ ProfitGuard-Export per Datei (CSV/XLSX), Spalten am Namen erkannt, je Marktplatz ersetzt; Upload im Repricer oder unter Uploads (Art „ProfitGuard-Export“, optional „Marktplatz der Datei“) | `src/lib/repricing/profitguard-logic.ts`, `profitguard-service.ts`, `src/lib/uploads/erkennen.ts` |
+| Abgleich Seller-System ↔ ProfitGuard | ✅ Repricer-Übersicht: Strategie-Übersicht, Filter (Land, Strategie, im Repricing, Auffälligkeit, Leiter/Zustand), Auffälligkeiten „nicht im Repricing“, „Min unter Soll-Min“, „Min über Max“, „ohne Min/Max“, „Strategie weicht ab“, „Preis unter Min“ | `src/app/(app)/repricer/page.tsx` |
+| Soll-Min | ✅ Break-even mit der Mindestmarge der Altersstufe (wie in ProfitGuard), nicht mehr EK + Gebühren + 1 € | `src/lib/repricing/strategie-logic.ts`, `soll-service.ts` |
+| Importdatei für ProfitGuard | ✅ Repricer → ProfitGuard-Datei: Freigabe-Häkchen bei Strategiewechsel/neuer Liquidation/Min unter Break-even, Download je Land bzw. alle Länder im Format des letzten Exports, Vermerk „in ProfitGuard importiert“ | `src/app/(app)/repricer/profitguard/*` |
+| Liquidation, Regel-Leiter, Zustand, Schnelldreher, Listing-Check | ✅ übernommen; aktiv, sobald der ProfitGuard-Export Liquidation + Min zeigt; Verlust-Stopp-Ausnahme „Repricing-Liquidation …“ | `src/lib/repricing/liquidation.ts`, `leiter.ts`, `listing-check.ts` |
+| Entfernt | ✅ `/repricer/bqool`, `/repricer/leistung`, Anbindung „BQool – Anmeldung“, täglicher BQool-Kreislauf und -Berichte, Werkzeuge `bqool_export_*`; Daten schreibgeschützt in `archiv_bqool_*` | Migration `drizzle/0156_bqool_abloesung_profitguard.sql` |
+| Claude | ✅ `repricer` (umgebaut), `profitguard_export_vorschau`, `profitguard_export_erzeugen`, `listing_check`; Datei-Import-Art `profitguard_export` | `src/lib/assistant/tools/repricing.ts` |
+
+Automatische Prüfungen: `e2e/profitguard.spec.ts` (Upload → Abgleich → Liquidation → Importdatei mit Freigabe →
+Download → Rücklauf), `e2e/b31-6-liquidation.spec.ts`, `e2e/b31-6ab-7-8-b32.spec.ts`, dazu angepasst `geschaeft`,
+`b15-anzeige`, `b20-rest`, `b24-automatik` (jetzt über „Verbindung testen“ ArbitrageOne), `b25`, `navigation`,
+`arbitrageone`, `teil2` (Verlust-Stopp mit ProfitGuard-Strategie „Liquidation“). Gelöscht: die reinen BQool-Prüfungen
+(`b31-bqool-kreislauf`, `b31-5-bqool-berichte`, `b33-bqool-formel`, `bqool-dateien`, `bqool-upload-erkennung`).
+
+Offen: echter ProfitGuard-Export (Spaltennamen der aktuellen Version) und die erste Importdatei in ProfitGuard – siehe
+To-dos 195–198.
+
 ## Nachtrag B30 (06.11.): ArbitrageOne-Einkäufe – eigener Parser (Bestellungen) statt EK-Liste
 
 Befund: Seit B27.1 übergab der Abruf die Datei `ArbitrageOne_PurchaseOrders_Export_<Datum>.xls` mit der Art `ek_liste`.
@@ -2345,7 +2370,7 @@ BQool-Vergleich und Reimbursement entweder importiert oder Fehler **mit Bildschi
 (nur_probleme)` ohne NOT_WARMED und ohne altes Call-Archiv; „Gewinn je Produkt und Tag“ mit Erfolg vom 04.11.; die
 Importe vom 02./03.11. sind innerhalb einer Stunde nach dem Update nachverarbeitet (oder Fehler mit Spaltennamen).
 
-## BQool-Upload: „Keine Erfolgsmeldung“, obwohl es geklappt hat (Befund 02.11., DE/FR/IT/ES)
+## BQool-Upload: „Keine Erfolgsmeldung“, obwohl es geklappt hat (Befund 02.11., DE/FR/IT/ES) (abgelöst durch ProfitGuard)
 
 | Punkt | vorher | nachher | Fundstelle |
 |---|---|---|---|
@@ -2577,7 +2602,7 @@ nie in Chats oder Mails.
    - Die Fahrgestellnummer (VIN) eintragen.
    - Wenn das Auto zu Hause steht: „Heim-Standort = Standort des Autos“, dann Vorheizen einschalten.
 9. **Handy**: Unter „Schnellerfassung“ einen Handy-Schlüssel anlegen und das Widget bzw. die Kurzbefehle einrichten (Anleitung unter Hilfe).
-10. **BQool**: Die Abverkaufs-Regeln je Land auf das Soll umstellen (4/3/2/1/0 %). Das System meldet danach Abweichungen je SKU.
+10. **BQool (abgelöst durch ProfitGuard)**: Die Abverkaufs-Regeln je Land auf das Soll umstellen (4/3/2/1/0 %). Das System meldet danach Abweichungen je SKU.
 11. **ProfitGo**: Die eigene Adresse für den Schnelllink eintragen.
 12. **Steuerberater**:
     - Fahrtenbuch oder Pauschale? Gegebenenfalls einen GoBD-konformen Anbieter klären.
@@ -2590,7 +2615,7 @@ nie in Chats oder Mails.
     in Seller Central unter Bestellungen → Bestellberichte hochladen und danach „Hochgeladen“ klicken.
 17. **Nach dem Update einmal**:
     - Bestand → Kachel „Eigenes Lager“ → Hinweis zu Prep-Center-Aufträgen ansehen und nur passende zurückbuchen.
-    - BQool-Export je Land neu hochladen (richtige Status-Spalte).
+    - BQool-Export je Land neu hochladen (richtige Status-Spalte). (abgelöst durch ProfitGuard)
     - B2B → Lieferanten-Freigaben → „SKU-Kürzel“ prüfen: einem Lieferanten zuordnen oder „Ist ein Lieferant“.
     - Palettenlager: Paletten ohne Kunde nachtragen.
 18. **Handy-Ansicht (B15.16)**: einmal mit dem eigenen iPhone durchklicken (Startseite, Tagesplan, Scanner, Widget) und
@@ -2643,7 +2668,7 @@ nie in Chats oder Mails.
 31. **VAT-Mails vom 02.10.** („Wichtige Informationen zu Ihrer VAT auf Amazon.de“): die Frist 05.10. kam vom System
     (Standard +3 Tage), nicht aus der Mail. Bitte die Mail selbst lesen bzw. dem Steuerberater geben, ob etwas zu tun
     ist – das System berät nicht steuerlich.
-32. **BQool vor dem nächsten Export**: die aktuellen BQool-Dateien je Land neu hochladen (Repricer → BQool). Das System
+32. **BQool vor dem nächsten Export (abgelöst durch ProfitGuard)**: die aktuellen BQool-Dateien je Land neu hochladen (Repricer → BQool). Das System
     übernimmt daraus Liquidation und „Abverkauf DE“ als Soll. Zeilen mit „Min aus Upload blockiert Buy Box“ zuerst
     ansehen – dort empfiehlt sich ein neuer Upload mit dem effektiven Min.
 33. **Anruf „DHL Geschäftskunden“**: auf der Startseite bei der Aufgabe „📞 Nummer fehlt“ öffnen, Vorschlag prüfen oder
@@ -2709,7 +2734,7 @@ nie in Chats oder Mails.
 55. **Lugru-Lernen anstoßen**: nach dem Update einmal Lugru Deals → „Jetzt nachtragen“ drücken (Deal-Eingang, eigene Käufe,
     Deal-Wert in einem Schritt); danach läuft alles im Hintergrund. Voraussetzung: sellerboard-Abgleich aktiv (Produkte,
     Bestand, Sendungen).
-56. **BQool je Land**: Anbindungen → BQool → Bearbeiten: FR/IT/ES sind aus der DE-Adresse vorbelegt – einmal mit den echten
+56. **BQool je Land (abgelöst durch ProfitGuard)**: Anbindungen → BQool → Bearbeiten: FR/IT/ES sind aus der DE-Adresse vorbelegt – einmal mit den echten
     BQool-Upload-Seiten vergleichen, speichern, dann „Verbindung testen“ (meldet je Land „Upload-Seite erreichbar“).
 57. **Kaufen mit einem Tap am iPhone testen**: nächsten Kauf-Push antippen → öffnet sich die Amazon-App mit dem Warenkorb?
     Falls die Seite nur im Browser bzw. leer aufgeht: Detailseite „Produktseite öffnen“ nutzen und Bescheid geben (dann
@@ -2732,7 +2757,7 @@ nie in Chats oder Mails.
 62. **Noch offen bei ArbitrageOne**: Kapital-Ampel mit dem ArbitrageOne-Lagerbestand und Lieferant/Rechnung im
     Echtheits-Ordner sind nicht gebaut. Die Daten liegen schon im System. Sag Bescheid, wenn das als Nächstes kommen soll.
 63. **Formate der Exporte „Einkäufe“, „Lagerbestand“ und „Inventory Reimbursement“**: Davon lag mir keine echte Datei vor
-    (nur sellerboard- und BQool-Export). Die Erkennung ist großzügig gebaut. Passt eine Datei nicht, kommt eine Aufgabe
+    (nur sellerboard- und BQool-Export (abgelöst durch ProfitGuard)). Die Erkennung ist großzügig gebaut. Passt eine Datei nicht, kommt eine Aufgabe
     mit Spaltenliste. Bitte einmal je Export eine Datei per Upload-Seite oder import_link schicken (Art `ek_liste`,
     `ao_lagerbestand`, `amazon_reimbursements`), dann prüfe ich die Spalten.
 64. **Apple Watch einrichten**: Wissen → „Handy & Tesla → Apple Watch: Kurzbefehle“. Je Befehl ein Kurzbefehl mit dem
@@ -2744,7 +2769,7 @@ nie in Chats oder Mails.
     Stunde, nie in Discord. Sag Bescheid, wenn es zu viele werden – dann baue ich einen Schalter.
 67. **VA-Nachrichten von der Watch**: Im Modus „Vorschlag“ (Standard) stehen sie unter Delegation → VA zum Freigeben.
     Erst „An die VA senden“ schickt sie. Auf „automatisch“ erst stellen, wenn B17.2 für dich erledigt ist.
-68. **BQool/ArbitrageOne-Anmeldung klappt weiter nicht**: In der Fehlermeldung auf „Bildschirmfoto öffnen“ tippen. Steht
+68. **BQool/ArbitrageOne-Anmeldung klappt weiter nicht** (BQool abgelöst durch ProfitGuard, gilt weiter für ArbitrageOne): In der Fehlermeldung auf „Bildschirmfoto öffnen“ tippen. Steht
     dort eine Browser-Prüfung (Cloudflare), geht nur der Datei-Weg (ZIP). Heißt das Feld anders, in der Anbindung „Feld
     E-Mail“ (z. B. `#login-email`) eintragen, Wert per Rechtsklick → Untersuchen.
 
@@ -2775,7 +2800,7 @@ nie in Chats oder Mails.
     ich es im Umsetzungsstand als „bewusst zurückgestellt“.
 78. **Browser auf dem Server**: einfach `deploy/update.sh` ausführen – der Browser wird jetzt automatisch mitgebaut
     (das erste Update dauert ein paar Minuten länger, danach geht es wieder schnell). Danach unter Anbindungen bei
-    sellerboard/BQool/ArbitrageOne „Verbindung testen“ bzw. den Lauf starten. Steht in der `.env` eine Zeile
+    sellerboard/BQool/ArbitrageOne „Verbindung testen“ bzw. den Lauf starten (BQool abgelöst durch ProfitGuard). Steht in der `.env` eine Zeile
     `MIT_BROWSER=0`, diese vorher löschen. Freier Platz auf dem Server: ca. 1 GB mehr einplanen.
 79. **Apple Watch**: Einstellungen → Apple Watch öffnen und den einen Kurzbefehl „Seller“ nach der Anleitung anlegen
     (5 Minuten am iPhone). Vorher im Feld „Ausprobieren“ testen, was die Uhr antworten würde. Danach an der Watch:
@@ -2788,7 +2813,7 @@ nie in Chats oder Mails.
     Geht auch „ToDo für Ludwig – …“. Für deine Frau genauso mit ihrem Vornamen, wenn sie ein eigenes Konto hat.
 82. **B27 nach dem Update prüfen**: Unter Anbindungen → ArbitrageOne → Importe sollten die Einkäufe/Lagerbestand vom
     02./03.11. innerhalb einer Stunde „fertig“ sein (sonst „Erneut verarbeiten“; steht dort ein Fehler, nennt er jetzt die
-    gefundenen Spaltennamen – dann kurz schicken). Am 04.11. nach 05:30 den Lauf ansehen: BQool-Vergleich und
+    gefundenen Spaltennamen – dann kurz schicken). Am 04.11. nach 05:30 den Lauf ansehen: BQool-Vergleich (abgelöst durch ProfitGuard) und
     Reimbursement haben entweder eine Datei oder einen Fehler **mit Bildschirmfoto** – das Bild zeigt, wo ArbitrageOne
     hängt (z. B. Dialog oder „Export wird erstellt“). Reimbursement läuft nur montags, also erst am 09.11. im Nachtlauf
     (oder „Jetzt abholen“). sellerboard-Kostenimport bleibt „übersprungen“, bis die Anmeldung unter Anbindungen →
@@ -2856,19 +2881,19 @@ nie in Chats oder Mails.
      ausschalten (dann Vorlage).
 106. **VA und Antworten**: Die VA kann vorbereitete Antworten an Käufer/Lieferanten nur senden, wenn ihr der Bereich
      „Posteingang“ freigegeben ist (Einstellungen → Benutzer). Persönliche Mails sieht sie nie.
-107. **BQool-Export-Seite eintragen (B31)**: Anbindungen → BQool – Anmeldung → „Export-Seite DE“: in BQool die Seite mit
+107. **BQool-Export-Seite eintragen (B31) (abgelöst durch ProfitGuard)**: Anbindungen → BQool – Anmeldung → „Export-Seite DE“: in BQool die Seite mit
      „Download File → Full Template“ (Repricing Central) für Amazon DE öffnen und die Adresse einfügen (FR/IT/ES werden
      abgeleitet). Findet die Automatik den Knopf nicht, „Knopf-Text Export“ eintragen. Danach „Verbindung testen“ –
      prüft Upload- und Export-Seiten je Land. Den BQool-Benutzer ohne Zwei-Faktor anlegen.
-108. **Ersten BQool-Lauf freigeben**: Nach dem Update kommt der Push „BQool-Upload freigeben“ (oder Repricer →
+108. **Ersten BQool-Lauf freigeben (abgelöst durch ProfitGuard)**: Nach dem Update kommt der Push „BQool-Upload freigeben“ (oder Repricer →
      BQool-Dateien → „Jetzt starten“). Warnungen ansehen, dann „Freigeben und hochladen“. Die Nachkontrolle folgt
      30 Minuten später (oder „Nachkontrolle jetzt“).
-109. **Min-Verhalten in BQool prüfen (B31.3)**: Nach dem ersten Upload an einer SKU mit Margen-Regel in BQool nachsehen,
+109. **Min-Verhalten in BQool prüfen (B31.3) (abgelöst durch ProfitGuard)**: Nach dem ersten Upload an einer SKU mit Margen-Regel in BQool nachsehen,
      welchen Min BQool zeigt und ob es darunter verkauft. Dann im Kasten „Täglicher BQool-Lauf“ das Häkchen „Min-Verhalten
      in BQool geprüft“ setzen. (Seit B31.6 gilt fest: Min in der Datei ≥ effektiver Min; darunter nur mit „Liquidation“.)
-110. **Automatisch hochladen (optional)**: erst nach Punkt 109 einschalten (Repricer → BQool-Dateien → Einstellungen).
+110. **Automatisch hochladen (optional) (abgelöst durch ProfitGuard)**: erst nach Punkt 109 einschalten (Repricer → BQool-Dateien → Einstellungen).
      Auch dann braucht ein Lauf mit Regelwechsel oder Min unter Break-even die Freigabe.
-111. **BQool-Berichte (B31.5)**: Die fünf Dateien vom 07.11. nach dem Update unter Uploads noch einmal hochladen
+111. **BQool-Berichte (B31.5) (abgelöst durch ProfitGuard)**: Die fünf Dateien vom 07.11. nach dem Update unter Uploads noch einmal hochladen
      (Typ und Land werden erkannt; fragt das System nach dem Land, den Vorschlag prüfen und tippen). Für den täglichen
      Lauf unter Anbindungen → BQool die Adressen der Berichtsseiten „Listing Performance“ und „Daily Sales“ (DE)
      eintragen – FR/IT/ES werden abgeleitet.
@@ -2881,7 +2906,7 @@ nie in Chats oder Mails.
 114. **Lernschleife (B28.8)**: Am 03.12. kommt der Push mit den November-Verlustprodukten. Die Push-Art
      „Lernschleife Verlustprodukte“ ist an (Einstellungen → Benachrichtigungen). Wer nicht warten will: Deal-Eingang →
      „Wie gut lag er?“ → „Liste für den Vormonat jetzt erstellen“.
-115. **Liquidation-Test mit einer SKU (B31.6)**: Nach dem Update unter Repricer → BQool-Dateien → „Liquidation wegen Min
+115. **Liquidation-Test mit einer SKU (B31.6) (abgelöst durch ProfitGuard)**: Nach dem Update unter Repricer → BQool-Dateien → „Liquidation wegen Min
      unter Marge“ eine SKU wählen, „Test-Export nur für diese SKU“, die Datei hochladen („An BQool übertragen“ oder ZIP).
      Nach dem nächsten BQool-Lauf erkennt das System selbst, ob Regel und Min stehen geblieben sind (sonst in BQool
      nachsehen und „Test bestanden“ tippen). Erst dann kommen die Regelwechsel für alle in die Datei – Upload weiter nur
@@ -2892,17 +2917,17 @@ nie in Chats oder Mails.
 117. **Gewünschte Min-Preise eintragen (B31.6)**: Für SKUs, die unter dem effektiven Min laufen sollen, unter
      „Soll-Regeln“ die bisherige Regel (z. B. ia) mit dem gewünschten Min eintragen – das System stellt dann selbst auf
      Liquidation um und schlägt die Rückkehr vor, wenn die Buy Box wieder steigt.
-118. **Liquidation-Test mit der richtigen SKU (B31.6, Hinweis 08.11.)**: Für den Test eine SKU nehmen, deren Buy Box unter
+118. **Liquidation-Test mit der richtigen SKU (B31.6, Hinweis 08.11.) (abgelöst durch ProfitGuard)**: Für den Test eine SKU nehmen, deren Buy Box unter
      dem effektiven Min liegt (sie steht nach dem Update in der Liste „Liquidation wegen Min unter Marge“). SKUs mit Buy
      Box über dem effektiven Min bekommen keinen Regelwechsel mehr – dort reicht die Min-Korrektur.
-119. **Schnelldreher in BQool (B31.8b)**: Prüfen, welche Regel 7 % hält. Wenn eine eigene Regel „Schnelldreher“ angelegt
+119. **Schnelldreher in BQool (B31.8b) (abgelöst durch ProfitGuard)**: Prüfen, welche Regel 7 % hält. Wenn eine eigene Regel „Schnelldreher“ angelegt
      wird, den Namen unter Repricer → BQool-Dateien → Regel-Leiter → Einstellungen eintragen. Bis dahin bleibt die Regel,
      der Boden steht nur als Min in der Datei (wirkt erst, wenn BQool den Datei-Min hält, siehe Test To-do 115).
-120. **Gebraucht-Listings in BQool (B31.7c)**: Testen, ob BQool für Used-Angebote einen Konkurrenzpreis liefert; das
+120. **Gebraucht-Listings in BQool (B31.7c) (abgelöst durch ProfitGuard)**: Testen, ob BQool für Used-Angebote einen Konkurrenzpreis liefert; das
      Ergebnis unter Wissen eintragen. Wenn nein: Regel „Fix/Min“ verwenden (dann im Katalog ergänzen).
 121. **Zustand prüfen (B31.7a)**: Die Aufgabe „Zustand prüfen“ abarbeiten – SKUs ohne Zustand kommen nicht in die Datei.
      Im Repricer Häkchen setzen und Zustand wählen.
-122. **Schwellen der Leiter und des Listing-Checks ansehen**: Repricer → BQool-Dateien → Regel-Leiter → Einstellungen und
+122. **Schwellen der Leiter und des Listing-Checks ansehen** (heute unter Repricer → ProfitGuard-Datei → Regel-Leiter bzw. Repricer → Listing-Check): Repricer → BQool-Dateien → Regel-Leiter → Einstellungen und
      Repricer → Listing-Check → Einstellungen. Standard laut Nachtrag; jeder Wechsel bleibt ein Vorschlag.
 123. **Rückkehr aus der Liquidation – bitte bestätigen**: Liquidationen der Leiter gehen zurück auf Stufe 2, sobald
      Stufe 2 nicht mehr über der Buy Box liegt (B31.6b). Liquidationen aus „Min unter Marge“ (von Hand gewünschter Min)
@@ -2928,20 +2953,20 @@ nie in Chats oder Mails.
      Geräte-Schlüssel (Einstellungen → Handy); fürs Teilen-Menü (PDF aus Seller Central) die Datei als Inhalt senden.
 131. **Steuerkarte** (Lager → Scannen) einmal drucken und laminieren; Handscanner auf „Enter nach jedem Scan“ stellen.
 132. **Überwachter Ordner** (optional): Pfad unter Einstellungen → Drucker eintragen, z. B. den Scan-Ordner für Rechnungen.
-133. **B33 Katalog prüfen**: Repricer → BQool-Dateien → „Regel-Katalog“ – Tabelle „je Land und Stufe“ einmal gegen die
+133. **B33 Katalog prüfen (abgelöst durch ProfitGuard)**: Repricer → BQool-Dateien → „Regel-Katalog“ – Tabelle „je Land und Stufe“ einmal gegen die
      Screenshots der Regeln (ia/Abverkauf je Land) halten; stimmt sie, „Stufen je Land übernehmen“ drücken (nur wenn der
      Hinweis erscheint). Nichts davon ändert etwas in BQool.
-134. **Listen-Seite eintragen**: Anbindungen → BQool → „Listen-Seite DE“ = `https://mc.bqool.com/repricing/amazonde`
+134. **Listen-Seite eintragen (abgelöst durch ProfitGuard)**: Anbindungen → BQool → „Listen-Seite DE“ = `https://mc.bqool.com/repricing/amazonde`
      (FR/IT/ES werden abgeleitet). Ab dann holt der Lauf das Ist per „Download listings“ und liest die Processing Reports.
      Die Fehler vom 07.11. stehen danach unter Repricer → BQool-Dateien → „Upload-Fehler laut BQool“.
 135. **Gebühren je Land**: Amazon-Gebührenvorschau (Fee Preview) für alle vier Marktplätze einspielen bzw. abrufen lassen;
      fehlen Gebühren eines Landes, zeigt die Vorschau „geschätzt (Gebühren DE)“.
-136. **Regel „Schnelldreher“** (Variante 2, empfohlen): in BQool je Land als Kopie von ia anlegen, alle Stufen 7 %,
+136. **Regel „Schnelldreher“ (abgelöst durch ProfitGuard)** (Variante 2, empfohlen): in BQool je Land als Kopie von ia anlegen, alle Stufen 7 %,
      Name exakt „Schnelldreher“; danach Repricer → BQool-Dateien → „In Katalog übernehmen“.
-137. **Variante 3 nur testen**: eine Test-SKU mit einer ia-Kopie im Modus „Rule“ (statt „Rule + Min Price“) – nach dem
+137. **Variante 3 nur testen (abgelöst durch ProfitGuard)**: eine Test-SKU mit einer ia-Kopie im Modus „Rule“ (statt „Rule + Min Price“) – nach dem
      nächsten BQool-Lauf prüfen, ob der Datei-Min stehen bleibt; Ergebnis kurz melden.
-138. **AI+CR-Kontingent** vor großen Wechseln auf Liquidation prüfen (Liquidation ist AI und zählt dort mit).
-139. **Margen je Altersstufe** ändert nur Ludwig in BQool (Edit Rule) – danach den Katalog im Seller-System gleichziehen.
+138. **AI+CR-Kontingent (abgelöst durch ProfitGuard)** vor großen Wechseln auf Liquidation prüfen (Liquidation ist AI und zählt dort mit).
+139. **Margen je Altersstufe (abgelöst durch ProfitGuard)** ändert nur Ludwig in BQool (Edit Rule) – danach den Katalog im Seller-System gleichziehen.
 140. **Scan-Modus aufs Handy**: `/scan` im Handy-Browser öffnen → „Zum Home-Bildschirm“. Android zeigt das Seller-System
      danach im Teilen-Menü der Amazon-App; am iPhone den Kurzbefehl „Deal prüfen“ zum Teilen nutzen. Kamera-Zugriff erlauben.
 141. **Druckagent 1.1.0** auf dem Arbeits-PC einspielen; Einstellungen → Drucker → „Belege-Ordner“ (Downloads) und
@@ -3083,3 +3108,16 @@ nie in Chats oder Mails.
 194. **Clip-Bibliothek prüfen**: nach dem nächsten Vollbild-Video (oder der Probeszene) Seite Video → Uhren-Kanal →
      „Clip-Bibliothek“ aufklappen: Beschreibungen ansehen, falsche Schlagwörter korrigieren, unpassende Clips **sperren**.
      Im Video-Hinweis steht „Clip-Bibliothek: N eigene Clips eingesetzt (von M passenden im Ordner)“.
+195. **ProfitGuard statt BQool (14.11.)**: Nach dem Update (Migration 0156 sichert die BQool-Daten schreibgeschützt als
+     `archiv_bqool_*`) in ProfitGuard unter „Export & Import“ je Marktplatz exportieren (CSV oder XLSX) und unter
+     Repricer → „ProfitGuard-Export einlesen“ bzw. Uploads hochladen. Ohne Marktplatz-Spalte den Marktplatz im Formular
+     wählen. Die Rückmeldung nennt die erkannten Spalten – fehlt Min/Max/Strategie, kurz Bescheid geben.
+196. **Strategienamen und Staffeln abgleichen**: Repricer → ProfitGuard-Datei → „Strategien“: je Soll-Strategie (Standard,
+     Abverkauf, Liquidation, Schnelldreher) den Namen eintragen, wie er in ProfitGuard heißt, und die Margen-Staffeln so
+     setzen wie in ProfitGuard. Sonst stimmen Abgleich, Soll-Min (Break-even mit Mindestmarge der Altersstufe) und
+     Warnungen nicht. „Strategien aus ProfitGuard übernehmen“ übernimmt Liquidation/Abverkauf/Schnelldreher als Soll.
+197. **Erste Importdatei**: Repricer → ProfitGuard-Datei → Warnungen ansehen → „Freigabe geprüft“ anhaken → „Importdatei
+     erzeugen“ → je Land herunterladen → in ProfitGuard importieren → „in ProfitGuard importiert“ klicken. Der nächste
+     ProfitGuard-Export zeigt im Abgleich, ob alles übernommen wurde. Das System sendet nichts selbst an ProfitGuard.
+198. **Anbindung „BQool – Anmeldung“ ist entfernt**: gespeicherte BQool-Zugangsdaten werden nicht mehr benutzt; in BQool
+     das Repricing beenden, sobald ProfitGuard alle SKUs bepreist (Abgleich ohne „nicht im ProfitGuard-Repricing“).

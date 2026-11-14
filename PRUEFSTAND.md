@@ -36,10 +36,9 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Amazon › Fälle & Erstattungen | Ansprüche `/ansprueche` | ○ 0/2 Abläufe | – | – |
 | Amazon › Fälle & Erstattungen | Fälle & A-bis-Z `/faelle` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Fälle & Erstattungen | Echtheits-Ordner `/echtheit` | ○ 0/1 Abläufe | – | – |
-| Amazon › Angebote & Lager | Repricer (BQool) `/repricer` | ○ 0/4 Abläufe | – | 1 |
-| Amazon › Angebote & Lager | Repricer (BQool) › Leistung `/repricer/leistung` | ○ 0/9 Abläufe | – | 3 |
-| Amazon › Angebote & Lager | Repricer (BQool) › Listing-Check `/repricer/listing-check` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Amazon › Angebote & Lager | Repricer (BQool) › BQool-Dateien `/repricer/bqool` | ○ 0/2 Abläufe | – | 2 |
+| Amazon › Angebote & Lager | Repricer `/repricer` | ○ 0/6 Abläufe | – | 2 |
+| Amazon › Angebote & Lager | Repricer › Listing-Check `/repricer/listing-check` | ○ 0/1 Abläufe | – | – |
+| Amazon › Angebote & Lager | Repricer › ProfitGuard-Datei `/repricer/profitguard` | ○ 0/7 Abläufe | – | 1 |
 | Amazon › Angebote & Lager | Listungen (alle Kanäle) `/listings` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Amazon › Angebote & Lager | FBA-Inbound `/inbound` | ○ 0/1 Abläufe | – | – |
 | Amazon › Angebote & Lager | SAS-Programm `/sas` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -106,16 +105,16 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
 | Team & Verwaltung | Rechtsfälle (Anwalt) `/rechtsfaelle` | ○ 0/1 Abläufe | – | 2 |
-| Privat | Übersicht `/privat` | ○ 0/12 Abläufe | – | 2 |
+| Privat | Übersicht `/privat` | ○ 0/11 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Nachrichten `/privat/nachrichten` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
-| Einstellungen | Einstellungen › Anbindungen `/anbindungen` | ○ 0/6 Abläufe | – | 3 |
+| Einstellungen | Einstellungen › Anbindungen `/anbindungen` | ○ 0/7 Abläufe | – | 3 |
 | Einstellungen | Einstellungen › KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
-| Einstellungen | Einstellungen › Hintergrund & Importe `/einstellungen/hintergrund` | ○ 0/5 Abläufe | – | – |
+| Einstellungen | Einstellungen › Hintergrund & Importe `/einstellungen/hintergrund` | ○ 0/4 Abläufe | – | – |
 | Einstellungen | Einstellungen › Geräte: Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Einstellungen › Benachrichtigungen `/einstellungen/benachrichtigungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -255,44 +254,39 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket | Beleg + SKU im Ordner, ZIP (PK…) | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 
-### Amazon › Angebote & Lager › Repricer (BQool) (`/repricer`)
+### Amazon › Angebote & Lager › Repricer (`/repricer`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Kennzahlen | Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln | ○ im letzten Lauf nicht gelaufen | `kennzahlen.spec.ts` |
-| BQool-Export „Manage Listings“ hochladen | Rückmeldung mit Anzahl je Marktplatz, Auffälligkeiten (ohne Min, pausiert, ohne Regel) in der Tabelle und im Werkzeug „repricer“ | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
-| B15.11 Übersicht je Regel, Filter, alle Länder | Regel mit DE/FR, aktiv/pausiert richtig (Angebotsstatus „Inactive“ ≠ pausiert); Filter Land und Status | ○ im letzten Lauf nicht gelaufen | `b15-anzeige.spec.ts` |
-| B25.5 /repricer/export ohne Format | leitet auf die Vorschau „BQool-Dateien“ mit Warnungen je Land; CSV nur mit ?format | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
+| ProfitGuard-Export (ohne Marktplatz-Spalte, Marktplatz im Formular) im Repricer hochladen | Rückmeldung „2 SKUs aus ProfitGuard eingelesen (DE 2)“, Auffälligkeiten (kein Min, nicht im Repricing) im Abgleich und im Werkzeug „repricer“, unauffällige SKU nur unter „alle SKUs“ | ○ im letzten Lauf nicht gelaufen | `geschaeft.spec.ts` |
+| B15.11 Übersicht je ProfitGuard-Strategie, Filter, alle Länder | Strategie mit DE/FR, im Repricing ja/nein richtig (Angebotsstatus „Inactive“ ≠ pausiert); Filter Land, im Repricing, Link „nicht im Repricing“ | ○ im letzten Lauf nicht gelaufen | `b15-anzeige.spec.ts` |
+| ProfitGuard: Upload über Uploads → Abgleich → Liquidation → Importdatei mit Freigabe → Download → Rücklauf | Art „ProfitGuard-Export“ erkannt; Abgleich „ProfitGuard-Min unter dem Soll-Min“ bzw. „nicht im Repricing“; Datei nur mit „Freigabe geprüft“, Kopfzeile/Marktplatz/Repricing-Werte wie im Export, ohne EK nicht dabei; nach dem Rücklauf keine Auffälligkeit | ○ im letzten Lauf nicht gelaufen | `profitguard.spec.ts` |
+| B31.6 Filter „Liquidation“, Spalte „Liquidation bis“; B31.6a Filter „läuft in 7 Tagen ab“; B31.7/B31.8 Zustand und Schnelldreher per Mehrfachauswahl | Liquidation mit „noch n T“, Stufe je SKU; dauerhaft läuft nicht ab; Zustand „akzeptabel“ rechnet den Zielpreis neu; Schnelldreher-Kennzeichen sichtbar | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts`, `b31-6ab-7-8-b32.spec.ts`, `b31-6ab-7-8-b32.spec.ts`, `b31-6ab-7-8-b32.spec.ts` |
+| B25.5 /repricer/export ohne Format bzw. mit altem Format | leitet auf die ProfitGuard-Datei mit Warnungen; CSV nur noch als deutsche Bestandsliste (?format=de) | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 
-- – Offen: Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
+- – Offen: Echter ProfitGuard-Export (Spaltennamen der aktuellen ProfitGuard-Version, CSV und XLSX) – einmal mit echter Datei prüfen
+- – Offen: Erste Importdatei in ProfitGuard („Export & Import“) einlesen und mit dem nächsten Export vergleichen
 
-### Amazon › Angebote & Lager › Repricer (BQool) › Leistung (`/repricer/leistung`)
-
-| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
-|---|---|---|---|
-| B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage | Typ und Land erkannt (DE über Regelname, FR/IT/ES über SKU-Abgleich, Daily Sales DE über Umsatzsumme), Buy Box je Land wie in den Dateien, Listen „unter Min ohne Buy Box“ (Min senken), „Verlust“ (Liquidation), „Preisbewegung“ (Aufgabe „BQool-Regel prüfen“), Gewinn-Seite Spalte BQool je Tag, Verlust-Stopp zweite Quelle, Claude repricer/umsatz/verlust_stopp; unbekannte SKUs → „Welches Land?“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
-| B31.5 täglicher Lauf holt die Berichte selbst | „Listing Performance“ mit „Last 7 days“ und „Daily Sales“ je Land heruntergeladen und ohne Rückfrage eingelesen, Abruf „BQool: Berichte“ | ○ im letzten Lauf nicht gelaufen | `b31-5-bqool-berichte.spec.ts` |
-| B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf | Regelwechsel „ia → Liquidation“ mit festem Min (nie unter Break-even ohne Freigabe), bis zum Test nicht in der Datei; Test-Export mit Rule Name „Liquidation“ und festem Min; nach dem BQool-Lauf aktiv mit Verlust-Stopp-Ausnahme, Min bleibt stehen → Test bestanden, Regelwechsel im vollen Export; Repricer „Regel seit“ + Filter, Kapital-Ampel-Zeile | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
-| B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % | Tag 13 kein Vorschlag, Tag 14 „zurück auf ia“ mit Aufgabe und Werkzeug-Feld; nach Freigabe Soll wieder ia (effektiver Min), Liquidation beendet, Ausnahme entfernt | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
-| B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab | Vorschläge je Stufenwechsel mit Freigabe (Soll Abverkauf bzw. Liquidation mit Min = max(Break-even, Buy Box − 1 %)), 7 Tage vor „Liquidation bis“ Aufgabe mit drei Knöpfen, +30 Tage, automatisch verlängert, dauerhaft; Spalten Stufe/Liquidation bis, Filter „läuft in 7 Tagen ab“ | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
-| B31.7 Abnahme 1–4: Zustand der Ware | RET_-SKU gebraucht mit Zielpreis und Min gebraucht (Export-Vorschau), unbekannt ohne Upload + Aufgabe, Zustand von Hand rechnet Zielpreis neu, Vorschlag „aktivieren“ | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
-| B31.8 Abnahme 1–4: Schnelldreher-Schutz | Kennzeichen von Hand, Min = Break-even + 7 %, kein Stufenwechsel, Morgenbericht-Zähler, nach 21 Tagen ohne Buy Box Vorschlag mit drei Knöpfen | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
-| B32 Listing-Check Abnahme 1–3, 5 | Befund 1 (Min über Buy Box) und 2 (pausiert), Freigabe → nächster Upload, Schwellen änderbar, Budget/„Check unvollständig“, Morgenbericht-Zeile „Listing-Check“, Werkzeug listing_check | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
-| B33 Abnahme 1–5: BQool-Formel, Katalog je Land, Min-Reset, „Download listings“, Processing Report | effektiver Min = P(m) mit FBA/Provision des Landes aus der BQool-Liste (FR ≠ DE), Katalog je Land und Stufe mit Typ/Marge/Bedingung (ohne feste Marge keine Prozentzahl), Vorschau „Min wird von BQool täglich überschrieben“ bei ia, Nachkontrolle per „Download listings“ mit Min vorher/Datei/nachher (Reset = Hinweis, Liquidation = Fehler), Upload-Fehler aus „View Processing Report“ mit deutscher und BQool-Zeit | ○ im letzten Lauf nicht gelaufen | `b33-bqool-formel.spec.ts` |
-
-- – Offen: B33: Stufen je Land einmal gegen die BQool-Screenshots prüfen, Listen-Seite …/repricing/amazonde eintragen, Processing Reports vom 07.11. beim ersten Lauf live lesen
-- – Offen: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
-- – Offen: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
-
-### Amazon › Angebote & Lager › Repricer (BQool) › BQool-Dateien (`/repricer/bqool`)
+### Amazon › Angebote & Lager › Repricer › Listing-Check (`/repricer/listing-check`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
-| B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung | Ist aller 4 Länder mit Stand heute (repricer „bqool_stand: heute …“), Push „DE 2 / FR 1 / IT 1 / ES 1 Änderungen, 0 Regelwechsel …“ mit Freigeben/Ansehen, nichts hochgeladen bis zur Freigabe, danach 4 Dateien mit Typ „repricing“, „1 Fehlerzeile“ als Aufgabe, Nachkontrolle „Min und Regel stimmen bei allen 4 SKUs“, Min DE = effektiver Min unter der Buy Box; verfallener Lauf lädt nichts hoch; „automatisch“ erst mit bestätigtem Min-Verhalten | ○ im letzten Lauf nicht gelaufen | `b31-bqool-kreislauf.spec.ts` |
-| Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung | Dateien im BQool-Format, je Land eigene Upload-Seite, ein Land fehlgeschlagen → Aufgabe | ○ im letzten Lauf nicht gelaufen | `bqool-dateien.spec.ts` |
+| B32 Listing-Check Abnahme 1–3, 5 | Befund 1 (Min über Buy Box) und 2 (pausiert), Freigabe → nächste ProfitGuard-Datei, Schwellen änderbar, Budget/„Check unvollständig“, Morgenbericht-Zeile „Listing-Check“, Werkzeug listing_check | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
 
-- – Offen: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
-- – Offen: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
+### Amazon › Angebote & Lager › Repricer › ProfitGuard-Datei (`/repricer/profitguard`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Soll-Strategie „Liquidation“ mit festem Min, Importdatei ohne und mit „Freigabe geprüft“, Download je Land und alle Länder, „in ProfitGuard importiert“ | „Freigabe nötig: …“ ohne Häkchen, sonst „Datei erzeugt“; CSV im gelernten Format (ProfitGuard_DE_…_Aenderungen.csv); Vermerk „in ProfitGuard importiert“ | ○ im letzten Lauf nicht gelaufen | `profitguard.spec.ts` |
+| B31.6 Abnahme 6: gewünschter Min unter effektivem Min (Buy Box darunter) → Liquidation | Strategiewechsel „Standard → Liquidation“ mit festem Min (nie unter Break-even ohne Freigabe), Datei nur mit Freigabe; nach dem ProfitGuard-Export mit Liquidation + Min aktiv, Verlust-Stopp-Ausnahme „Repricing-Liquidation …“, Kapital-Ampel-Zeile | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
+| B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % | Tag 13 kein Vorschlag, Tag 14 „zurück auf …“ mit Aufgabe und Werkzeug-Feld; nach Freigabe Soll ohne Wunsch-Min, Liquidation beendet, Ausnahme entfernt | ○ im letzten Lauf nicht gelaufen | `b31-6-liquidation.spec.ts` |
+| B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab | Vorschläge je Stufenwechsel mit Freigabe (Soll Abverkauf bzw. Liquidation mit Min = max(Break-even, Buy Box − 1 %)), 7 Tage vor „Liquidation bis“ Aufgabe mit drei Knöpfen, +30 Tage, automatisch verlängert, dauerhaft | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B31.7 Abnahme 1–4: Zustand der Ware | RET_-SKU gebraucht mit Zielpreis und Min gebraucht, unbekannt ohne Datei-Zeile + Aufgabe, Zustand von Hand rechnet Zielpreis neu, Vorschlag „ins Repricing nehmen“ | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B31.8 Abnahme 1–4: Schnelldreher-Schutz | Kennzeichen von Hand, Strategie „Schnelldreher“ mit Min = Break-even + 7 %, kein Stufenwechsel, Morgenbericht-Zähler, nach 21 Tagen ohne Buy Box Vorschlag mit drei Knöpfen | ○ im letzten Lauf nicht gelaufen | `b31-6ab-7-8-b32.spec.ts` |
+| B20.9 Strategie-Katalog (abgelöst durch ProfitGuard: früher BQool-Regeln) | Standard, Abverkauf, Liquidation, Schnelldreher mit Logik und Namen in ProfitGuard | ○ im letzten Lauf nicht gelaufen | `b20-rest.spec.ts` |
+
+- – Offen: Strategienamen und Margen-Staffeln einmal mit den Einstellungen in ProfitGuard abgleichen
 
 ### Amazon › Angebote & Lager › FBA-Inbound (`/inbound`)
 
@@ -627,9 +621,8 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Abendritual als Abfolge „zweimal Streicheln, danach Massage“ | die nächsten Abende im Voraus: S, S, M, S, S, M | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Familienkalender: „To do Ina: …“ → wichtige Aufgabe | genau eine Aufgabe (wichtig, Ina, Frist = Termintag); erledigt bleibt erledigt | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
-| B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten | Einkäufe/Lagerbestand verarbeitet; BQool aus der Export-Liste, Reimbursement über den Dialog; Fehler je Export mit Bild + Seite; sellerboard „übersprungen“; alter Fehlimport → fertig | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
+| B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten | Einkäufe/Lagerbestand verarbeitet; BQool-Export nicht geholt, Reimbursement über den Dialog; Fehler je Export mit Bild + Seite; sellerboard „übersprungen“; alter Fehlimport → fertig | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
 | B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst | feste Uhrzeiten („04:00 und 13:00“, B29) statt „wird beim nächsten Lauf erfasst“; Call-Archiv nicht unter nur_probleme | ○ im letzten Lauf nicht gelaufen | `b27-automatik.spec.ts` |
-| BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“ | Hinweis/Server-Annahme = hochgeladen, JSON-Ablehnung = Fehler; nichts erkannt = gelb + normale Aufgabe; „hat geklappt“ → von Hand bestätigt, Status fertig, Aufgabe erledigt | ○ im letzten Lauf nicht gelaufen | `bqool-upload-erkennung.spec.ts` |
 | Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin) | „nur Tom“ → blockt nicht, steht unter „Blockt nicht“, Kapazität steigt; zurückholen und ↺ gehen; Kalender-Tagesliste gleich; To-do-Termine blocken nicht | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel | Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag | Zählungen nur im Zeitraum; vertauschte Daten getauscht, Zukunft auf heute gekürzt; „Zurück zum Monat“ | ○ im letzten Lauf nicht gelaufen | `privat-rueckblick.spec.ts` |
@@ -651,6 +644,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ | Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung | ○ im letzten Lauf nicht gelaufen | `postfach.spec.ts` |
+| B24 Anmeldung der Browser-Automatik („Verbindung testen“ ArbitrageOne): Cookie-Banner + andere Feldnamen, eigener Selektor, Browser-Prüfung, Seite ohne Formular | „Anmeldung ok“ trotz Cookie-Banner; ohne eigenen Selektor „Anmeldeformular nicht gefunden“ mit Bildschirmfoto, mit Selektor ok; Cloudflare klar gemeldet (< 60 s); Bildschirmfoto nur für Inhaber, ohne Token in der Adresse | ○ im letzten Lauf nicht gelaufen | `b24-automatik.spec.ts` |
 | B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ | z. B. „Amazon-Bestellungen: alle 15 Min.“; Zeitplan aus dem letzten Lauf | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 | B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau | Zähler „sellerboard-Aufrufe heute: n/125 (Automatik n, Reserve n)“ = Aufrufe beim Nachbau, höchstens 5; Verkauf lief (Vorrang), übrige Abrufe „übersprungen (Tagesbudget)“, kein Fehler | ○ im letzten Lauf nicht gelaufen | `b29-sellerboard-budget.spec.ts` |
 | B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag | „fertig“ mit „2 Bestellungen, 3 Positionen, 2 ohne Zuordnung“, Art ao_einkaeufe; Bestellungen mit Lieferant, Datum, Menge, EK, Status, „1 ohne Zuordnung“; Upload erkannt als „ArbitrageOne – Bestellungen“, „schon bekannt: 3 Positionen“; EK-Vorschlag mit Warnung gegen sellerboard-COG, keine Charge; Liquidität ohne die Bestellung | ○ im letzten Lauf nicht gelaufen | `b30-ao-bestellungen.spec.ts` |
@@ -685,7 +679,6 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | ArbitrageOne „Jetzt abholen“, zweiter Abruf, fehlender Export, Zwei-Faktor (Importe – ArbitrageOne) | Meldung und Lauf-Zeilen im neuen Reiter; Rücksprung nach dem Knopf auf /einstellungen/hintergrund | ○ im letzten Lauf nicht gelaufen | `arbitrageone.spec.ts` |
 | Amazon-Berichte sofort anfordern / Konto-Berichte / fertige abholen | Meldung „6 Berichte angefordert …“ im neuen Reiter, Berichte in der Tabelle | ○ im letzten Lauf nicht gelaufen | `amazon-berichte.spec.ts` |
 | Discord live und Abrufzeile „Call-Archiv (Discord live)“ | Auslöser live, zuletzt empfangen, sofort bei Eingang | ○ im letzten Lauf nicht gelaufen | `b21-calls-live.spec.ts` |
-| BQool-Upload „hat geklappt“ | Zeile „hochgeladen (von Hand bestätigt)“, Rücksprung in den Reiter | ○ im letzten Lauf nicht gelaufen | `bqool-upload-erkennung.spec.ts` |
 
 ### Übergreifend › /posteingang/verbinden (`/posteingang/verbinden`)
 
@@ -756,7 +749,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (193 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 193 nicht gelaufen.
+**Automatisch** (191 Abläufe + Oberfläche auf 120 Seiten): 0 bestanden, 0 fehlgeschlagen, 191 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -792,21 +785,20 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Ansprüche: Kennzahlen – im letzten Lauf nicht gelaufen
 - ○ Ansprüche: Als eingereicht markieren (über Claude) – im letzten Lauf nicht gelaufen
 - ○ Echtheits-Ordner: Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool): Kennzahlen – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool): BQool-Export „Manage Listings“ hochladen – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool): B15.11 Übersicht je Regel, Filter, alle Länder – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool): B25.5 /repricer/export ohne Format – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.5 Abnahme 5: vier „Listing Performance“ (je Land) + „Daily Sales“ per Upload; Land offen → Rückfrage – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.5 täglicher Lauf holt die Berichte selbst – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.6 Abnahme 6: gewünschter Min unter effektivem Min (ia) → Test mit einer SKU → BQool-Lauf – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.7 Abnahme 1–4: Zustand der Ware – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B31.8 Abnahme 1–4: Schnelldreher-Schutz – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B32 Listing-Check Abnahme 1–3, 5 – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › Leistung: B33 Abnahme 1–5: BQool-Formel, Katalog je Land, Min-Reset, „Download listings“, Processing Report – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › BQool-Dateien: B31 täglicher BQool-Kreislauf: Ist DE/FR/IT/ES holen, Soll erzeugen, Push „BQool-Upload freigeben“, ohne Freigabe nichts, Freigeben → Upload je Land (Dateityp Repricing Central) mit Rückmeldung und Fehlerzeilen-Aufgabe, Nachkontrolle, Verfall, automatisch nur nach Min-Prüfung – im letzten Lauf nicht gelaufen
-- ○ Repricer (BQool) › BQool-Dateien: Ist hochladen → Abgleich → Liquidation → Export DE/FR → Übertragen mit Bestätigung – im letzten Lauf nicht gelaufen
+- ○ Repricer: Kennzahlen – im letzten Lauf nicht gelaufen
+- ○ Repricer: ProfitGuard-Export (ohne Marktplatz-Spalte, Marktplatz im Formular) im Repricer hochladen – im letzten Lauf nicht gelaufen
+- ○ Repricer: B15.11 Übersicht je ProfitGuard-Strategie, Filter, alle Länder – im letzten Lauf nicht gelaufen
+- ○ Repricer: ProfitGuard: Upload über Uploads → Abgleich → Liquidation → Importdatei mit Freigabe → Download → Rücklauf – im letzten Lauf nicht gelaufen
+- ○ Repricer: B31.6 Filter „Liquidation“, Spalte „Liquidation bis“; B31.6a Filter „läuft in 7 Tagen ab“; B31.7/B31.8 Zustand und Schnelldreher per Mehrfachauswahl – im letzten Lauf nicht gelaufen
+- ○ Repricer: B25.5 /repricer/export ohne Format bzw. mit altem Format – im letzten Lauf nicht gelaufen
+- ○ Repricer › Listing-Check: B32 Listing-Check Abnahme 1–3, 5 – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: Soll-Strategie „Liquidation“ mit festem Min, Importdatei ohne und mit „Freigabe geprüft“, Download je Land und alle Länder, „in ProfitGuard importiert“ – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B31.6 Abnahme 6: gewünschter Min unter effektivem Min (Buy Box darunter) → Liquidation – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B31.6 Abnahme 7: Buy Box 14 Tage über effektivem Min + 3 % – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B31.6a/b Regel-Leiter: 1 → 2, 2 → 3, Liquidation läuft ab – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B31.7 Abnahme 1–4: Zustand der Ware – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B31.8 Abnahme 1–4: Schnelldreher-Schutz – im letzten Lauf nicht gelaufen
+- ○ Repricer › ProfitGuard-Datei: B20.9 Strategie-Katalog (abgelöst durch ProfitGuard: früher BQool-Regeln) – im letzten Lauf nicht gelaufen
 - ○ FBA-Inbound: FBA-Sendung scannen – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Geschäftsbericht (CSV) hochladen, Staffelpreis-Vorschlag übernehmen, Freigabe, Upload-Datei – im letzten Lauf nicht gelaufen
 - ○ Amazon Business: Kennzahlen – im letzten Lauf nicht gelaufen
@@ -912,7 +904,6 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Übersicht: Familienkalender: „To do Ina: …“ → wichtige Aufgabe – im letzten Lauf nicht gelaufen
 - ○ Übersicht: B27 ArbitrageOne-Nachtlauf: PurchaseOrders .xls/Lagerbestand .xlsx, „wird erstellt“, Dialog, Fehler mit Bildschirmfoto, Erneut verarbeiten – im letzten Lauf nicht gelaufen
 - ○ Übersicht: B27 anbindungen_status: sellerboard-Zeitplan fest, altes Call-Archiv abgelöst – im letzten Lauf nicht gelaufen
-- ○ Übersicht: BQool-Upload: Erfolg erkennen (kurzer Hinweis, stille Annahme, Ablehnung), sonst „bitte prüfen“ + „hat geklappt“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familientermine direkt im Tagesplan/Kalender zuordnen (ich / beide / nur Partnerin) – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag – im letzten Lauf nicht gelaufen
@@ -921,6 +912,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Einstellungen: Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
+- ○ Einstellungen › Anbindungen: B24 Anmeldung der Browser-Automatik („Verbindung testen“ ArbitrageOne): Cookie-Banner + andere Feldnamen, eigener Selektor, Browser-Prüfung, Seite ohne Formular – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Anbindungen: B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“ – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Anbindungen: B29 sellerboard-Aufrufbudget: künstliches Budget 5, „Fällige Abrufe nachholen“ gegen den sellerboard-Nachbau – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Anbindungen: B30 ArbitrageOne-Einkäufe (PurchaseOrders): Fehlimport mit Art ek_liste → „Erneut verarbeiten“; Einkauf → Bestellungen; Upload unter Uploads; EK-Vorschlag – im letzten Lauf nicht gelaufen
@@ -938,7 +930,6 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Einstellungen › Hintergrund & Importe: ArbitrageOne „Jetzt abholen“, zweiter Abruf, fehlender Export, Zwei-Faktor (Importe – ArbitrageOne) – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Hintergrund & Importe: Amazon-Berichte sofort anfordern / Konto-Berichte / fertige abholen – im letzten Lauf nicht gelaufen
 - ○ Einstellungen › Hintergrund & Importe: Discord live und Abrufzeile „Call-Archiv (Discord live)“ – im letzten Lauf nicht gelaufen
-- ○ Einstellungen › Hintergrund & Importe: BQool-Upload „hat geklappt“ – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Postfach verbinden: App-Passwort zuerst, Anleitung (Google, Microsoft 365, GMX/WEB.DE, IONOS/STRATO), „Nur abrufen“, OAuth nur unter „Erweitert“ – im letzten Lauf nicht gelaufen
 - ○ /posteingang/verbinden: Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“ – im letzten Lauf nicht gelaufen
 - ○ /assistent-verlauf: B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen) – im letzten Lauf nicht gelaufen
@@ -959,9 +950,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 60 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 59 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Repricer (BQool) › Listing-Check (`/repricer/listing-check`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Drucker (`/einstellungen/drucker`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
+Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Deal-Ampel (`/lieferanten/deal-ampel`) · Bestellvorschläge (`/einkauf/vorschlaege`) · Einkauf & Wareneingang (`/einkauf`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Feeds (`/lieferanten`) · Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Fälle & A-bis-Z (`/faelle`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Bewertungen (`/bewertungen`) · eBay (`/ebay`) · Temu / Wawi (`/listings/temu`) · Produkte (`/produkte`) · Artikelstamm (`/artikel`) · Chargen (`/chargen`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Label aus Chat (DHL) (`/versand/label`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · COG-Export (`/export`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · Kunden (`/rechnungen/kunden`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Nachrichten (`/privat/nachrichten`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Einstellungen › Geräte: Handy & Tesla (`/einstellungen/handy`) · Einstellungen › Apple Watch (`/einstellungen/watch`) · Einstellungen › Benachrichtigungen (`/einstellungen/benachrichtigungen`) · Einstellungen › Shop-Profile (`/einstellungen/shop-profile`) · Einstellungen › Abholung (`/einstellungen/abholung`) · Einstellungen › Drucker (`/einstellungen/drucker`) · Einstellungen › Testumgebung (`/einstellungen/testumgebung`)
 
 **Bekannte offene Punkte:**
 
@@ -982,12 +973,9 @@ Tagesplan (Anrufe) (`/kalender/tagesplan`) · Uploads (`/uploads`) · Fahrtenbuc
 - Scanner: Teilen-Menü der Amazon-App (Android: Web Share Target nach „Zum Startbildschirm“; iPhone: Kurzbefehl) – nur live
 - Fall-Zentrale: Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)
 - Fall-Zentrale: SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung
-- Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
-- Repricer (BQool) › Leistung: B33: Stufen je Land einmal gegen die BQool-Screenshots prüfen, Listen-Seite …/repricing/amazonde eintragen, Processing Reports vom 07.11. beim ersten Lauf live lesen
-- Repricer (BQool) › Leistung: Echte BQool-Berichtsseiten „Listing Performance“/„Daily Sales“ unter Anbindungen eintragen und einmal „Jetzt starten“ (nur live)
-- Repricer (BQool) › Leistung: Spalte „Products“ der echten Datei: SKU-Erkennung beim ersten Upload prüfen (Ergebnis nennt Zeilen ohne SKU)
-- Repricer (BQool) › BQool-Dateien: Echte BQool-Seiten: Export-Seite DE (Download „Full Template“) und Upload-Dateityp „Repricing Central File“ – einmal mit „Verbindung testen“ und „Jetzt starten“ prüfen (nur live)
-- Repricer (BQool) › BQool-Dateien: Min-Verhalten in BQool an einer SKU nachsehen, dann Häkchen „Min-Verhalten geprüft“ (B31.3)
+- Repricer: Echter ProfitGuard-Export (Spaltennamen der aktuellen ProfitGuard-Version, CSV und XLSX) – einmal mit echter Datei prüfen
+- Repricer: Erste Importdatei in ProfitGuard („Export & Import“) einlesen und mit dem nächsten Export vergleichen
+- Repricer › ProfitGuard-Datei: Strategienamen und Margen-Staffeln einmal mit den Einstellungen in ProfitGuard abgleichen
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 - Drucken (Etiketten): Abnahme 0 live: Windows-Dienst startet vor der Anmeldung (Neustart des Arbeits-PCs)
 - Drucken (Etiketten): Abnahme 5 live: Auto-Aus aus, Druck um 06:00

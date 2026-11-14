@@ -3,7 +3,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci
-# Browser für die Automatik (sellerboard-Kostenimport, BQool-Upload, ArbitrageOne-Abruf) – Standard: mit.
+# Browser für die Automatik (sellerboard-Kostenimport, ArbitrageOne-Abruf) – Standard: mit.
 # Braucht ~400 MB mehr im Abbild. Abschalten nur bei Platzmangel: MIT_BROWSER=0 in die .env neben docker-compose.yml.
 # Fester Ablageort, damit der Browser unabhängig vom Benutzer gefunden wird; die Schicht wird nur neu gebaut, wenn
 # sich package-lock.json ändert.

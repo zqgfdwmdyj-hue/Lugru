@@ -46,7 +46,7 @@ export async function importProfitguard(tenantId: string, bytes: Uint8Array, dat
   await db.insert(schema.reportImports).values({ tenantId, reportType: "ProfitGuard Export", fileName: datei.slice(0, 200), via: via === "claude" ? "api" : "upload", rows: r.zeilen.length, inserted: unique.size, message: maerkte.join(", ") });
   const je = maerkte.map((m) => `${m} ${[...unique.values()].filter((z) => z.marktplatz === m).length}`).join(", ");
   const warn = [r.fehlt.length ? `nicht in der Datei: ${r.fehlt.join(", ")}` : "", r.ohneMarkt ? `${r.ohneMarkt} Zeilen ohne Marktplatz übersprungen` : "", r.ohneSku ? `${r.ohneSku} Zeilen ohne SKU übersprungen` : "", format ? "" : "Format für die Importdatei nicht gelernt (SKU/Min/Max fehlen)"].filter(Boolean).join(" · ");
-  return { ok: true as const, message: `${unique.size} SKUs aus ProfitGuard eingelesen (${je})${gebuehren ? `, Gebühren je Land für ${gebuehren}` : ""}.${warn ? ` Hinweis: ${warn}.` : ""}`, erkannt: r.erkannt };
+  return { ok: true as const, message: `${unique.size} SKU${unique.size === 1 ? "" : "s"} aus ProfitGuard eingelesen (${je})${gebuehren ? `, Gebühren je Land für ${gebuehren}` : ""}.${warn ? ` Hinweis: ${warn}.` : ""}`, erkannt: r.erkannt };
 }
 
 /** Stand der ProfitGuard-Importe je Marktplatz. */

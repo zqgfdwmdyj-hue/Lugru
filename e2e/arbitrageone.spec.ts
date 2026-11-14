@@ -58,8 +58,8 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await expect(page.getByTestId("ao-meldung")).toContainText("alle Exporte abgeholt");
       const zeilen = page.getByTestId("ao-import");
       for (const k of ["einkaeufe", "lagerbestand", "sellerboard", "reimbursement", "accountone"]) await expect(zeilen.and(page.locator(`[data-export="${k}"]`)).first()).toBeVisible();
-      // B31.1: BQool kommt nicht mehr von ArbitrageOne – im Lauf nur die Zeile „entfällt“, kein Fehler, kein Import
-      await expect(page.getByTestId("ao-lauf").first().getByTestId("ao-lauf-export").filter({ hasText: "BQool" })).toHaveText("BQool: entfällt (Seller-System erzeugt die Datei)");
+      // B31.1 / BQool-Ablösung: den ArbitrageOne-Export „BQool“ holt das System nicht mehr – keine Zeile, kein Fehler, kein Import
+      await expect(page.getByTestId("ao-lauf").first().getByTestId("ao-lauf-export").filter({ hasText: "BQool" })).toHaveCount(0);
       await expect(zeilen.and(page.locator('[data-export="bqool"]'))).toHaveCount(0);
       // B30: Einkäufe = Bestellliste (Lieferant + Datum, ohne Bestellnummer-Spalte → eine Bestellung)
       await expect(zeilen.and(page.locator('[data-export="einkaeufe"]')).first()).toContainText("1 Bestellung, 2 Positionen, 2 ohne Zuordnung");
@@ -94,9 +94,9 @@ test.describe("ArbitrageOne – Exporte automatisch abholen", () => {
       await expect(page.locator("body")).toContainText("Lagerwert (ArbitrageOne)");
       await page.goto("/deal-eingang");
       await expect(page.getByTestId("de-monatsrahmen")).toContainText("ArbitrageOne-Einkäufen");
-      // B31.1: kein BQool-Vergleich mehr aus ArbitrageOne, nichts als Ist übernommen
+      // B31.1: kein BQool-Vergleich mehr aus ArbitrageOne, nichts als Repricer-Ist (ProfitGuard) übernommen
       expect((await sql("select 1 from datei_importe where tenant_id = $1 and herkunft = 'arbitrageone' and quelle_export = 'bqool'", [T])).length).toBe(0);
-      expect((await sql("select 1 from bqool_listings where tenant_id = $1 and sku = $2", [T, S1])).length).toBe(0);
+      expect((await sql("select 1 from profitguard_listings where tenant_id = $1 and sku = $2", [T, S1])).length).toBe(0);
       // Werkzeuge: importe (Herkunft), buchhaltung_status (AccountOne COG), anbindungen_status (Auslöser)
       expect(await mcp.call("importe", { limit: 10 })).toContain("ArbitrageOne-Abruf (einkaeufe)");
       expect(JSON.parse(await mcp.call("buchhaltung_status", { monat: vormonat })).accountone_cog.vorhanden).toBe(true);

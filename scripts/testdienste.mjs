@@ -1222,71 +1222,11 @@ function angebote(asin, mpId) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-// Web-Nachbau für die Browser-Automatik (sellerboard-Kostenimport, BQool-Upload): Anmeldeseite (E-Mail mit „2fa“ →
-// Bestätigungscode, Passwort „falsch“ → Anmeldung wieder), Upload-Seite nur mit Sitzungs-Cookie, Erfolgsmeldung.
+// Web-Nachbau für die Browser-Automatik (sellerboard-Kostenimport, Anmelde-Varianten für B24): Anmeldeseite (E-Mail mit
+// „2fa“ → Bestätigungscode, Passwort „falsch“ → Anmeldung wieder), Upload-Seite nur mit Sitzungs-Cookie, Erfolgsmeldung.
+// Den früheren BQool-Nachbau (Ist je Land, Berichte, Processing Report) gibt es seit der Ablösung durch ProfitGuard nicht
+// mehr – ProfitGuard hat keine Schnittstelle und keine Browser-Automatik, der Ist kommt per Datei-Upload.
 const webUploads = [];
-// B31.2: BQool-Ist je Land (Testnachbau, erfundene SKUs): die Export-Seite liefert den Stand als Repricing-Datei
-// („Download File“ → „Full Template“), ein Upload übernimmt die Zeilen der Datei – SKUs mit „FEHLER“ lehnt BQool ab.
-// POST /__bqool { ist: { DE: [{ sku, regel, min, max, cost, enable }] }, zuruecksetzen } setzt den Stand, GET liest ihn.
-const bqoolIst = {};
-// B33: Gebühren je SKU in der Liste („Referral Fee“, „FBA Fee“) und Upload-Verlauf mit „View Processing Report“.
-// POST /__bqool { gebuehren: { DE: { SKU: { fba, referral } } }, verlauf: { DE: [{ zeit, datei, fehler: [{ zeile, sku, text }] }] } }
-const bqoolGeb = {};
-const bqoolVerlauf = {};
-const BQ_LAND = { amazonde: "DE", amazonfr: "FR", amazonit: "IT", amazones: "ES" };
-const BQ_ERSTE = "FileType = repricing,  Version = 1.2.5 (Please do not edit this line or this will result in error when uploading)";
-const BQ_KOPF = ["Channel", "SellerSKU", "Cost", "Additional Cost", "Rule Name", "Min Price", "Max Price", "Shipping", "add-delete", "Group", "Enable Repricing"];
-const bqZahl = (n) => (n === null || n === undefined || n === "" ? "" : Number(n).toFixed(2));
-function bqoolStandDatei(land) {
-  const zeilen = [...(bqoolIst[land] ?? new Map()).entries()].map(([sku, z]) => [`Amazon ${land}`, sku, bqZahl(z.cost), "", z.regel ?? "", bqZahl(z.min), bqZahl(z.max), "0.00", "", "", z.enable ?? "1"].join("\t"));
-  return [BQ_ERSTE + "\t".repeat(10), BQ_KOPF.join("\t"), ...zeilen].join("\r\n") + "\r\n";
-}
-/** B33.6: „Download listings“ – Liste der aktiven Angebote als CSV (wie BQool: Preise, Min/Max, Regel, Gebühren). */
-function bqoolListeDatei(land) {
-  const kopf = ["SKU", "ASIN", "Product Name", "Your Price", "Min Price", "Max Price", "Cost", "Rule Name", "Repricing Status", "Buy Box Price", "Referral Fee", "FBA Fee"];
-  const g = bqoolGeb[land] ?? {};
-  const zeilen = [...(bqoolIst[land] ?? new Map()).entries()].map(([sku, z]) => {
-    const preis = z.preis ?? z.min;
-    const f = g[sku] ?? {};
-    return [sku, z.asin ?? "", `Testartikel ${sku}`, bqZahl(preis), bqZahl(z.min), bqZahl(z.max), bqZahl(z.cost), z.regel ?? "", z.enable === "0" ? "Paused" : "Active", bqZahl(z.buybox ?? ""), bqZahl(f.referral ?? ""), bqZahl(f.fba ?? "")].join(",");
-  });
-  return [kopf.join(","), ...zeilen].join("\r\n") + "\r\n";
-}
-function bqoolUebernehmen(land, text) {
-  const zeilen = text.replace(/^\uFEFF/, "").split(/\r?\n/);
-  const kopf = (zeilen[1] ?? "").split("\t").map((h) => h.trim().toLowerCase());
-  const i = (n) => kopf.indexOf(n.toLowerCase());
-  const stand = bqoolIst[land] ?? (bqoolIst[land] = new Map());
-  let n = 0;
-  const fehler = [];
-  zeilen.slice(2).forEach((z, k) => {
-    const c = z.split("\t");
-    const sku = (c[i("SellerSKU")] ?? "").trim();
-    if (!sku) return;
-    if (sku.includes("FEHLER")) return fehler.push({ zeile: k + 3, sku });
-    stand.set(sku, { regel: c[i("Rule Name")] ?? "", min: Number(c[i("Min Price")]), max: Number(c[i("Max Price")]), cost: Number(c[i("Cost")]), enable: c[i("Enable Repricing")] ?? "1" });
-    n++;
-  });
-  return { n, fehler };
-}
-// B31.5: BQool-Berichte je Marktplatz – „Listing Performance“ (Zeitraum wählen, „Download“) und „Daily Sales“.
-// Inhalt per POST /__bqool { leistung: { DE: "<TSV>" }, tages: { DE: "<TSV>" } }; ohne Vorgabe aus dem Ist erzeugt.
-const bqoolBerichte = { leistung: {}, tages: {} };
-const bqoolBerichtAbrufe = [];
-const LP_KOPF = ["Products", "Rules", "Sales", "Sales %", "Orders", "Units Ordered", "Est. Profit", "Buy Box Wins", "Lowest Price Win %", "At Min %", "At Max %", "Below Min %", "Avg Offers", "Avg Position", "Reprice", "Price Up", "Price Down", "Price Changes", "Compete Amazon %", "Buy Box Lost Amazon %", "Buy Box Lost FBA %", "Buy Box Lost FBM %"];
-function bqoolLeistungDatei(land) {
-  if (bqoolBerichte.leistung[land]) return bqoolBerichte.leistung[land];
-  const zeilen = [...(bqoolIst[land] ?? new Map()).entries()].map(([sku, z]) => [`Testartikel ${sku}\nSKU: ${sku}`, z.regel ?? "-", "100,00 €", "10,00%", "2", "2", "10,00 €", "50,00%", "10%", "0%", "0%", "0%", "3", "1", "4", "2", "2", "5,00 €", "0%", "0%", "0%", "0%"].map((v) => (v.includes("\n") ? `"${v}"` : v)).join("\t"));
-  return "\uFEFF" + [LP_KOPF.join("\t"), ...zeilen].join("\r\n") + "\r\n";
-}
-function bqoolTagesDatei(land) {
-  if (bqoolBerichte.tages[land]) return bqoolBerichte.tages[land];
-  const heute = new Date();
-  const tage = Array.from({ length: 7 }, (_, i) => new Date(heute.getTime() - (7 - i) * 86_400_000).toISOString().slice(0, 10));
-  return "\uFEFF" + ["Date\tSales\tSales (FBA)\tSales (FBM)\tOrders\tUnits Ordered\tEst. Profit\tBuy Box Wins", ...tage.map((t) => `${t}\t100,00 €\t100,00 €\t0,00 €\t1\t1\t10,00 €\t50,00%`)].join("\r\n") + "\r\n";
-}
-const multipartFeld = (body, name) => new RegExp(`name="${name}"\\r\\n\\r\\n([^\\r]*)`).exec(body)?.[1] ?? null;
-const multipartDatei = (body) => /filename="[^"]*"\r\nContent-Type:[^\r\n]*\r\n\r\n([\s\S]*?)\r\n--/.exec(body)?.[1] ?? "";
 function webNachbau(req, res, url, body) {
   const [, dienst, seite] = /^\/web-([a-z]+)\/([a-z]+)/.exec(url.pathname) ?? [];
   const html = (code, inhalt, extra = {}) => {
@@ -1294,14 +1234,14 @@ function webNachbau(req, res, url, body) {
     res.end(`<!doctype html><html><body><h1>${dienst} (Testnachbau)</h1>${inhalt}</body></html>`);
   };
   const angemeldet = (req.headers.cookie ?? "").includes(`sid=ok-${dienst}`);
-  // B24: Varianten – Browser-Prüfung (Cloudflare), Seite ohne Formular, Cookie-Banner + andere Feldnamen, Felder ohne
-  // erkennbare Namen (nur mit eigenem Selektor zu finden).
+  // B24: Varianten – Browser-Prüfung (Cloudflare), Seite ohne Formular, Cookie-Banner + andere Feldnamen („cookieneu“),
+  // Felder ohne erkennbare Namen (nur mit eigenem Selektor zu finden).
   if (dienst === "captcha") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end('<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div><p>Checking your browser before accessing.</p></body></html>');
   }
   if (dienst === "leer" && seite === "login") return html(200, "<p>Wartungsarbeiten – bitte später wieder versuchen.</p>");
-  if (dienst === "bqoolneu" && seite === "login" && req.method !== "POST")
+  if (dienst === "cookieneu" && seite === "login" && req.method !== "POST")
     return html(200, '<div id="cookie" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9"><div style="background:#fff;padding:20px;margin:120px auto;width:320px">Wir verwenden Cookies. <button type="button" onclick="document.getElementById(\'cookie\').remove()">Alle akzeptieren</button></div></div><form method="post"><label>E-Mail-Adresse <input type="text" name="login_id" placeholder="Ihre E-Mail"></label><label>Kennwort <input type="password" name="pw"></label><button type="button" onclick="this.form.submit()">Log in</button></form>');
   if (dienst === "sonder" && seite === "login" && req.method !== "POST")
     return html(200, '<form method="post"><input name="kennung"><input type="password" name="geheim"><button type="submit">Los</button></form>');
@@ -1317,49 +1257,11 @@ function webNachbau(req, res, url, body) {
     res.writeHead(302, { Location: `/web-${dienst}/login` });
     return res.end();
   }
-  // B31.2: Export-Seite je Marktplatz – „Download File“ öffnet ein Menü, „Full Template“ lädt die Repricing-Datei.
-  const exportLand = /\/export\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
-  if (dienst === "bqool" && seite === "export" && exportLand) {
-    const l = BQ_LAND[exportLand];
-    if (!l) return html(200, "<p>Keine Exporte für diesen Marktplatz.</p>");
-    if (url.pathname.endsWith("/datei")) {
-      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": `attachment; filename="Repricing_Central_${exportLand}_Full_Template.txt"` });
-      return res.end(bqoolStandDatei(l));
-    }
-    return html(200, `<main><h2>Repricing Central – Amazon ${l}</h2><button type="button" onclick="document.getElementById('menu').style.display='block'">Download File</button><div id="menu" style="display:none"><a href="/web-bqool/export/${exportLand}/datei" download>Full Template</a> <a href="#">Basic Template</a></div></main>`);
-  }
-  // B33.6: Listen-Seite je Marktplatz (…/repricing/amazonde) – „Download“ öffnet ein Menü, „Download listings“ lädt die Liste.
-  const listeLand = /^\/web-bqool\/repricing\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
-  if (dienst === "bqool" && seite === "repricing" && listeLand) {
-    const l = BQ_LAND[listeLand];
-    if (!l) return html(200, "<p>Keine Angebote für diesen Marktplatz.</p>");
-    if (url.pathname.endsWith("/listings")) {
-      res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="Active_Listings_${listeLand}.csv"` });
-      return res.end(bqoolListeDatei(l));
-    }
-    return html(200, `<main><h2>Listings – Active Listings – Amazon ${l}</h2><button type="button" onclick="document.getElementById('menu').style.display='block'">Download</button><div id="menu" style="display:none"><a href="/web-bqool/repricing/${listeLand}/listings" download>Download listings</a> <a href="#">Download template</a></div></main>`);
-  }
-  // B31.5: Berichtsseiten je Marktplatz – Auswahl „Last 30 days“/„Last 7 days“, Link „Download“ lädt die Datei.
-  const bericht = /\/(leistung|tages)\/([a-z]+)/.exec(url.pathname);
-  if (dienst === "bqool" && bericht) {
-    const [, art, slug] = bericht;
-    const l = BQ_LAND[slug];
-    if (!l) return html(200, "<p>Keine Berichte für diesen Marktplatz.</p>");
-    const name = art === "leistung" ? "Listing_Performance" : "Daily_Sales";
-    if (url.pathname.endsWith("/datei")) {
-      const tage = url.searchParams.get("tage") ?? "30";
-      bqoolBerichtAbrufe.push({ art, land: l, tage });
-      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": `attachment; filename="${name}_${Date.now()}.txt"` });
-      return res.end(art === "leistung" ? bqoolLeistungDatei(l) : bqoolTagesDatei(l));
-    }
-    const ziel = `/web-bqool/${art}/${slug}/datei`;
-    return html(200, `<main><h2>${art === "leistung" ? "Listing Performance" : "Daily Sales"} – Amazon ${l}</h2><label>Zeitraum <select onchange="document.getElementById('dl').href='${ziel}?tage='+this.value"><option value="30">Last 30 days</option><option value="7">Last 7 days</option></select></label> <a id="dl" href="${ziel}?tage=30" download>Download</a></main>`);
-  }
   // B23: Upload-Seite je Marktplatz (…/upload/amazonde, …/upload/amazonfr …); „kaputt“ = Upload wird abgelehnt.
   const land = /\/upload\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
   if (seite === "upload" && req.method === "POST") {
     const name = /filename="([^"]+)"/.exec(body)?.[1] ?? "?";
-    // Befund 02.11.: Upload per Skript (wie BQool) – „toast“ = Hinweis nur 0,7 s sichtbar, „still“ = gar keine Meldung,
+    // Befund 02.11.: Upload per Skript (Erfolgserkennung der Browser-Automatik) – „toast“ = Hinweis nur 0,7 s sichtbar, „still“ = gar keine Meldung,
     // „ajaxfehler“ = Antwort {success:false}.
     if (req.headers["x-ajax"]) {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -1368,14 +1270,7 @@ function webNachbau(req, res, url, body) {
       return res.end(JSON.stringify({ success: true, code: 0 }));
     }
     if (land === "kaputt") return html(200, `<p>Import fehlgeschlagen: ${name} ungültig</p>`);
-    // B31.2: BQool – Dateityp muss „Repricing Central File“ sein; Zeilen werden übernommen (Ist), Fehlerzeilen gemeldet.
-    const typ = multipartFeld(body, "typ");
-    if (dienst === "bqool" && typ !== null && typ !== "repricing") return html(200, `<p>Import fehlgeschlagen: falscher Dateityp (${typ})</p>`);
-    webUploads.push({ dienst, name, land, groesse: body.length, at: new Date().toISOString(), ...(typ !== null ? { typ } : {}) });
-    if (dienst === "bqool" && BQ_LAND[land]) {
-      const r = bqoolUebernehmen(BQ_LAND[land], multipartDatei(body));
-      return html(200, `<p>Import erfolgreich: ${name} übernommen – ${r.n} Zeilen übernommen, ${r.fehler.length} Fehler</p>${r.fehler.map((f) => `<p>Zeile ${f.zeile}: SKU ${f.sku} – Invalid Min Price</p>`).join("")}`);
-    }
+    webUploads.push({ dienst, name, land, groesse: body.length, at: new Date().toISOString() });
     return html(200, `<p>Import erfolgreich: ${name} übernommen</p>`);
   }
   if (["toast", "still", "ajaxfehler", "nichts"].includes(land ?? "")) {
@@ -1387,20 +1282,6 @@ function webNachbau(req, res, url, body) {
 document.getElementById("f").addEventListener("submit", async (e) => { e.preventDefault(); const r = await fetch(location.href, { method: "POST", body: new FormData(e.target), headers: { "X-Ajax": "1" } }); await r.json(); ${toast} });
 </script>`);
   }
-  // B33.6: Processing Report eines früheren Uploads (Upload-Verlauf je Marktplatz)
-  const berichtNr = /\/upload\/[a-z]+\/bericht\/(\d+)/.exec(url.pathname)?.[1];
-  if (dienst === "bqool" && berichtNr !== undefined && BQ_LAND[land]) {
-    const v = (bqoolVerlauf[BQ_LAND[land]] ?? [])[Number(berichtNr)];
-    if (!v) return html(404, "<p>Bericht nicht gefunden.</p>");
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    return res.end(["Row\tSellerSKU\tStatus\tMessage", ...(v.fehler ?? []).map((f) => `${f.zeile}\t${f.sku}\tError\t${f.text}`)].join("\r\n") + "\r\n");
-  }
-  // B31.2: BQool fragt nach dem Dateityp (Standard „Inventory File“ – die Automatik muss „Repricing Central File“ wählen).
-  if (dienst === "bqool") {
-    const verlauf = BQ_LAND[land] ? (bqoolVerlauf[BQ_LAND[land]] ?? []) : [];
-    const tabelle = verlauf.length ? `<h3>Upload History</h3><table>${verlauf.map((v, i) => `<tr><td>${v.zeit}</td><td>${v.datei}</td><td>Completed</td><td>${(v.fehler ?? []).length} Error</td><td><a href="/web-bqool/upload/${land}/bericht/${i}">View Processing Report</a></td></tr>`).join("")}</table>` : "";
-    return html(200, `<form method="post" enctype="multipart/form-data"><label>Dateityp <select name="typ"><option value="inventory">Inventory File</option><option value="repricing">Repricing Central File</option></select></label><input type="file" name="datei"><button type="submit">Hochladen</button></form>${tabelle}`);
-  }
   return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');
 }
 
@@ -1408,6 +1289,8 @@ document.getElementById("f").addEventListener("submit", async (e) => { e.prevent
 // ArbitrageOne-Nachbau: Export-Seite mit Karten und Download-Knöpfen (Einkäufe mit Zeitraum-Dialog, AccountOne alt + NEU,
 // „Einkäufe“ auch in der Navigation – die Automatik muss die Karte im Hauptbereich finden). Inhalte erfunden; ein Test
 // kann sie über POST /__ao setzen ({ dateien: { key: text }, ohne: [key] }). Downloads stehen unter GET /__ao.
+// Die Karte „BQool“ bietet ArbitrageOne selbst an – das System holt sie nicht (mehr) ab; sie bleibt, damit die Prüfungen
+// sehen, dass sie übergangen wird.
 const AO_STANDARD = {
   einkaeufe: "ASIN;SKU;Kaufdatum;Menge;EK netto;Lieferant;Rechnungsnummer\nB0AOTEST01;AOT_TEST_01;01.11.2026;2;10,00;Testshop;RE-T1\n",
   lagerbestand: "ASIN;SKU;Bestand;EK netto;Lagerwert\nB0AOTEST01;AOT_TEST_01;2;10,00;20,00\n",
@@ -1498,24 +1381,6 @@ http
     if (url.pathname === "/__log") return send(200, log);
     if (url.pathname === "/__abholung") return send(200, abholungen);
     if (url.pathname === "/__web") return send(200, webUploads);
-    if (url.pathname === "/__bqool" && req.method === "POST") {
-      const b = JSON.parse(body || "{}");
-      if (b.zuruecksetzen) {
-        for (const k of Object.keys(bqoolIst)) delete bqoolIst[k];
-        for (const k of Object.keys(bqoolGeb)) delete bqoolGeb[k];
-        for (const k of Object.keys(bqoolVerlauf)) delete bqoolVerlauf[k];
-        bqoolBerichte.leistung = {};
-        bqoolBerichte.tages = {};
-        bqoolBerichtAbrufe.length = 0;
-      }
-      Object.assign(bqoolBerichte.leistung, b.leistung ?? {});
-      Object.assign(bqoolBerichte.tages, b.tages ?? {});
-      for (const [land, rows] of Object.entries(b.ist ?? {})) bqoolIst[land] = new Map(rows.map((r) => [r.sku, { regel: r.regel, min: r.min, max: r.max, cost: r.cost, enable: r.enable ?? "1", ...(r.preis !== undefined ? { preis: r.preis } : {}), ...(r.buybox !== undefined ? { buybox: r.buybox } : {}), ...(r.asin ? { asin: r.asin } : {}) }]));
-      Object.assign(bqoolGeb, b.gebuehren ?? {});
-      Object.assign(bqoolVerlauf, b.verlauf ?? {});
-      return send(200, { ok: true });
-    }
-    if (url.pathname === "/__bqool") return send(200, { ist: Object.fromEntries(Object.entries(bqoolIst).map(([l, m]) => [l, [...m.entries()].map(([sku, z]) => ({ sku, ...z }))])), berichtAbrufe: bqoolBerichtAbrufe });
     if (url.pathname === "/__ao" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       if (b.zuruecksetzen) Object.assign(ao, { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [], modus: {}, namen: {}, binaer: {}, angefordert: {} });

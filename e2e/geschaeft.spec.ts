@@ -1,5 +1,5 @@
 // Neue Claude-Werkzeuge: Antwort-Entwurf (gesendet wird nur nach Prüfung im Seller-System), Mails archivieren,
-// Anspruch als eingereicht markieren, BQool-Export + Werkzeug „repricer“, Amazon je Land (Buy Box, Listung,
+// Anspruch als eingereicht markieren, ProfitGuard-Export + Werkzeug „repricer“, Amazon je Land (Buy Box, Listung,
 // Lageralter über Berichte; Angebote live) – gegen die Testdienste. Dazu die Rechte im Fragefeld.
 import { aktion, alsPerson, expect, marke, mcpVerbinden, sql, test, testdienste } from "./helfer";
 
@@ -88,35 +88,55 @@ test.describe("Claude & KI-Assistent – Posteingang und Ansprüche", () => {
   });
 });
 
-test.describe("Claude & KI-Assistent – BQool und Amazon je Land", () => {
-  test("BQool-Export hochladen → Repricer-Abschnitt → Werkzeug „repricer“ mit Auffälligkeiten", async ({ page, browser, baseURL }) => {
+test.describe("Claude & KI-Assistent – ProfitGuard und Amazon je Land", () => {
+  test("ProfitGuard-Export im Repricer hochladen → Abgleich → Werkzeug „repricer“ mit Auffälligkeiten", async ({ page, browser, baseURL }) => {
     const { anmelden } = await import("./helfer");
-    await anmelden(page, "inhaber");
-    await page.goto("/repricer");
-    const csv = ["SKU,ASIN,Product Name,Your Price,Min Price,Max Price,Strategy Name,Repricing Status,Buy Box Winner", "TEST-SOCKEN,B0TEST0001,Testsocken (erfunden),21.99,19.50,29.99,Standard,Active,You", "TEST-TASSE,B0TEST0002,Testtasse (erfunden),14.90,,19.90,,Paused,A1TESTFBA00001", ""].join("\n");
-    const up = page.locator('[data-testid="bqool-upload"]');
-    await up.locator('input[type="file"]').setInputFiles({ name: "bqool-manage-listings.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
-    await up.locator('select[name="markt"]').selectOption("DE");
-    await Promise.all([aktion(page), up.locator('button[type="submit"]').click()]);
-    await expect(page.locator('[data-testid="bqool-result"]')).toContainText("2 SKUs eingelesen (DE 2)");
-    await expect(page.locator('[data-testid="bqool-problems"]')).toContainText("TEST-TASSE");
+    const m = marke();
+    const OK = `TEST-GS-OK-${m}`;
+    const AUF = `TEST-GS-AUF-${m}`;
+    const [{ tenant_id: T, product_id: P }] = await sql<{ tenant_id: string; product_id: string }>("select tenant_id, product_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    for (const sku of [OK, AUF]) {
+      await sql("insert into lots (tenant_id, product_id, sku, kind, sku_schema, purchase_date, quantity, unit_cost_net) values ($1, $2, $3, 'purchase', 'test', current_date - 5, 10, '2.10')", [T, P, sku]);
+      await sql("insert into amazon_inventory (tenant_id, sku, asin, title, fulfillable, snapshot_date) values ($1, $2, null, $3, 3, current_date)", [T, sku, `Testartikel ${sku} (erfunden)`]);
+    }
+    try {
+      await anmelden(page, "inhaber");
+      await page.goto("/repricer");
+      // Export ohne Marktplatz-Spalte → Marktplatz im Formular wählen
+      const csv = ["SKU,ASIN,Product Name,Your Price,Min Price,Max Price,Strategy Name,Repricing Status,Buy Box Winner", `${OK},B0TEST0001,Testsocken (erfunden),21.99,19.50,29.99,Standard,Active,You`, `${AUF},B0TEST0002,Testtasse (erfunden),14.90,,19.90,,Paused,A1TESTFBA00001`, ""].join("\n");
+      const up = page.getByTestId("profitguard-upload");
+      await up.locator('input[type="file"]').setInputFiles({ name: "profitguard-export.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+      await up.locator('select[name="markt"]').selectOption("DE");
+      await Promise.all([aktion(page), up.locator('button[type="submit"]').click()]);
+      await expect(page.getByTestId("profitguard-result")).toContainText("2 SKUs aus ProfitGuard eingelesen (DE 2)");
+      await page.goto(`/repricer?q=TEST-GS-&land=DE#abgleich`);
+      const auf = page.locator(`[data-testid="abgleich-zeile"][data-sku="${AUF}"][data-land="DE"]`);
+      await expect(auf).toContainText("kein Min in ProfitGuard");
+      await expect(auf).toContainText("SKU mit Bestand nicht im ProfitGuard-Repricing");
+      // Unauffällig (Min über dem Soll-Min, Strategie passt, im Repricing) → nicht in „nur Auffälligkeiten“
+      await expect(page.locator(`[data-testid="abgleich-zeile"][data-sku="${OK}"][data-land="DE"]`)).toHaveCount(0);
 
-    const c = await mcpVerbinden(browser, baseURL!, "inhaber");
-    const r = JSON.parse(await c.call("repricer", {}));
-    expect(r.anzahl_skus).toBe(2);
-    // Min der Socken liegt weit über jedem denkbaren Mindestpreis des Seller-Systems → unauffällig
-    expect(r.auffaelligkeiten).toEqual({ ohne_min: 1, pausiert: 1, ohne_regel: 1 });
-    const tasse = r.zeilen.find((z: { sku: string }) => z.sku === "TEST-TASSE");
-    expect(tasse).toMatchObject({ marktplatz: "DE", status: "pausiert", min_bqool: null, max_bqool: 19.9, buybox_bei: "A1TESTFBA00001" });
-    expect(tasse.pruefen).toEqual(expect.arrayContaining(["kein Mindestpreis in BQool", "Bepreisung in BQool pausiert", "keine Regel/Strategie zugeordnet"]));
-    expect(r.zeilen.find((z: { sku: string }) => z.sku === "TEST-SOCKEN")).toBeUndefined();
-    const alle = JSON.parse(await c.call("repricer", { ansicht: "alle", suche: "socken" }));
-    expect(alle.zeilen).toHaveLength(1);
-    expect(alle.zeilen[0]).toMatchObject({ sku: "TEST-SOCKEN", preis: 21.99, min_bqool: 19.5, max_bqool: 29.99, regel: "Standard", status: "aktiv", buybox_bei: "uns" });
-    // B31.4: „BQool-Stand: heute 06:05“ statt Datum des Uploads
-    expect(r.datenstand.stand).toMatch(/^BQool-Stand: heute \d\d:\d\d$/);
-    expect(r.bqool_stand).toMatch(/^heute \d\d:\d\d$/);
-    expect(r.upload_datei).toBe(`${baseURL}/repricer/export?format=bqool`);
+      const c = await mcpVerbinden(browser, baseURL!, "inhaber");
+      const r = JSON.parse(await c.call("repricer", { marktplatz: "DE", suche: "TEST-GS-" }));
+      expect(r.anzahl).toBe(1);
+      expect(r.auffaelligkeiten["kein Min in ProfitGuard"]).toBeGreaterThanOrEqual(1);
+      const z = r.zeilen[0];
+      expect(z).toMatchObject({ land: "DE", sku: AUF, ist_profitguard: { im_repricing: false, strategie: null, min: null, max: 19.9, preis: 14.9 } });
+      expect(z.pruefen).toEqual(expect.arrayContaining(["SKU mit Bestand nicht im ProfitGuard-Repricing", "kein Min in ProfitGuard"]));
+      const alle = JSON.parse(await c.call("repricer", { ansicht: "alle", marktplatz: "DE", suche: OK }));
+      expect(alle.zeilen).toHaveLength(1);
+      expect(alle.zeilen[0]).toMatchObject({ sku: OK, soll: { strategie: "Standard" }, ist_profitguard: { im_repricing: true, strategie: "Standard", min: 19.5, max: 29.99, preis: 21.99 } });
+      expect(alle.zeilen[0].pruefen).toBeUndefined();
+      expect(r.eingelesen).toContainEqual(expect.objectContaining({ marktplatz: "DE" }));
+      expect(r.datenstand.stand).toMatch(/^ProfitGuard-Export: /);
+      expect(r.link).toBe(`${baseURL}/repricer#abgleich`);
+    } finally {
+      await sql("delete from profitguard_listings where tenant_id = $1 and sku = any($2)", [T, [OK, AUF]]);
+      await sql("delete from repricing_gebuehren where tenant_id = $1 and sku = any($2)", [T, [OK, AUF]]);
+      await sql("delete from amazon_inventory where tenant_id = $1 and sku = any($2)", [T, [OK, AUF]]);
+      await sql("delete from lots where tenant_id = $1 and sku = any($2)", [T, [OK, AUF]]);
+      await sql("update tenants set settings = settings #- '{repricing,profitguard,format}' where id = $1", [T]);
+    }
   });
 
   test("Amazon je Land: Berichte anfordern + abholen → amazon_buybox, amazon_listungen, amazon_lageralter; amazon_angebote live", async ({ page, browser, baseURL }) => {

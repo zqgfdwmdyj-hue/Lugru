@@ -65,9 +65,9 @@ test.describe("Teil 2 – Geld & Risiko", () => {
     await sql(`insert into tasks (tenant_id, system_key, title, priority, category, status) values ($1, 'verlust-TEST-KOSTEN', 'Verlust-Stopp: Testmarke Lagerdose (erfunden)', 'critical', 'geld', 'open')`, [T]);
     // B9.6: Minus nur durch Erstattungen an Verkaufstagen → kein Fall, sondern „Erstattungen und Abschreibungen“
     for (const i of [0, 1, 2]) await sql(`insert into sellerboard_sku_tage (tenant_id, channel, day, sku, asin, name, units, sales, net_profit, avg_price, refunds, refund_cost, synced_at) values ($1, 'amazon', $2, 'TEST-ERSTATT', null, 'Testmarke Rückgabedose (erfunden)', 2, 25, -3, 12.5, 1, 6, now())`, [T, tag(i - 3)]);
-    // B9.6: echter Verlust mit BQool-Regel „Liquidation“ → Vorschlag „Als Ausnahme übernehmen“
+    // B9.6: echter Verlust mit ProfitGuard-Strategie „Liquidation“ → Vorschlag „Als Ausnahme übernehmen“
     for (const i of [0, 1, 2]) await sql(`insert into sellerboard_sku_tage (tenant_id, channel, day, sku, asin, name, units, sales, net_profit, avg_price, synced_at) values ($1, 'amazon', $2, 'TEST-LIQ', null, 'Testmarke Räumungsdose (erfunden)', 2, 10, -2, 5, now())`, [T, tag(i - 3)]);
-    await sql(`insert into bqool_listings (tenant_id, marktplatz, sku, regel, eingelesen_am) values ($1, 'DE', 'TEST-LIQ', 'Liquidation', now())`, [T]);
+    await sql(`insert into profitguard_listings (tenant_id, marktplatz, sku, strategie, im_repricing, eingelesen_am) values ($1, 'DE', 'TEST-LIQ', 'Liquidation', true, now()) on conflict (tenant_id, marktplatz, sku) do update set strategie = excluded.strategie`, [T]);
 
     await anmelden(page, "inhaber");
     await page.goto("/kapital?filter=rot");
@@ -86,7 +86,7 @@ test.describe("Teil 2 – Geld & Risiko", () => {
     const liq = page.locator('[data-testid="verlust-fall"][data-sku="TEST-LIQ"]');
     await expect(liq.getByTestId("verlust-liquidation")).toContainText("Liquidation");
     await Promise.all([page.waitForURL(/meldung=/), liq.getByTestId("verlust-liquidation-uebernehmen").click()]);
-    await expect(page.locator('[data-testid="verlust-ausnahme-zeile"][data-sku="TEST-LIQ"]')).toContainText("BQool-Regel Liquidation");
+    await expect(page.locator('[data-testid="verlust-ausnahme-zeile"][data-sku="TEST-LIQ"]')).toContainText("ProfitGuard-Strategie Liquidation");
     // Bewusster Abverkauf → Ausnahme; die Aufgabe dafür wird erledigt, die andere bleibt wichtig + offen
     const fall = page.locator('[data-testid="verlust-fall"][data-sku="TEST-VERLUST2"]');
     await fall.locator("summary").click();

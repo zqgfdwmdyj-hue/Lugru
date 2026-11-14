@@ -276,7 +276,9 @@ export async function sollVorschau(tenantId: string, o: { laender?: ExportLand[]
       const istRegel = istStrategieAus(i?.strategie ?? null, namen);
       const inv = invJe.get(r.sku);
       const bestand = r.stock + (inv?.mfn ?? 0);
-      const hinweise = pruefe({ ist: i ? { min: i.min, max: i.max, preis: i.preis, imRepricing: i.imRepricing } : null, bestand, sollMin: ent.art === "liquidation_neu" ? (eff.min ?? min) : min, liquidationFrei, sollStrategie: ent.regel, istStrategie: istRegel });
+      const hinweiseRoh = pruefe({ ist: i ? { min: i.min, max: i.max, preis: i.preis, imRepricing: i.imRepricing } : null, bestand, sollMin: ent.art === "liquidation_neu" ? (eff.min ?? min) : min, liquidationFrei, sollStrategie: ent.regel, istStrategie: istRegel });
+      // Ohne ProfitGuard-Export im Land ist „nicht im Repricing“ unbekannt – nicht zählen.
+      const hinweise = istRows.length ? hinweiseRoh : hinweiseRoh.filter((x) => x !== "nicht_im_repricing");
       zeilen.push({
         land, sku: r.sku, regel: ent.regel, strategieName: namen[ent.regel] ?? ent.regel, min, max, aktiv, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox,
         istRegel, istStrategieName: i?.strategie ?? null, istMin: i?.min ?? null, istMax: i?.max ?? null, istImRepricing: i ? i.imRepricing : null, istPreis: i?.preis ?? r.price ?? null,
@@ -371,7 +373,7 @@ export async function profitguardExportDatei(tenantId: string, id: string, land?
   const istJe = new Map(ist.map((x) => [`${x.marktplatz}|${x.sku}`, x]));
   const datei: PgDateiZeile[] = zeilen.map((z) => {
     const x = istJe.get(`${z.land}|${z.sku}`);
-    return { land: z.land, sku: z.sku, strategieName: z.strategieName, min: z.min, max: z.max, aktiv: z.aktiv, ist: x ? { zusatz: x.zusatz, asin: x.asin, titel: x.titel, preis: x.preis, bestand: x.bestand } : null };
+    return { land: z.land, sku: z.sku, strategieName: z.strategieName, min: z.min, max: z.max, aktiv: z.aktiv, ist: x ? { zusatz: x.zusatz, asin: x.asin, titel: x.titel, preis: x.preis, bestand: x.bestand, buyboxPreis: x.buyboxPreis, eigeneBuybox: x.eigeneBuybox, buyboxAnteil: x.buyboxAnteil } : null };
   });
   const datum = e.createdAt.toISOString().slice(0, 10);
   return { name: `ProfitGuard_${land ?? "alle"}_${datum}${e.nurAenderungen ? "_Aenderungen" : ""}.csv`, text: profitguardDatei(datei, f) };

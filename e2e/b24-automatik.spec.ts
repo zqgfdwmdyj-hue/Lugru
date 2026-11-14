@@ -1,6 +1,7 @@
 // B24: Browser-Automatik-Anmeldung gehärtet – Cookie-Banner und andere Feldnamen werden gefunden, eigene Feldnamen gehen
 // vor, Browser-Prüfung (Cloudflare) wird klar gemeldet, und jeder Fehlschlag hat ein Bildschirmfoto mit Titel und
-// Adresse unter /import/debug/… (nur Inhaber). Test-Nachbau der Anmeldeseiten, erfundene Zugänge.
+// Adresse unter /import/debug/… (nur Inhaber). Test-Nachbau der Anmeldeseiten, erfundene Zugänge. Geprüft über
+// „Verbindung testen“ der ArbitrageOne-Anbindung (bis zur BQool-Ablösung über „BQool – Anmeldung“).
 import { alsPerson, anmelden, expect, sql, test } from "./helfer";
 import { TD } from "./env";
 
@@ -8,33 +9,34 @@ test.describe("B24 – Anmeldung der Browser-Automatik", () => {
   test("Cookie-Banner + andere Feldnamen, eigener Selektor, Captcha, Seite ohne Formular mit Bildschirmfoto", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
-    const [{ config: vorher }] = await sql<{ config: Record<string, string> }>("select config from integrations where tenant_id = $1 and provider = 'bqool_web'", [T]);
-    const setzen = (cfg: Record<string, string>) => sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'bqool_web'", [T, JSON.stringify({ ...vorher, ...cfg })]);
+    const [{ config: vorher }] = await sql<{ config: Record<string, string> }>("select config from integrations where tenant_id = $1 and provider = 'arbitrageone_web'", [T]);
+    const setzen = (cfg: Record<string, string>) => sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'arbitrageone_web'", [T, JSON.stringify({ ...vorher, ...cfg })]);
     const testen = async () => {
       // Erst weg von der Seite: gleiche Adresse mit „#“ lädt sonst nicht neu und die alte Meldung stünde noch da.
       await page.goto("about:blank");
-      await page.goto("/anbindungen?p=bqool_web#bqool_web");
-      await page.locator("#bqool_web").getByRole("button", { name: "Verbindung testen" }).click();
-      const n = page.locator("#bqool_web .notice");
+      await page.goto("/anbindungen?p=arbitrageone_web#arbitrageone_web");
+      await page.locator("#arbitrageone_web").getByRole("button", { name: "Verbindung testen" }).click();
+      const n = page.locator("#arbitrageone_web .notice");
       await expect(n).toBeVisible({ timeout: 120_000 });
       return n;
     };
     try {
       await anmelden(page, "inhaber");
 
-      // 1) Cookie-Banner verdeckt das Formular, E-Mail-Feld heißt „login_id“ (nur Platzhalter), Knopf „Log in“
-      await setzen({ loginUrl: `${TD}/web-bqoolneu/login`, uploadUrl: `${TD}/web-bqoolneu/upload/amazonde` });
+      // 1) Cookie-Banner verdeckt das Formular, E-Mail-Feld heißt „login_id“ (nur Platzhalter), Knopf „Log in“.
+      //    Die Export-Seite des Nachbaus hat keine ArbitrageOne-Karten – entscheidend ist hier nur „Anmeldung ok“.
+      await setzen({ loginUrl: `${TD}/web-cookieneu/login`, exportUrl: `${TD}/web-cookieneu/export` });
       let n = await testen();
       await expect(n).toContainText("Anmeldung ok");
-      await expect(n).toContainText("DE: Upload-Seite erreichbar");
+      await expect(n).toContainText("Einkäufe: nicht gefunden");
 
       // 2) Felder ohne erkennbare Namen: ohne eigenen Selektor nicht zu finden …
-      await setzen({ loginUrl: `${TD}/web-sonder/login`, uploadUrl: `${TD}/web-sonder/upload/amazonde` });
+      await setzen({ loginUrl: `${TD}/web-sonder/login`, exportUrl: `${TD}/web-sonder/export` });
       n = await testen();
       await expect(n).toContainText("Anmeldeformular nicht gefunden");
       await expect(n.getByTestId("debug-link")).toBeVisible();
       // … mit „Feld E-Mail“ aus der Anbindung (wird zuerst probiert) klappt es
-      await setzen({ loginUrl: `${TD}/web-sonder/login`, uploadUrl: `${TD}/web-sonder/upload/amazonde`, feldEmail: "input[name=kennung]" });
+      await setzen({ loginUrl: `${TD}/web-sonder/login`, exportUrl: `${TD}/web-sonder/export`, feldEmail: "input[name=kennung]" });
       n = await testen();
       await expect(n).toContainText("Anmeldung ok");
 
@@ -67,7 +69,7 @@ test.describe("B24 – Anmeldung der Browser-Automatik", () => {
       expect(fremd.headers()["content-type"] ?? "").not.toBe("image/png");
       await buero.context().close();
     } finally {
-      await sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'bqool_web'", [T, JSON.stringify(vorher)]);
+      await sql("update integrations set config = $2::jsonb where tenant_id = $1 and provider = 'arbitrageone_web'", [T, JSON.stringify(vorher)]);
     }
   });
 });

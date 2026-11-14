@@ -287,7 +287,7 @@ export function formatLernen(headers: string[], rows: string[][], spalten: Parti
   return { kopf: [...headers], trenner: trenner === ";" ? ";" : trenner === "\t" ? "\t" : ",", dezimal, spalten: { ...spalten }, aktivWerte: { an, aus }, marktWerte, ausExport: true };
 }
 
-export type PgDateiZeile = { land: string; sku: string; strategieName: string; min: number; max: number; aktiv: boolean; /** Zeile aus dem letzten ProfitGuard-Export (für unveränderte Spalten). */ ist?: { zusatz: Record<string, string>; asin: string | null; titel: string | null; preis: number | null; bestand: number | null } | null };
+export type PgDateiZeile = { land: string; sku: string; strategieName: string; min: number; max: number; aktiv: boolean; /** Zeile aus dem letzten ProfitGuard-Export (für unveränderte Spalten). */ ist?: { zusatz: Record<string, string>; asin: string | null; titel: string | null; preis: number | null; bestand: number | null; buyboxPreis?: number | null; eigeneBuybox?: boolean | null; buyboxAnteil?: number | null } | null };
 
 const feldWert = (v: string, trenner: string) => (/["\r\n]/.test(v) || v.includes(trenner) ? `"${v.replace(/"/g, '""')}"` : v);
 
@@ -309,6 +309,10 @@ export function profitguardDatei(zeilen: PgDateiZeile[], f: PgFormat = PG_FORMAT
         if (feld === "titel") return z.ist?.titel ?? "";
         if (feld === "preis") return z.ist?.preis !== null && z.ist?.preis !== undefined ? z2(z.ist.preis) : "";
         if (feld === "bestand") return z.ist?.bestand !== null && z.ist?.bestand !== undefined ? String(z.ist.bestand) : "";
+        // Buy-Box-Spalten wie im Export zurückschreiben (nicht leer lassen)
+        if (feld === "bbPreis") return z.ist?.buyboxPreis !== null && z.ist?.buyboxPreis !== undefined ? z2(z.ist.buyboxPreis) : "";
+        if (feld === "eigeneBb") return z.ist?.eigeneBuybox === true ? f.aktivWerte.an : z.ist?.eigeneBuybox === false ? f.aktivWerte.aus : "";
+        if (feld === "bbAnteil") return z.ist?.buyboxAnteil !== null && z.ist?.buyboxAnteil !== undefined ? (f.dezimal === "," ? String(z.ist.buyboxAnteil).replace(".", ",") : String(z.ist.buyboxAnteil)) : "";
         return z.ist?.zusatz?.[h] ?? "";
       })
       .map((v) => feldWert(v, f.trenner))

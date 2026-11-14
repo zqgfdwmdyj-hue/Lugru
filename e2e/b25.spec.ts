@@ -1,6 +1,6 @@
 // B25 (Browser-Prüfung Teil 4) mit erfundenen Daten: Abrechnung aus dem Transaktionsbericht (auch für ältere Importe
 // nachgezogen, genauere Datei ersetzt die Ableitung), Import-Seite mit Ergebnis/Fehler, Lugru-Schwelle 60 als Wert,
-// BQool-Vorschau statt Download, Rückgängig für aufgabe_verschieben, Paletten ohne Kunde auf der Startseite,
+// ProfitGuard-Datei statt Download, Rückgängig für aufgabe_verschieben, Paletten ohne Kunde auf der Startseite,
 // Fahrzeit + Telefonnummer im Tagesplan, Privat „voll“ bei Nicht-Inhabern bereinigt, VA-Rolle per Knopf,
 // Calls-Suche, Abruf-Intervall je Anbindung, B2B-Ablauf-Hilfe.
 import bcrypt from "bcryptjs";
@@ -86,7 +86,7 @@ test.describe("B25 Browser-Prüfung Teil 4", () => {
     await expect(page.getByTestId("kpi-revenue")).toBeVisible();
   });
 
-  test("B25.3/B25.5/B25.6/B25.7: Lugru-Schwelle 60, BQool-Vorschau statt Download, Rückgängig für aufgabe_verschieben, Paletten ohne Kunde", async ({ page, browser, baseURL }) => {
+  test("B25.3/B25.5/B25.6/B25.7: Lugru-Schwelle 60, ProfitGuard-Datei statt Download, Rückgängig für aufgabe_verschieben, Paletten ohne Kunde", async ({ page, browser, baseURL }) => {
     test.setTimeout(120_000);
     const m = marke();
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
@@ -97,12 +97,17 @@ test.describe("B25 Browser-Prüfung Teil 4", () => {
     await expect(page.getByTestId("de-schwelle-je")).toHaveValue(/Lugru Deals=\d+/);
     await expect(page.getByTestId("de-schwelle-gilt")).toContainText(/Lugru Deals \d+/);
 
-    // B25.5: /repricer/export ohne Format → Vorschau mit Warnungen und Freigabe je Land (kein Datei-Download)
+    // B25.5: /repricer/export ohne Format → ProfitGuard-Datei mit Warnungen und Freigabe (kein Datei-Download);
+    // seit der BQool-Ablösung gibt es nur noch die deutsche Bestandsliste (?format=de), jedes andere Format leitet weiter
     await page.goto("/repricer/export");
-    await expect(page).toHaveURL(/\/repricer\/bqool/);
-    await expect(page.locator('[data-testid="bq-warnungen"], [data-testid="bq-warnungen-keine"]').first()).toBeVisible();
-    const csv = await page.request.get("/repricer/export?format=bqool");
+    await expect(page).toHaveURL(/\/repricer\/profitguard/);
+    await expect(page.locator('[data-testid="pg-warnungen"], [data-testid="pg-warnungen-keine"]').first()).toBeVisible();
+    await page.goto("/repricer/export?format=bqool");
+    await expect(page).toHaveURL(/\/repricer\/profitguard/);
+    const csv = await page.request.get("/repricer/export?format=de");
     expect(csv.headers()["content-type"]).toContain("text/csv");
+    expect(csv.headers()["content-disposition"]).toContain("Repricer_Preise.csv");
+    expect((await csv.text()).replace(/^\uFEFF/, "").split("\r\n")[0]).toBe("SKU;Mindestpreis;Maximalpreis;EK;FBA-Gebühr;Gebühren geschätzt");
 
     // B25.6: neuer grüner Aufruf aufgabe_verschieben → „↩ Rückgängig“ stellt die alte Frist wieder her
     const alt = plus(HEUTE, 30);
