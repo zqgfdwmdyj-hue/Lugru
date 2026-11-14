@@ -313,10 +313,10 @@ export async function applyReport(opts: {
       const parsed = parseFees(table);
       rows = parsed.length;
       const P = schema.products;
-      // B33.1: Gebühren je Land (Spalte „amazon-store“) für die BQool-Formel; das Produkt behält die DE-Werte.
+      // Gebühren je Land (Spalte „amazon-store“) für Soll-Min und Break-even je Land; das Produkt behält die DE-Werte.
       const jeLand = parsed.filter((f) => f.land && f.sku && (!f.waehrung || f.waehrung.toUpperCase() === "EUR"));
       if (jeLand.length) {
-        const { gebuehrenSpeichern } = await import("@/lib/bqool/gebuehren");
+        const { gebuehrenSpeichern } = await import("@/lib/repricing/gebuehren");
         await gebuehrenSpeichern(tenantId, "amazon", jeLand.map((f) => ({ land: f.land!, sku: f.sku!, asin: f.asin, fba: f.fbaFee, satz: f.referralRate, preis: f.preis, kategorie: f.kategorie })));
       }
       for (const f of parsed) {

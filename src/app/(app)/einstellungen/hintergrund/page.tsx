@@ -11,10 +11,10 @@ import { AO_EXPORTE, kurzFehler } from "@/lib/arbitrageone/logic";
 import { discordLiveStatus } from "@/lib/discord/gateway";
 import { ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
 import { abrufListe, type AbrufZeile } from "../../anbindungen/abrufe";
-import { aoJetztAbholenAction, bqoolUploadBestaetigenAction, fetchAmazonReportsNow, importErneutAction, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow } from "../../anbindungen/actions";
+import { aoJetztAbholenAction, fetchAmazonReportsNow, importErneutAction, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow } from "../../anbindungen/actions";
 
 // Einstellungen › Hintergrund & Importe: was automatisch läuft (Abrufe mit letztem/nächstem Lauf, Amazon-Berichte,
-// Discord live) und was importiert wurde (ArbitrageOne, BQool-Uploads). Zugangsdaten stehen unter „Anbindungen“.
+// Discord live) und was importiert wurde (ArbitrageOne, ProfitGuard-Dateien). Zugangsdaten stehen unter „Anbindungen“.
 
 const zeit = (d: Date | null) => (d ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : null);
 
@@ -52,18 +52,13 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
     db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
     abrufListe(session.tenantId),
     discordLiveStatus(session.tenantId),
-    db.select({ id: schema.bqoolExporte.id, protokoll: schema.bqoolExporte.protokoll }).from(schema.bqoolExporte).where(eq(schema.bqoolExporte.tenantId, session.tenantId)).orderBy(desc(schema.bqoolExporte.createdAt)).limit(10),
+    db.select({ id: schema.profitguardExporte.id, anzahl: schema.profitguardExporte.anzahl, nurAenderungen: schema.profitguardExporte.nurAenderungen, importiertAm: schema.profitguardExporte.importiertAm, importiertVon: schema.profitguardExporte.importiertVon, createdAt: schema.profitguardExporte.createdAt }).from(schema.profitguardExporte).where(eq(schema.profitguardExporte.tenantId, session.tenantId)).orderBy(desc(schema.profitguardExporte.createdAt)).limit(10),
     aoLaeufe(session.tenantId, 8),
     aoImporte(session.tenantId, 20),
   ]);
   const aoEingerichtet = status.has("arbitrageone_web");
   const aoPlan = ABRUF_PLAN["ArbitrageOne: Exporte abholen"];
   const aoLetzterPlan = aoL.find((l) => l.ausloeser === "zeitplan")?.createdAt ?? null;
-  // B23: Protokoll je Upload (Land, Datei, Zeilen, Zeitpunkt, Ergebnis) aus den letzten BQool-Exporten
-  const bqUploads = bqExporte
-    .flatMap((e) => e.protokoll.filter((p) => p.land).map((p) => ({ ...p, exportId: e.id })))
-    .sort((a, b) => b.zeit.localeCompare(a.zeit))
-    .slice(0, 20);
   const jetzt = new Date();
   const discordAbrufe = abrufe.filter((a) => /discord|call/i.test(a.name));
   const uebrigeAbrufe = abrufe.filter((a) => !/discord|call/i.test(a.name));
@@ -91,7 +86,7 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
         <a href="#abrufe">Hintergrund-Abrufe</a>
         {status.get("amazon_sp") && <a href="#amazon-berichte">Amazon-Berichte</a>}
         {(aoEingerichtet || aoI.length > 0) && <a href="#importe-arbitrageone">Importe – ArbitrageOne</a>}
-        {bqUploads.length > 0 && <a href="#importe-exporte">BQool-Uploads</a>}
+        {bqExporte.length > 0 && <a href="#importe-exporte">ProfitGuard-Dateien</a>}
       </nav>
       <section className="card card-pad stack" id="abrufe" data-testid="hintergrund-abrufe">
         <div className="between">
@@ -169,7 +164,7 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
           <div className="small" data-testid="ao-plan">
             {aoPlan.text} · letzter Nachtlauf: {zeit(aoLetzterPlan) ?? "noch keiner"} · nächster: {naechsterText(aoPlan, aoLetzterPlan, jetzt)}
           </div>
-          <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")} · BQool: entfällt (Seller-System erzeugt die Datei). Gleiche Datei zweimal wird übersprungen.</div>
+          <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")} Gleiche Datei zweimal wird übersprungen.</div>
           {ao && AO_MSG[ao] && <div className={`notice ${ao === "ok" ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-meldung">{AO_MSG[ao]}</div>}
           {erneut && <div className={`notice ${erneut.startsWith("ok:") ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-erneut-meldung">{erneut.replace(/^(ok|fehler):/, "").slice(0, 300)}</div>}
           {aoL.length > 0 && (
@@ -232,35 +227,19 @@ export default async function HintergrundPage({ searchParams }: { searchParams: 
           )}
         </section>
       )}
-      {bqUploads.length > 0 && (
+      {bqExporte.length > 0 && (
         <section className="card card-pad stack" id="importe-exporte" data-testid="importe-exporte">
-          <h2>Importe/Exporte – BQool-Uploads</h2>
-          <table className="table small" data-testid="bq-uploads">
-            <thead><tr><th>Zeitpunkt</th><th>Land</th><th>Datei</th><th className="right">Zeilen</th><th>Ergebnis</th></tr></thead>
+          <h2>Exporte – ProfitGuard-Importdateien</h2>
+          <div className="small muted">Vom Seller-System erzeugt; Ludwig importiert sie selbst in ProfitGuard – das System sendet nichts.</div>
+          <table className="table small" data-testid="pg-exporte">
+            <thead><tr><th>Erzeugt</th><th>Umfang</th><th>Zeilen je Land</th><th>In ProfitGuard importiert</th></tr></thead>
             <tbody>
-              {bqUploads.map((u, i) => (
-                <tr key={i} data-testid="bq-upload-zeile">
-                  <td className="num">{zeit(new Date(u.zeit))}</td>
-                  <td>{u.land}</td>
-                  <td><a href={`/repricer/bqool?export=${u.exportId}`}>{u.datei}</a></td>
-                  <td className="num right">{u.zeilen ?? "–"}</td>
-                  <td>
-                    {u.ok ? (
-                      <span className="tag tag-ok">{u.vonHand ? "hochgeladen (von Hand bestätigt)" : "hochgeladen"}</span>
-                    ) : u.unklar ? (
-                      <span className="tag tag-warn" data-testid="bq-upload-pruefen">bitte in BQool prüfen – keine Bestätigung erkannt</span>
-                    ) : (
-                      <span style={{ color: "var(--danger)" }}>{u.text.replace(/^[A-Z]{2}: [^–]+– /, "")}</span>
-                    )}
-                    {!u.ok && (
-                      <form action={bqoolUploadBestaetigenAction} style={{ display: "inline", marginLeft: 6 }}>
-                        <input type="hidden" name="exportId" value={u.exportId} />
-                        <input type="hidden" name="land" value={u.land} />
-                        <input type="hidden" name="zeit" value={u.zeit} />
-                        <button type="submit" className="btn btn-small" title="In BQool nachgesehen: die Datei ist angekommen" data-testid="bq-upload-geklappt">hat geklappt</button>
-                      </form>
-                    )}
-                  </td>
+              {bqExporte.map((e) => (
+                <tr key={e.id} data-testid="pg-export-zeile">
+                  <td className="num"><a href={`/repricer/profitguard?export=${e.id}`}>{zeit(e.createdAt)}</a></td>
+                  <td>{e.nurAenderungen ? "nur Änderungen" : "alles"}</td>
+                  <td>{Object.entries(e.anzahl).filter(([, n]) => n).map(([l, n]) => `${l} ${n}`).join(" · ") || "–"}</td>
+                  <td>{e.importiertAm ? <span className="tag tag-ok">bestätigt {zeit(e.importiertAm)}{e.importiertVon ? ` (${e.importiertVon})` : ""}</span> : <span className="muted">noch nicht bestätigt</span>}</td>
                 </tr>
               ))}
             </tbody>

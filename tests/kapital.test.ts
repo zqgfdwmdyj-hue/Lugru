@@ -28,7 +28,7 @@ describe("Jahresrendite und Ampel", () => {
     expect(bewerteKapital({ ...basis, gewinn90: -20 }).gruende).toContain("negative Rendite");
     const be = bewerteKapital({ ...basis, preis: 11.5 });
     expect(be.ampel).toBe("rot");
-    expect(be.vorschlaege).toContain("Repricer-Untergrenze auf Break-even prüfen (BQool)");
+    expect(be.vorschlaege).toContain("Repricer-Untergrenze auf Break-even prüfen (ProfitGuard)");
   });
   it("ohne EK oder Verkaufsdaten: gelb mit Grund", () => {
     expect(bewerteKapital({ ...basis, ek: null })).toMatchObject({ ampel: "gelb", kapital: null, rendite: null });

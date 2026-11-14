@@ -62,17 +62,17 @@ describe("Ausnahmen und Wochensumme", () => {
 });
 
 describe("Aufgabentext", () => {
-  it("nennt Break-even, Buy Box und BQool-Regel; warnt bei Min unter Break-even", () => {
+  it("nennt Break-even, Buy Box und ProfitGuard-Strategie; warnt bei Min unter Break-even", () => {
     const [f] = pruefeVerlust([w("2026-10-27", "A", 3, -2, 11), w("2026-10-28", "A", 3, -2, 11)], HEUTE);
-    const a = verlustAufgabe(f, { breakEven: 12.5, buybox: { preis: 10.99, quelle: "Keepa" }, bqool: { regel: "Buy Box", min: 10.5, max: 19.99, marktplatz: "DE" } });
+    const a = verlustAufgabe(f, { breakEven: 12.5, buybox: { preis: 10.99, quelle: "Keepa" }, repricer: { strategie: "Buy Box", min: 10.5, max: 19.99, marktplatz: "DE" } });
     expect(a.titel).toBe("Verlust-Stopp: Test A – 2 von 3 Tagen im Minus · 6 Stück mit Verlust");
     expect(a.notiz).toContain("Break-even 12,50 € – Preis liegt darunter");
     expect(a.notiz).toContain("Buy Box 10,99 € laut Keepa");
     expect(a.notiz).toContain("Min 10,50 €");
     expect(a.notiz).toContain("Min liegt unter Break-even");
-    const ohne = verlustAufgabe(f, { breakEven: null, buybox: null, bqool: null });
+    const ohne = verlustAufgabe(f, { breakEven: null, buybox: null, repricer: null });
     expect(ohne.notiz).toContain("Break-even unbekannt");
-    expect(ohne.notiz).toContain("BQool: SKU nicht im letzten Export");
+    expect(ohne.notiz).toContain("ProfitGuard: SKU nicht im letzten Export");
   });
 });
 
@@ -117,7 +117,7 @@ describe("Zerlegung", () => {
   it("echter Verlust aus dem Verkauf löst weiter aus und zeigt Erstattungen getrennt", () => {
     const [f] = pruefeVerlust([{ ...w("2026-10-27", "V", 2, -6), refundCost: 1 }, w("2026-10-28", "V", 1, -2)], HEUTE);
     expect(f).toMatchObject({ sku: "V", verlustTage: 2, summeVerkauf: -7, erstattungen: -1, summe: -8 });
-    expect(verlustAufgabe(f, { breakEven: null, buybox: null, bqool: null }).notiz).toContain("Nicht mitgezählt: Erstattungen");
+    expect(verlustAufgabe(f, { breakEven: null, buybox: null, repricer: null }).notiz).toContain("Nicht mitgezählt: Erstattungen");
   });
 
   it("Amazon-Transaktionen: Erstattung, Entsorgung/Entfernung, Lager", () => {
@@ -135,7 +135,7 @@ describe("Zerlegung", () => {
     expect(pruefeVerlust([w("2026-10-27", "A", 1, -0.2), w("2026-10-28", "A", 1, -0.1)], HEUTE, undefined, undefined, new Map([["A|2026-10-27", { erstattungen: 0, abschreibung: -0.75, lager: 0 }], ["A|2026-10-28", { erstattungen: 0, abschreibung: -0.75, lager: 0 }]]))).toEqual([]);
   });
 
-  it("BQool-Regel Liquidation → Ausnahme vorschlagen", () => {
+  it("Strategie Liquidation/Abverkauf → Ausnahme vorschlagen", () => {
     expect(istLiquidation("Liquidation")).toBe(true);
     expect(istLiquidation("Abverkauf DE")).toBe(true);
     expect(istLiquidation("Standard")).toBe(false);

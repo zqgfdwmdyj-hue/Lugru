@@ -18,7 +18,6 @@ import "./lexoffice";
 import "./tesla";
 import "./sms";
 import "./asana";
-import "./bqool-web";
 import "./arbitrageone-web";
 import "./briefversand";
 import "./leadquellen";

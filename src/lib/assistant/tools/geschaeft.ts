@@ -14,8 +14,6 @@ import { CHECK_LABEL, filterReorder, KAPITALBEDARF_DEFINITION, reorderTotals, UR
 import { daysUntil, MODULE_LABEL, WAITING_LABEL } from "@/lib/sas/logic";
 import { getProgram, loadBrands, loadDeals, loadItems } from "@/lib/sas/service";
 import { getSettings } from "@/lib/settings";
-import { BQOOL_MAERKTE, HINWEIS_RANG, HINWEIS_TEXT, regelUebersicht } from "@/lib/bqool/logic";
-import { bqoolStand } from "@/lib/bqool/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
@@ -422,25 +420,6 @@ export const anbindungenStatus = defineTool({
             };
           })()
         : undefined,
-      // B31.4: täglicher BQool-Kreislauf – Ist je Land, Upload (übernommen je Land, Fehler), Freigabe-Status, Nachkontrolle.
-      bqool: st.get("bqool_web")
-        ? await (async () => {
-            const { kreislaufStand } = await import("@/lib/bqool/kreislauf");
-            const { freigabeText, jeLandText, standText, uebernommenJeLand } = await import("@/lib/bqool/kreislauf-logic");
-            const jetzt = new Date(now);
-            const k = await kreislaufStand(t, jetzt);
-            const up = k.letzterUpload;
-            const u = up?.upload ? uebernommenJeLand(up.upload) : null;
-            const h = k.heute;
-            return {
-              taeglicher_lauf: !k.eingerichtet ? "nicht eingerichtet (Anbindung „BQool – Anmeldung“: E-Mail, Passwort, Upload-Seite)" : k.aus ? "aus (nur auf Knopfdruck)" : "täglich 06:00 – Ist holen, Soll erzeugen, Freigabe per Push",
-              ist_holen: { je_land: k.istJeLand.map((x) => ({ land: x.land, stand: standText(x.am, jetzt) })), export_seite: k.exportSeite ? "eingetragen" : "fehlt – Ist bleibt vom letzten Datei-Upload" },
-              heute: h ? { phase: h.phase, freigabe: h.freigabe ?? undefined, aenderungen: h.zusammenfassung ? freigabeText(h.zusammenfassung) : undefined, freigabe_link: h.freigabe === "offen" ? abs(ctx, `/repricer/bqool?lauf=${h.id}#freigabe`) : undefined } : "heute noch kein Lauf",
-              letzter_upload: up ? { am: berlinDateTime(up.uploadAm), freigabe: up.freigabe === "automatisch" ? "automatisch" : `freigegeben ${berlinDateTime(up.freigabeAm) ?? ""}`.trim(), uebernommen: u && Object.keys(u.jeLand).length ? jeLandText(u.jeLand) : "nichts", fehler: u?.fehler ?? 0, status: up.uploadStatus ?? undefined, nachkontrolle: up.kontrolle?.text ?? (up.kontrolleFaelligAm ? `folgt ab ${berlinDateTime(up.kontrolleFaelligAm)}` : undefined) } : "noch keiner",
-              link: abs(ctx, "/repricer/bqool#freigabe"),
-            };
-          })()
-        : undefined,
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
       postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
       postfaecher: pf.postfaecher
@@ -502,89 +481,4 @@ export const mail = defineTool({
   },
 });
 
-export const repricer = defineTool({
-  name: "repricer",
-  title: "Repricer (BQool)",
-  description:
-    "BQool-Einstellungen je SKU und Land aus dem letzten BQool-Ist (täglich 06:00 automatisch geholt bzw. Export „Manage Listings“ hochgeladen; Feld „bqool_stand“): Regel/Strategie mit „regel_seit“ (B31.6; Liquidation wegen Min unter Marge gekennzeichnet, dort kein Hinweis „Min unter System-Min“), „stufe“ der Regel-Leiter (1 ia · 2 Abverkauf · 3 Liquidation), „liquidation_bis“ (Restdauer), „schnelldreher“ (Boden Break-even + 7 %), Status, aktueller Preis, Mindest- und Höchstpreis, Buy Box (Preis, wer sie hat), Angebote, Bestand – abgeglichen mit dem Mindestpreis des Seller-Systems (EK + Gebühren + Mindestgewinn). Standard: nur Auffälligkeiten (Min zu niedrig, pausiert, Buy Box verloren …). Feld „buybox_anteil“: Buy-Box-Anteil je Land und Woche aus dem BQool-Bericht „Listing Performance“ (Listen „unter Min ohne Buy Box“, „Verlust“, „Preisbewegung“ unter Repricer → Leistung). Für „Stimmen meine BQool-Mindestpreise?“, „Wo habe ich die Buy Box verloren?“.",
-  area: ["buchhaltung", "amazon"],
-  write: false,
-  quelle: { text: "BQool-Export (hochgeladen unter Repricer), EK und Gebühren im Seller-System" },
-  input: z.object({
-    ansicht: z.enum(["probleme", "alle"]).default("probleme"),
-    marktplatz: z.enum(["alle", ...BQOOL_MAERKTE]).default("alle"),
-    hinweis: z.enum(["alle", ...HINWEIS_RANG]).default("alle").describe("Nur eine Art von Auffälligkeit"),
-    regel: z.string().trim().max(60).optional().describe("Nur diese BQool-Regel/Strategie (z. B. „ia“, „Liquidation“; „(ohne Regel)“ für SKUs ohne Regel)"),
-    suche: z.string().trim().max(60).optional().describe("SKU, ASIN oder Titel"),
-    limit: z.number().int().min(1).max(300).default(80),
-  }),
-  run: async (ctx, i) => {
-    const { zeilen, stand } = await bqoolStand(ctx.session.tenantId);
-    const { standText } = await import("@/lib/bqool/kreislauf-logic");
-    const bb = await import("@/lib/bqool/berichte").then((x) => x.buyboxUebersicht(ctx.session.tenantId));
-    // B31.6a/b, B31.8: Stufe der Regel-Leiter, „Liquidation bis“, Schnelldreher
-    const { stufeVonRegel, ablaufStand } = await import("@/lib/bqool/leiter-logic");
-    const { db: dbx, schema: sx } = await import("@/db");
-    const { eq: eqx } = await import("drizzle-orm");
-    const sets = (await import("@/lib/settings").then((x) => x.getSettings(ctx.session.tenantId))).bqool;
-    const lqJe = new Map((await dbx.select().from(sx.bqoolLiquidationen).where(eqx(sx.bqoolLiquidationen.tenantId, ctx.session.tenantId))).filter((l) => l.status === "aktiv" || l.status === "zurueck_vorgeschlagen").map((l) => [`${l.land}|${l.sku}`, l]));
-    const pfJe = new Map((await dbx.select().from(sx.bqoolSkuPflege).where(eqx(sx.bqoolSkuPflege.tenantId, ctx.session.tenantId))).map((p) => [`${p.land}|${p.sku}`, p]));
-    const heuteX = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
-    const q = i.suche?.toLowerCase();
-    const list = zeilen
-      .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!i.regel || (z.regel?.trim() || "(ohne Regel)").toLowerCase() === i.regel.toLowerCase()) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
-      .sort((a, b) => (a.hinweise[0] ? HINWEIS_RANG.indexOf(a.hinweise[0]) : 99) - (b.hinweise[0] ? HINWEIS_RANG.indexOf(b.hinweise[0]) : 99) || a.sku.localeCompare(b.sku));
-    const zaehle = Object.fromEntries(HINWEIS_RANG.map((h) => [h, zeilen.filter((z) => z.hinweise.includes(h)).length]).filter(([, n]) => n));
-    const aeltester = stand.reduce<Date | null>((m, x) => (x.am && (!m || x.am < m) ? x.am : m), null);
-    return json({
-      eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – in BQool unter Repricing → Manage Listings je Land exportieren und im Seller-System unter Amazon → Repricer (BQool) hochladen",
-      // B31.4: „BQool-Stand: heute 06:05“ (ältester Marktplatz; je Marktplatz unter „eingelesen“)
-      bqool_stand: aeltester ? standText(aeltester) : "noch kein BQool-Ist",
-      // B31.5: Buy-Box-Anteil je Land und Woche (BQool „Listing Performance“, 7 Tage)
-      buybox_anteil: bb.jeLand.length
-        ? { quelle: "BQool-Bericht „Listing Performance“ (7 Tage)", je_land: bb.jeLand.map((x) => ({ land: x.land, prozent: x.anteil === null ? null : Math.round(x.anteil), zeitraum: `${x.tage} Tage bis ${x.stichtag.split("-").reverse().join(".")}` })), je_woche: bb.wochen.map((w) => ({ woche: w.woche, ...Object.fromEntries(Object.entries(w.je).map(([l, v]) => [l, v === null ? null : Math.round(v)])) })), link: abs(ctx, "/repricer/leistung") }
-        : "noch kein BQool-Bericht „Listing Performance“",
-      anzahl_skus: zeilen.length,
-      auffaelligkeiten: zaehle,
-      je_regel: regelUebersicht(zeilen).map((u) => ({ regel: u.regel, skus: u.gesamt, aktiv: u.aktiv, pausiert: u.pausiert, status_unbekannt: u.unbekannt || undefined, auffaellig: u.mitHinweis, je_land: u.laender })),
-      anzahl: list.length,
-      zeilen: list.slice(0, i.limit).map((z) => ({
-        marktplatz: z.marktplatz,
-        sku: z.sku,
-        asin: z.asin ?? undefined,
-        titel: z.titel ?? undefined,
-        versand: z.versand ?? undefined,
-        regel: z.regel,
-        // B31.6: seit wann die Regel in BQool steht; Liquidation wegen Min unter Marge (bewusst unter dem System-Min)
-        regel_seit: z.regelSeit ? z.regelSeit.toISOString().slice(0, 10) : undefined,
-        liquidation_wegen_min_unter_marge: z.liqMarge ? { regel_vorher: z.liqMarge.regelVorher, rueckkehr_vorgeschlagen: z.liqMarge.status === "zurueck_vorgeschlagen" || undefined } : undefined,
-        stufe: stufeVonRegel(z.regel, sets.katalog, sets.abverkaufRegel) ?? undefined,
-        liquidation_bis: (() => { const l = lqJe.get(`${z.marktplatz}|${z.sku}`); if (!l) return undefined; const a = ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute: heuteX, vorwarnTage: sets.leiter.ablaufVorwarnTage }); return a.stand === "dauerhaft" ? "dauerhaft" : l.bis ? { bis: l.bis, rest_tage: a.restTage, ueberfaellig: a.stand === "abgelaufen" || undefined } : undefined; })(),
-        schnelldreher: pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnelldreher ? { sperre_bis: pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnellBis ?? undefined, boden_prozent: sets.leiter.schnell.margeBoden } : undefined,
-        status: z.status,
-        preis: z.preis,
-        min_bqool: z.min,
-        max_bqool: z.max,
-        min_seller_system: z.untergrenze,
-        ek_netto: z.ek,
-        buybox_preis: z.buyboxPreis,
-        buybox_bei: z.eigeneBuybox === true ? "uns" : z.buyboxGewinner ?? (z.eigeneBuybox === false ? "jemand anderem" : null),
-        niedrigster_preis: z.niedrigsterPreis ?? undefined,
-        angebote: z.angebote ?? undefined,
-        bestand: z.bestand ?? undefined,
-        pruefen: z.hinweise.length ? z.hinweise.map((h) => HINWEIS_TEXT[h]) : undefined,
-        effektiver_min: z.effMin ?? undefined,
-        marge_stufe_prozent: z.marge ?? undefined,
-        unterregel: z.unterregel ?? undefined,
-        buybox_erklaerung: z.erklaerung ?? undefined,
-      })),
-      hinweis: list.length > i.limit ? `Nur die ersten ${i.limit} von ${list.length}.` : undefined,
-      legende: { min_seller_system: "Mindestpreis aus EK + FBA-Gebühr + Provision + Mindestgewinn (mit DE-Gebühren; für andere Länder Richtwert); null = EK oder Bestand unbekannt", effektiver_min: "Preis, bei dem die Mindestmarge der BQool-Regel in der Altersstufe erreicht ist (Regel-Katalog, USt des Landes); Liquidation = feste Untergrenze", buybox_erklaerung: "Equalizer: steht bewusst 1 Cent über der Buy Box, wenn diese unter dem effektiven Min liegt", null: "nicht im Export bzw. unbekannt" },
-      upload_datei: abs(ctx, "/repricer/export?format=bqool"),
-      link: abs(ctx, "/repricer"),
-      datenstand: { quelle: "BQool-Ist (täglich 06:00 bzw. hochgeladen) + Seller-System", stand: aeltester ? `BQool-Stand: ${standText(aeltester)}${stand.length > 1 ? " (ältester Marktplatz)" : ""}` : "noch kein BQool-Ist", abgerufen: berlinDateTime(new Date()) ?? "" },
-    });
-  },
-});
-
-export const GESCHAEFT = [hebel, bestellvorschlaege, sas, fbaSendungen, remissionen, anbindungenStatus, mail, repricer];
+export const GESCHAEFT = [hebel, bestellvorschlaege, sas, fbaSendungen, remissionen, anbindungenStatus, mail];

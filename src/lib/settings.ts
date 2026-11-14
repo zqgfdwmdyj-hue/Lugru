@@ -1,9 +1,6 @@
-import { AI_WIN_SALES_BOOSTER, KATALOG_STANDARD, PROVISION_STAFFELN_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
-import { LEITER_STANDARD, leiterMitStandard, type LeiterStand } from "@/lib/bqool/leiter-logic";
-
-/** B20.9: gespeicherte Regel-Kataloge bekommen die Strategie „AI Win Sales Booster“, falls sie fehlt. */
-const mitStandardStrategien = <T extends { katalog: (typeof KATALOG_STANDARD)[number][] }>(b: T): T =>
-  b.katalog.some((k) => k.name.trim().toLowerCase() === AI_WIN_SALES_BOOSTER.name.toLowerCase()) ? b : { ...b, katalog: [...b.katalog, AI_WIN_SALES_BOOSTER] };
+import { ABVERKAUF, ABVERKAUF_NACH_ALTER, MARGE_NACH_ALTER, PROVISION_STAFFELN_STANDARD, STANDARD, STRATEGIEN, neutraleStrategie, strategieKatalog, type ExportLand, type MarkenRegel, type MargeStufe, type Strategie } from "@/lib/repricing/strategie-logic";
+import { LEITER_STANDARD, leiterMitStandard, type LeiterStand } from "@/lib/repricing/leiter-logic";
+import type { PgFormat } from "@/lib/repricing/profitguard-logic";
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -110,47 +107,35 @@ export const DEFAULT_SETTINGS = {
    * ab wie vielen Zeilen es eine Preisliste ist, Mail-Adresse für Weiterleitungen, iCloud-Link des Kurzbefehls.
    */
   /**
-   * BQool-Dateien aus dem System: Standardregel „ia“, Regel-Katalog (spiegelt BQool), Abverkauf-Regelnamen je Land,
-   * Markenregeln (z. B. Philips in DE → „Abverkauf“), Max = Ø Buy Box 90 T × Faktor, Fix- und Zusatzkosten je Stück,
-   * Format aus Ludwigs Vorlage (null = Annahme bis zur Vorlage).
+   * Repricing (seit der BQool-Ablösung über ProfitGuard): Soll-Strategie je SKU und Land mit Margen-Staffeln nach
+   * Lagerdauer (Standard, Abverkauf), Markenregeln (z. B. Philips in FR/IT → „Abverkauf“), Fix- und Zusatzkosten je
+   * Stück, Regel-Leiter, Listing-Check und die Zuordnung Soll-Strategie → Strategiename in ProfitGuard.
    */
-  bqool: {
-    standardRegel: "ia",
-    /** Regel-Katalog, der BQool spiegelt (Repricer → Regeln). */
-    katalog: KATALOG_STANDARD,
-    abverkaufRegel: { DE: "Abverkauf DE", sonst: "Abverkauf" },
-    /** „Cost“ = EK netto × (1 + costUst) – so stehen die Werte in den bisherigen BQool-Dateien. */
-    costUst: 0.19,
-    /** B33.1: Preisstufen der Provision je Kategorie (BQool rechnet die Marge mit dem Satz der Preisstufe). */
+  repricing: {
+    staffeln: { standard: MARGE_NACH_ALTER, abverkauf: ABVERKAUF_NACH_ALTER } as { standard: MargeStufe[]; abverkauf: MargeStufe[] },
+    /** Abgeleitet aus Staffeln und Schnelldreher-Boden (nicht gespeichert). */
+    katalog: strategieKatalog(),
+    standardRegel: STANDARD as Strategie,
+    abverkaufRegel: { DE: ABVERKAUF, sonst: ABVERKAUF } as { DE: Strategie; sonst: Strategie },
+    /** Preisstufen der Provision je Kategorie. */
     provisionStaffeln: PROVISION_STAFFELN_STANDARD,
-    /** B33.6: Uploads mit Fehlern laut „Processing Report“ (Hinweise auf der BQool-Seite). */
-    uploadFehler: null as { gelesenAm: string; eintraege: import("@/lib/bqool/kreislauf-logic").UploadFehler[] } | null,
-    /** Ausnahmen je Land: ASIN oder Marke/Produktname im Titel → Regel (Stand Bauauftrag 30.10.). */
+    /** Ausnahmen je Land: ASIN oder Marke/Produktname im Titel → Strategie. */
     markenRegeln: [
-      { marke: "B0DT6N95XH", land: "DE", regel: "Abverkauf" },
-      ...(["FR", "IT"] as const).flatMap((land) => ["Philips i9000", "Galaxy Watch Ultra", "PS5 Access Controller", "Angelcare"].map((marke) => ({ marke, land, regel: "Abverkauf" }))),
+      { marke: "B0DT6N95XH", land: "DE", regel: ABVERKAUF },
+      ...(["FR", "IT"] as const).flatMap((land) => ["Philips i9000", "Galaxy Watch Ultra", "PS5 Access Controller", "Angelcare"].map((marke) => ({ marke, land, regel: ABVERKAUF }))),
     ] as MarkenRegel[],
     /** Teure Elektronik → „Abverkauf“ in diesen Ländern. */
     elektronikMarken: ["Zyxel", "JBL", "MSI", "Garmin", "DJI", "Gardena"] as string[],
     elektronikLaender: ["FR", "IT", "ES"] as ExportLand[],
-    maxFaktor: 1.3,
     fixGebuehr: 0,
     zusatzkosten: 0,
     laender: ["DE", "FR", "IT", "ES"] as ExportLand[],
-    format: null as BqoolFormat | null,
-    /**
-     * B31 täglicher BQool-Kreislauf: Standard = Freigabe nötig. „automatisch“ (ohne Regelwechsel und ohne Min unter
-     * Break-even) erst, wenn Ludwig an einer SKU in BQool nachgesehen hat, wie BQool den Min aus der Datei nimmt
-     * (minGeprueft). Min in der Datei: „effektiv“ = effektiver Min (Marge der Altersstufe) als harte Untergrenze –
-     * sicher, auch wenn BQool den Dateiwert als harten Min nimmt; „sicherheitsnetz“ = Break-even ohne Marge (nur wenn
-     * BQool den Min bei Margen-Regeln selbst aus Cost + Marge rechnet).
-     */
-    kreislauf: { automatisch: false, minGeprueft: false, minGeprueftAm: null as string | null, minInDatei: "effektiv" as "effektiv" | "sicherheitsnetz" },
-    liquidationTest: { bestanden: false, am: null as string | null, land: null as string | null, sku: null as string | null, vonHand: false },
     leiter: LEITER_STANDARD,
     leiterStand: null as LeiterStand | null,
-    listingCheckStand: null as import("@/lib/bqool/listing-check-logic").CheckStand | null,
-    listingCheckSchwellen: {} as Partial<import("@/lib/bqool/listing-check-logic").CheckSchwellen>,
+    listingCheckStand: null as import("@/lib/repricing/listing-check-logic").CheckStand | null,
+    listingCheckSchwellen: {} as Partial<import("@/lib/repricing/listing-check-logic").CheckSchwellen>,
+    /** ProfitGuard: Strategiename je Soll-Strategie (für Abgleich und Importdatei) und das aus dem Export gelernte Dateiformat. */
+    profitguard: { strategieNamen: Object.fromEntries(STRATEGIEN.map((x) => [x, x])) as Record<Strategie, string>, format: null as PgFormat | null },
   },
   /** Verlust-Stopp: Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) erst ab 5 € je SKU und Woche als Hinweis. */
   verlust: { kostenOhneVerkaufSchwelle: 5 },
@@ -287,7 +272,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}), automatik: { ...d.va.automatik, ...(s.va?.automatik ?? {}), regeln: { ...d.va.automatik.regeln, ...(s.va?.automatik?.regeln ?? {}) } } },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
-    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) }, kreislauf: { ...d.bqool.kreislauf, ...(s.bqool?.kreislauf ?? {}) }, liquidationTest: { ...d.bqool.liquidationTest, ...(s.bqool?.liquidationTest ?? {}) }, leiter: leiterMitStandard(s.bqool?.leiter), leiterStand: s.bqool?.leiterStand ?? null, listingCheckStand: s.bqool?.listingCheckStand ?? null, listingCheckSchwellen: s.bqool?.listingCheckSchwellen ?? {} } as typeof d.bqool),
+    repricing: repricingAufloesen(d.repricing, s.repricing),
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },
@@ -300,6 +285,35 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },
     assistant: { ...d.assistant, ...(s.assistant ?? {}) },
+  };
+}
+
+/**
+ * Repricing-Einstellungen auflösen. Alte BQool-Einstellungen (Migration 0156 hat „bqool“ nach „repricing“ verschoben)
+ * werden übernommen: Staffeln aus dem früheren Regel-Katalog („ia“ bzw. „Abverkauf“), Regelnamen neutral.
+ */
+function repricingAufloesen(d: (typeof DEFAULT_SETTINGS)["repricing"], roh: TenantSettings["repricing"]): (typeof DEFAULT_SETTINGS)["repricing"] {
+  const r = (roh ?? {}) as NonNullable<TenantSettings["repricing"]> & { katalog?: { name: string; staffel?: { bisTage: number | null; marge: number }[] | null }[]; leiter?: { schnell?: { regel?: string | null } } };
+  const alt = (name: (n: string) => boolean) => r.katalog?.find((k) => name(k.name.trim().toLowerCase()))?.staffel?.map((x) => ({ bisTage: x.bisTage, marge: x.marge })) ?? null;
+  const staffeln = { standard: r.staffeln?.standard?.length ? r.staffeln.standard : (alt((n) => n === "ia") ?? d.staffeln.standard), abverkauf: r.staffeln?.abverkauf?.length ? r.staffeln.abverkauf : (alt((n) => n.startsWith("abverkauf")) ?? d.staffeln.abverkauf) };
+  const leiter = leiterMitStandard(r.leiter);
+  const schnellAlt = r.leiter?.schnell?.regel ?? null;
+  return {
+    ...d,
+    staffeln,
+    katalog: strategieKatalog({ standard: staffeln.standard, abverkauf: staffeln.abverkauf, schnellBoden: leiter.schnell.margeBoden }),
+    provisionStaffeln: r.provisionStaffeln ?? d.provisionStaffeln,
+    markenRegeln: (r.markenRegeln ?? d.markenRegeln).map((m) => ({ ...m, regel: neutraleStrategie(m.regel, schnellAlt) ?? ABVERKAUF })),
+    elektronikMarken: r.elektronikMarken ?? d.elektronikMarken,
+    elektronikLaender: r.elektronikLaender ?? d.elektronikLaender,
+    fixGebuehr: r.fixGebuehr ?? d.fixGebuehr,
+    zusatzkosten: r.zusatzkosten ?? d.zusatzkosten,
+    laender: r.laender?.length ? r.laender : d.laender,
+    leiter,
+    leiterStand: r.leiterStand ?? null,
+    listingCheckStand: r.listingCheckStand ?? null,
+    listingCheckSchwellen: r.listingCheckSchwellen ?? {},
+    profitguard: { strategieNamen: { ...d.profitguard.strategieNamen, ...(r.profitguard?.strategieNamen ?? {}) }, format: r.profitguard?.format ?? null },
   };
 }
 

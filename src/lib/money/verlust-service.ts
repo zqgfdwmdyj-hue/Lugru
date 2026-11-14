@@ -8,25 +8,23 @@ import { getSettings } from "@/lib/settings";
 import { amazonAnteile, ausnahmeAktiv, fensterMitDaten, istLiquidation, kostenOhneVerkauf, nichtVerkaufAnteile, pruefeVerlust, verlustAufgabe, wochenSumme, VERLUST_REGEL, type KostenOhneVerkauf, type NichtVerkauf, type TagWert, type VerlustFall } from "./verlust";
 
 // Verlust-Stopp: täglich nach dem sellerboard-Abgleich. Fälle → wichtige Aufgabe je SKU (mit Break-even, Buy Box,
-// BQool-Regel); bewusste Verlustverkäufe stehen als Ausnahme mit Wochensumme daneben.
+// Strategie/Min/Max in ProfitGuard); bewusste Verlustverkäufe stehen als Ausnahme mit Wochensumme daneben.
 
 export type VerlustFallMehr = VerlustFall & {
   breakEven: number | null;
   buybox: { preis: number | null; quelle: string; amazon?: boolean } | null;
-  bqool: { regel: string | null; min: number | null; max: number | null; marktplatz: string } | null;
+  /** Stand in ProfitGuard (DE bevorzugt). */
+  repricer: { strategie: string | null; min: number | null; max: number | null; marktplatz: string } | null;
   aufgabe: { titel: string; notiz: string };
-  /** BQool-Regel Liquidation/Abverkauf → als Ausnahme vorschlagen. */
+  /** Strategie Liquidation/Abverkauf → als Ausnahme vorschlagen. */
   liquidation: boolean;
-  /** B31.5: Est. Profit laut BQool-Bericht „Listing Performance“ (zweite Quelle) je Land. */
-  bqoolGewinn: { land: string; profit: number; tage: number; stichtag: string }[];
 };
-export type BqoolVerlust = Awaited<ReturnType<typeof import("@/lib/bqool/berichte").bqoolVerlustQuelle>>;
 export type VerlustAusnahme = { sku: string; name: string | null; grund: string; bis: string | null; aktiv: boolean; angelegtAm: Date; woche: { summe: number; stueck: number; tageMitDaten: number } };
 
 export async function verlustStopp(
   tenantId: string,
   heute: string,
-): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; nichtVerkauf: NichtVerkauf[]; amazonBericht: boolean; schwelle: number; bqoolVerlust: BqoolVerlust }> {
+): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; repricerExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; nichtVerkauf: NichtVerkauf[]; amazonBericht: boolean; schwelle: number }> {
   const t = tenantId;
   const D = schema.sellerboardSkuTage;
   const X = schema.amazonTransactions;
@@ -45,7 +43,7 @@ export async function verlustStopp(
   const aktiv = new Set(ausn.filter((a) => ausnahmeAktiv(a, heute)).map((a) => a.sku));
   // B31.6: automatische Ausnahme beim Regelwechsel auf Liquidation (Min unter Marge) gilt nur, solange der Verlust je
   // Stück im freigegebenen Rahmen bleibt (ohne Freigabe: bis Break-even, 0,50 € Spielraum für Gebühren-Schwankungen).
-  const { AUSNAHME_PREFIX, liquidationsStand } = await import("@/lib/bqool/liquidation");
+  const { AUSNAHME_PREFIX, liquidationsStand } = await import("@/lib/repricing/liquidation");
   const liqAusnahme = new Set(ausn.filter((a) => ausnahmeAktiv(a, heute) && a.grund.startsWith(AUSNAHME_PREFIX)).map((a) => a.sku));
   const rahmen = liqAusnahme.size ? (await liquidationsStand(t)).rahmenJeSku : new Map<string, number>();
   const imRahmen = (f: { sku: string; summeVerkauf: number; stueckMitVerlust: number }) => {
@@ -57,24 +55,22 @@ export async function verlustStopp(
 
   const skus = roh.map((f) => f.sku);
   const asins = [...new Set(roh.map((f) => f.asin).filter((a): a is string => !!a))];
-  const { bqoolVerlustQuelle } = await import("@/lib/bqool/berichte");
-  const [[bqAlle], be, hk, kc, bq, bqoolVerlust] = await Promise.all([
-    db.select({ n: sql<number>`count(*)::int` }).from(schema.bqoolListings).where(eq(schema.bqoolListings.tenantId, t)),
+  const PG = schema.profitguardListings;
+  const [[pgAlle], be, hk, kc, pg] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(PG).where(eq(PG.tenantId, t)),
     breakEvenJeSku(t, skus),
     asins.length ? db.select().from(schema.hebelKeepa).where(and(eq(schema.hebelKeepa.tenantId, t), inArray(schema.hebelKeepa.asin, asins))) : [],
     asins.length ? db.select({ asin: schema.keepaCache.asin, stand: schema.keepaCache.stand }).from(schema.keepaCache).where(and(eq(schema.keepaCache.tenantId, t), eq(schema.keepaCache.marktplatz, "DE"), inArray(schema.keepaCache.asin, asins))) : [],
-    skus.length ? db.select().from(schema.bqoolListings).where(and(eq(schema.bqoolListings.tenantId, t), inArray(schema.bqoolListings.sku, skus))) : [],
-    bqoolVerlustQuelle(t),
+    skus.length ? db.select().from(PG).where(and(eq(PG.tenantId, t), inArray(PG.sku, skus))) : [],
   ]);
   const faelle = roh.map((f) => {
     const h = f.asin ? hk.find((x) => x.asin === f.asin) : undefined;
     const k = f.asin ? kc.find((x) => x.asin === f.asin)?.stand : undefined;
     const buybox = h ? { preis: h.buyBoxPrice, quelle: `Keepa (${h.fetchedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`, amazon: h.buyBoxIsAmazon } : k ? { preis: k.aktuell.buybox ?? null, quelle: "Keepa (Produktabruf)" } : null;
-    const b = bq.filter((x) => x.sku === f.sku).sort((x, y) => (x.marktplatz === "DE" ? -1 : y.marktplatz === "DE" ? 1 : 0))[0];
-    const bqool = b ? { regel: b.regel, min: b.min, max: b.max, marktplatz: b.marktplatz } : null;
+    const p = pg.filter((x) => x.sku === f.sku).sort((x, y) => (x.marktplatz === "DE" ? -1 : y.marktplatz === "DE" ? 1 : 0))[0];
+    const repricer = p ? { strategie: p.strategie, min: p.min, max: p.max, marktplatz: p.marktplatz } : null;
     const breakEven = be.get(f.sku) ?? null;
-    const bqoolGewinn = bqoolVerlust.zeilen.filter((z) => z.sku === f.sku).map((z) => ({ land: z.land, profit: z.profit, tage: z.tage, stichtag: z.stichtag }));
-    return { ...f, breakEven, buybox, bqool, liquidation: istLiquidation(bqool?.regel), aufgabe: verlustAufgabe(f, { breakEven, buybox, bqool, bqoolExport: bqAlle.n > 0 }), bqoolGewinn };
+    return { ...f, breakEven, buybox, repricer, liquidation: istLiquidation(repricer?.strategie), aufgabe: verlustAufgabe(f, { breakEven, buybox, repricer, repricerExport: pgAlle.n > 0 }) };
   });
   const namen = new Map(rows.map((r) => [r.sku, r.name]));
   const ausnahmen = ausn
@@ -87,12 +83,11 @@ export async function verlustStopp(
     stand,
     tageMitDaten,
     fenster,
-    bqoolExport: bqAlle.n > 0,
+    repricerExport: pgAlle.n > 0,
     kostenOhneVerkauf: kostenOhneVerkauf(werte, heute, schwelle).filter((k) => !aktiv.has(k.sku)),
     nichtVerkauf: nichtVerkaufAnteile(werte, heute, schwelle, amz),
     amazonBericht: tx.length > 0,
     schwelle,
-    bqoolVerlust: { ...bqoolVerlust, zeilen: bqoolVerlust.zeilen.filter((z) => !aktiv.has(z.sku)) },
   };
 }
 
@@ -109,11 +104,11 @@ export async function refreshVerlustTasks(tenantId: string, heute: string): Prom
   for (const f of v.faelle) {
     const key = `verlust-${f.sku}`.slice(0, 200);
     jetzt.add(key);
-    // B15.9: Liquidation/Abverkauf laut BQool ist meist gewollt – nicht als „kritisch“, sondern als Rückfrage
+    // B15.9: Liquidation/Abverkauf laut ProfitGuard ist meist gewollt – nicht als „kritisch“, sondern als Rückfrage
     // („als Ausnahme übernehmen?“). Echte Verluste bleiben kritisch.
     await upsertSystemTask(db, tenantId, key, {
-      title: (f.liquidation ? `Verlust-Stopp prüfen (BQool „${f.bqool?.regel ?? "Liquidation"}“ – gewollt?): ${f.name ?? f.sku}` : `Verlust-Stopp: ${f.name ?? f.sku}`).slice(0, 200),
-      notes: f.liquidation ? `Die BQool-Regel „${f.bqool?.regel ?? "Liquidation"}“ deutet auf bewussten Abverkauf hin. Wenn gewollt: auf der Seite Verlust-Stopp als Ausnahme übernehmen – dann verschwindet diese Aufgabe.\n\n${f.aufgabe.notiz}` : f.aufgabe.notiz,
+      title: (f.liquidation ? `Verlust-Stopp prüfen (ProfitGuard „${f.repricer?.strategie ?? "Liquidation"}“ – gewollt?): ${f.name ?? f.sku}` : `Verlust-Stopp: ${f.name ?? f.sku}`).slice(0, 200),
+      notes: f.liquidation ? `Die ProfitGuard-Strategie „${f.repricer?.strategie ?? "Liquidation"}“ deutet auf bewussten Abverkauf hin. Wenn gewollt: auf der Seite Verlust-Stopp als Ausnahme übernehmen – dann verschwindet diese Aufgabe.\n\n${f.aufgabe.notiz}` : f.aufgabe.notiz,
       priority: f.liquidation ? "normal" : "critical",
       category: "geld",
       link: `/verlust?q=${encodeURIComponent(f.sku)}`,

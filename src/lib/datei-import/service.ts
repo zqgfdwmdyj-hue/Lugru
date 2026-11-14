@@ -228,24 +228,14 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     return { ...basis, ...(r.details ?? {}) };
   }
 
-  if (art === "bqool_datei") {
-    const erkannt = await dateiArt(name, bytes);
-    if (erkannt !== "bqool_datei" && erkannt !== "bqool") throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
-    const r = await zentral(session, name, bytes);
-    return { art, text: r.text, hinweise: r.hinweise, link: erkannt === "bqool_datei" ? "/repricer/bqool" : "/repricer" };
-  }
-
-  // B31.5: BQool-Berichte – Land/Zeitraum aus dem Hinweis, sonst erkannt; nicht eindeutig → Fehler mit Vorschlag.
-  if (art === "bqool_bericht") {
-    const erkannt = await dateiArt(name, bytes);
-    if (erkannt !== "bqool_listing_performance" && erkannt !== "bqool_daily_sales") throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
-    const { istBerichtLand, zeitraumAus } = await import("@/lib/bqool/berichte-logic");
-    const { land } = landUndZeitraumAus(hinweis);
+  if (art === "profitguard_export") {
+    const { importProfitguard } = await import("@/lib/repricing/profitguard-service");
+    const { marktAus } = await import("@/lib/repricing/profitguard-logic");
     await fortschritt(30);
-    const [r] = await dateiHochladen(session, name, bytes, { firma: null, saldo: null, art: erkannt, dateiImportId: id, bqoolLand: istBerichtLand(land) ? land : null, bqoolTage: zeitraumAus(`${hinweis ?? ""} ${name}`) });
-    if (r.rueckfrage) throw new ImportFehler(`${r.text} Bitte import_link mit dem Land im Hinweis wiederholen (z. B. „${r.rueckfrage.vorschlag ?? "DE"}“).`);
-    if (!r.ok) throw new ImportFehler(r.text);
-    return { art, text: r.text, hinweise: r.hinweise, link: r.link, ...(r.details ?? {}) };
+    const r = await importProfitguard(t, bytes, name, marktAus((hinweis ?? "").trim().split(/[\s,;]+/)[0]), "claude");
+    if (!r.ok) throw new ImportFehler(r.message);
+    await protokollieren(session, name, bytes.length, true, r.message, "/repricer#abgleich");
+    return { art, text: r.message, erkannt: r.erkannt, link: "/repricer#abgleich" };
   }
 
   if (art === "ao_accountone_cog") {
@@ -265,14 +255,6 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     if (!c) throw new ImportFehler("Keine Zeilen mit SKU gefunden.");
     await protokollieren(session, name, bytes.length, true, `AccountOne COG ${monat}: ${c.zeilen} SKUs`, "/buchhaltung");
     return { art, monat, zeilen: c.zeilen, ohne_ek: c.ohneEk, text: `AccountOne COG ${monat}: ${c.zeilen} SKUs – liegt der Monatsdatei für den Steuerberater bei („CSV + Belege“).`, link: "/buchhaltung" };
-  }
-
-  if (art === "ao_bqool_vergleich") {
-    const { istBqoolDatei } = await import("@/lib/uploads/erkennen");
-    if (!istBqoolDatei(bytes)) throw new ImportFehler(`Falsche Art: erwartet ${def.text} (erste Zeile „FileType = repricing“ fehlt).`);
-    const { aoBqoolVergleichen } = await import("@/lib/arbitrageone/service");
-    const v = await aoBqoolVergleichen(t, new TextDecoder("utf-8").decode(bytes), name);
-    return { art, ...v, link: "/repricer/bqool#ao-vergleich" };
   }
 
   if (art === "amazon_geschaeftsbericht") {

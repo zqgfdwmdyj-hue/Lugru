@@ -129,10 +129,10 @@ export const verlust_stopp = defineTool({
   name: "verlust_stopp",
   title: "Verlust-Stopp",
   description:
-    "Artikel, die gerade mit Verlust verkaufen: Ist-Gewinn je Produkt der letzten 3 abgeschlossenen Tage (Amazon + eBay); Auslöser 2 von 3 Tagen im Minus (nur Tage mit Verkauf) oder mindestens 5 Stück mit Verlust. Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) stehen getrennt unter kosten_ohne_verkauf (ab Schwelle je Woche). Je Fall Tageswerte, Ø Preis, Break-even, Buy Box (Keepa) und BQool-Regel/Min; dazu die Ausnahme-Liste (bewusster Abverkauf) mit Gewinn der letzten 7 Tage. Zweite Quelle „bqool_zweite_quelle“: SKUs mit negativem Est. Profit laut BQool-Bericht „Listing Performance“ (7 Tage je Land). Für „Wo verliere ich gerade Geld?“.",
+    "Artikel, die gerade mit Verlust verkaufen: Ist-Gewinn je Produkt der letzten 3 abgeschlossenen Tage (Amazon + eBay); Auslöser 2 von 3 Tagen im Minus (nur Tage mit Verkauf) oder mindestens 5 Stück mit Verlust. Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) stehen getrennt unter kosten_ohne_verkauf (ab Schwelle je Woche). Je Fall Tageswerte, Ø Preis, Break-even, Buy Box (Keepa) und Strategie/Min in ProfitGuard; dazu die Ausnahme-Liste (bewusster Abverkauf) mit Gewinn der letzten 7 Tage. Für „Wo verliere ich gerade Geld?“.",
   area: "geld",
   write: false,
-  quelle: { text: "sellerboard (Gewinn je Produkt und Tag), EK im Seller-System, Keepa, BQool-Export", jobs: ["sellerboard:*"] },
+  quelle: { text: "sellerboard (Gewinn je Produkt und Tag), EK im Seller-System, Keepa, ProfitGuard-Export", jobs: ["sellerboard:*"] },
   input: z.object({}),
   run: async (ctx) => {
     const v = await verlustStopp(ctx.session.tenantId, ctx.today);
@@ -157,22 +157,13 @@ export const verlust_stopp = defineTool({
         tage: f.tage.map((t) => ({ tag: t.day, stueck: t.units, verkauf: t.verkauf, erstattungen: t.erstattungen || undefined, abschreibung_entfernung: t.abschreibung || undefined, lager_sonstiges: t.lager || undefined, gesamt: t.gewinn })),
         summe_verkauf_3_tage: f.summeVerkauf,
         summe_3_tage: f.summe,
-        vorschlag: f.liquidation ? `BQool-Regel „${f.bqool?.regel}“ – vermutlich bewusster Abverkauf: auf der Seite als Ausnahme übernehmen.` : undefined,
+        vorschlag: f.liquidation ? `ProfitGuard-Strategie „${f.repricer?.strategie}“ – vermutlich bewusster Abverkauf: auf der Seite als Ausnahme übernehmen.` : undefined,
         preis_durchschnitt: f.preis,
         break_even: f.breakEven,
         buybox: f.buybox ? { preis: f.buybox.preis, quelle: f.buybox.quelle, amazon: f.buybox.amazon || undefined } : null,
-        bqool: f.bqool,
-        bqool_est_profit: f.bqoolGewinn.length ? f.bqoolGewinn : undefined,
+        profitguard: f.repricer,
         link: abs(ctx, `/verlust?q=${encodeURIComponent(f.sku)}`),
       })),
-      bqool_zweite_quelle: v.bqoolVerlust.stand
-        ? {
-            quelle: "BQool-Bericht „Listing Performance“ (Est. Profit je SKU)",
-            stand: v.bqoolVerlust.stand.map((x) => `${x.land} ${x.tage} Tage bis ${x.stichtag.split("-").reverse().join(".")}`).join(" · "),
-            artikel: v.bqoolVerlust.zeilen.slice(0, 30).map((z) => ({ land: z.land, sku: z.sku, name: z.titel ?? undefined, regel: z.regel ?? undefined, est_profit: z.profit, stueck: z.units, umsatz: z.sales, auch_sellerboard_fall: v.faelle.some((f) => f.sku === z.sku) || undefined })),
-            link: abs(ctx, "/repricer/leistung#verlust"),
-          }
-        : undefined,
       kosten_ohne_verkauf: v.kostenOhneVerkauf.length
         ? { schwelle_je_woche: v.schwelle, zeitraum: "letzte 7 Tage", artikel: v.kostenOhneVerkauf.slice(0, 30).map((k) => ({ sku: k.sku, asin: k.asin ?? undefined, name: k.name ?? undefined, summe: k.summe, tage: k.tage.map((x) => ({ tag: x.day, kosten: x.kosten })) })) }
         : undefined,

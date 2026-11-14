@@ -1,7 +1,9 @@
-// B31.6a/b Regel-Leiter + Dauer der Liquidation, B31.7 Zustand, B31.8 Schnelldreher – reine Logik. Erfundene Werte.
+// B31.6a/b Regel-Leiter + Dauer der Liquidation, B31.7 Zustand, B31.8 Schnelldreher – reine Logik mit neutralen
+// Strategien (Standard/Abverkauf/Liquidation/Schnelldreher). Erfundene Werte.
 import { describe, expect, it } from "vitest";
-import { KATALOG_STANDARD } from "@/lib/bqool/export-logic";
+import { KATALOG_STANDARD } from "@/lib/repricing/strategie-logic";
 import {
+  abverkaufFuer,
   ablaufStand,
   ebayVergleich,
   fruehereRueckkehr,
@@ -23,14 +25,14 @@ import {
   zustandAusText,
   zustandBestimmen,
   type LeiterEingabe,
-} from "@/lib/bqool/leiter-logic";
+} from "@/lib/repricing/leiter-logic";
 
-const ABV = { DE: "Abverkauf DE", sonst: "Abverkauf" };
+const ABV = { DE: "Abverkauf", sonst: "Abverkauf" };
 const E = LEITER_STANDARD;
 const basis: LeiterEingabe = {
   land: "DE",
   stufe: 1,
-  regel: "ia",
+  regel: "Standard",
   effMin: 50,
   effMinStufe1: 50,
   effMinStufe2: 46,
@@ -46,21 +48,28 @@ const basis: LeiterEingabe = {
   schnelldreher: false,
   gebraucht: false,
 };
-const pruefe = (x: Partial<LeiterEingabe>, e = E) => leiterPruefen({ ...basis, ...x }, e, ABV, "Liquidation", "ia");
+const pruefe = (x: Partial<LeiterEingabe>, e = E) => leiterPruefen({ ...basis, ...x }, e, ABV, "Liquidation", "Standard");
 
 describe("B31.6b Stufen der Regel-Leiter", () => {
-  it("Regel → Stufe: Liquidation 3, Abverkauf 2, ia 1, unbekannt null", () => {
-    expect(stufeVonRegel("Liquidation", KATALOG_STANDARD, ABV)).toBe(3);
-    expect(stufeVonRegel("AI Win Sales Booster", KATALOG_STANDARD, ABV)).toBe(3);
-    expect(stufeVonRegel("Abverkauf DE", KATALOG_STANDARD, ABV)).toBe(2);
-    expect(stufeVonRegel("abverkauf", KATALOG_STANDARD, ABV)).toBe(2);
-    expect(stufeVonRegel("ia", KATALOG_STANDARD, ABV)).toBe(1);
-    expect(stufeVonRegel("gibt es nicht", KATALOG_STANDARD, ABV)).toBeNull();
-    expect(stufeVonRegel(null, KATALOG_STANDARD, ABV)).toBeNull();
+  it("Strategie → Stufe: Liquidation 3, Abverkauf 2, Standard/Schnelldreher 1, leer null", () => {
+    expect(stufeVonRegel("Liquidation", KATALOG_STANDARD)).toBe(3);
+    expect(stufeVonRegel("Abverkauf", KATALOG_STANDARD)).toBe(2);
+    expect(stufeVonRegel("abverkauf", KATALOG_STANDARD)).toBe(2);
+    expect(stufeVonRegel("Standard", KATALOG_STANDARD)).toBe(1);
+    expect(stufeVonRegel("Schnelldreher", KATALOG_STANDARD)).toBe(1);
+    expect(stufeVonRegel(null, KATALOG_STANDARD)).toBeNull();
+    expect(stufeVonRegel("  ", KATALOG_STANDARD)).toBeNull();
+  });
+  it("alte BQool-Namen werden über die neutrale Strategie eingestuft", () => {
+    expect(stufeVonRegel("AI Win Sales Booster", KATALOG_STANDARD)).toBe(3);
+    expect(stufeVonRegel("Abverkauf DE", KATALOG_STANDARD, { DE: "Abverkauf DE", sonst: "Abverkauf" })).toBe(2);
+    expect(stufeVonRegel("ia", KATALOG_STANDARD)).toBe(1);
+    // unbekannte Namen gelten als Standard
+    expect(stufeVonRegel("gibt es nicht", KATALOG_STANDARD)).toBe(1);
   });
   it("1 → 2 bei Reichweite > 90 Tage, Lagerdauer > 60 mit Kapital > 300 €, Hebel Ladenhüter oder Min 7 Tage über Buy Box bei Quote < 10 %", () => {
     expect(pruefe({})).toBeNull();
-    expect(pruefe({ reichweite: 120 })).toMatchObject({ von: 1, nach: 2, regel: "Abverkauf DE", min: null });
+    expect(pruefe({ reichweite: 120 })).toMatchObject({ von: 1, nach: 2, regel: "Abverkauf", min: null });
     expect(pruefe({ alterTage: 75, kapital: 350 })?.nach).toBe(2);
     expect(pruefe({ alterTage: 75, kapital: 250 })).toBeNull();
     expect(pruefe({ ladenhueter: true })?.gruende.join(" ")).toContain("Ladenhüter");
@@ -68,8 +77,10 @@ describe("B31.6b Stufen der Regel-Leiter", () => {
     expect(pruefe({ ueberSeit: "2026-11-03", bbQuote: 5 })).toBeNull();
     expect(pruefe({ ueberSeit: "2026-11-01", bbQuote: 20 })).toBeNull();
   });
-  it("Abverkauf je Land (FR → „Abverkauf“)", () => {
-    expect(pruefe({ land: "FR", reichweite: 120 })?.regel).toBe("Abverkauf");
+  it("Abverkauf je Land bleibt möglich (eigener Name für DE)", () => {
+    expect(abverkaufFuer("DE", { DE: "Abverkauf A", sonst: "Abverkauf B" })).toBe("Abverkauf A");
+    expect(abverkaufFuer("FR", { DE: "Abverkauf A", sonst: "Abverkauf B" })).toBe("Abverkauf B");
+    expect(leiterPruefen({ ...basis, land: "FR", reichweite: 120 }, E, { DE: "Abverkauf A", sonst: "Abverkauf B" }, "Liquidation", "Standard")?.regel).toBe("Abverkauf B");
   });
   it("Reihenfolge wählbar: Liquidation als Brücke nur, wenn die Buy Box unter dem effektiven Min liegt", () => {
     const e = leiterMitStandard({ reihenfolge: "liquidation_zuerst" });
@@ -77,7 +88,7 @@ describe("B31.6b Stufen der Regel-Leiter", () => {
     expect(pruefe({ reichweite: 120, buybox: 55 }, e)).toMatchObject({ nach: 2 });
   });
   it("2 → 3 nur, wenn Stufe 2 seit 7 Tagen über der Buy Box liegt und Kapital > 300 € oder Lagerdauer > 90", () => {
-    const s2 = { stufe: 2 as const, regel: "Abverkauf DE", effMin: 46, buybox: 44, ueberSeit: "2026-11-01", alterTage: 100, kapital: 100 };
+    const s2 = { stufe: 2 as const, regel: "Abverkauf", effMin: 46, buybox: 44, ueberSeit: "2026-11-01", alterTage: 100, kapital: 100 };
     const v = pruefe(s2);
     expect(v).toMatchObject({ von: 2, nach: 3, regel: "Liquidation" });
     expect(v!.min).toBe(43.56); // Buy Box − 1 %
@@ -94,7 +105,7 @@ describe("B31.6b Stufen der Regel-Leiter", () => {
     expect(liquidationsMin({ breakEven: 40, buybox: null, deckel: 46, abschlag: 1 })).toBeNull();
   });
   it("2 → 1 nur mit frischem Nachschub (Lageralter 0–30 Tage)", () => {
-    expect(pruefe({ stufe: 2, alterTage: 12 })).toMatchObject({ von: 2, nach: 1, regel: "ia" });
+    expect(pruefe({ stufe: 2, alterTage: 12 })).toMatchObject({ von: 2, nach: 1, regel: "Standard" });
     expect(pruefe({ stufe: 2, alterTage: 12, gebraucht: true })).toBeNull();
   });
   it("„über Buy Box seit“ fortschreiben", () => {
@@ -104,10 +115,10 @@ describe("B31.6b Stufen der Regel-Leiter", () => {
     expect(ueberSeitFortschreiben({ effMin: 50, buybox: null, ueberSeit: "2026-11-01", heute: "2026-11-08" })).toBe("2026-11-01");
   });
   it("Rückkehr aus Liquidation: Stufe 2, Stufe 1 nur bei Lageralter ≤ 30", () => {
-    expect(rueckkehrZiel({ land: "DE", alterTage: 80, gebraucht: false, abverkauf: ABV, standard: "ia" })).toMatchObject({ regel: "Abverkauf DE", stufe: 2 });
-    expect(rueckkehrZiel({ land: "IT", alterTage: null, gebraucht: false, abverkauf: ABV, standard: "ia" })).toMatchObject({ regel: "Abverkauf", stufe: 2 });
-    expect(rueckkehrZiel({ land: "DE", alterTage: 10, gebraucht: false, abverkauf: ABV, standard: "ia" })).toMatchObject({ regel: "ia", stufe: 1 });
-    expect(rueckkehrZiel({ land: "DE", alterTage: 10, gebraucht: true, abverkauf: ABV, standard: "ia" }).stufe).toBe(2);
+    expect(rueckkehrZiel({ land: "DE", alterTage: 80, gebraucht: false, abverkauf: ABV, standard: "Standard" })).toMatchObject({ regel: "Abverkauf", stufe: 2 });
+    expect(rueckkehrZiel({ land: "IT", alterTage: null, gebraucht: false, abverkauf: ABV, standard: "Standard" })).toMatchObject({ regel: "Abverkauf", stufe: 2 });
+    expect(rueckkehrZiel({ land: "DE", alterTage: 10, gebraucht: false, abverkauf: ABV, standard: "Standard" })).toMatchObject({ regel: "Standard", stufe: 1 });
+    expect(rueckkehrZiel({ land: "DE", alterTage: 10, gebraucht: true, abverkauf: ABV, standard: "Standard" }).stufe).toBe(2);
   });
   it("Morgenbericht: „Stufe 2: n SKUs, Stufe 3: m SKUs, davon k unter Break-even“", () => {
     expect(stufenZeile({ stufe2: 4, stufe3: 1, unterBe: 0 })).toBe("Stufe 2: 4 SKUs, Stufe 3: 1 SKU, davon 0 unter Break-even");
@@ -185,7 +196,7 @@ describe("B31.7 Zustand", () => {
     expect(v.besser).toBe("ebay");
     expect(v.ebay).toBeGreaterThan(v.amazon);
   });
-  it("Gebrauchte Ware läuft nie mit ia: Stufe 1 → Vorschlag Abverkauf", () => {
+  it("Gebrauchte Ware läuft nie mit Standard: Stufe 1 → Vorschlag Abverkauf", () => {
     expect(pruefe({ gebraucht: true })).toMatchObject({ von: 1, nach: 2 });
   });
   it("Gebraucht: Liquidation nach 14 Tagen Stillstand auch ohne Kapital/Lagerdauer", () => {
@@ -219,5 +230,12 @@ describe("B31.8 Schnelldreher", () => {
     expect(e.schnell.margeBoden).toBe(9);
     expect(e.schnell.verkaeufe30).toBe(15);
     expect(leiterMitStandard(null).liquidationTage).toBe(45);
+  });
+  it("Schnelldreher-Einstellungen ohne Feld „regel“ – alte gespeicherte Werte werden entfernt", () => {
+    expect(LEITER_STANDARD.schnell).not.toHaveProperty("regel");
+    const alt = { schnell: { ...S, regel: "Schnelldreher" } } as unknown as Parameters<typeof leiterMitStandard>[0];
+    const e = leiterMitStandard(alt);
+    expect(e.schnell).not.toHaveProperty("regel");
+    expect(e.schnell).toEqual(S);
   });
 });

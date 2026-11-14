@@ -1,6 +1,6 @@
 // B32 Listing-Check – reine Logik. Erfundene Werte.
 import { describe, expect, it } from "vitest";
-import { befundePruefen, CHECK_STANDARD, checkMorgenZeile, median, pushNoetig, schwellenMitStandard, stufeA, stufeFuer, type CheckEingabe } from "@/lib/bqool/listing-check-logic";
+import { befundePruefen, CHECK_STANDARD, checkMorgenZeile, median, pushNoetig, schwellenMitStandard, stufeA, stufeFuer, type CheckEingabe } from "@/lib/repricing/listing-check-logic";
 
 const basis: CheckEingabe = {
   land: "DE",
@@ -9,8 +9,8 @@ const basis: CheckEingabe = {
   titel: "Testartikel",
   bestand: 20,
   status: "aktiv",
-  minBqool: 30,
-  maxBqool: 60,
+  minIst: 30,
+  maxIst: 60,
   preis: 35,
   buybox: 35,
   bb30: 35,
@@ -40,12 +40,12 @@ describe("B32.1 neun Befunde", () => {
     expect(nrn({})).toEqual([]);
   });
   it("1 Min über Buy Box (und über 30-Tage-Schnitt − 3 %) mit Vorschlag und Potenzial", () => {
-    const b = befundePruefen({ ...basis, minBqool: 40, buybox: 35, bb30: 36 });
+    const b = befundePruefen({ ...basis, minIst: 40, buybox: 35, bb30: 36 });
     const eins = b.find((x) => x.nr === 1)!;
     expect(eins.vorschlag).toContain("28.00");
     expect(eins.aktion).toBe("min");
     expect(eins.potenzial).toBe(Math.round((20 - 12) * 10 * 100) / 100);
-    expect(nrn({ minBqool: 36, buybox: 35, bb30: 40 })).not.toContain(1);
+    expect(nrn({ minIst: 36, buybox: 35, bb30: 40 })).not.toContain(1);
   });
   it("2 pausiert trotz Bestand und Nachfrage", () => {
     expect(nrn({ status: "pausiert" })).toContain(2);
@@ -56,18 +56,18 @@ describe("B32.1 neun Befunde", () => {
     expect(nrn({ schnelldreherKandidat: true, schnelldreher: true })).not.toContain(3);
   });
   it("4 keine Verkäufe in 7 Tagen trotz Nachfrage ≥ 30, mit Ursache", () => {
-    const b = befundePruefen({ ...basis, verkaeufe7: 0, minBqool: 40 }).find((x) => x.nr === 4)!;
+    const b = befundePruefen({ ...basis, verkaeufe7: 0, minIst: 40 }).find((x) => x.nr === 4)!;
     expect(b.vorschlag).toContain("Min über Buy Box");
     expect(nrn({ verkaeufe7: 0, monatlichVerkauft: 10 })).not.toContain(4);
   });
   it("5 Max zu niedrig (Buy Box seit ≥ 3 Tagen über Max) → Max = Buy Box × 1,1", () => {
-    const b = befundePruefen({ ...basis, maxBqool: 32, buybox: 40, bbUeberMaxTage: 3 }).find((x) => x.nr === 5)!;
+    const b = befundePruefen({ ...basis, maxIst: 32, buybox: 40, bbUeberMaxTage: 3 }).find((x) => x.nr === 5)!;
     expect(b.wert).toBe(44);
-    expect(nrn({ maxBqool: 32, buybox: 40, bbUeberMaxTage: 2 })).not.toContain(5);
+    expect(nrn({ maxIst: 32, buybox: 40, bbUeberMaxTage: 2 })).not.toContain(5);
   });
   it("6 unter Break-even ohne Liquidation-Freigabe", () => {
-    expect(nrn({ minBqool: 20 })).toContain(6);
-    expect(nrn({ minBqool: 20, liquidationFreigegeben: true })).not.toContain(6);
+    expect(nrn({ minIst: 20 })).toContain(6);
+    expect(nrn({ minIst: 20, liquidationFreigegeben: true })).not.toContain(6);
   });
   it("7 gebraucht mit Neupreis-Min", () => {
     expect(nrn({ gebrauchtMitNeupreisMin: true })).toContain(7);
@@ -123,7 +123,7 @@ describe("B32.2 Stufen und Budget", () => {
 });
 
 describe("B32.5 Push und Morgenbericht", () => {
-  const b1 = befundePruefen({ ...basis, minBqool: 40 }).find((x) => x.nr === 1)!;
+  const b1 = befundePruefen({ ...basis, minIst: 40 }).find((x) => x.nr === 1)!;
   it("Push nur bei Befund 1/2 an Schnelldrehern oder Kapital > 1.000 €", () => {
     expect(pushNoetig(b1, { schnelldreher: true, schnelldreherKandidat: false, kapital: 100 })).toBe(true);
     expect(pushNoetig(b1, { schnelldreher: false, schnelldreherKandidat: false, kapital: 1500 })).toBe(true);
@@ -132,12 +132,38 @@ describe("B32.5 Push und Morgenbericht", () => {
     expect(pushNoetig(b9, { schnelldreher: true, schnelldreherKandidat: false, kapital: 5000 })).toBe(false);
   });
   it("Morgenbericht-Zeile „Listing-Check: n neue Befunde …“", () => {
-    const st = { am: "2026-11-08T05:10:00Z", dauerMs: 1000, geprueft: 10, stufeA: 5, stufeB: 3, stufeC: 2, keepaAbrufe: 4, unvollstaendig: 1, neu: 2, offen: 3, bqoolAlt: false, bqoolStand: null, top: [{ land: "DE", sku: "TEST-SKU-LC", asin: "B0TESTLC01", titel: "Testartikel", potenzial: 80.4 }] };
+    const st = { am: "2026-11-08T05:10:00Z", dauerMs: 1000, geprueft: 10, stufeA: 5, stufeB: 3, stufeC: 2, keepaAbrufe: 4, unvollstaendig: 1, neu: 2, offen: 3, istAlt: false, istStand: null, top: [{ land: "DE", sku: "TEST-SKU-LC", asin: "B0TESTLC01", titel: "Testartikel", potenzial: 80.4 }] };
     const z = checkMorgenZeile(st)!;
     expect(z).toContain("Listing-Check: 2 neue Befunde (3 offen)");
     expect(z).toContain("B0TESTLC01 Testartikel 80 €");
     expect(z).toContain("Check unvollständig");
     expect(checkMorgenZeile({ ...st, neu: 0, offen: 0, unvollstaendig: 0 })).toBeNull();
     expect(checkMorgenZeile(null)).toBeNull();
+  });
+  it("alter ProfitGuard-Stand wird genannt, auch ohne Befunde", () => {
+    const leer = { am: "2026-11-08T05:10:00Z", dauerMs: 1000, geprueft: 10, stufeA: 5, stufeB: 3, stufeC: 2, keepaAbrufe: 0, unvollstaendig: 0, neu: 0, offen: 0, istAlt: true, istStand: "2026-11-01", top: [] };
+    expect(checkMorgenZeile(leer)).toBe("Listing-Check: 0 neue Befunde · ProfitGuard-Stand alt");
+  });
+});
+
+describe("B33.4 Frischbestand-Falle", () => {
+  const fb: CheckEingabe = { ...basis, sku: "TEST-SKU-FB", asin: "B0TESTFB01", bestand: 10, minIst: 30, maxIst: 60, preis: 30, buybox: 26, bb30: 26, monatlichVerkauft: 30, verkaeufe7: 0, verkaeufe30: 0, ohneBuyboxTage: 7, breakEven: 22, effMin: 24, zielMin: 24, lagerdauer: 12, istRegel: "Standard", stufeText: "10 %" };
+  it("Stufe 0–30, Min über Buy Box, 7 Tage kein Verkauf → Hinweis mit Strategiewechsel", () => {
+    const b = befundePruefen(fb).find((x) => x.nr === 11)!;
+    expect(b.titel).toBe("Frischbestand-Falle");
+    expect(b.aktion).toBe("hinweis");
+    expect(b.vorschlag).toBe("Min 30.00 in Stufe 0–30 (10 %) – über der Buy Box 26.00, 7 Tage kein Verkauf. Strategie wechseln (Schnelldreher mit Boden-Marge bzw. Liquidation) oder Min senken");
+    expect(b.zahlen).toMatchObject({ min: 30, buybox: 26, regel: "Standard" });
+    // Befund 1 schlägt den effektiven Min vor
+    expect(befundePruefen(fb).find((x) => x.nr === 1)).toMatchObject({ vorschlag: "Min senken auf 24.00 (effektiver Min)", wert: 24 });
+  });
+  it("nicht bei Verkauf in 7 Tagen, älterer Ware, Min unter Buy Box oder unbekannten Verkäufen", () => {
+    expect(befundePruefen({ ...fb, verkaeufe7: 1 }).some((x) => x.nr === 11)).toBe(false);
+    expect(befundePruefen({ ...fb, lagerdauer: 45 }).some((x) => x.nr === 11)).toBe(false);
+    expect(befundePruefen({ ...fb, minIst: 25 }).some((x) => x.nr === 11)).toBe(false);
+    expect(befundePruefen({ ...fb, verkaeufe7: null }).some((x) => x.nr === 11)).toBe(false);
+  });
+  it("Schnelldreher: Vorschlag Break-even + 7 %", () => {
+    expect(befundePruefen({ ...fb, schnelldreher: true }).find((x) => x.nr === 1)!.vorschlag).toContain("Break-even + 7 %, nie unter effektivem Min");
   });
 });

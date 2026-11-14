@@ -37,12 +37,12 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
       <p className="small muted" style={{ margin: "0 0 14px", maxWidth: 860 }}>
         Täglich nach dem sellerboard-Abgleich: Gewinn je Produkt der letzten {VERLUST_REGEL.fenster} abgeschlossenen Tage, zerlegt in a) Verkauf, b) Erstattungen/Rücksendungen, c) Abschreibung/Entfernung, d) Lager & Sonstiges. Auslöser ist nur a): an {VERLUST_REGEL.tage} von {VERLUST_REGEL.fenster} Tagen mit Verkauf im Minus oder mindestens {VERLUST_REGEL.stueck} Stück mit Verlust verkauft. b) und c) stehen unten getrennt (Hebel „Viele Erstattungen“ bzw. Amazon-Fälle), ein Minus ohne Verkauf als „Kosten ohne Verkauf“.
         {v.amazonBericht ? " Erstattungen, Entsorgung/Entfernung und Lagergebühren kommen aus dem Amazon-Transaktionsbericht." : " Ohne Amazon-Transaktionsbericht: Erstattungen aus sellerboard, Abschreibung und Lager nicht getrennt."}
-        Je Fall entsteht eine <strong>wichtige Aufgabe</strong> mit Break-even, Buy Box (Keepa) und BQool-Regel. Bewusste Verlustverkäufe (Abverkauf, Liquidation) als Ausnahme markieren.
+        Je Fall entsteht eine <strong>wichtige Aufgabe</strong> mit Break-even, Buy Box (Keepa) und Strategie/Min in ProfitGuard. Bewusste Verlustverkäufe (Abverkauf, Liquidation) als Ausnahme markieren.
       </p>
 
-      {!v.bqoolExport && (
-        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="verlust-bqool-fehlt">
-          Noch kein BQool-Export hochgeladen – deshalb fehlen Regel und Mindestpreis je Fall. <Link href="/repricer#bqool-upload">Export „Manage Listings“ hochladen</Link>.
+      {!v.repricerExport && (
+        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="verlust-repricer-fehlt">
+          Noch kein ProfitGuard-Export eingelesen – deshalb fehlen Strategie und Mindestpreis je Fall. <Link href="/repricer#profitguard-upload">ProfitGuard-Export hochladen</Link>.
         </div>
       )}
       {v.tageMitDaten.length < v.fenster.length && (
@@ -102,15 +102,15 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
               {f.liquidation && (
                 <form action={ausnahmeAction} className="notice notice-info small" style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="verlust-liquidation">
                   <input type="hidden" name="sku" value={f.sku} />
-                  <input type="hidden" name="grund" value={`BQool-Regel ${f.bqool?.regel ?? "Liquidation"} (bewusster Abverkauf)`} />
-                  <span>BQool-Regel „{f.bqool?.regel}“ – vermutlich bewusster Abverkauf.</span>
+                  <input type="hidden" name="grund" value={`ProfitGuard-Strategie ${f.repricer?.strategie ?? "Liquidation"} (bewusster Abverkauf)`} />
+                  <span>ProfitGuard-Strategie „{f.repricer?.strategie}“ – vermutlich bewusster Abverkauf.</span>
                   <button className="btn btn-small" type="submit" data-testid="verlust-liquidation-uebernehmen">Als Ausnahme übernehmen</button>
                 </form>
               )}
               <div className="small" style={{ marginTop: 6 }} data-testid="verlust-daten">
                 Ø Preis {f.preis !== null ? eur(f.preis) : "–"} · Break-even {f.breakEven !== null ? <strong>{eur(f.breakEven)}</strong> : "unbekannt"} · Buy Box {f.buybox ? `${f.buybox.preis !== null ? eur(f.buybox.preis) : "keine"}${f.buybox.amazon ? " (Amazon)" : ""} – ${f.buybox.quelle}` : "keine Keepa-Daten"} ·{" "}
-                BQool {f.bqool ? `${f.bqool.marktplatz}: ${f.bqool.regel ?? "–"}, Min ${f.bqool.min !== null ? eur(f.bqool.min) : "–"}` : "nicht im Export"}
-                {f.bqool && f.breakEven !== null && f.bqool.min !== null && f.bqool.min < f.breakEven && <span style={{ color: "var(--danger)" }}> – Min unter Break-even</span>}
+                ProfitGuard {f.repricer ? `${f.repricer.marktplatz}: ${f.repricer.strategie ?? "–"}, Min ${f.repricer.min !== null ? eur(f.repricer.min) : "–"}` : "nicht im Export"}
+                {f.repricer && f.breakEven !== null && f.repricer.min !== null && f.repricer.min < f.breakEven && <span style={{ color: "var(--danger)" }}> – Min unter Break-even</span>}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
                 <Link className="btn btn-small" href={`/repricer?q=${encodeURIComponent(f.sku)}`}>Repricer</Link>
@@ -164,36 +164,6 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
                     {k.ziele.length > 1 && <br />}
                     {k.ziele.includes("amazon_faelle") && <Link href={`/amazon-todos?q=${encodeURIComponent(k.asin ?? k.sku)}`}>Amazon-Fälle</Link>}
                   </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <h2 style={{ marginTop: 18 }}>Zweite Quelle: BQool (Est. Profit)</h2>
-      <p className="small muted" style={{ margin: "0 0 8px", maxWidth: 860 }}>
-        SKUs mit negativem Est. Profit laut BQool-Bericht „Listing Performance“ – unabhängig von sellerboard. „auch oben“ = derselbe Artikel ist ein sellerboard-Fall. Vorschläge (Min anheben / Liquidation) unter <Link href="/repricer/leistung#verlust">Repricer → Leistung</Link>.
-      </p>
-      {!v.bqoolVerlust.stand ? (
-        <div className="card card-pad small muted" data-testid="verlust-bqool-leer">Noch kein BQool-Bericht „Listing Performance“ eingelesen.</div>
-      ) : v.bqoolVerlust.zeilen.length === 0 ? (
-        <div className="card card-pad small muted" data-testid="verlust-bqool-keine">Laut BQool kein Artikel mit Verlust ({v.bqoolVerlust.stand.map((x) => `${x.land} bis ${dm(x.stichtag)}`).join(" · ")}).</div>
-      ) : (
-        <div className="table-wrap card">
-          <table className="table" data-testid="verlust-bqool">
-            <thead>
-              <tr><th>Land</th><th>Produkt</th><th>Regel</th><th className="right">Stück</th><th className="right">Est. Profit</th><th>Zeitraum</th></tr>
-            </thead>
-            <tbody>
-              {v.bqoolVerlust.zeilen.slice(0, 50).map((z) => (
-                <tr key={`${z.land}|${z.sku}`} data-testid="verlust-bqool-zeile" data-sku={z.sku}>
-                  <td>{z.land}</td>
-                  <td>{z.titel ?? z.sku}<div className="small muted">{z.sku}{v.faelle.some((f) => f.sku === z.sku) ? " · auch oben" : ""}</div></td>
-                  <td className="small">{z.regel ?? "–"}</td>
-                  <td className="num right">{z.units ?? "–"}</td>
-                  <td className="num right" style={{ color: "var(--danger)" }}>{eur(z.profit)}</td>
-                  <td className="small muted">{z.tage} Tage bis {dm(z.stichtag)}</td>
                 </tr>
               ))}
             </tbody>

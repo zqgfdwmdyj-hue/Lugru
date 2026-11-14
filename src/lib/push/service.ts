@@ -281,19 +281,19 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
     const arten = (p?.aus ?? []) as string[];
     // B32: persönliche Mails nur als Anzahl – und nur für den Inhaber mit Privat-Zugang.
     const persoenlich = inhaber ? await import("@/lib/inbox/persoenlich").then((x) => x.offenePersoenliche(tenantId, mg.userId)).catch(() => 0) : 0;
-    // B31.4: BQool-Upload von gestern bzw. heutige Freigabe – nur für den Inhaber.
-    const bqool = inhaber ? await bqoolMorgenZeile(tenantId, jetzt).catch(() => null) : null;
-    // B31.5: Buy-Box-Anteil je Land aus den letzten Listing-Performance-Berichten – nur für den Inhaber.
-    const buybox = inhaber ? await import("@/lib/bqool/berichte").then((x) => x.buyboxMorgenZeile(tenantId)).catch(() => null) : null;
+    // Repricing: Abgleich Seller-System ↔ ProfitGuard (auffällige SKUs, Alter des Exports) – nur für den Inhaber.
+    const repricing = inhaber ? await repricingMorgenZeile(tenantId, jetzt).catch(() => null) : null;
+    // Buy-Box-Anteil je Land aus ProfitGuard bzw. dem Amazon-Geschäftsbericht – nur für den Inhaber.
+    const buybox = inhaber ? await import("@/lib/repricing/profitguard-service").then((x) => x.buyboxMorgenZeile(tenantId)).catch(() => null) : null;
     // B35: Lead-Maschine (neue Leads, Entwürfe warten auf Freigabe, Rückmeldungen, Kosten) – nur für den Inhaber.
     const leads = inhaber ? await import("@/lib/abverkauf/lead-maschine").then((x) => x.leadsMorgen(tenantId)).catch(() => null) : null;
     // B28.8: einmal im Monat (am 3.) die Trefferquote des Vormonats – nur für den Inhaber.
     const treffer = inhaber ? await import("@/lib/deal-eingang/lernschleife").then((x) => x.trefferMorgenZeile(tenantId)).catch(() => null) : null;
     // B31.6: SKUs auf Liquidation wegen Min unter Marge – nur für den Inhaber.
-    const liquidation = inhaber ? await import("@/lib/bqool/liquidation").then(async (x) => x.liquidationsZeile(await x.liquidationsStand(tenantId))).catch(() => null) : null;
+    const liquidation = inhaber ? await import("@/lib/repricing/liquidation").then(async (x) => x.liquidationsZeile(await x.liquidationsStand(tenantId))).catch(() => null) : null;
     // B31.6b/B31.7/B31.8/B32: Stand des täglichen Leiter-Laufs und Listing-Check – nur für den Inhaber.
-    const leiter = inhaber ? await import("@/lib/bqool/leiter-logic").then(async (x) => [...x.leiterMorgenZeilen((await (await import("@/lib/settings")).getSettings(tenantId)).bqool.leiterStand), ...(await import("@/lib/bqool/listing-check").then((c) => c.listingCheckMorgenZeilen(tenantId)).catch(() => []))]).catch(() => []) : [];
-    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, bqool, buybox, treffer, liquidation, leiter, leads };
+    const leiter = inhaber ? await import("@/lib/repricing/leiter-logic").then(async (x) => [...x.leiterMorgenZeilen((await (await import("@/lib/settings")).getSettings(tenantId)).repricing.leiterStand), ...(await import("@/lib/repricing/listing-check").then((c) => c.listingCheckMorgenZeilen(tenantId)).catch(() => []))]).catch(() => []) : [];
+    const zahlen = { ueberNacht: gehalten.length, fristen: arten.includes("frist_heute") ? 0 : fristen, wichtig: arten.includes("frist_heute") ? 0 : wichtig, paletten: arten.includes("paletten_heute") ? 0 : paletten, persoenlich, repricing, buybox, treffer, liquidation, leiter, leads };
     // Zurückgehaltene gelten als nachgereicht (im Bericht gezählt); die neueste kommt einzeln (mit ihren Knöpfen).
     if (gehalten.length) {
       await db.update(M).set({ zustand: "ausgeliefert" }).where(inArray(M.id, gehalten.map((g) => g.id)));
@@ -323,10 +323,14 @@ export async function morgenAuslieferung(tenantId: string, jetzt = new Date(), o
   return { personen: anzahl, nachgereicht };
 }
 
-/** B31.4: Morgenbericht-Zeile zum BQool-Kreislauf (gestern hochgeladen / verfallen, heute wartet auf Freigabe). */
-async function bqoolMorgenZeile(tenantId: string, jetzt: Date): Promise<string | null> {
-  const { laufVomTag } = await import("@/lib/bqool/kreislauf");
-  const { morgenZeile, tagBerlin } = await import("@/lib/bqool/kreislauf-logic");
-  const [gestern, heute] = await Promise.all([laufVomTag(tenantId, tagBerlin(new Date(jetzt.getTime() - 86_400_000))), laufVomTag(tenantId, tagBerlin(jetzt))]);
-  return morgenZeile(gestern, heute);
+/** Morgenbericht-Zeile zum Repricing: offene Abgleich-Aufgabe (ProfitGuard) und Alter des letzten ProfitGuard-Exports. */
+async function repricingMorgenZeile(tenantId: string, jetzt: Date): Promise<string | null> {
+  const T = schema.tasks;
+  const [a] = await db.select({ title: T.title }).from(T).where(and(eq(T.tenantId, tenantId), eq(T.systemKey, "repricing-abgleich"), eq(T.status, "open")));
+  const { profitguardStand } = await import("@/lib/repricing/profitguard-service");
+  const stand = await profitguardStand(tenantId);
+  const juengster = stand.reduce<Date | null>((m, x) => (x.am && (!m || x.am > m) ? x.am : m), null);
+  const alt = !juengster ? "noch kein ProfitGuard-Export eingelesen" : jetzt.getTime() - juengster.getTime() > 3 * 86_400_000 ? `ProfitGuard-Export ${Math.floor((jetzt.getTime() - juengster.getTime()) / 86_400_000)} Tage alt` : null;
+  const teile = [a?.title ?? null, alt].filter(Boolean);
+  return teile.length ? teile.join(" · ") : null;
 }

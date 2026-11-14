@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 
 export type Table = { headers: string[]; rows: string[][] };
 
-function isSpreadsheetBinary(b: Uint8Array) {
+export function isSpreadsheetBinary(b: Uint8Array) {
   const zip = b[0] === 0x50 && b[1] === 0x4b;
   const ole = b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0;
   return zip || ole;
@@ -33,7 +33,7 @@ function countOutsideQuotes(line: string, d: string) {
  * Trennzeichen aus der ersten Zeile, die eines enthält. Manche Reports (Transaktionsbericht)
  * haben vor der Kopfzeile Hinweiszeilen in Anführungszeichen.
  */
-function detectDelimiter(head: string): string {
+export function detectDelimiter(head: string): string {
   for (const line of head.split(/\r?\n/).slice(0, 20)) {
     const counts = ["\t", ";", ",", "|"].map((d) => [d, countOutsideQuotes(line, d)] as const).sort((a, b) => b[1] - a[1]);
     if (counts[0][1] > 0) return counts[0][0];

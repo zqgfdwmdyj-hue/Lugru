@@ -1,7 +1,7 @@
 import { index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId } from "./core";
 
-// B24: Bildschirmfoto bei jedem Fehlschlag der Browser-Automatik (BQool, sellerboard, ArbitrageOne) – mit Seitentitel
+// B24: Bildschirmfoto bei jedem Fehlschlag der Browser-Automatik (sellerboard, ArbitrageOne) – mit Seitentitel
 // und Adresse (ohne Abfrageteil), nur für Inhaber unter /import/debug/<name>.png, nach 7 Tagen gelöscht. Das Bild liegt
 // verschlüsselt in der Ablage.
 

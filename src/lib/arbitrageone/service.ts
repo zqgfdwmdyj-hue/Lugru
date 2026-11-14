@@ -1,10 +1,10 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { accountoneAus, bqoolVergleich, bqoolVergleichText, einkaufSchluessel, lagerbestandAus, type AoEinkauf, type BqVergleichZeile } from "./logic";
+import { accountoneAus, einkaufSchluessel, lagerbestandAus, type AoEinkauf } from "./logic";
 
 // ArbitrageOne: gespeicherte Einkäufe, Lagerbestand und AccountOne COG – und was das System daraus macht
-// (Monatsrahmen, Liquidität, Lugru „gekauft“, Bestandsabgleich, Monatsdatei für den Steuerberater, BQool-Vergleich).
+// (Monatsrahmen, Liquidität, Lugru „gekauft“, Bestandsabgleich, Monatsdatei für den Steuerberater).
 
 const AE = schema.aoEinkaeufe;
 const AL = schema.aoLagerbestand;
@@ -131,35 +131,3 @@ export async function accountoneStand(tenantId: string, monat: string) {
   return c ?? null;
 }
 
-/** BQool-Datei aus ArbitrageOne gegen das Soll des Seller-Systems (je Land). Ändert nichts. */
-export async function aoBqoolVergleichen(tenantId: string, text: string, dateiname: string) {
-  const { liesBqoolDatei } = await import("@/lib/bqool/export-logic");
-  const { bqoolVorschau } = await import("@/lib/bqool/export-service");
-  const datei = liesBqoolDatei(text, dateiname);
-  // Eine ArbitrageOne-Datei kann mehrere Kanäle enthalten (Amazon DE/FR …): je Land getrennt vergleichen.
-  const jeLand = new Map<string, BqVergleichZeile[]>();
-  for (const z of datei.zeilen) {
-    const land = (/\b(DE|FR|IT|ES)\b/i.exec(z.channel)?.[1] ?? datei.land ?? "DE").toUpperCase();
-    jeLand.set(land, [...(jeLand.get(land) ?? []), { sku: z.sku, regel: z.regel || null, min: z.min, max: z.max }]);
-  }
-  const vorschau = await bqoolVorschau(tenantId, { laender: [...jeLand.keys()] as ("DE" | "FR" | "IT" | "ES")[] });
-  const laender = [...jeLand].map(([land, ao]) => {
-    const soll = (vorschau.laender.find((l) => l.land === land)?.zeilen ?? []).map((z) => ({ sku: z.sku, regel: z.regel, min: z.min, max: z.max }));
-    const v = bqoolVergleich(ao, soll);
-    return { land, ...v, text: bqoolVergleichText(v) };
-  });
-  const abweichend = laender.reduce((n, l) => n + l.abweichend, 0);
-  return { laender, abweichend, text: laender.length === 1 ? laender[0].text : `${laender.map((l) => `${l.land}: ${l.abweichend}`).join(" · ")} SKUs weichen ab (ArbitrageOne ↔ Seller-System).`, hinweis: "Nur Vergleich – die ArbitrageOne-Datei wird weder übernommen noch zu BQool hochgeladen; maßgeblich sind die Soll-Regeln im Seller-System." };
-}
-
-/** Letzter BQool-Vergleich (für die Seite „BQool-Dateien“). */
-export async function letzterBqoolVergleich(tenantId: string) {
-  const D = schema.dateiImporte;
-  const [r] = await db
-    .select({ id: D.id, am: D.fertigAm, ergebnis: D.ergebnis })
-    .from(D)
-    .where(and(eq(D.tenantId, tenantId), eq(D.art, "ao_bqool_vergleich"), eq(D.status, "fertig")))
-    .orderBy(desc(D.fertigAm))
-    .limit(1);
-  return r?.ergebnis ? { id: r.id, am: r.am, ...(r.ergebnis as { abweichend?: number; text?: string; laender?: { land: string; abweichend: number; beispiele: { sku: string; art: string; arbitrageone: string; system: string }[] }[] }) } : null;
-}

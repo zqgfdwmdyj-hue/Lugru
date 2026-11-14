@@ -8,7 +8,7 @@ import { upsertSystemTask } from "@/lib/tasks/system";
 import { jsonFehler, uploadBewerten, WIE_TEXT, type UploadAntwort } from "./upload-logic";
 import { ANMELDE_KNOPF, anmeldeWarten, CAPTCHA_DOM, CAPTCHA_TITEL, COOKIE_KNOPF, DEBUG_TAGE, debugName, mitBildschirmfoto, seiteOhneQuery } from "./login-logic";
 
-// Browser-Automatik (sellerboard-Kostenimport, BQool-Upload): nur auf Knopfdruck, höchstens ein Lauf gleichzeitig
+// Browser-Automatik (sellerboard-Kostenimport, ArbitrageOne): nur auf Knopfdruck, höchstens ein Lauf gleichzeitig
 // (auch über Prozesse: Datenbank-Sperre), jeder Schritt mit Bildschirmfoto, bei Zwei-Faktor-Anmeldung oder Fehler
 // sofort abbrechen und eine Aufgabe anlegen – kein Wiederholen.
 

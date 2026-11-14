@@ -9,7 +9,7 @@ export type IntegrationField = {
   multiline?: boolean;
   /** Auswahlliste statt Freitext; erster Eintrag = Vorgabe. */
   options?: { value: string; label: string }[];
-  /** Leeres Feld mit einem aus einem anderen Feld abgeleiteten Wert vorbelegen (z. B. BQool amazonde → amazonfr). */
+  /** Leeres Feld mit einem aus einem anderen Feld abgeleiteten Wert vorbelegen (z. B. eine Adresse je Land aus der DE-Adresse). */
   vorbelegen?: { aus: string; von: string; nach: string };
 };
 
@@ -360,49 +360,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
-    provider: "bqool_web",
-    name: "BQool – Anmeldung für den Datei-Upload (Browser-Automatik) – optional",
-    purpose: "Täglich 06:00 den BQool-Ist je Land holen, die Soll-Datei erzeugen und nach Freigabe (Push) bei BQool hochladen; 30 Minuten später prüfen, ob Min/Regel übernommen sind. Ohne diese Anbindung: ZIP herunterladen und selbst hochladen.",
-    fields: [
-      { key: "email", label: "Anmelde-E-Mail" },
-      { key: "password", label: "Passwort", secret: true },
-      { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://www.bqool.com/login" },
-      { key: "uploadUrl", label: "Upload-Seite DE („Repricing-Datei hochladen“)", help: "In BQool die Upload-Seite für Amazon DE öffnen und die Adresse aus der Adresszeile hier einfügen, z. B. …/repricing/amazonde/upload." },
-      { key: "uploadUrlFR", label: "Upload-Seite FR", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonfr) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazonfr" } },
-      { key: "uploadUrlIT", label: "Upload-Seite IT", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonit) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazonit" } },
-      { key: "uploadUrlES", label: "Upload-Seite ES", help: "Aus der DE-Adresse vorbelegt (amazonde → amazones) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazones" } },
-      { key: "uploadUrlNL", label: "Upload-Seite NL (optional)", help: "Leer = nicht hochladen." },
-      { key: "uploadUrlBE", label: "Upload-Seite BE (optional)", help: "Leer = nicht hochladen." },
-      { key: "uploadUrlPL", label: "Upload-Seite PL (optional)", help: "Leer = nicht hochladen." },
-      { key: "uploadUrlSE", label: "Upload-Seite SE (optional)", help: "Leer = nicht hochladen." },
-      { key: "uploadUrlUK", label: "Upload-Seite UK (optional)", help: "Leer = nicht hochladen." },
-      { key: "uploadTyp", label: "Dateityp beim Upload (nur wenn anders)", placeholder: "Repricing Central", help: "BQool fragt unter „Upload File“ nach dem Dateityp – die Automatik wählt den Eintrag mit diesem Text." },
-      { key: "exportUrl", label: "Listen-Seite DE (Ist holen: Listings → Active Listings → Download → „Download listings“)", placeholder: "https://mc.bqool.com/repricing/amazonde", help: "BQool hat keine Export-Adresse und keinen Zeitplan. Die Automatik öffnet diese Listen-Seite und klickt selbst „Download“ → „Download listings“ (nur lesen, nichts hochladen). Ohne Listen-Seite bleibt der Ist-Stand vom letzten Datei-Upload." },
-      { key: "exportUrlFR", label: "Listen-Seite FR", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonfr) – nur bei Abweichung ändern.", vorbelegen: { aus: "exportUrl", von: "amazonde", nach: "amazonfr" } },
-      { key: "exportUrlIT", label: "Listen-Seite IT", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonit) – nur bei Abweichung ändern.", vorbelegen: { aus: "exportUrl", von: "amazonde", nach: "amazonit" } },
-      { key: "exportUrlES", label: "Listen-Seite ES", help: "Aus der DE-Adresse vorbelegt (amazonde → amazones) – nur bei Abweichung ändern.", vorbelegen: { aus: "exportUrl", von: "amazonde", nach: "amazones" } },
-      { key: "exportKnopf", label: "Knopf-Text Export (nur wenn die Automatik ihn nicht findet)", placeholder: "Download listings", help: "Text des Download-Knopfs auf der Listen-Seite, z. B. „Download“ (danach wählt die Automatik „Download listings“)." },
-      { key: "zeitzone", label: "Zeitzone der BQool-Zeiten", placeholder: "+02:00", help: "B33.6: BQool zeigt Zeiten in UTC+02:00 – im Winter 1 Stunde später als deutsche Zeit. Für Upload-Verlauf und Processing Report; leer = +02:00." },
-      { key: "leistungUrl", label: "Bericht „Listing Performance“ DE (optional)", placeholder: "https://mc.bqool.com/repricing/reports/listing?setApp=1&module=R&locale=DE", help: "B31.5: In BQool unter Reports die Seite „Listing Performance“ für Amazon DE öffnen und die Adresse einfügen (Berichte müssen in BQool angefordert werden, FR/IT/ES über locale=FR … abgeleitet). Der tägliche Lauf lädt dann je Land den Bericht der letzten 7 Tage (FR/IT/ES aus amazonde → amazonfr … abgeleitet). Leer = kein Bericht." },
-      { key: "tagesUrl", label: "Bericht „Daily Sales“ DE (optional)", placeholder: "https://mc.bqool.com/reports?setApp=1&module=R&locale=DE", help: "Wie oben für „Daily Sales“ – Tageswerte je Land (Umsatz, Est. Profit, Buy Box) als Vergleich auf der Gewinn-Seite. Leer = kein Bericht." },
-      { key: "kreislauf", label: "Täglicher Kreislauf 06:00", options: [{ value: "an", label: "an – Ist holen, Soll erzeugen, Freigabe per Push" }, { value: "aus", label: "aus – nur auf Knopfdruck (Repricer → BQool-Dateien)" }] },
-      { key: "feldEmail", label: "Feld E-Mail (nur wenn die Automatik es nicht findet)", placeholder: "z. B. #login-email", help: "CSS-Selektor aus dem Browser: Anmeldeseite öffnen → Rechtsklick auf das Feld → Untersuchen → id bzw. name, z. B. #email oder input[name=login]. Wird zuerst probiert." },
-      { key: "feldPasswort", label: "Feld Passwort (optional)", placeholder: "z. B. #login-password" },
-      { key: "feldKnopf", label: "Anmelde-Knopf (optional)", placeholder: "z. B. button.login-submit" },
-    ],
-    setup: [
-      "Je Marktplatz hat BQool eine eigene Upload-Seite: DE eintragen, FR/IT/ES werden daraus vorbelegt. „An BQool übertragen“ lädt je Land die passende Datei auf die passende Seite – ein Fehler in einem Land stoppt die anderen nicht.",
-      "„Verbindung testen“ meldet sich an und ruft je Land die Upload-Seite auf (ohne etwas hochzuladen). Klappt etwas nicht, steht in der Meldung ein Link auf ein Bildschirmfoto der Seite (7 Tage) – daran sieht man, ob ein Cookie-Banner, eine Browser-Prüfung (Captcha) oder ein anders benanntes Feld der Grund ist.",
-      "Mit Zwei-Faktor-Anmeldung bricht die Automatik ab und legt eine Aufgabe an – dann die Dateien als ZIP herunterladen.",
-      "Täglich 06:00: Ist je Land holen (Export-Seite), Soll erzeugen (nur Änderungen), Push „BQool-Upload freigeben“. Preise ändern sich erst nach „Freigeben“ (Push oder Repricer → BQool-Dateien); ohne Freigabe bis 18:00 verfällt der Lauf. Automatisch ohne Freigabe nur, wenn unter Repricer → BQool-Dateien eingeschaltet (nie bei Regelwechsel oder Min unter Break-even).",
-      "30 Minuten nach dem Upload holt die Automatik den Ist erneut und prüft Min und Regel je SKU – Abweichungen als Aufgabe und Push.",
-      "Der Browser wird beim Update automatisch auf dem Server mitgebaut (abschalten nur mit MIT_BROWSER=0 in der .env).",
-    ],
-  },
-  {
     provider: "arbitrageone_web",
     name: "ArbitrageOne – Exporte automatisch abholen (Browser-Automatik) – optional",
-    purpose: "Jede Nacht um 05:30 die Exporte aus ArbitrageOne holen: Einkäufe, Lagerbestand und sellerboard-COG täglich, Inventory Reimbursement montags, AccountOne COG am 1. – verarbeitet wie ein Datei-Import. Den BQool-Export holt das System nicht mehr ab – die BQool-Dateien erzeugt das Seller-System selbst und lädt sie nach Freigabe bei BQool hoch (Anbindung „BQool – Anmeldung“).",
+    purpose: "Jede Nacht um 05:30 die Exporte aus ArbitrageOne holen: Einkäufe, Lagerbestand und sellerboard-COG täglich, Inventory Reimbursement montags, AccountOne COG am 1. – verarbeitet wie ein Datei-Import.",
     fields: [
       { key: "email", label: "Anmelde-E-Mail" },
       { key: "password", label: "Passwort", secret: true },

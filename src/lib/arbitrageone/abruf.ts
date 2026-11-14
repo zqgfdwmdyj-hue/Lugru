@@ -8,7 +8,7 @@ import type { ImportArt } from "@/lib/datei-import/logic";
 import { getIntegration } from "@/lib/integrations/store";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { taeglichFaellig } from "@/lib/today/abruf-plan";
-import { AO_BQOOL_ENTFAELLT, AO_EXPORTE, AO_UHRZEIT, faelligeExporte, kurzFehler, laufText, type AoExport, type AoExportErgebnis, type AoExportKey } from "./logic";
+import { AO_EXPORTE, AO_UHRZEIT, faelligeExporte, kurzFehler, laufText, type AoExport, type AoExportErgebnis, type AoExportKey } from "./logic";
 
 // ArbitrageOne-Anbindung: anmelden, auf der Export-Seite je fälligem Export den Download-Knopf drücken, die Datei über
 // den Datei-Import verarbeiten (gleicher Weg wie import_link). Nur lesen: Exportvorlagen werden nie verändert, in
@@ -271,8 +271,6 @@ export async function aoAbholen(tenantId: string, o: { ausloeser: "zeitplan" | "
   ergebnis.sort((a, b) => AO_EXPORTE.findIndex((e) => e.key === a.key) - AO_EXPORTE.findIndex((e) => e.key === b.key));
   const fehler = ergebnis.filter((x) => !x.ok);
   const status: AoLauf["status"] = !r.ok ? "fehler" : fehler.length ? (fehler.length === ergebnis.length ? "fehler" : "teilweise") : "ok";
-  // B31.1: BQool kommt nicht mehr von ArbitrageOne – Hinweiszeile statt Fehler (nicht bei einzelnen Exporten „nur …“).
-  if (!o.nur) ergebnis.push(AO_BQOOL_ENTFAELLT);
   const text = !r.ok ? `Abgebrochen: ${r.fehler}` : laufText(ergebnis);
   await db.update(L).set({ status, ergebnis, protokoll: r.protokoll.map((p) => ({ zeit: p.zeit, text: p.text, bildId: p.bildId })), fehler: r.ok ? null : r.fehler, endeAm: new Date() }).where(eq(L.id, lauf.id));
   if (r.ok && fehler.length)

@@ -1,6 +1,6 @@
 // ArbitrageOne-Anbindung (Bauauftrag Datei-Import, Ergänzung 01.11.) – reine Logik, getestet in
 // tests/arbitrageone.test.ts: welche Exporte wann fällig sind, Erkennung der Export-Formate (Einkäufe, Lagerbestand,
-// AccountOne COG) an den Spalten und der Vergleich der ArbitrageOne-BQool-Datei mit dem Soll des Seller-Systems.
+// AccountOne COG) an den Spalten.
 //
 // ArbitrageOne hat keine öffentliche API und keine Export-Links mit Token (geprüft 01.11.: Doku nennt nur den
 // Download-Knopf unter app.arbitrageone.de/export) – deshalb holt die Browser-Automatik die Dateien ab.
@@ -8,6 +8,7 @@
 import { parseAmount, parseDate } from "@/lib/numbers";
 
 export type AoTakt = "taeglich" | "woechentlich" | "monatlich";
+/** „bqool“ nur noch in alten Lauf-Ergebnissen (Export wird seit B31.1 nicht mehr abgeholt). */
 export type AoExportKey = "einkaeufe" | "lagerbestand" | "sellerboard" | "bqool" | "reimbursement" | "accountone";
 
 export type AoExport = {
@@ -27,16 +28,12 @@ export const AO_EXPORTE: AoExport[] = [
   { key: "einkaeufe", titel: "Einkäufe", takt: "taeglich", art: "ao_einkaeufe", taktText: "täglich 05:30", nutzen: "Einkauf → Bestellungen, EK-Vorschlag aus Lieferungen, Lugru „gekauft“, Monatsrahmen, Wareneinkauf in der Liquidität" },
   { key: "lagerbestand", titel: "Lagerbestand", takt: "taeglich", art: "ao_lagerbestand", taktText: "täglich 05:30", nutzen: "Bestandsabgleich eigenes Lager ↔ Wawi, Lagerwert" },
   { key: "sellerboard", titel: "Sellerboard", takt: "taeglich", art: "ek_liste", taktText: "täglich nach den Einkäufen", nutzen: "EK je SKU; auf Wunsch unverändert an sellerboard weitergereicht" },
-  // B31.1: Der ArbitrageOne-Export „BQool“ ist ein Vergleichswerkzeug, das erst die BQool-Datei hochgeladen braucht –
-  // entfällt im Nachtlauf (das Seller-System erzeugt die BQool-Dateien selbst und lädt sie hoch, siehe bqool/kreislauf.ts).
   { key: "reimbursement", titel: "Inventory Reimbursement", takt: "woechentlich", art: "amazon_reimbursements", taktText: "wöchentlich montags", nutzen: "Erstattungs-Abgleich, Ansprüche" },
   { key: "accountone", titel: "AccountOne COG (NEU)", takt: "monatlich", art: "ao_accountone_cog", taktText: "monatlich am 1.", nutzen: "Monatsdatei für den Steuerberater (Stotax-Belegübergabe)" },
 ];
 
 export const AO_UHRZEIT = "05:30";
 
-/** B31.1: Zeile im Lauf-Ergebnis statt Fehler – der BQool-Export wird nicht mehr abgeholt. */
-export const AO_BQOOL_ENTFAELLT: AoExportErgebnis = { key: "bqool", titel: "BQool", ok: true, text: "entfällt (Seller-System erzeugt die Datei)", entfaellt: true };
 
 const BERLIN = "Europe/Berlin";
 const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: BERLIN }).format(d);
@@ -289,47 +286,6 @@ export function accountoneAus(table: unknown[][]): { zeilen: AoCog[]; spalten: s
   return { zeilen, spalten: table[0].map((x) => str(x)) };
 }
 
-// ---------------------------------------------------------------------------------------------------------
-// BQool-Datei aus ArbitrageOne: nur Vergleich mit dem Soll des Seller-Systems – nie übernehmen, nie hochladen
-// (zwei Quellen würden sich widersprechen).
-
-export type BqVergleichZeile = { sku: string; regel: string | null; min: number | null; max: number | null };
-export type BqAbweichung = { sku: string; art: "nur_arbitrageone" | "nur_system" | "regel" | "min" | "max"; arbitrageone: string; system: string };
-
-const geld = (n: number | null) => (n === null ? "–" : n.toFixed(2));
-
-export function bqoolVergleich(ao: BqVergleichZeile[], soll: BqVergleichZeile[]): { abweichend: number; jeArt: Record<BqAbweichung["art"], number>; beispiele: BqAbweichung[]; aoSkus: number; systemSkus: number } {
-  const a = new Map(ao.map((z) => [z.sku, z]));
-  const s = new Map(soll.map((z) => [z.sku, z]));
-  const liste: BqAbweichung[] = [];
-  for (const [sku, x] of a) {
-    const y = s.get(sku);
-    if (!y) {
-      liste.push({ sku, art: "nur_arbitrageone", arbitrageone: `${x.regel ?? "–"} ${geld(x.min)}–${geld(x.max)}`, system: "nicht im Soll" });
-      continue;
-    }
-    if ((x.regel ?? "").trim().toLowerCase() !== (y.regel ?? "").trim().toLowerCase()) liste.push({ sku, art: "regel", arbitrageone: x.regel ?? "–", system: y.regel ?? "–" });
-    else if (x.min !== null && y.min !== null && Math.abs(x.min - y.min) >= 0.01) liste.push({ sku, art: "min", arbitrageone: geld(x.min), system: geld(y.min) });
-    else if (x.max !== null && y.max !== null && Math.abs(x.max - y.max) >= 0.01) liste.push({ sku, art: "max", arbitrageone: geld(x.max), system: geld(y.max) });
-  }
-  for (const [sku, y] of s) if (!a.has(sku)) liste.push({ sku, art: "nur_system", arbitrageone: "nicht in der Datei", system: `${y.regel ?? "–"} ${geld(y.min)}–${geld(y.max)}` });
-  const jeArt = { nur_arbitrageone: 0, nur_system: 0, regel: 0, min: 0, max: 0 } as Record<BqAbweichung["art"], number>;
-  for (const x of liste) jeArt[x.art]++;
-  return { abweichend: new Set(liste.map((x) => x.sku)).size, jeArt, beispiele: liste.slice(0, 25), aoSkus: a.size, systemSkus: s.size };
-}
-
-/** „Abweichung ArbitrageOne ↔ Seller-System: 35 SKUs (12 andere Regel, 20 Min, 3 nur in ArbitrageOne)“ */
-export function bqoolVergleichText(v: { abweichend: number; jeArt: Record<BqAbweichung["art"], number> }): string {
-  if (!v.abweichend) return "Keine Abweichung ArbitrageOne ↔ Seller-System.";
-  const teile = [
-    v.jeArt.regel && `${v.jeArt.regel} andere Regel`,
-    v.jeArt.min && `${v.jeArt.min} anderer Min-Preis`,
-    v.jeArt.max && `${v.jeArt.max} anderer Max-Preis`,
-    v.jeArt.nur_arbitrageone && `${v.jeArt.nur_arbitrageone} nur in ArbitrageOne`,
-    v.jeArt.nur_system && `${v.jeArt.nur_system} nur im Seller-System`,
-  ].filter(Boolean);
-  return `Abweichung ArbitrageOne ↔ Seller-System: ${v.abweichend} SKU${v.abweichend === 1 ? "" : "s"} (${teile.join(", ")}).`;
-}
 
 /** Zusammenfassung eines Abruf-Laufs für Anbindungen und Aufgabe. */
 export type AoExportErgebnis = {

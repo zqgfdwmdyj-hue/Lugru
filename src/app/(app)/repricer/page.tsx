@@ -1,28 +1,29 @@
 import Link from "next/link";
 import { KpiMeta } from "@/components/kpi";
 import { requireSession } from "@/lib/auth/session";
-import { formatEuro } from "@/lib/numbers";
+import { formatDate, formatEuro } from "@/lib/numbers";
 import { repricerRows } from "@/lib/repricer";
 import { getSettings } from "@/lib/settings";
-import { formatDate } from "@/lib/numbers";
 import { fbaReport } from "@/lib/stock/fba-report";
 import { breakdownText } from "@/lib/stock/breakdown";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 import { isEstimated, repricerCoverage } from "@/lib/repricer-logic";
-import { filterBqool, HINWEIS_RANG, HINWEIS_TEXT, regelUebersicht } from "@/lib/bqool/logic";
-import { bqoolStand } from "@/lib/bqool/service";
-import { BqoolUpload } from "./bqool-upload";
-import { bqoolVorschau } from "@/lib/bqool/export-service";
-import { ablaufStand, istGebraucht, stufeVonRegel, ZUSTAENDE, ZUSTAND_TEXT, type Zustand } from "@/lib/bqool/leiter-logic";
-import { schnelldreherAnAction, schnelldreherAusAction, zustandAction } from "./bqool/actions";
+import { filterAbgleich, HINWEIS_RANG, HINWEIS_TEXT, strategieUebersicht } from "@/lib/repricing/profitguard-logic";
+import { sollVorschau } from "@/lib/repricing/soll-service";
+import { buyboxAnteilJeLand, profitguardStand } from "@/lib/repricing/profitguard-service";
+import { ablaufStand, istGebraucht, ZUSTAENDE, ZUSTAND_TEXT, type Zustand } from "@/lib/repricing/leiter-logic";
+import { schnelldreherAnAction, schnelldreherAusAction, zustandAction } from "./profitguard/actions";
+import { ProfitguardUpload } from "./profitguard-upload";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { todayIso } from "@/lib/dates";
 
-type SP = { nur?: string; seite?: string; land?: string; regel?: string; hinweis?: string; status?: string; q?: string; bq?: string; bqseite?: string; liq?: string; leiter?: string; zustand?: string; meldung?: string };
-const BQ_SEITE = 50;
+// Repricer (ProfitGuard): Abgleich Seller-System (Soll) ↔ ProfitGuard (Ist aus dem Export) je SKU und Land, dazu die
+// Bestandsliste mit dem klassischen Mindestpreis (EK + Gebühren + Mindestgewinn).
+
+type SP = { nur?: string; seite?: string; land?: string; strategie?: string; hinweis?: string; repricing?: string; q?: string; ab?: string; abseite?: string; leiter?: string; zustand?: string; meldung?: string };
+const AB_SEITE = 50;
 const SYS_SEITE = 100;
-/** Link mit geänderten Suchparametern (leere Werte fallen weg). */
 const mitParam = (sp: SP, neu: Partial<SP>, anker = "") => {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries({ ...sp, ...neu })) if (v) u.set(k, String(v));
@@ -35,194 +36,185 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const s = await getSettings(session.tenantId);
   const all = await repricerRows(session.tenantId);
-  // Ohne FBA-Bericht ist unbekannt, welche SKUs bei Amazon liegen – nicht „0 SKUs“.
   const fr = await fbaReport(session.tenantId);
   const below = all.filter((r) => r.min !== null && r.price !== null && r.price < r.min);
   const cov = repricerCoverage(all);
-  const bq = await bqoolStand(session.tenantId);
-  const bqProbleme = bq.zeilen.filter((z) => z.hinweise.length);
-  // B15.11: alle Länder, Übersicht je Regel, Filter und Seiten (Standard: nur Auffälligkeiten).
-  const uebersicht = regelUebersicht(bq.zeilen);
-  const laender = bq.stand.map((x) => x.marktplatz).sort();
-  // B31.6: Filter „Liquidation wegen Min unter Marge“ zeigt diese SKUs auch ohne Auffälligkeit
-  // B31.6a/b, B31.7, B31.8: Stufe, Liquidation bis, Zustand/Zielpreis/Min gebraucht, Schnelldreher je SKU und Land
   const heute = todayIso();
-  const [pv, lqRows, pflegeRows] = await Promise.all([
-    bqoolVorschau(session.tenantId).catch(() => null),
-    db.select().from(schema.bqoolLiquidationen).where(eq(schema.bqoolLiquidationen.tenantId, session.tenantId)),
-    db.select().from(schema.bqoolSkuPflege).where(eq(schema.bqoolSkuPflege.tenantId, session.tenantId)),
+  const [v, stand, bb, lqRows, pflegeRows] = await Promise.all([
+    sollVorschau(session.tenantId).catch(() => null),
+    profitguardStand(session.tenantId),
+    buyboxAnteilJeLand(session.tenantId).catch(() => []),
+    db.select().from(schema.repricingLiquidationen).where(eq(schema.repricingLiquidationen.tenantId, session.tenantId)),
+    db.select().from(schema.repricingSkuPflege).where(eq(schema.repricingSkuPflege.tenantId, session.tenantId)),
   ]);
-  const pvJe = new Map((pv?.laender ?? []).flatMap((l) => l.zeilen.map((z) => [`${z.land}|${z.sku}`, z])));
-  const unbekanntSkus = new Set((pv?.zustandUnbekannt ?? []).map((u) => u.sku));
+  const zeilen = (v?.laender ?? []).flatMap((l) => l.zeilen);
+  const auffaellig = zeilen.filter((z) => z.hinweise.length);
+  const uebersicht = strategieUebersicht(zeilen.map((z) => ({ istStrategie: z.istStrategieName, imRepricing: z.istImRepricing, land: z.land, hinweise: z.hinweise })));
+  const laender = [...new Set(zeilen.map((z) => z.land))].sort();
+  const unbekanntSkus = new Set((v?.zustandUnbekannt ?? []).map((u) => u.sku));
   const lqJe = new Map(lqRows.filter((l) => l.status === "aktiv" || l.status === "zurueck_vorgeschlagen").map((l) => [`${l.land}|${l.sku}`, l]));
   const pfJe = new Map(pflegeRows.map((p) => [`${p.land}|${p.sku}`, p]));
-  const extraFilter = (zz: typeof bq.zeilen) => {
-    const k = (z: (typeof bq.zeilen)[number]) => `${z.marktplatz}|${z.sku}`;
-    if (sp.leiter === "ablauf7") return zz.filter((z) => { const l = lqJe.get(k(z)); return !!l && ["bald", "abgelaufen"].includes(ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.bqool.leiter.ablaufVorwarnTage }).stand); });
+  const k = (z: (typeof zeilen)[number]) => `${z.land}|${z.sku}`;
+  const extra = (zz: typeof zeilen) => {
+    if (sp.leiter === "ablauf7") return zz.filter((z) => { const l = lqJe.get(k(z)); return !!l && ["bald", "abgelaufen"].includes(ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.repricing.leiter.ablaufVorwarnTage }).stand); });
     if (sp.leiter === "schnell") return zz.filter((z) => pfJe.get(k(z))?.schnelldreher);
-    if (sp.leiter === "gebraucht_ohne") return zz.filter((z) => { const v = pvJe.get(k(z)); return !!v && istGebraucht(v.zustand) && (z.min === null || (v.effMinStufe1 !== null && z.min >= v.effMinStufe1 - 0.005)); });
+    if (sp.leiter === "gebraucht_ohne") return zz.filter((z) => istGebraucht(z.zustand) && (z.istMin === null || (z.effMinStufe1 !== null && z.istMin >= z.effMinStufe1 - 0.005)));
+    if (sp.leiter === "liquidation") return zz.filter((z) => z.liquidationFrei || z.liquidation === "neu");
     if (sp.zustand === "unbekannt") return zz.filter((z) => unbekanntSkus.has(z.sku));
     return zz;
   };
   const extraAktiv = !!(sp.leiter || sp.zustand);
-  const bqGefiltert = extraFilter(filterBqool(sp.liq === "1" ? bq.zeilen.filter((z) => z.liqMarge) : bq.zeilen, { land: sp.land, regel: sp.regel, hinweis: sp.hinweis, status: sp.status, q: sp.q, nurAuffaellig: sp.bq !== "alle" && sp.liq !== "1" && !extraAktiv }));
-  const liqAnzahl = bq.zeilen.filter((z) => z.liqMarge).length;
-  const bqSeiten = Math.max(1, Math.ceil(bqGefiltert.length / BQ_SEITE));
-  const bqSeite = Math.min(bqSeiten, Math.max(1, Number(sp.bqseite) || 1));
-  const bqZeigen = bqGefiltert.slice((bqSeite - 1) * BQ_SEITE, bqSeite * BQ_SEITE);
+  const gefiltert = extra(filterAbgleich(zeilen.map((z) => ({ ...z, istStrategie: z.istStrategieName, imRepricing: z.istImRepricing })), { land: sp.land, strategie: sp.strategie, hinweis: sp.hinweis, repricing: sp.repricing, q: sp.q, nurAuffaellig: sp.ab !== "alle" && !extraAktiv }));
+  const seiten = Math.max(1, Math.ceil(gefiltert.length / AB_SEITE));
+  const seite = Math.min(seiten, Math.max(1, Number(sp.abseite) || 1));
+  const zeigen = gefiltert.slice((seite - 1) * AB_SEITE, seite * AB_SEITE);
   const rowsAlle = sp.nur === "unter" ? below : sp.nur === "ohne-ek" ? all.filter((r) => r.unitCost === null) : sp.nur === "ohne-preis" ? all.filter((r) => r.price === null) : sp.nur === "geschaetzt" ? all.filter((r) => r.min !== null && isEstimated(r)) : all;
   const sysSeiten = Math.max(1, Math.ceil(rowsAlle.length / SYS_SEITE));
   const sysSeite = Math.min(sysSeiten, Math.max(1, Number(sp.seite) || 1));
   const rows = rowsAlle.slice((sysSeite - 1) * SYS_SEITE, sysSeite * SYS_SEITE);
+  const filterAktiv = !!(sp.land || sp.strategie || sp.hinweis || sp.repricing || sp.q || sp.ab || extraAktiv);
   return (
     <>
       <div className="page-head">
-        <div><div className="crumb">Amazon</div><h1>Repricer (BQool)</h1></div>
+        <div><div className="crumb">Amazon</div><h1>Repricer</h1></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link className="btn btn-primary" href="/repricer/bqool" data-testid="link-bqool-dateien">BQool-Dateien je Land (Freigabe)</Link>
-          <a className="btn" href="/repricer/export?format=bqool" title="Nur Mindestpreise mit echten Gebühren aus der Gebührenvorschau" data-testid="export-exact">BQool-CSV ({cov.exact} mit echten Gebühren)</a>
-          {cov.estimated > 0 && <a className="btn" href="/repricer/export?format=bqool&geschaetzt=1" title="Enthält Mindestpreise mit pauschaler FBA-Gebühr bzw. Provision – vor dem Einsatz prüfen" data-testid="export-estimated">inkl. {cov.estimated} geschätzter</a>}
-          <a className="btn" href="/repricer/export?format=de">Als Tabelle (deutsch)</a>
+          <Link className="btn btn-primary" href="/repricer/profitguard" data-testid="link-profitguard">ProfitGuard-Datei (Freigabe)</Link>
+          <a className="btn" href="/repricer/export?format=de">Bestandsliste als Tabelle</a>
         </div>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <div className="stack" style={{ gap: 6 }} data-kpi-group>
-      <div className="grid-kpi">
-        <div className="card card-pad" data-testid="kpi-repricer-skus">
-          <div className="kpi-label">SKUs mit Bestand bei Amazon</div>
-          {fr.missing ? (
-            <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt →</Link></>
-          ) : (
-            <><div className="kpi-value">{all.length}</div><div className="small" style={fr.stale ? { color: "var(--warn)" } : undefined}>{fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : `laut ${fr.source === "sellerboard" ? "sellerboard" : "Bericht"} vom ${formatDate(fr.snapshot)}`}</div></>
-          )}
+        <div className="grid-kpi">
+          <div className="card card-pad" data-testid="kpi-repricer-skus">
+            <div className="kpi-label">SKUs mit Bestand bei Amazon</div>
+            {fr.missing ? (
+              <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt →</Link></>
+            ) : (
+              <><div className="kpi-value">{all.length}</div><div className="small" style={fr.stale ? { color: "var(--warn)" } : undefined}>{fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : `laut ${fr.source === "sellerboard" ? "sellerboard" : "Bericht"} vom ${formatDate(fr.snapshot)}`}</div></>
+            )}
+          </div>
+          <div className="card card-pad" data-testid="kpi-below">
+            <div className="kpi-label">Aktueller Preis unter Mindestpreis</div>
+            {cov.checkable === 0 ? (
+              <><div className="kpi-value muted" style={{ fontSize: 18 }} data-testid="below-value">nicht prüfbar</div><div className="small" style={{ color: "var(--warn)" }}>{cov.total ? `Bei keiner SKU liegen aktueller Preis und Mindestpreis zusammen vor (${cov.noPrice} ohne Preis, ${cov.noMin} ohne Mindestpreis).` : "Keine SKUs."}</div></>
+            ) : (
+              <><div className="kpi-value" style={{ color: below.length ? "var(--danger)" : undefined }} data-testid="below-value">{below.length}</div><div className="small muted" data-testid="below-coverage">geprüft: {cov.checkable} von {cov.total} SKUs{cov.noPrice ? ` · ${cov.noPrice} ohne aktuellen Preis` : ""}{cov.noMin ? ` · ${cov.noMin} ohne Mindestpreis` : ""}</div></>
+            )}
+          </div>
+          <div className="card card-pad" data-testid="kpi-no-cost"><div className="kpi-label">Ohne EK (kein Mindestpreis)</div><div className="kpi-value">{all.filter((r) => r.unitCost === null).length}</div>{all.some((r) => r.unitCost === null) && <Link className="small" href="/produkte?ansicht=zuordnung&art=ek-fehlt">betroffene Artikel → EK nachtragen</Link>}</div>
+          <div className="card card-pad" data-testid="kpi-pg-auffaellig"><div className="kpi-label">ProfitGuard: auffällig</div><div className="kpi-value" style={{ color: auffaellig.length ? "var(--danger)" : undefined }}>{stand.length ? auffaellig.length : "–"}</div><div className="small muted">{stand.length ? `von ${zeilen.length} SKU/Land` : "noch kein Export eingelesen"}</div></div>
+          <div className="card card-pad" data-testid="kpi-buybox"><div className="kpi-label">Buy-Box-Anteil</div>{bb.length ? <div className="small">{bb.map((x) => `${x.land} ${String(x.anteil).replace(".", ",")} %`).join(" · ")}<div className="muted">{[...new Set(bb.map((x) => (x.quelle === "profitguard" ? "ProfitGuard" : "Amazon-Geschäftsbericht")))].join(" / ")}</div></div> : <div className="small muted">keine Daten (ProfitGuard-Spalte oder Amazon-Geschäftsbericht)</div>}</div>
         </div>
-        <div className="card card-pad" data-testid="kpi-below">
-          <div className="kpi-label">Aktueller Preis unter Mindestpreis</div>
-          {cov.checkable === 0 ? (
-            <><div className="kpi-value muted" style={{ fontSize: 18 }} data-testid="below-value">nicht prüfbar</div><div className="small" style={{ color: "var(--warn)" }}>{cov.total ? `Bei keiner SKU liegen aktueller Preis und Mindestpreis zusammen vor (${cov.noPrice} ohne Preis, ${cov.noMin} ohne Mindestpreis).` : "Keine SKUs."}</div></>
-          ) : (
-            <><div className="kpi-value" style={{ color: below.length ? "var(--danger)" : undefined }} data-testid="below-value">{below.length}</div><div className="small muted" data-testid="below-coverage">geprüft: {cov.checkable} von {cov.total} SKUs{cov.noPrice ? ` · ${cov.noPrice} ohne aktuellen Preis` : ""}{cov.noMin ? ` · ${cov.noMin} ohne Mindestpreis` : ""}</div></>
-          )}
-        </div>
-        <div className="card card-pad" data-testid="kpi-no-cost"><div className="kpi-label">Ohne EK (kein Mindestpreis)</div><div className="kpi-value">{all.filter((r) => r.unitCost === null).length}</div>{all.some((r) => r.unitCost === null) && <Link className="small" href="/produkte?ansicht=zuordnung&art=ek-fehlt">betroffene Artikel → EK nachtragen</Link>}</div>
-        <div className="card card-pad small muted">Mindestgewinn {formatEuro(s.pricing.minProfit)} · Provision {Math.round(s.pricing.referralRate * 100)} % (wenn keine Gebührenvorschau) · Max = Min × {String(s.pricing.maxPriceFactor).replace(".", ",")} bzw. Ziel-VK. <Link href="/einstellungen">Ändern</Link></div>
-      </div>
-      <KpiMeta source="FBA-Bestand (Bestandsbericht bzw. sellerboard), aktuelle Preise, EK im Seller-System" stand={fr.missing ? "kein Bestandsbericht" : `${formatDate(fr.snapshot)}${fr.stale ? " – veraltet" : ""}`} />
+        <div className="small muted">Bestandsliste: Mindestpreis = EK + FBA-Gebühr + Provision + Mindestgewinn {formatEuro(s.pricing.minProfit)}, Max = Min × {String(s.pricing.maxPriceFactor).replace(".", ",")} bzw. Ziel-VK. Abgleich mit ProfitGuard: Soll-Min = Break-even mit der Mindestmarge der Altersstufe (wie in ProfitGuard). <Link href="/einstellungen">Ändern</Link> · <Link href="/repricer/profitguard#strategien">Strategien</Link></div>
+        <KpiMeta source="FBA-Bestand (Bestandsbericht bzw. sellerboard), aktuelle Preise, EK im Seller-System, ProfitGuard-Export" stand={fr.missing ? "kein Bestandsbericht" : `${formatDate(fr.snapshot)}${fr.stale ? " – veraltet" : ""}`} />
       </div>
       {cov.estimated > 0 && (
         <div className="notice notice-warn small" data-testid="estimated-warning">
-          <strong>{cov.estimated} von {cov.exact + cov.estimated} Mindestpreisen sind geschätzt:</strong> ohne Gebührenvorschau rechnet das System mit pauschal {formatEuro(s.pricing.defaultFbaFee)} FBA-Gebühr bzw. {Math.round(s.pricing.referralRate * 100)} % Provision. Vor dem Einsatz in BQool die <Link href="/import">Gebührenvorschau importieren</Link> – der BQool-Export enthält geschätzte Werte nur, wenn du es ausdrücklich wählst. <Link href="/repricer?nur=geschaetzt">Geschätzte ansehen →</Link>
+          <strong>{cov.estimated} von {cov.exact + cov.estimated} Mindestpreisen sind geschätzt:</strong> ohne Gebührenvorschau rechnet das System mit pauschal {formatEuro(s.pricing.defaultFbaFee)} FBA-Gebühr bzw. {Math.round(s.pricing.referralRate * 100)} % Provision. Vor dem Einsatz die <Link href="/import">Gebührenvorschau importieren</Link>. <Link href="/repricer?nur=geschaetzt">Geschätzte ansehen →</Link>
         </div>
       )}
-      {bq.zeilen.length === 0 && (
-        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="bqool-fehlt">
-          <strong>Noch kein BQool-Export hochgeladen.</strong> Ohne ihn fehlen Regel, Min und Max je SKU – im Verlust-Stopp, in der Kapital-Ampel und bei Claude („repricer“). In BQool unter Repricing → Manage Listings je Land exportieren und <a href="#bqool-upload">hier unten hochladen</a>.
+      {stand.length === 0 && (
+        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="profitguard-fehlt">
+          <strong>Noch kein ProfitGuard-Export eingelesen.</strong> Ohne ihn fehlen Strategie, Min und Max je SKU in ProfitGuard – im Abgleich, im Verlust-Stopp, im Listing-Check und bei Claude („repricer“). In ProfitGuard unter „Export &amp; Import“ exportieren und <a href="#profitguard-upload">hier unten hochladen</a>.
         </div>
       )}
-      <section className="card card-pad stack" data-testid="bqool-section">
-        <h2>BQool: Regeln, Min/Max und Buy Box laut Export</h2>
-        {bq.stand.length === 0 ? (
-          <div className="small muted">Noch kein BQool-Export eingelesen. Dann siehst du hier – und Claude im Werkzeug „repricer“ – je SKU und Land die Regel, Mindest- und Höchstpreis aus BQool und ob der Mindestpreis unter dem des Seller-Systems liegt.</div>
+      <section className="card card-pad stack" data-testid="abgleich-section" id="abgleich" style={{ scrollMarginTop: 70 }}>
+        <h2>Abgleich Seller-System ↔ ProfitGuard</h2>
+        {stand.length > 0 && <div className="small" data-testid="profitguard-stand">{stand.map((x) => `${x.marktplatz}: ${zeilen.filter((z) => z.land === x.marktplatz).length} SKUs, eingelesen ${x.am ? x.am.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?"}`).join(" · ")}</div>}
+        {uebersicht.length > 0 && (
+          <div style={{ overflow: "auto" }}>
+            <table className="table" data-testid="pg-strategien-uebersicht">
+              <thead><tr><th>Strategie in ProfitGuard</th><th className="right">SKUs</th><th className="right">im Repricing</th><th className="right">nicht im Repricing</th><th className="right">unbekannt</th><th className="right">auffällig</th><th>je Land</th></tr></thead>
+              <tbody>
+                {uebersicht.map((u) => (
+                  <tr key={u.strategie}>
+                    <td><Link href={mitParam(sp, { strategie: u.strategie, ab: "alle", abseite: undefined }, "#abgleich")}>{u.strategie}</Link></td>
+                    <td className="num right">{u.gesamt}</td>
+                    <td className="num right">{u.imRepricing}</td>
+                    <td className="num right" style={{ color: u.nichtIm ? "var(--warn)" : undefined }}>{u.nichtIm ? <Link href={mitParam(sp, { strategie: u.strategie, repricing: "nein", ab: "alle", abseite: undefined }, "#abgleich")}>{u.nichtIm}</Link> : 0}</td>
+                    <td className="num right muted">{u.unbekannt}</td>
+                    <td className="num right">{u.mitHinweis}</td>
+                    <td className="small">{Object.entries(u.laender).map(([l, n]) => `${l} ${n}`).join(" · ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <form className="reorder-filter" data-testid="abgleich-filter">
+          {sp.nur && <input type="hidden" name="nur" value={sp.nur} />}
+          <div className="field"><label className="label" htmlFor="ab">Zeigen</label>
+            <select className="input" id="ab" name="ab" defaultValue={sp.ab === "alle" ? "alle" : ""}><option value="">nur Auffälligkeiten</option><option value="alle">alle SKUs</option></select>
+          </div>
+          <div className="field"><label className="label" htmlFor="land">Land</label>
+            <select className="input" id="land" name="land" defaultValue={sp.land ?? ""}><option value="">alle Länder</option>{laender.map((l) => <option key={l} value={l}>{l}</option>)}</select>
+          </div>
+          <div className="field"><label className="label" htmlFor="strategie">Strategie (ProfitGuard)</label>
+            <select className="input" id="strategie" name="strategie" defaultValue={sp.strategie ?? ""}><option value="">alle</option>{uebersicht.map((u) => <option key={u.strategie} value={u.strategie}>{u.strategie}</option>)}</select>
+          </div>
+          <div className="field"><label className="label" htmlFor="repricing">im Repricing</label>
+            <select className="input" id="repricing" name="repricing" defaultValue={sp.repricing ?? ""}><option value="">alle</option><option value="ja">ja</option><option value="nein">nein</option><option value="unbekannt">unbekannt</option></select>
+          </div>
+          <div className="field"><label className="label" htmlFor="hinweis">Auffälligkeit</label>
+            <select className="input" id="hinweis" name="hinweis" defaultValue={sp.hinweis ?? ""}><option value="">alle</option>{HINWEIS_RANG.map((h) => <option key={h} value={h}>{HINWEIS_TEXT[h]}</option>)}</select>
+          </div>
+          <div className="field"><label className="label" htmlFor="leiter">Leiter / Zustand</label>
+            <select className="input" id="leiter" name="leiter" defaultValue={sp.leiter ?? ""} data-testid="abgleich-filter-leiter"><option value="">alle</option><option value="liquidation">Liquidation</option><option value="ablauf7">Liquidation läuft in 7 Tagen ab</option><option value="schnell">Schnelldreher</option><option value="gebraucht_ohne">Gebraucht ohne eigenen Preis</option></select>
+          </div>
+          {sp.zustand && <input type="hidden" name="zustand" value={sp.zustand} />}
+          <div className="field" style={{ flex: "1 1 160px" }}><label className="label" htmlFor="ab-q">Suche</label><input className="input" id="ab-q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="SKU, ASIN, Titel" /></div>
+          <button className="btn" type="submit" data-testid="abgleich-filter-anwenden">Anwenden</button>
+          {filterAktiv && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#abgleich")}>zurücksetzen</Link>}
+        </form>
+        {gefiltert.length === 0 ? (
+          <div className="notice notice-ok small" data-testid="abgleich-keine">{filterAktiv ? "Keine SKUs für diese Auswahl." : stand.length ? "Keine Auffälligkeiten: alle SKUs mit Bestand stehen in ProfitGuard, Min und Max passen zum Soll." : "Noch kein Abgleich möglich."}</div>
         ) : (
-          <>
-            <div className="small" data-testid="bqool-stand">{bq.stand.map((x) => `${x.marktplatz}: ${bq.zeilen.filter((z) => z.marktplatz === x.marktplatz).length} SKUs, eingelesen ${x.am ? x.am.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?"}`).join(" · ")}</div>
-            <div style={{ overflow: "auto" }}>
-              <table className="table" data-testid="bqool-regeln">
-                <thead><tr><th>Regel (alle Länder)</th><th className="right">SKUs</th><th className="right">aktiv</th><th className="right">pausiert</th><th className="right" title="Kein Status in der Datei bzw. Amazon-Angebot inaktiv">unbekannt</th><th className="right">auffällig</th><th>je Land</th></tr></thead>
-                <tbody>
-                  {uebersicht.map((u) => (
-                    <tr key={u.regel}>
-                      <td><Link href={mitParam(sp, { regel: u.regel, bq: "alle", bqseite: undefined }, "#bqool-liste")}>{u.regel}</Link></td>
-                      <td className="num right">{u.gesamt}</td>
-                      <td className="num right">{u.aktiv}</td>
-                      <td className="num right" style={{ color: u.pausiert ? "var(--warn)" : undefined }}>{u.pausiert ? <Link href={mitParam(sp, { regel: u.regel, status: "pausiert", bq: "alle", bqseite: undefined }, "#bqool-liste")}>{u.pausiert}</Link> : 0}</td>
-                      <td className="num right muted">{u.unbekannt}</td>
-                      <td className="num right">{u.mitHinweis}</td>
-                      <td className="small">{Object.entries(u.laender).map(([l, n]) => `${l} ${n}`).join(" · ")}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <form className="reorder-filter" id="bqool-liste" data-testid="bqool-filter" style={{ scrollMarginTop: 70 }}>
-              {sp.nur && <input type="hidden" name="nur" value={sp.nur} />}
-              <div className="field"><label className="label" htmlFor="bq">Zeigen</label>
-                <select className="input" id="bq" name="bq" defaultValue={sp.bq === "alle" ? "alle" : ""}><option value="">nur Auffälligkeiten</option><option value="alle">alle SKUs</option></select>
-              </div>
-              <div className="field"><label className="label" htmlFor="land">Land</label>
-                <select className="input" id="land" name="land" defaultValue={sp.land ?? ""}><option value="">alle Länder</option>{laender.map((l) => <option key={l} value={l}>{l}</option>)}</select>
-              </div>
-              <div className="field"><label className="label" htmlFor="regel">Regel</label>
-                <select className="input" id="regel" name="regel" defaultValue={sp.regel ?? ""}><option value="">alle Regeln</option>{uebersicht.map((u) => <option key={u.regel} value={u.regel}>{u.regel}</option>)}</select>
-              </div>
-              <div className="field"><label className="label" htmlFor="status">Status</label>
-                <select className="input" id="status" name="status" defaultValue={sp.status ?? ""}><option value="">alle</option><option value="aktiv">aktiv</option><option value="pausiert">pausiert</option><option value="unbekannt">unbekannt</option></select>
-              </div>
-              <div className="field"><label className="label" htmlFor="hinweis">Auffälligkeit</label>
-                <select className="input" id="hinweis" name="hinweis" defaultValue={sp.hinweis ?? ""}><option value="">alle</option>{HINWEIS_RANG.map((h) => <option key={h} value={h}>{HINWEIS_TEXT[h]}</option>)}</select>
-              </div>
-              <div className="field"><label className="label" htmlFor="liq">Liquidation</label>
-                <select className="input" id="liq" name="liq" defaultValue={sp.liq === "1" ? "1" : ""} data-testid="bqool-filter-liq"><option value="">alle</option><option value="1">wegen Min unter Marge ({liqAnzahl})</option></select>
-              </div>
-              <div className="field"><label className="label" htmlFor="leiter">Leiter / Zustand</label>
-                <select className="input" id="leiter" name="leiter" defaultValue={sp.leiter ?? ""} data-testid="bqool-filter-leiter"><option value="">alle</option><option value="ablauf7">Liquidation läuft in 7 Tagen ab</option><option value="schnell">Schnelldreher</option><option value="gebraucht_ohne">Gebraucht ohne eigenen Preis</option></select>
-              </div>
-              {sp.zustand && <input type="hidden" name="zustand" value={sp.zustand} />}
-              <div className="field" style={{ flex: "1 1 160px" }}><label className="label" htmlFor="bq-q">Suche</label><input className="input" id="bq-q" name="q" type="search" defaultValue={sp.q ?? ""} placeholder="SKU, ASIN, Titel" /></div>
-              <button className="btn" type="submit" data-testid="bqool-filter-anwenden">Anwenden</button>
-              {(sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.bq || sp.liq || sp.leiter || sp.zustand) && <Link className="small" href={mitParam({ nur: sp.nur }, {}, "#bqool-liste")}>zurücksetzen</Link>}
-            </form>
-            {bqGefiltert.length === 0 ? (
-              <div className="notice notice-ok small" data-testid="bqool-keine">{sp.bq === "alle" || sp.land || sp.regel || sp.status || sp.hinweis || sp.q || sp.liq || extraAktiv ? "Keine SKUs für diese Auswahl." : "Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist)."}</div>
-            ) : (
-              <div style={{ overflow: "auto" }}>
-                <div className="small muted" data-testid="bqool-anzahl">{bqGefiltert.length} Zeilen{bqProbleme.length !== bqGefiltert.length ? ` · ${bqProbleme.length} mit Auffälligkeiten insgesamt` : ""}{bqSeiten > 1 ? ` · Seite ${bqSeite} von ${bqSeiten}` : ""}</div>
-                <form id="bq-wahl" />
-                <table className="table" data-testid="bqool-problems">
-                  <thead><tr><th aria-label="Auswahl" /><th>Land</th><th>SKU</th><th>Regel</th><th title="Stufe der Regel-Leiter: 1 ia · 2 Abverkauf · 3 Liquidation">Stufe</th><th title="Seit wann die Regel in BQool steht (BQool-Ist)">Regel seit</th><th title="B31.6a: Liquidation bis (Restdauer)">Liquidation bis</th><th title="B31.7: Zustand, Zielpreis gebraucht, Min gebraucht">Zustand</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
-                  <tbody>
-                    {bqZeigen.map((z) => (
-                      <tr key={`${z.marktplatz}|${z.sku}`} data-testid="bqool-zeile" data-sku={z.sku} data-land={z.marktplatz}>
-                        <td><input type="checkbox" form="bq-wahl" name="wahl" value={`${z.marktplatz}|${z.sku}`} aria-label={`${z.sku} wählen`} data-testid="bqool-wahl" /></td>
-                        <td>{z.marktplatz}</td>
-                        <td className="num small">{z.sku}</td>
-                        <td className="small" data-testid="bqool-regel">{z.regel ?? "–"}{z.status === "pausiert" ? " (pausiert)" : z.status === null ? <span className="muted" title="Kein Repricing-Status in der Datei"> (Status ?)</span> : ""}{z.liqMarge && <div className="muted" data-testid="bqool-liq-marge">wegen Min unter Marge{z.liqMarge.regelVorher ? ` (vorher ${z.liqMarge.regelVorher})` : ""}{z.liqMarge.status === "zurueck_vorgeschlagen" ? " · Rückkehr vorgeschlagen" : ""}</div>}</td>
-                        <td className="small" data-testid="bqool-stufe">{stufeVonRegel(z.regel, s.bqool.katalog, s.bqool.abverkaufRegel) ?? "–"}{pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnelldreher && <div data-testid="bqool-schnell" title="Schnelldreher: Boden Break-even + 7 %, kein Abverkauf">⚡ Schnelldreher{pfJe.get(`${z.marktplatz}|${z.sku}`)?.schnellBis ? ` bis ${formatDate(pfJe.get(`${z.marktplatz}|${z.sku}`)!.schnellBis!)}` : ""}</div>}</td>
-                        <td className="small" data-testid="bqool-regel-seit">{z.regelSeit ? formatDate(z.regelSeit.toISOString().slice(0, 10)) : "–"}</td>
-                        <td className="small" data-testid="bqool-liq-bis">{(() => { const l = lqJe.get(`${z.marktplatz}|${z.sku}`); if (!l) return "–"; const a = ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.bqool.leiter.ablaufVorwarnTage }); return a.stand === "dauerhaft" ? "dauerhaft" : l.bis ? <>{formatDate(l.bis)}<div className="muted">{a.stand === "abgelaufen" ? "überfällig" : `noch ${a.restTage} T`}</div></> : "–"; })()}</td>
-                        <td className="small" data-testid="bqool-zustand">{(() => { const v = pvJe.get(`${z.marktplatz}|${z.sku}`); if (unbekanntSkus.has(z.sku) && !v) return <span style={{ color: "var(--warn)" }}>unbekannt</span>; if (!v) return "–"; return <>{ZUSTAND_TEXT[v.zustand]}{istGebraucht(v.zustand) && <div className="muted" data-testid="bqool-zielpreis">Ziel {formatEuro(v.zielpreis)} · Min geb. {formatEuro(v.minGebraucht)}</div>}</>; })()}</td>
-                        <td className="num right">{formatEuro(z.preis)}</td>
-                        <td className="num right" style={{ color: z.hinweise.includes("min_unter_untergrenze") ? "var(--danger)" : undefined, fontWeight: 600 }}>{formatEuro(z.min)}</td>
-                        <td className="num right">{formatEuro(z.untergrenze)}</td>
-                        <td className="num right">{formatEuro(z.max)}</td>
-                        <td className="small">{z.eigeneBuybox === true ? "✓ wir" : z.eigeneBuybox === false ? `✕ ${z.buyboxGewinner ?? "andere"}` : (z.buyboxGewinner ?? "–")}{z.buyboxPreis !== null ? ` · ${formatEuro(z.buyboxPreis)}` : ""}</td>
-                        <td className="small">{z.hinweise.length ? z.hinweise.map((h) => HINWEIS_TEXT[h]).join("; ") : <span className="muted">–</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {session.role === "owner" && !session.readOnly && (
-                  <div className="row small" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }} data-testid="bqool-mehrfach">
-                    <span className="muted">Auswahl:</span>
-                    <select name="zustand" form="bq-wahl" defaultValue="" data-testid="bqool-zustand-wahl" aria-label="Zustand"><option value="">Zustand …</option>{ZUSTAENDE.filter((x) => x !== "unbekannt").map((x) => <option key={x} value={x}>{ZUSTAND_TEXT[x as Zustand]}</option>)}<option value="auto">automatisch erkennen</option></select>
-                    <input type="hidden" name="zurueck_q" value={sp.q ?? ""} form="bq-wahl" />
-                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={zustandAction} data-testid="bqool-zustand-setzen">Zustand setzen</button>
-                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAnAction} data-testid="bqool-schnell-an">⚡ Schnelldreher an</button>
-                    <button className="btn btn-sm" type="submit" form="bq-wahl" formAction={schnelldreherAusAction} data-testid="bqool-schnell-aus">Schnelldreher aus</button>
-                  </div>
-                )}
-                {bqSeiten > 1 && (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} data-testid="bqool-seiten">
-                    {bqSeite > 1 && <Link className="chip" href={mitParam(sp, { bqseite: String(bqSeite - 1) }, "#bqool-liste")}>← zurück</Link>}
-                    <span className="small muted" style={{ alignSelf: "center" }}>Seite {bqSeite} von {bqSeiten}</span>
-                    {bqSeite < bqSeiten && <Link className="chip" href={mitParam(sp, { bqseite: String(bqSeite + 1) }, "#bqool-liste")} data-testid="bqool-weiter">weiter →</Link>}
-                  </div>
-                )}
+          <div style={{ overflow: "auto" }}>
+            <div className="small muted" data-testid="abgleich-anzahl">{gefiltert.length} Zeilen{auffaellig.length !== gefiltert.length ? ` · ${auffaellig.length} mit Auffälligkeiten insgesamt` : ""}{seiten > 1 ? ` · Seite ${seite} von ${seiten}` : ""}</div>
+            <form id="ab-wahl" />
+            <table className="table" data-testid="abgleich-tabelle">
+              <thead><tr><th aria-label="Auswahl" /><th>Land</th><th>SKU</th><th title="Soll-Strategie im Seller-System">Soll</th><th>Ist (ProfitGuard)</th><th>Liquidation bis</th><th>Zustand</th><th className="right">Preis</th><th className="right" title="Break-even mit der Mindestmarge der Altersstufe">Soll-Min</th><th className="right">Min PG</th><th className="right">Soll-Max</th><th className="right">Max PG</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
+              <tbody>
+                {zeigen.map((z) => (
+                  <tr key={k(z)} data-testid="abgleich-zeile" data-sku={z.sku} data-land={z.land}>
+                    <td><input type="checkbox" form="ab-wahl" name="wahl" value={k(z)} aria-label={`${z.sku} wählen`} data-testid="abgleich-wahl" /></td>
+                    <td>{z.land}</td>
+                    <td className="num small">{z.sku}<div className="muted" style={{ fontFamily: "inherit", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{z.titel ?? ""}</div></td>
+                    <td className="small" data-testid="abgleich-soll">{z.regel}{z.stufe ? <div className="muted">Stufe {z.stufe}{z.marge !== null ? ` · ${String(z.marge).replace(".", ",")} %` : ""}</div> : null}{pfJe.get(k(z))?.schnelldreher && <div data-testid="abgleich-schnell">⚡ Schnelldreher</div>}</td>
+                    <td className="small" data-testid="abgleich-ist">{z.istStrategieName ?? "–"}{z.istImRepricing === false ? <div style={{ color: "var(--warn)" }}>nicht im Repricing</div> : z.istImRepricing === null && z.istMin === null ? <div className="muted">nicht im Export</div> : null}</td>
+                    <td className="small">{(() => { const l = lqJe.get(k(z)); if (!l) return "–"; const a = ablaufStand({ bis: l.bis, dauerhaft: l.dauerhaft, heute, vorwarnTage: s.repricing.leiter.ablaufVorwarnTage }); return a.stand === "dauerhaft" ? "dauerhaft" : l.bis ? <>{formatDate(l.bis)}<div className="muted">{a.stand === "abgelaufen" ? "überfällig" : `noch ${a.restTage} T`}</div></> : "–"; })()}</td>
+                    <td className="small" data-testid="abgleich-zustand">{unbekanntSkus.has(z.sku) ? <span style={{ color: "var(--warn)" }}>unbekannt</span> : <>{ZUSTAND_TEXT[z.zustand]}{istGebraucht(z.zustand) && <div className="muted">Ziel {formatEuro(z.zielpreis)} · Min geb. {formatEuro(z.minGebraucht)}</div>}</>}</td>
+                    <td className="num right">{formatEuro(z.istPreis)}</td>
+                    <td className="num right" style={{ fontWeight: 600 }}>{formatEuro(z.min)}</td>
+                    <td className="num right" style={{ color: z.hinweise.includes("min_unter_soll") ? "var(--danger)" : undefined, fontWeight: 600 }}>{formatEuro(z.istMin)}</td>
+                    <td className="num right">{formatEuro(z.max)}</td>
+                    <td className="num right">{formatEuro(z.istMax)}</td>
+                    <td className="small">{formatEuro(z.buybox)}</td>
+                    <td className="small">{z.hinweise.length ? z.hinweise.map((h) => HINWEIS_TEXT[h]).join("; ") : <span className="muted">–</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {session.role === "owner" && !session.readOnly && (
+              <div className="row small" style={{ gap: 8, flexWrap: "wrap", marginTop: 8 }} data-testid="abgleich-mehrfach">
+                <span className="muted">Auswahl:</span>
+                <select name="zustand" form="ab-wahl" defaultValue="" aria-label="Zustand"><option value="">Zustand …</option>{ZUSTAENDE.filter((x) => x !== "unbekannt").map((x) => <option key={x} value={x}>{ZUSTAND_TEXT[x as Zustand]}</option>)}<option value="auto">automatisch erkennen</option></select>
+                <input type="hidden" name="zurueck_q" value={sp.q ?? ""} form="ab-wahl" />
+                <button className="btn btn-sm" type="submit" form="ab-wahl" formAction={zustandAction} data-testid="abgleich-zustand-setzen">Zustand setzen</button>
+                <button className="btn btn-sm" type="submit" form="ab-wahl" formAction={schnelldreherAnAction} data-testid="abgleich-schnell-an">⚡ Schnelldreher an</button>
+                <button className="btn btn-sm" type="submit" form="ab-wahl" formAction={schnelldreherAusAction} data-testid="abgleich-schnell-aus">Schnelldreher aus</button>
               </div>
             )}
-          </>
+            {seiten > 1 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} data-testid="abgleich-seiten">
+                {seite > 1 && <Link className="chip" href={mitParam(sp, { abseite: String(seite - 1) }, "#abgleich")}>← zurück</Link>}
+                <span className="small muted" style={{ alignSelf: "center" }}>Seite {seite} von {seiten}</span>
+                {seite < seiten && <Link className="chip" href={mitParam(sp, { abseite: String(seite + 1) }, "#abgleich")}>weiter →</Link>}
+              </div>
+            )}
+          </div>
         )}
-        <div id="bqool-upload" style={{ scrollMarginTop: 70 }}><BqoolUpload /></div>
+        <div id="profitguard-upload" style={{ scrollMarginTop: 70 }}><ProfitguardUpload /></div>
       </section>
       <div style={{ display: "flex", gap: 6 }}>
         <Link href="/repricer" className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>
@@ -262,7 +254,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           {sysSeite < sysSeiten && <Link className="chip" href={mitParam(sp, { seite: String(sysSeite + 1) })}>weiter →</Link>}
         </div>
       )}
-      <div className="small muted">EK = gültiger Einkaufspreis netto (Charge → von Hand → eBay-Tool → Set → sellerboard → geerbt), derselbe Wert wie in Produkt, Gewinn und Nachbestellung. „~“ bzw. „geschätzt“ = pauschale FBA-Gebühr oder Provision (Gebührenvorschau importieren für echte Werte). „nicht bekannt“ = kein aktueller Preis im Bestandsbericht. Die BQool-Spalten bitte beim ersten Import mit der BQool-Vorlage abgleichen.</div>
+      <div className="small muted">EK = gültiger Einkaufspreis netto (Charge → von Hand → eBay-Tool → Set → sellerboard → geerbt), derselbe Wert wie in Produkt, Gewinn und Nachbestellung. „~“ bzw. „geschätzt“ = pauschale FBA-Gebühr oder Provision (Gebührenvorschau importieren für echte Werte). „nicht bekannt“ = kein aktueller Preis im Bestandsbericht.</div>
     </>
   );
 }

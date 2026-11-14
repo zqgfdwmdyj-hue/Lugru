@@ -238,7 +238,7 @@ export function amazonAnteile(rows: { date: string | null; sku: string | null; k
   return out;
 }
 
-/** BQool-Regel „Liquidation“/Abverkauf → bewusster Verlustverkauf, als Ausnahme vorschlagen. */
+/** Repricer-Strategie „Liquidation“/Abverkauf → bewusster Verlustverkauf, als Ausnahme vorschlagen. */
 export const istLiquidation = (regel: string | null | undefined) => Boolean(regel && /liquidat|abverkauf|clearance|räumung/i.test(regel));
 
 /** Gewinn einer SKU in den letzten 7 abgeschlossenen Tagen (für die Ausnahme-Liste). */
@@ -254,7 +254,7 @@ export const ausnahmeAktiv = (a: { bis: string | null }, heute: string) => !a.bi
 /** Aufgabentext: was tun, mit Break-even, Buy Box und Repricer-Regel. */
 export function verlustAufgabe(
   f: VerlustFall,
-  x: { breakEven: number | null; buybox: { preis: number | null; quelle: string; amazon?: boolean } | null; bqool: { regel: string | null; min: number | null; max: number | null; marktplatz: string } | null; bqoolExport?: boolean },
+  x: { breakEven: number | null; buybox: { preis: number | null; quelle: string; amazon?: boolean } | null; repricer: { strategie: string | null; min: number | null; max: number | null; marktplatz: string } | null; repricerExport?: boolean },
 ): { titel: string; notiz: string } {
   const e = (n: number) => n.toFixed(2).replace(".", ",") + " €";
   const zeilen = [
@@ -263,12 +263,12 @@ export function verlustAufgabe(
     f.preis !== null ? `Ø Verkaufspreis ${e(f.preis)}.` : null,
     x.breakEven !== null ? `Break-even ${e(x.breakEven)}${f.preis !== null && f.preis < x.breakEven ? " – Preis liegt darunter" : ""}.` : "Break-even unbekannt (EK oder Gebühren fehlen).",
     x.buybox ? `Buy Box ${x.buybox.preis !== null ? e(x.buybox.preis) : "keine"}${x.buybox.amazon ? " (Amazon selbst)" : ""} laut ${x.buybox.quelle}.` : "Buy Box: keine Keepa-Daten.",
-    x.bqool
-      ? `BQool ${x.bqool.marktplatz}: Regel ${x.bqool.regel ?? "–"}, Min ${x.bqool.min !== null ? e(x.bqool.min) : "–"}, Max ${x.bqool.max !== null ? e(x.bqool.max) : "–"}${x.breakEven !== null && x.bqool.min !== null && x.bqool.min < x.breakEven ? " – Min liegt unter Break-even" : ""}.`
-      : x.bqoolExport === false
-        ? "BQool: noch kein Export hochgeladen – unter Amazon → Repricer (BQool) die Datei „Manage Listings“ je Land hochladen."
-        : "BQool: SKU nicht im letzten Export.",
-    istLiquidation(x.bqool?.regel) ? "BQool-Regel ist Liquidation/Abverkauf – vermutlich bewusst: auf der Seite Verlust-Stopp als Ausnahme übernehmen." : null,
+    x.repricer
+      ? `ProfitGuard ${x.repricer.marktplatz}: Strategie ${x.repricer.strategie ?? "–"}, Min ${x.repricer.min !== null ? e(x.repricer.min) : "–"}, Max ${x.repricer.max !== null ? e(x.repricer.max) : "–"}${x.breakEven !== null && x.repricer.min !== null && x.repricer.min < x.breakEven ? " – Min liegt unter Break-even" : ""}.`
+      : x.repricerExport === false
+        ? "ProfitGuard: noch kein Export eingelesen – unter Amazon → Repricer den ProfitGuard-Export hochladen."
+        : "ProfitGuard: SKU nicht im letzten Export.",
+    istLiquidation(x.repricer?.strategie) ? "Strategie in ProfitGuard ist Liquidation/Abverkauf – vermutlich bewusst: auf der Seite Verlust-Stopp als Ausnahme übernehmen." : null,
     "Prüfen: Min-Preis im Repricer auf Break-even, Gebühren/EK richtig? Bewusster Abverkauf → als Ausnahme markieren.",
   ];
   return { titel: `Verlust-Stopp: ${f.name ?? f.sku} – ${f.grund}`.slice(0, 200), notiz: zeilen.filter(Boolean).join("\n") };

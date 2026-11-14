@@ -191,8 +191,8 @@ export async function druckPruefen(tenantId: string, jetzt = new Date()): Promis
     const kurz = await agentenKurz(tenantId);
     const { druckerSymbol } = await import("./logic");
     const grund = druckerSymbol(kurz, faellig[0].drucker as DruckerModell, jetzt).text;
-    const { pushen } = await import("@/lib/bqool/kreislauf");
-    await pushen(tenantId, { titel: `🖨️ ${faellig.length} Druckauftrag${faellig.length === 1 ? "" : "e"} wartet seit 15 Min.`, text: `${faellig.slice(0, 3).map((j) => j.titel).join(", ")} – ${grund}`, link: "/drucken" }, "druck").catch(() => undefined);
+    const { inhaberPushen } = await import("@/lib/push/inhaber");
+    await inhaberPushen(tenantId, { titel: `🖨️ ${faellig.length} Druckauftrag${faellig.length === 1 ? "" : "e"} wartet seit 15 Min.`, text: `${faellig.slice(0, 3).map((j) => j.titel).join(", ")} – ${grund}`, link: "/drucken" }, "druck").catch(() => undefined);
     await db.update(J).set({ pushGemeldetAm: jetzt }).where(inArray(J.id, faellig.map((j) => j.id)));
   }
   const weg = await db.delete(J).where(and(eq(J.tenantId, tenantId), lt(J.createdAt, new Date(jetzt.getTime() - PROTOKOLL_TAGE * 86_400_000)))).returning({ id: J.id });

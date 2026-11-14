@@ -260,7 +260,7 @@ const PRESETS = ["heute", "gestern", "7_tage", "30_tage", "monat", "letzter_mona
 export const umsatz = defineTool({
   name: "umsatz",
   title: "Umsatz und Gewinn",
-  description: "Umsatz (brutto), Bestellungen, Einheiten und Gewinn laut sellerboard für einen Zeitraum – vordefiniert (heute, gestern, 7_tage, 30_tage, monat = laufender Monat, letzter_monat) oder mit von/bis. Zum Vergleich „bqool“: Umsatz, Est. Profit und Buy-Box-Anteil je Land aus dem BQool-Bericht „Daily Sales“ (wenn eingelesen).",
+  description: "Umsatz (brutto), Bestellungen, Einheiten und Gewinn laut sellerboard für einen Zeitraum – vordefiniert (heute, gestern, 7_tage, 30_tage, monat = laufender Monat, letzter_monat) oder mit von/bis.",
   area: "geld",
   write: false,
   quelle: { text: "sellerboard", jobs: ["sellerboard:*"] },
@@ -280,21 +280,8 @@ export const umsatz = defineTool({
     }
     if (to < from) return { text: "„bis“ liegt vor „von“.", isError: true };
     const r = await sellerboardRange(ctx.session.tenantId, from, to);
-    // B31.5: BQool „Daily Sales“ je Land als Vergleich
-    const { bqoolTageswerte } = await import("@/lib/bqool/berichte");
-    const bqTage = await bqoolTageswerte(ctx.session.tenantId, from, to);
-    const bqJe = new Map<string, { land: string; tage: number; umsatz: number; gewinn: number; bb: number[] }>();
-    for (const d of bqTage) {
-      const x = bqJe.get(d.land) ?? { land: d.land, tage: 0, umsatz: 0, gewinn: 0, bb: [] };
-      x.tage++;
-      x.umsatz += d.sales ?? 0;
-      x.gewinn += d.profit ?? 0;
-      if (d.bbWins !== null) x.bb.push(d.bbWins);
-      bqJe.set(d.land, x);
-    }
-    const bqool = bqJe.size ? { quelle: "BQool-Bericht „Daily Sales“", je_land: [...bqJe.values()].map((x) => ({ land: x.land, tage: x.tage, umsatz_brutto: round2(x.umsatz), est_profit: round2(x.gewinn), buybox_anteil_mittel: x.bb.length ? Math.round(x.bb.reduce((a, b) => a + b, 0) / x.bb.length) : null })), link: abs(ctx, "/gewinn#bqool-vergleich") } : undefined;
-    if (!r) return bqool ? json({ zeitraum: `${dmy(from)} – ${dmy(to)}`, von: from, bis: to, hinweis: "Keine sellerboard-Werte für diesen Zeitraum – nur BQool zum Vergleich.", bqool }) : "Keine sellerboard-Werte für diesen Zeitraum (sellerboard nicht verbunden oder noch nicht abgeglichen).";
-    return json({ zeitraum: `${dmy(r.from)} – ${dmy(r.to)}`, von: r.from, bis: r.to, link: abs(ctx, "/gewinn"), umsatz_brutto: round2(r.sales), bruttogewinn: round2(r.grossProfit), nettogewinn: round2(r.netProfit), bestellungen: r.orders, einheiten: r.units, kanaele: r.channels, vollstaendig: r.complete, tage: `${r.daysCovered} von ${r.daysWanted}`, ek_fehlt_teilweise: r.missingCost || undefined, bqool });
+    if (!r) return "Keine sellerboard-Werte für diesen Zeitraum (sellerboard nicht verbunden oder noch nicht abgeglichen).";
+    return json({ zeitraum: `${dmy(r.from)} – ${dmy(r.to)}`, von: r.from, bis: r.to, link: abs(ctx, "/gewinn"), umsatz_brutto: round2(r.sales), bruttogewinn: round2(r.grossProfit), nettogewinn: round2(r.netProfit), bestellungen: r.orders, einheiten: r.units, kanaele: r.channels, vollstaendig: r.complete, tage: `${r.daysCovered} von ${r.daysWanted}`, ek_fehlt_teilweise: r.missingCost || undefined });
   },
 });
 

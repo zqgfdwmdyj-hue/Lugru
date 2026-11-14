@@ -37,7 +37,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
         Bis eine Anbindung steht, lassen sich die meisten Daten auch als Datei importieren.
       </p>
       <section className="card card-pad small" data-testid="hinweis-hintergrund">
-        Hintergrund-Abrufe (letzter/nächster Lauf), Amazon-Berichte sofort anfordern, Discord live und die Importe (ArbitrageOne, BQool-Uploads) stehen im eigenen Reiter <Link href="/einstellungen/hintergrund">Hintergrund &amp; Importe</Link>.
+        Hintergrund-Abrufe (letzter/nächster Lauf), Amazon-Berichte sofort anfordern, Discord live und die Importe (ArbitrageOne, ProfitGuard-Dateien) stehen im eigenen Reiter <Link href="/einstellungen/hintergrund">Hintergrund &amp; Importe</Link>.
       </section>
       <div className="stack" style={{ gap: 14 }}>
         <section className="card">

@@ -32,14 +32,6 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   // FBA-Lagergebühr laut Bericht „Monthly Storage Fees“ für die Monate des Zeitraums – nur zur Info (steckt in der Abrechnung).
   const LG = schema.amazonLagergebuehren;
   const lagerMonate = await db.select({ monat: LG.monat, summe: sql<number>`sum(${LG.gebuehr})::float` }).from(LG).where(and(eq(LG.tenantId, t), gte(LG.monat, from.slice(0, 7)), lte(LG.monat, to.slice(0, 7)))).groupBy(LG.monat).orderBy(LG.monat);
-  // B31.5: Daily Sales aus BQool je Tag als Vergleichsspalte (Buy-Box-Anteil je Tag gibt es nur dort).
-  const { bqoolTageswerte } = await import("@/lib/bqool/berichte");
-  const SBT = schema.sellerboardSkuTage;
-  const [bqTage, sbTage] = await Promise.all([
-    bqoolTageswerte(t, from, to),
-    db.select({ day: SBT.day, sales: sql<number>`sum(${SBT.sales})::float` }).from(SBT).where(and(eq(SBT.tenantId, t), eq(SBT.channel, "amazon"), gte(SBT.day, from), lte(SBT.day, to))).groupBy(SBT.day),
-  ]);
-  const sbJeTag = new Map(sbTage.map((x) => [String(x.day), x.sales]));
   const lagerSumme = Math.round(lagerMonate.reduce((n, m) => n + m.summe, 0) * 100) / 100;
   const nonSkuTotal = nonSku.reduce((n, x) => n + x.amount, 0);
   const amazon = skus.length || nonSku.length
@@ -273,34 +265,6 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
                   <td className="num right">{formatEuro(m.productCosts === null ? null : -m.productCosts)}</td>
                   <td className="num right">{formatEuro(m.expenses === null ? null : -m.expenses)}</td>
                   <td className="num right" style={{ fontWeight: 600, color: (m.netProfit ?? 0) < 0 ? "var(--danger)" : undefined }}>{formatEuro(m.netProfit)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {bqTage.length > 0 && (
-        <section className="card" style={{ overflow: "auto" }} data-testid="bqool-vergleich" id="bqool-vergleich">
-          <div className="card-head">
-            <div>
-              <h2>Zum Vergleich je Tag: laut BQool (Daily Sales)</h2>
-              <div className="small muted" style={{ marginTop: 2 }}>BQool-Bericht „Daily Sales“ je Land – Umsatz brutto, Est. Profit und Buy-Box-Anteil laut BQool. sellerboard = alle Amazon-Marktplätze zusammen.</div>
-            </div>
-          </div>
-          <table className="table small">
-            <thead><tr><th>Tag</th><th>Land</th><th className="right">sellerboard Amazon</th><th className="right">BQool Umsatz</th><th className="right">Bestellungen</th><th className="right">Stück</th><th className="right">Est. Profit</th><th className="right">Buy Box</th></tr></thead>
-            <tbody>
-              {bqTage.map((d) => (
-                <tr key={`${d.tag}-${d.land}`} data-testid="bqool-tag" data-tag={d.tag}>
-                  <td className="num">{d.tag.split("-").reverse().join(".")}</td>
-                  <td>{d.land}</td>
-                  <td className="num right muted">{formatEuro(sbJeTag.get(d.tag) ?? null)}</td>
-                  <td className="num right">{formatEuro(d.sales)}</td>
-                  <td className="num right">{d.orders ?? "–"}</td>
-                  <td className="num right">{d.units ?? "–"}</td>
-                  <td className="num right" style={{ color: (d.profit ?? 0) < 0 ? "var(--danger)" : undefined }}>{formatEuro(d.profit)}</td>
-                  <td className="num right">{d.bbWins === null ? "–" : `${Math.round(d.bbWins)} %`}</td>
                 </tr>
               ))}
             </tbody>

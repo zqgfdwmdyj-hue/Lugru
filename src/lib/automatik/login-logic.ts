@@ -1,4 +1,4 @@
-// B24: Anmeldung der Browser-Automatik (BQool, sellerboard, ArbitrageOne) – reine Logik, getestet in
+// B24: Anmeldung der Browser-Automatik (sellerboard, ArbitrageOne) – reine Logik, getestet in
 // tests/automatik-login.test.ts: Captcha/Cloudflare erkennen, Cookie-Banner und Anmelde-Knöpfe am Text erkennen,
 // Name und Aufbewahrung der Fehler-Bildschirmfotos.
 

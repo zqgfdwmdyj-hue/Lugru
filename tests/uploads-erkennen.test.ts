@@ -4,13 +4,14 @@ import { artNachEndung, istPdf, istZip, jsonArt, pdfArt, tabellenArt } from "@/l
 // Zentrale Uploads – Erkennung der Dateiart (erfundene Kopfzeilen).
 
 describe("Tabellen", () => {
-  it("Sparkasse CSV-CAMT, Amex, USt-Bericht, BQool, Amazon Business; sonst allgemeiner Import", () => {
+  it("Sparkasse CSV-CAMT, Amex, USt-Bericht, ProfitGuard, Amazon Business; sonst allgemeiner Import", () => {
     expect(tabellenArt(["Auftragskonto", "Buchungstag", "Valutadatum", "Buchungstext", "Verwendungszweck", "Beguenstigter/Zahlungspflichtiger", "Betrag", "Waehrung"], "umsaetze.csv")).toBe("kontoauszug");
     expect(tabellenArt(["Datum", "Beschreibung", "Karteninhaber", "Konto #", "Betrag"], "activity.csv")).toBe("amex");
     expect(tabellenArt(["Datum", "Beschreibung", "Betrag"], "amex-oktober.csv")).toBe("amex");
     expect(tabellenArt(["TRANSACTION_TYPE", "TAXABLE_JURISDICTION", "TOTAL_ACTIVITY_VALUE_AMT_VAT_EXCL"], "vat.csv")).toBe("ust_bericht");
-    expect(tabellenArt(["Marketplace", "SKU", "ASIN", "Your Price", "Min Price", "Max Price", "Strategy"], "bqool.xlsx")).toBe("bqool");
-    expect(tabellenArt(["SKU", "Min Price", "Max Price"], "Repricer_BQool.csv")).toBeNull();
+    expect(tabellenArt(["Marketplace", "SKU", "ASIN", "Your Price", "Min Price", "Max Price", "Strategy"], "profitguard.xlsx")).toBe("profitguard");
+    expect(tabellenArt(["SKU", "Mindestpreis", "Maximalpreis", "Repricing aktiv", "Buy-Box-Anteil"], "export.csv")).toBe("profitguard");
+    expect(tabellenArt(["SKU", "Min Price", "Max Price"], "Repricer.csv")).toBeNull();
     expect(tabellenArt(["(Untergeordnete) ASIN", "Titel", "Bestellte Einheiten – B2B", "Umsatz – B2B"], "business.csv")).toBe("amazon_business");
     expect(tabellenArt(["settlement-id", "amount-type", "amount"], "settlement.txt")).toBeNull();
   });

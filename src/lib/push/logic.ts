@@ -10,7 +10,7 @@ export const MELDE_ARTEN = [
   { key: "va_rueckfrage", titel: "VA-Rückfrage", text: "Die VA hat eine Frage zu einer Aufgabe (❓ oder Frage im Thread).", standard: true },
   { key: "aufgabe_wichtig", titel: "Neue wichtige Aufgabe", text: "Aufgaben mit Priorität „wichtig“ (Apple Watch: „Erledigt“ schließt sie).", standard: true },
   { key: "persoenlich", titel: "Persönliche Mail", text: "Persönliche Mails (Privatbereich) mit fertigem Antwortentwurf – nur an den Inhaber, nie in Discord-Kanäle.", standard: true },
-  { key: "bqool", titel: "BQool-Freigabe", text: "Täglicher BQool-Upload wartet auf Freigabe (Änderungen je Land, Regelwechsel, Warnungen) und Abweichungen der Nachkontrolle.", standard: true },
+  { key: "repricing", titel: "Repricing", text: "Liquidation läuft bald ab, Listing-Check mit Euro-Potenzial – Entscheidungen zur Soll-Strategie (ProfitGuard).", standard: true },
   { key: "lernschleife", titel: "Lernschleife Verlustprodukte", text: "Am 3. des Monats: Produkte mit Verlust oder Marge unter 3 % im Vormonat – Nie wieder / Pech / Weiß nicht warum (nur Inhaber).", standard: true },
   { key: "mail_entwurf", titel: "Antwort vorbereitet", text: "Käuferfrage oder Lieferanten-Antwort mit fertigem Antwortentwurf im Posteingang.", standard: true },
   { key: "story", titel: "Instagram-Story", text: "Story wartet auf Freigabe, ist bereit zum Posten (von Hand) oder konnte nicht gepostet werden; Instagram-Zugang läuft bald ab.", standard: true },
@@ -65,9 +65,9 @@ export const ZUSTAND_TEXT: Record<string, string> = {
 };
 
 /** Morgenbericht-Text: kurz, das Wichtigste vorne. */
-export function morgenText(o: { /** B35: „Leads: …“ */ leads?: string | null; ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** B31.4: „BQool-Upload gestern: …“ bzw. „wartet auf Freigabe“ (nur Inhaber). */ bqool?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null; /** B31.6: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“ (nur Inhaber). */ liquidation?: string | null; /** B31.6b/B31.7/B31.8/B32: Leiter-Stufen, überfällige Liquidation, Schnelldreher, Gebrauchte, Listing-Check (nur Inhaber). */ leiter?: string[] | null }): string {
+export function morgenText(o: { /** B35: „Leads: …“ */ leads?: string | null; ueberNacht: number; fristen: number; wichtig: number; paletten: number; persoenlich?: number; /** „ProfitGuard-Abgleich: 3 SKUs auffällig“ (nur Inhaber). */ repricing?: string | null; /** B31.5: „Buy Box DE 29 %, FR 43 %, …“ (nur Inhaber). */ buybox?: string | null; /** B28.8: am 3. „Trefferquote Oktober 2026: 72 % (Ziel 80 %)“ (nur Inhaber). */ treffer?: string | null; /** B31.6: „3 SKUs auf Liquidation (Min unter Marge), davon 1 unter Break-even“ (nur Inhaber). */ liquidation?: string | null; /** B31.6b/B31.7/B31.8/B32: Leiter-Stufen, überfällige Liquidation, Schnelldreher, Gebrauchte, Listing-Check (nur Inhaber). */ leiter?: string[] | null }): string {
   const teile = [
-    o.bqool || null,
+    o.repricing || null,
     o.liquidation || null,
     ...(o.leiter ?? []),
     o.buybox || null,

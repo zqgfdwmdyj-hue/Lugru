@@ -9,7 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { kapitalZieleAction } from "./actions";
 import { KAPITALBEDARF_DEFINITION } from "@/lib/purchasing/reorder-logic";
 import { cashToCashKennzahlen } from "@/lib/money/durchlauf";
-import { liquidationsStand, liquidationsZeile } from "@/lib/bqool/liquidation";
+import { liquidationsStand, liquidationsZeile } from "@/lib/repricing/liquidation";
 import { AUSZAHLUNG_TAGE, BEREINIGEN_TAGE, MIN_BASIS, type Phase, type Phasen } from "@/lib/money/durchlauf-logic";
 import { STANDARD_VORLAUF } from "@/lib/deal-eingang/umschlag-logic";
 
@@ -123,8 +123,8 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
   const c2c = await cashToCashKennzahlen(session.tenantId, data.zeilen.length ? data.summe.gesamt : null).catch(() => null);
   const liqZeile = await liquidationsStand(session.tenantId).then(liquidationsZeile).catch(() => null);
   // B31.6b: Stufen der Regel-Leiter (Stand des täglichen Laufs)
-  const { stufenZeile } = await import("@/lib/bqool/leiter-logic");
-  const leiterStand = (await getSettings(session.tenantId)).bqool.leiterStand;
+  const { stufenZeile } = await import("@/lib/repricing/leiter-logic");
+  const leiterStand = (await getSettings(session.tenantId)).repricing.leiterStand;
   const stufen = leiterStand ? stufenZeile(leiterStand) : null;
 
   return (
@@ -143,12 +143,12 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
 
       {liqZeile && (
         <div className="notice notice-info small" style={{ marginBottom: 12 }} data-testid="kapital-liquidation">
-          {liqZeile} – <Link href="/repricer/bqool#liquidation">Liste und Rückkehr-Vorschläge</Link>
+          {liqZeile} – <Link href="/repricer/profitguard#liquidation">Liste und Rückkehr-Vorschläge</Link>
         </div>
       )}
       {stufen && (
         <div className="notice notice-info small" style={{ marginBottom: 12 }} data-testid="kapital-stufen">
-          Regel-Leiter: {stufen} – <Link href="/repricer/bqool#leiter">Vorschläge</Link>
+          Regel-Leiter: {stufen} – <Link href="/repricer/profitguard#leiter">Vorschläge</Link>
         </div>
       )}
       {((gestrandet && gestrandet.gestrandet.anzahl > 0) || (weitere && weitere.gesamt > 0)) && (

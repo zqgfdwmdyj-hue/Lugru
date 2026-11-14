@@ -84,7 +84,7 @@ export const NAV: NavSection[] = [
       { href: "/ansprueche", label: "Ansprüche", badge: "claims", unter: "faelle" },
       { href: "/faelle", label: "Fälle & A-bis-Z", unter: "faelle" },
       { href: "/echtheit", label: "Echtheits-Ordner", unter: "faelle" },
-      { href: "/repricer", label: "Repricer (BQool)", unter: "angebote" },
+      { href: "/repricer", label: "Repricer", unter: "angebote" },
       { href: "/listings", label: "Listungen (alle Kanäle)", unter: "angebote" },
       { href: "/inbound", label: "FBA-Inbound", unter: "angebote" },
       { href: "/sas", label: "SAS-Programm", unter: "angebote" },
@@ -334,12 +334,11 @@ export const SUBPAGES: Record<string, NavItem[]> = {
     { href: "/einstellungen/drucker", label: "Drucker" },
     { href: "/einstellungen/testumgebung", label: "Testumgebung" },
   ],
-  // B31.5: Repricer mit Reitern Übersicht, Leistung (BQool-Berichte) und BQool-Dateien (Freigabe/Upload)
+  // Repricer (ProfitGuard): Abgleich Seller-System ↔ ProfitGuard, Listing-Check, Soll-Strategien und Importdatei (Freigabe)
   "/repricer": [
     { href: "/repricer", label: "Übersicht" },
-    { href: "/repricer/leistung", label: "Leistung" },
     { href: "/repricer/listing-check", label: "Listing-Check" },
-    { href: "/repricer/bqool", label: "BQool-Dateien" },
+    { href: "/repricer/profitguard", label: "ProfitGuard-Datei" },
   ],
   "/marken/uhren": [
     { href: "/marken/uhren", label: "Übersicht" },

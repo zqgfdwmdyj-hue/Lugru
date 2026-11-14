@@ -6,14 +6,13 @@ import { db, schema } from "@/db";
 import { canAccess } from "@/lib/auth/areas";
 import type { Session } from "@/lib/auth/session";
 import { importMeldung } from "@/lib/bank/service";
-import { importBqool } from "@/lib/bqool/service";
 import { amexImportieren, sparkasseImportieren, ustBerichtImportieren } from "@/lib/buchhaltung/service";
 import { todayIso } from "@/lib/dates";
 import { importAnyFile } from "@/lib/imports/dispatch";
 import { readTable } from "@/lib/tabular";
 import { leseZip } from "@/lib/zip-lesen";
 import { lesbarerFehler } from "@/lib/fehler-text";
-import { artNachEndung, endung, istBqoolDatei, istPdf, istZip, jsonArt, pdfArt, tabellenArt, UPLOAD_ART, type UploadArt } from "./erkennen";
+import { artNachEndung, endung, istPdf, istZip, jsonArt, pdfArt, tabellenArt, UPLOAD_ART, type UploadArt } from "./erkennen";
 
 // Zentrale Uploads: jede Datei erkennen und mit demselben Code verarbeiten wie im jeweiligen Bereich. Rechte je
 // Art (z. B. Kontoauszüge nur mit Bereich „Geld“). Private Kontoauszüge gehören in den Privatbereich, nicht hierher.
@@ -28,8 +27,6 @@ export type UploadErgebnis = {
   link: string | null;
   /** Zahlen für den Datei-Import (nicht gespeichert). */
   details?: Record<string, unknown>;
-  /** B31.5: BQool-Bericht ohne eindeutiges Land – Rückfrage „Welches Land?“ mit Vorschlag. */
-  rueckfrage?: { id: string; vorschlag: string | null; begruendung: string };
 };
 export type UploadOptionen = {
   firma: string | null;
@@ -40,9 +37,8 @@ export type UploadOptionen = {
   dateiImportId?: string | null;
   /** Stand der Datei (ursprünglich geholt am) – beim Nachverarbeiten älterer Dateien. */
   stand?: Date;
-  /** B31.5: BQool-Berichte – Land (sonst erkannt bzw. Rückfrage) und Zeitraum der Listing Performance (7/30 Tage). */
-  bqoolLand?: "DE" | "FR" | "IT" | "ES" | null;
-  bqoolTage?: 7 | 30;
+  /** ProfitGuard-Export ohne Marktplatz-Spalte: Marktplatz der Datei (sonst wird sie nicht eingelesen). */
+  pgMarkt?: string | null;
 };
 
 const MAX = 25 * 1024 * 1024;
@@ -62,7 +58,6 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
   if (istPdf(bytes)) return pdfArt(await pdfText(bytes));
   const e = artNachEndung(name);
   if (e) return e;
-  if (istBqoolDatei(bytes)) return "bqool_datei";
   // ArbitrageOne: sellerboard-Export (ASIN | SKU | Cost) bzw. „Einkäufe“ → EK-Import mit Vorschau statt direkt
   // übernehmen; „Lagerbestand“ → Stichtag-Bestand. AccountOne COG bleibt beim bisherigen Import (Tabelle).
   if ([".xls", ".xlsx", ".csv"].includes(endung(name))) {
@@ -123,20 +118,11 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
       const r = await ustBerichtImportieren(wer, o.firma, { name, bytes });
       return { ok: true, text: `Perioden ${r.perioden.map((p) => `${p.monat} (${p.zeilen} Zeilen)`).join(", ")} – je Periode zusammengeführt.`, hinweise: r.auswertung.hinweise, details: { ust: { perioden: r.perioden } } };
     }
-    case "bqool": {
-      const r = await importBqool(session.tenantId, bytes, name, null);
-      return { ok: r.ok, text: r.message, hinweise: [] };
-    }
-    case "bqool_datei": {
-      const { bqoolDateiEinlesen } = await import("@/lib/bqool/export-service");
-      const r = await bqoolDateiEinlesen(session.tenantId, name, bytes);
-      return { ok: r.ok, text: r.message, hinweise: r.ok ? ["Soll-Regeln und Export unter Repricer → BQool-Dateien."] : [] };
-    }
-    case "bqool_listing_performance":
-    case "bqool_daily_sales": {
-      const { bqoolBerichtEinlesen } = await import("@/lib/bqool/berichte");
-      const r = await bqoolBerichtEinlesen(session.tenantId, name, bytes, { land: o.bqoolLand ?? null, tage: o.bqoolTage, via: o.dateiImportId ? "claude" : "upload" });
-      return { ok: r.ok, text: r.text, hinweise: r.hinweise, details: r.details, rueckfrage: r.rueckfrage, link: r.land ? `/repricer/leistung?land=${r.land}` : undefined };
+    case "profitguard": {
+      const { importProfitguard } = await import("@/lib/repricing/profitguard-service");
+      const { marktAus } = await import("@/lib/repricing/profitguard-logic");
+      const r = await importProfitguard(session.tenantId, bytes, name, marktAus(o.pgMarkt ?? undefined), o.dateiImportId ? "claude" : "upload");
+      return { ok: r.ok, text: r.message, hinweise: r.ok ? ["Abgleich Seller-System ↔ ProfitGuard unter Repricer, Importdatei unter Repricer → ProfitGuard."] : [] };
     }
     case "ek_liste": {
       const { EkImportFehler, ekImportVorschau } = await import("@/lib/ek-import/service");
@@ -252,7 +238,7 @@ export async function dateiHochladen(session: Session, name: string, bytes: Uint
   } catch (e) {
     r = { ok: false, text: `Die Datei konnte nicht verarbeitet werden – ${lesbarerFehler(e, 400)}`, hinweise: [] };
   }
-  return [{ ...(await mitProtokoll(session, { datei: name, art, artText: info.text, ok: r.ok, text: r.text, hinweise: r.hinweise, link: r.link ?? info.link }, bytes.length)), details: r.details, rueckfrage: r.rueckfrage }];
+  return [{ ...(await mitProtokoll(session, { datei: name, art, artText: info.text, ok: r.ok, text: r.text, hinweise: r.hinweise, link: r.link ?? info.link }, bytes.length)), details: r.details }];
 }
 
 async function mitProtokoll(session: Session, e: UploadErgebnis, groesse: number) {

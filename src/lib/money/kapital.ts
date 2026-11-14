@@ -75,7 +75,7 @@ export type KapitalEingabe = {
   lager?: { monat: string; gebuehrMonat: number; jeStueckMonat: number | null; uebergross: boolean; volumenM3: number } | null;
 };
 
-/** USt je Land für den Break-even (wie BQool-Export). */
+/** USt je Land für den Break-even (wie die Soll-Strategie im Repricing). */
 export const UST_LAND = { DE: 0.19, FR: 0.2, IT: 0.22, ES: 0.21 } as const;
 
 export type KapitalZeile = KapitalEingabe & {
@@ -126,7 +126,7 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
   if (rot) {
     vorschlaege.push("Nicht nachbestellen");
     if (keinAngebot) vorschlaege.push("Angebot prüfen und wieder aktivieren (Bestand ohne Angebot)");
-    if (unterBreakEven) vorschlaege.push("Repricer-Untergrenze auf Break-even prüfen (BQool)");
+    if (unterBreakEven) vorschlaege.push("Repricer-Untergrenze auf Break-even prüfen (ProfitGuard)");
     if (reichweite > z.rotReichweite) vorschlaege.push("Abverkauf-Regel im Repricer (schrittweise senken bis Break-even)");
     if ((e.aeltesteTage ?? 0) >= 180) vorschlaege.push("Liquidation/Abverkauf über Amazon (Lagerzuschlag droht)");
     if (e.stueck >= 5) vorschlaege.push("Teil über anderen Kanal verkaufen (eBay/B2B-Deal)");

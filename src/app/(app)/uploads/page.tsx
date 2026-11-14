@@ -14,8 +14,7 @@ const ERKENNT: { was: string; wohin: string }[] = [
   { was: "Monatliche Lagergebühren (Monthly Storage Fees, .csv oder .txt)", wohin: "Kapital-Ampel, Gewinn (Info)" },
   { was: "Amazon-Berichte (Abrechnung, Bestand, Retouren, Erstattungen, Transaktionen …)", wohin: "Daten/Amazon" },
   { was: "Arbitrage One / sellerboard-Export, eigene Vorlagen", wohin: "WaWi" },
-  { was: "BQool „Manage Listings“", wohin: "Repricer" },
-  { was: "BQool-Berichte „Listing Performance“ (je Land) und „Daily Sales“", wohin: "Repricer → Leistung, Gewinn, Verlust-Stopp" },
+  { was: "ProfitGuard-Export („Export & Import“)", wohin: "Repricer → Abgleich Seller-System ↔ ProfitGuard" },
   { was: "Rechnungen und Belege (PDF, Fotos)", wohin: "Rechnungen / Belege" },
   { was: "Call-Transkripte (Word, PDF, Text, Untertitel, ZIP) und Call-Archiv (JSON)", wohin: "Call-Archiv" },
 ];
@@ -29,7 +28,7 @@ export default async function UploadsPage() {
         <div>
           <div className="crumb">Daten</div>
           <h1>Uploads</h1>
-          <div className="small muted">Alles an einer Stelle hochladen – Kontoauszüge, Amazon-Berichte, Belege, BQool, Calls. Doppeltes wird erkannt.</div>
+          <div className="small muted">Alles an einer Stelle hochladen – Kontoauszüge, Amazon-Berichte, Belege, ProfitGuard, Calls. Doppeltes wird erkannt.</div>
         </div>
       </div>
       <div className="row">

@@ -2,17 +2,13 @@
 // Die Verarbeitung macht derselbe Code wie im jeweiligen Bereich (Service).
 
 import type { AreaKey } from "@/lib/auth/areas";
-import { berichtArt } from "@/lib/bqool/berichte-logic";
-import { spaltenZuordnung } from "@/lib/bqool/logic";
+import { spaltenZuordnung } from "@/lib/repricing/profitguard-logic";
 
 export type UploadArt =
   | "kontoauszug"
   | "amex"
   | "ust_bericht"
-  | "bqool"
-  | "bqool_datei"
-  | "bqool_listing_performance"
-  | "bqool_daily_sales"
+  | "profitguard"
   | "ek_liste"
   | "ao_lagerbestand"
   | "ao_einkaeufe"
@@ -27,10 +23,7 @@ export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; lin
   kontoauszug: { text: "Kontoauszug (Bank, MT940, PayPal)", bereich: "geld", link: "/buchhaltung" },
   amex: { text: "American Express", bereich: "geld", link: "/buchhaltung" },
   ust_bericht: { text: "Amazon-Umsatzsteuerbericht", bereich: "geld", link: "/buchhaltung" },
-  bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
-  bqool_datei: { text: "BQool-Repricing-Datei (Ist-Stand je Land)", bereich: "buchhaltung", link: "/repricer/bqool" },
-  bqool_listing_performance: { text: "BQool-Bericht „Listing Performance“ (je SKU)", bereich: "buchhaltung", link: "/repricer/leistung" },
-  bqool_daily_sales: { text: "BQool-Bericht „Daily Sales“ (je Tag)", bereich: "buchhaltung", link: "/repricer/leistung" },
+  profitguard: { text: "ProfitGuard-Export (Repricer-Ist je SKU und Land)", bereich: "buchhaltung", link: "/repricer#abgleich" },
   ek_liste: { text: "EK-Liste (ArbitrageOne: sellerboard-Export bzw. Einkäufe)", bereich: "wawi", link: "/einkauf/ek-import" },
   ao_lagerbestand: { text: "ArbitrageOne – Lagerbestand (Stichtag)", bereich: "wawi", link: "/einstellungen/hintergrund#importe-arbitrageone" },
   ao_einkaeufe: { text: "ArbitrageOne – Bestellungen", bereich: "wawi", link: "/einkauf?ansicht=arbitrageone" },
@@ -66,11 +59,9 @@ export function tabellenArt(headers: string[], dateiname: string): UploadArt | n
   // B34.2: PayPal-Aktivitäten-Export (Transaktionscode + Brutto) → wie ein Kontoauszug (Konto „PayPal“)
   if (hat("transaktionscode", "transaction id") && hat("brutto", "gross")) return "kontoauszug";
   if (hat("datum", "date") && hat("beschreibung", "description") && hat("betrag", "amount") && (hat("karteninhaber", "konto #", "card member", "erscheint auf ihrer abrechnung als") || /amex|american.?express/i.test(dateiname) || h.length <= 4)) return "amex";
-  // B31.5: BQool-Berichte vor „Manage Listings“ prüfen (beide haben Min-/Max-Spalten im Namen)
-  const bericht = berichtArt(headers);
-  if (bericht) return bericht === "listing_performance" ? "bqool_listing_performance" : "bqool_daily_sales";
-  const bq = spaltenZuordnung(headers);
-  if (bq.sku !== undefined && bq.min !== undefined && bq.max !== undefined && [bq.regel, bq.status, bq.bbPreis, bq.bbGewinner, bq.angebote, bq.markt].some((x) => x !== undefined)) return "bqool";
+  // ProfitGuard-Export: SKU, Min und Max plus Strategie, Repricing-Status, Buy Box oder Marktplatz
+  const pg = spaltenZuordnung(headers);
+  if (pg.sku !== undefined && pg.min !== undefined && pg.max !== undefined && [pg.strategie, pg.aktiv, pg.bbPreis, pg.bbAnteil, pg.eigeneBb, pg.markt].some((x) => x !== undefined)) return "profitguard";
   if (h.some((x) => x.includes("b2b")) && hat("untergeordnete asin", "child asin", "asin untergeordnet", "asin")) return "amazon_business";
   return null;
 }
@@ -114,10 +105,4 @@ export function artNachEndung(name: string): UploadArt | null {
   if ([".vtt", ".srt", ".docx", ".odt"].includes(e)) return "call";
   if (e === ".xml") return "kontoauszug";
   return null;
-}
-
-/** BQool-Repricing-Datei (Vorlage „Listings_…txt“ bzw. ArbitrageOne-Datei): erste Zeile „FileType = repricing“. */
-export function istBqoolDatei(bytes: Uint8Array): boolean {
-  const anfang = new TextDecoder("utf-8").decode(bytes.subarray(0, 80));
-  return /^\uFEFF?FileType\s*=\s*repricing/i.test(anfang);
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { accountoneAus, accountoneMonat, aoFormat, AO_BQOOL_ENTFAELLT, AO_EXPORTE, bqoolVergleich, bqoolVergleichText, einkaeufeAus, einkaufSchluessel, exportFaellig, faelligeExporte, lagerbestandAus, laufText, laufZeilen, stichtagAus, wochenMontag } from "@/lib/arbitrageone/logic";
+import { accountoneAus, accountoneMonat, aoFormat, AO_EXPORTE, einkaeufeAus, einkaufSchluessel, exportFaellig, faelligeExporte, lagerbestandAus, laufText, laufZeilen, stichtagAus, wochenMontag } from "@/lib/arbitrageone/logic";
 import { parseArbitrageOne } from "@/lib/imports/arbitrageone";
 
-// ArbitrageOne-Anbindung: Takt, Formate an den Spalten, BQool nur als Vergleich. Nur erfundene Daten.
+// ArbitrageOne-Anbindung: Takt, Formate an den Spalten, Lauf-Text. Nur erfundene Daten.
 
 const berlin = (s: string) => new Date(s); // ISO mit Offset
 
@@ -40,10 +40,8 @@ describe("Takt: wann ist ein Export fällig?", () => {
     expect(faelligeExporte({}, berlin("2026-11-02T05:31:00+01:00")).map((e) => e.key)).toContain("reimbursement");
     expect(faelligeExporte(alleHeute, jetzt, { alle: true }).length).toBe(5);
     expect(faelligeExporte({}, jetzt, { nur: ["lagerbestand"] }).map((e) => e.key)).toEqual(["lagerbestand"]);
-    // B31.1: der ArbitrageOne-Export „BQool“ wird nicht mehr abgeholt – im Lauf nur die Hinweiszeile
+    // Der ArbitrageOne-Export „BQool“ wird nicht abgeholt (BQool ist abgelöst).
     expect(AO_EXPORTE.find((e) => e.key === "bqool")).toBeUndefined();
-    expect(laufText([AO_BQOOL_ENTFAELLT])).toBe("BQool: entfällt (Seller-System erzeugt die Datei)");
-    expect(laufZeilen([AO_BQOOL_ENTFAELLT])).toEqual(["BQool: entfällt (Seller-System erzeugt die Datei)"]);
   });
 });
 
@@ -114,26 +112,7 @@ describe("Formate an den Spalten erkennen", () => {
   });
 });
 
-describe("BQool aus ArbitrageOne: nur Vergleich", () => {
-  it("zählt SKUs mit anderer Regel, anderem Min/Max und fehlende auf beiden Seiten", () => {
-    const ao = [
-      { sku: "S1", regel: "ia", min: 10, max: 20 },
-      { sku: "S2", regel: "Abverkauf", min: 9, max: 18 },
-      { sku: "S3", regel: "ia", min: 11, max: 20 },
-      { sku: "S4", regel: "ia", min: 5, max: 9 },
-    ];
-    const soll = [
-      { sku: "S1", regel: "IA", min: 10, max: 20 },
-      { sku: "S2", regel: "ia", min: 9, max: 18 },
-      { sku: "S3", regel: "ia", min: 10.5, max: 20 },
-      { sku: "S5", regel: "Liquidation", min: 3, max: 6 },
-    ];
-    const v = bqoolVergleich(ao, soll);
-    expect(v.abweichend).toBe(4);
-    expect(v.jeArt).toEqual({ nur_arbitrageone: 1, nur_system: 1, regel: 1, min: 1, max: 0 });
-    expect(bqoolVergleichText(v)).toBe("Abweichung ArbitrageOne ↔ Seller-System: 4 SKUs (1 andere Regel, 1 anderer Min-Preis, 1 nur in ArbitrageOne, 1 nur im Seller-System).");
-    expect(bqoolVergleichText(bqoolVergleich(soll, soll))).toBe("Keine Abweichung ArbitrageOne ↔ Seller-System.");
-  });
+describe("ArbitrageOne: Lauf-Text", () => {
   it("Lauf-Text je Export", () => {
     expect(laufText([])).toBe("Nichts fällig.");
     expect(laufText([{ key: "einkaeufe", titel: "Einkäufe", ok: true, text: "3 neu" }, { key: "lagerbestand", titel: "Lagerbestand", ok: false, text: "nicht gefunden" }])).toBe("Einkäufe: 3 neu · Lagerbestand: Fehler – nicht gefunden");

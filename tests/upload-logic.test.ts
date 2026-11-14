@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { bqoolErgebnisText, bqoolStatusAusProtokoll } from "@/lib/automatik/bqool-logic";
 import { jsonFehler, UPLOAD_ERFOLG, UPLOAD_FEHLER, uploadBewerten } from "@/lib/automatik/upload-logic";
 
 // Befund 02.11.: BQool-Upload hat geklappt, die Automatik meldete „Keine Erfolgsmeldung“. Erfundene Dateinamen.
@@ -40,17 +39,3 @@ describe("Upload-Erkennung", () => {
   });
 });
 
-describe("BQool: Status und Text je Land", () => {
-  it("unklar = bitte prüfen, kein Fehler; von Hand bestätigt → fertig", () => {
-    const p = [
-      { zeit: "2026-11-02T10:00:00Z", land: "DE", ok: false, unklar: true },
-      { zeit: "2026-11-02T10:01:00Z", land: "FR", ok: true },
-    ];
-    expect(bqoolStatusAusProtokoll(p)).toBe("pruefen");
-    expect(bqoolStatusAusProtokoll([{ ...p[0], ok: true, unklar: undefined }, p[1]])).toBe("fertig");
-    expect(bqoolStatusAusProtokoll([{ zeit: "2026-11-02T10:00:00Z", land: "DE", ok: false }, p[1]])).toBe("teilweise");
-    // Neuerer Lauf für dasselbe Land zählt
-    expect(bqoolStatusAusProtokoll([{ zeit: "2026-11-02T09:00:00Z", land: "DE", ok: false }, { zeit: "2026-11-02T11:00:00Z", land: "DE", ok: true }])).toBe("fertig");
-    expect(bqoolErgebnisText([{ land: "DE", datei: "x.txt", zeilen: 137, ok: false, unklar: true }])).toBe("DE: 137 Zeilen hochgeladen, Bestätigung nicht erkannt – bitte in BQool prüfen");
-  });
-});

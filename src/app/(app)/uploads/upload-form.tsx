@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useKeepForm } from "@/components/keep-form";
 import { hochladenAction, type UploadState } from "./actions";
-import { LandRueckfrage } from "./land-rueckfrage";
 
 const alleOk = (s: UploadState) => Boolean(s?.ergebnisse.length && s.ergebnisse.every((r) => r.ok));
 
@@ -32,16 +31,16 @@ export function UploadForm({ firmen }: { firmen: string[] }) {
           </div>
         </details>
         <details style={{ marginTop: 6 }}>
-          <summary className="small">Angaben für BQool-Berichte (optional)</summary>
+          <summary className="small">Angaben für den ProfitGuard-Export (optional)</summary>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }} className="small">
             <label>
-              Zeitraum „Listing Performance“
-              <select name="bqool_tage" defaultValue="7" data-testid="upload-bqool-tage">
-                <option value="7">7 Tage</option>
-                <option value="30">30 Tage</option>
+              Marktplatz der Datei
+              <select name="pg_markt" defaultValue="" data-testid="upload-pg-markt">
+                <option value="">aus der Datei (Spalte „Marketplace“)</option>
+                {["DE", "FR", "IT", "ES", "NL", "BE", "PL", "SE", "UK", "IE"].map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </label>
-            <span className="muted">Das Land erkennt das System an Regeln und SKUs; ist es nicht eindeutig, fragt es nach.</span>
+            <span className="muted">Nur nötig, wenn der Export keine Marktplatz-Spalte hat.</span>
           </div>
         </details>
       </form>
@@ -50,7 +49,6 @@ export function UploadForm({ firmen }: { firmen: string[] }) {
           <strong>{r.datei}</strong> – {r.artText}: {r.text}
           {r.hinweise.length > 0 && <div className="small" style={{ marginTop: 4 }}>{r.hinweise.join(" · ")}</div>}
           {r.link && r.ok && <div className="small"><Link href={r.link}>Ansehen →</Link></div>}
-          {r.rueckfrage && <LandRueckfrage id={r.rueckfrage.id} vorschlag={r.rueckfrage.vorschlag} />}
         </div>
       ))}
     </div>

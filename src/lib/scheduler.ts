@@ -248,13 +248,14 @@ export async function runScheduledJobs(force = false) {
         // B28.8: am 3. des Monats die Verlustprodukte des Vormonats (Lernschleife); B28.7: Einkäufe bereinigen.
         await step(t, "Lernschleife Verlustprodukte", async () => (await import("@/lib/deal-eingang/lernschleife")).lernschleifeTakt(t));
         await step(t, "Einkäufe bereinigen", async () => (await import("@/lib/money/durchlauf")).einkaeufeBereinigenAufgabe(t));
-        // B31.6: Liquidation wegen Min unter Marge – Rückkehr-Vorschlag (Buy Box 14 Tage über effektivem Min + 3 %)
-        await step(t, "BQool: Liquidation prüfen", async () => (await import("@/lib/bqool/liquidation")).liquidationenPflegen(t));
-        await step(t, "BQool: Listing-Check", async () => {
-          const st = (await (await import("@/lib/settings")).getSettings(t)).bqool.listingCheckStand;
-          // läuft normalerweise nach dem BQool-Ist; hier nur, wenn heute noch keiner lief
-          if (st?.am !== new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })) await (await import("@/lib/bqool/listing-check")).listingCheck(t);
+        // Repricing (ProfitGuard): Liquidation/Rückkehr, Regel-Leiter, Schnelldreher, Zustand; Listing-Check einmal am Tag;
+        // Abgleich Seller-System ↔ ProfitGuard als Aufgabe. Daten kommen aus dem letzten ProfitGuard-Export (Datei-Import).
+        await step(t, "Repricing: Liquidation prüfen", async () => (await import("@/lib/repricing/liquidation")).liquidationenPflegen(t));
+        await step(t, "Repricing: Listing-Check", async () => {
+          const st = (await (await import("@/lib/settings")).getSettings(t)).repricing.listingCheckStand;
+          if (st?.am !== new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })) await (await import("@/lib/repricing/listing-check")).listingCheck(t);
         });
+        await step(t, "Repricing: Abgleich ProfitGuard", async () => (await import("@/lib/repricing/soll-service")).repricingAbgleichAufgabe(t));
       }
       // B22.2: Deal-Wert für alle Deals im Eingang nachrechnen (ohne Keepa-Abfragen), alle 5 Min. bis nichts mehr offen ist.
       if (force || due(`${t}:deal-wert`, 4)) {
@@ -323,17 +324,13 @@ export async function runScheduledJobs(force = false) {
           const lg = await import("@/lib/lugru-deals/discord");
           if ((await lg.lugruMandanten()).includes(t)) await lg.lugruAbgleich(t);
         });
-      // ArbitrageOne: täglich ab 05:30 fällige Exporte holen (Einkäufe, Lagerbestand, sellerboard-COG – B31.1: ohne BQool;
+      // ArbitrageOne: täglich ab 05:30 fällige Exporte holen (Einkäufe, Lagerbestand, sellerboard-COG;
       // montags Reimbursement, am 1. AccountOne COG). Ob heute schon gelaufen, steht in der Datenbank (auch nach einem
       // Neustart nur ein Lauf); „force“ (/api/cron) startet keinen zusätzlichen Browser-Lauf.
       if (await has("arbitrageone_web")) if (taeglich(`${t}:arbitrageone`, "05:30")) await step(t, "ArbitrageOne: Exporte abholen", async () => {
         const r = await (await import("@/lib/arbitrageone/abruf")).aoNachtlauf(t);
         if (r && r.status === "fehler") throw new Error(r.text);
       });
-      // B31.2: täglicher BQool-Kreislauf ab 06:00 (Ist je Land → Soll → Freigabe-Push → Upload → Nachkontrolle).
-      // Ob heute schon gelaufen, steht in der Datenbank; „force“ (Jetzt alles abrufen) startet keinen Browser-Lauf.
-      // Die Abrufe „BQool: Ist holen/Upload/Nachkontrolle“ schreiben ihr Ergebnis selbst.
-      if (!force && (await has("bqool_web"))) await (await import("@/lib/bqool/kreislauf")).kreislaufTakt(t).catch((e) => console.error("[Hintergrund] BQool-Kreislauf:", e instanceof Error ? e.message : e));
       // Call-Archiv: noch nicht ausgewertete Calls (Sammel-Import, Discord) nacheinander von der KI auswerten lassen.
       if (force || due(`${t}:call-auswertung`, 29)) await step(t, "Call-Auswertung", async () => (await import("@/lib/calls/service")).offeneCallsAuswerten(t, 20));
       // Planung: Standard-Freizeiten/Retourenwelle einmalig, Aufgaben aus freien Tagen schieben, Anleitungen prüfen.
