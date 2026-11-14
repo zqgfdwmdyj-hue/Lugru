@@ -133,6 +133,29 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
+**Mit einem Befehl (Docker, ab Worker 1.6.0):** Docker Desktop starten, dann in PowerShell:
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\video\unter-der-decke\update-worker.ps1
+```
+Das Skript liest `C:\video\worker.env`, holt das Worker-Paket beim Seller-System (`/api/video-worker/paket`, mit dem
+Worker-Token – kein Git, kein GitHub-Zugang nötig), baut das neue Image, sichert den alten Ordner als
+`unter-der-decke.alt-<Datum>` (die zwei letzten bleiben), startet den Container mit denselben Ordnern
+(`arbeit`, `musik`, `clips`) neu und zeigt das Protokoll. Ist die Version schon aktuell, passiert nichts (`-Erzwingen`
+baut trotzdem neu). Schlägt der Build fehl, läuft der alte Worker unverändert weiter. Andere Pfade/Werte:
+`-Basis D:\video -Cpus 4 -Speicher 6g`. Das kann auch Claude am Worker-PC ausführen (Claude Desktop bzw.
+`claude remote-control` im Ordner `C:\video`).
+
+**Erstes Mal** (der Ordner am PC hat das Skript noch nicht) – einmal in PowerShell:
+```powershell
+$e = Get-Content C:\video\worker.env
+$u = (($e | Select-String '^SELLER_URL=(.+)').Matches[0].Groups[1].Value).TrimEnd('/')
+$t = ($e | Select-String '^WORKER_TOKEN=(.+)').Matches[0].Groups[1].Value
+Invoke-WebRequest -UseBasicParsing "$u/api/video-worker/paket" -Headers @{ Authorization = "Bearer $t" } -OutFile "$env:TEMP\worker.zip"
+Expand-Archive "$env:TEMP\worker.zip" "$env:TEMP\worker-neu" -Force
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\worker-neu\update-worker.ps1" -Erzwingen
+```
+Danach liegt das Skript in `C:\video\unter-der-decke` und künftig reicht der Befehl oben.
+
 **1.6.0:** Selbsttest des Clip-Ordners und **eigene Fotos**.
 - Der Worker sieht alle 5 Min. (und sofort auf „Jetzt prüfen“ auf der Seite Video) in den Clip-Ordner und meldet, was er
   sieht: **verbunden** (z. B. „12 Videos, 5 Fotos, am PC: C:\video\clips“), **leer** oder **nicht mit dem PC verbunden**.
