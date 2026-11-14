@@ -133,6 +133,16 @@ Ab Worker **1.2.0** – ältere Worker bekommen keine Stories.
 Welche Version läuft, steht auf der Seite **Video** unter „Worker“ (z. B. `v1.2.1`). Ist der Worker älter als das
 Seller-System erwartet, zeigt die Seite oben „Der Worker am PC ist veraltet“.
 
+**1.6.0:** Selbsttest des Clip-Ordners und **eigene Fotos**.
+- Der Worker sieht alle 5 Min. (und sofort auf „Jetzt prüfen“ auf der Seite Video) in den Clip-Ordner und meldet, was er
+  sieht: **verbunden** (z. B. „12 Videos, 5 Fotos, am PC: C:\video\clips“), **leer** oder **nicht mit dem PC verbunden**.
+  Letzteres heißt: beim `docker run` fehlt `-v C:\video\clips:/clips` – Docker nutzt dann einen leeren Ersatzordner.
+  Beim Start steht dasselbe im Protokoll (`docker logs video-worker`, Zeile „Clip-Ordner …“).
+- Fotos (JPG/PNG/WEBP, Querformat, ab 1.200 px Breite) im Clip-Ordner: Claude sieht jedes einmal an; passt eines zum
+  Satz, ersetzt es ein KI-Bild (kostet nichts, gleiche Kamerafahrt). HEIC-Fotos vom iPhone kann der Worker nicht lesen –
+  als JPG speichern (die Ordner-Prüfung zählt sie und weist darauf hin). Nachweis wie bei Clips aus dem Dateinamen
+  („pexels-vorname-nachname-123.jpg“ → „Fotos: Pexels (pexels.com) – Vorname Nachname“).
+
 **1.5.0:** Eigene **Clip-Bibliothek** – eigene Videos in einen Ordner legen, der Worker sucht die passenden aus.
 - Ordner am PC: `C:\video\clips` (einmal anlegen). Beim `docker run` kommt dafür `-v C:\video\clips:/clips` dazu
   (siehe Befehl unten). Ohne Docker: Ordner `clips` neben `worker.py` oder `CLIPORDNER` setzen.
@@ -227,7 +237,7 @@ Halb fertige Aufträge laufen danach mit „Schritt wiederholen“ auf der Seite
 | `WORKER_TOKEN` | Worker-Token `vw_…` | – (Pflicht) |
 | `ARBEITSORDNER` | Projektordner (Zwischendateien) | `./arbeit` |
 | `MUSIKORDNER` | Hintergrundmusik (MP3) | `./musik` |
-| `CLIPORDNER` | eigene Videoclips (Clip-Bibliothek, ab 1.5.0) | `./clips` (Docker: `/clips`) |
+| `CLIPORDNER` | eigene Videoclips und Fotos (Clip-Bibliothek, ab 1.5.0; Fotos ab 1.6.0) | `./clips` (Docker: `/clips`) |
 | `VIDEO_POLL_S` | Abfrage-Takt in Sekunden | `30` |
 | `MIN_FREI_GB` / `WARN_FREI_GB` | unter 3 GB frei kein Lauf, unter 5 GB Warnung | `3` / `5` |
 | `VIDEO_FPS` | Bilder je Sekunde im Video | `25` |

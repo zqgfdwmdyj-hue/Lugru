@@ -34,6 +34,7 @@ export async function clipsMelden(w: Worker, body: unknown): Promise<{ ok: true;
       .onConflictDoUpdate({
         target: [C.tenantId, C.clipId],
         set: {
+          art: sql`excluded.art`,
           pfad: sql`excluded.pfad`,
           kanalSlug: sql`excluded.kanal_slug`,
           dauer: sql`excluded.dauer`,

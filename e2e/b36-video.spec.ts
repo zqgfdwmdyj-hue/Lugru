@@ -58,7 +58,7 @@ async function warteStoriesFehler<S extends { thema: string; status: string }>(l
 const istHaut = (r: number, g: number, b: number) => r > 100 && r < 245 && r - g >= 18 && r - g <= 75 && g - b >= 10 && g - b <= 65;
 const nachbau = () => fetch(`${TD}/__video`).then((r) => r.json() as Promise<VideoNb & { claude: string[]; maxTokens: (number | null)[]; pexels: { query: string; orientation: string | null; perPage: number }[]; pexelsDateien: number; pixabay: { q: string; perPage: number; safesearch: string | null; videoType: string | null }[]; pixabayDateien: number; clipanalysen: { pfad: string; bilder: string | null }[]; bildplaene: { szenen: number; clips: boolean; eigene?: number }[] }>);
 const stoeren = (schluessel: string, art: string, anzahl: number) => fetch(`${TD}/__video`, { method: "POST", body: JSON.stringify({ stoerung: { schluessel, art, anzahl } }) });
-type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string; dauer?: number; bilder?: { art: "bild" | "clip"; key?: string | null; clip?: string | null; eigen?: boolean; start: number; dauer: number }[] | null }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
+type Auftrag = { id: string; status: string; schritt: string; freigabe_offen: string | null; schritte: Record<string, { status: string; fortschritt?: { fertig: number; gesamt: number } | null; fehler?: string | null; autoVersuche?: number | null; autoUm?: string | null }>; woerter: number | null; dauer_sek: number | null; skript: { abschnitt: string; quelle_ids: string[]; ersatzbild?: boolean; text: string; dauer?: number; bilder?: { art: "bild" | "clip"; key?: string | null; clip?: string | null; eigen?: boolean; foto?: boolean; start: number; dauer: number }[] | null }[] | null; quellen: { id: string }[]; paket: { titel: string[]; beschreibung: string; kapitel: { start: number; titel: string }[]; tags: string[] } | null; dateien: Record<string, { groesse: number }>; kosten_ist: number; kosten_positionen: { anbieter: string; betrag: number | null }[]; youtube_id: string | null; youtube_status: string | null; aufraeumen: boolean };
 
 const PY = process.env.VIDEO_WORKER_PYTHON || "python3";
 const THEMA = "Kein Sex mehr in der Beziehung? 5 Gründe, über die keiner spricht";
@@ -195,6 +195,9 @@ test.describe("B36 Video-Pipeline", () => {
     testclip("alle/pexels-erika-muster-4711.mp4", "1920x1080", 6, "testsrc");
     testclip("wasserzeichen-logo.mp4", "1280x720", 5, "smptebars");
     testclip("hochkant.mp4", "720x1280", 5);
+    // B36.13: ein Foto (von pexels.com geladen) – ersetzt ein KI-Bild
+    mkdirSync(path.join(clipOrdner, "alle"), { recursive: true });
+    execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1600x900", "-frames:v", "1", path.join(clipOrdner, "alle", "pexels-anna-beispiel-99.jpg")]);
 
     // Abnahme 1: Worker starten → Gliederung mit Quellen erscheint zur Freigabe
     workerStarten();
@@ -279,7 +282,7 @@ test.describe("B36 Video-Pipeline", () => {
     // Meldet ein Worker eine alte Version (vor den Abschnitten/Wiederholungen), steht oben ein Hinweis
     await sql("update video_worker set version = '1.0.0' where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]);
     await page.reload();
-    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.5.0)");
+    await expect(page.getByTestId("vd-worker-alt")).toContainText("veraltet (v1.0.0, aktuell v1.6.0)");
     // … Neustart setzt fort, ohne bezahlte Sprache/Bilder neu zu erzeugen
     workerStarten();
     a = await warteAuf("Freigabe Vorschau", (x) => x.freigabe_offen === "vorschau", 420_000);
@@ -311,12 +314,17 @@ test.describe("B36 Video-Pipeline", () => {
     expect(eigene.map((e) => e.clip).sort()).toEqual([...new Set(eigene.map((e) => e.clip))].sort());
     expect(eigene).toHaveLength(2);
     expect(eigene.every((e) => /^eigen-[0-9a-f]{20}$/.test(String(e.clip)))).toBe(true);
-    expect(nb.clipanalysen.map((x) => x.pfad).sort()).toEqual(["alle/pexels-erika-muster-4711.mp4", "wasserzeichen-logo.mp4", `${slugK}/uhr-nahaufnahme.mp4`].sort()); // je Clip einmal, Hochformat ohne Claude
-    expect(nb.clipanalysen.every((x) => x.bilder === "4")).toBe(true);
-    expect(nb.bildplaene[0].eigene).toBe(2); // Katalog im Bildplan: nur die brauchbaren
+    expect(nb.clipanalysen.map((x) => x.pfad).sort()).toEqual(["alle/pexels-anna-beispiel-99.jpg", "alle/pexels-erika-muster-4711.mp4", "wasserzeichen-logo.mp4", `${slugK}/uhr-nahaufnahme.mp4`].sort()); // je Clip/Foto einmal, Hochformat ohne Claude
+    expect(nb.clipanalysen.filter((x) => x.pfad.endsWith(".mp4")).every((x) => x.bilder === "4")).toBe(true);
+    expect(nb.bildplaene[0].eigene).toBe(3); // Katalog im Bildplan: nur die brauchbaren (2 Videos + 1 Foto)
+    // B36.13: das Foto ersetzt ein KI-Bild (nicht bezahlt, gleiche Kamerafahrt)
+    const fotos = plan.filter((e) => e.art === "bild" && e.foto);
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0].key).toMatch(/^foto-[0-9a-f]{20}$/);
     const bib = await sql<{ pfad: string; kanal_slug: string | null; brauchbar: boolean; grund: string | null; quelle: string; filmer: string | null; vorschau: boolean; benutzt: number; schlagwoerter: string[]; abschnitt: { start: number } | null }>("select pfad, kanal_slug, brauchbar, grund, quelle, filmer, vorschau, benutzt, schlagwoerter, abschnitt from video_clips where tenant_id = $1 order by pfad", [T]);
     const bibNach = Object.fromEntries(bib.map((x) => [x.pfad, x]));
-    expect(Object.keys(bibNach).sort()).toEqual(["alle/pexels-erika-muster-4711.mp4", "hochkant.mp4", "wasserzeichen-logo.mp4", `${slugK}/uhr-nahaufnahme.mp4`].sort());
+    expect(Object.keys(bibNach).sort()).toEqual(["alle/pexels-anna-beispiel-99.jpg", "alle/pexels-erika-muster-4711.mp4", "hochkant.mp4", "wasserzeichen-logo.mp4", `${slugK}/uhr-nahaufnahme.mp4`].sort());
+    expect(bibNach["alle/pexels-anna-beispiel-99.jpg"]).toMatchObject({ quelle: "pexels", filmer: "Anna Beispiel", benutzt: 1, brauchbar: true, abschnitt: null });
     expect(bib.every((x) => x.vorschau)).toBe(true); // Vorschaubild je Clip hochgeladen
     expect(bibNach["hochkant.mp4"]).toMatchObject({ brauchbar: false, grund: "Hochformat" });
     expect(bibNach["wasserzeichen-logo.mp4"]).toMatchObject({ brauchbar: false, grund: "Wasserzeichen eines Anbieters" });
@@ -331,7 +339,7 @@ test.describe("B36 Video-Pipeline", () => {
     expect(nb.pixabayDateien).toBe(new Set(clips.map((e) => e.clip)).size); // jeder Clip einmal geladen
     expect(nb.pexels).toHaveLength(0); // ohne Pexels-Schlüssel fragt die Brücke Pexels gar nicht
     expect(log).not.toContain("test-pixabay-schluessel"); // Schlüssel nie beim Worker
-    const keys = new Set(plan.filter((e) => e.art === "bild").map((e) => e.key));
+    const keys = new Set(plan.filter((e) => e.art === "bild" && !e.foto).map((e) => e.key)); // eigenes Foto kostet nichts
     expect(nb.bilder.length).toBe(keys.size + 1); // je Bild einmal bezahlt + die eine Ablehnung (Ersatzbild)
     for (const s of a.skript!) {
       expect(s.bilder![0].start).toBe(0);
@@ -352,7 +360,7 @@ test.describe("B36 Video-Pipeline", () => {
     let diff = 0;
     for (let k = 0; k < f1.length; k++) diff += Math.abs(f1[k] - f2[k]);
     expect(diff / f1.length, "Bild steht still – keine Kamerafahrt").toBeGreaterThan(3);
-    console.log(`Vollbild: ${szenen} Szenen, ${plan.length} Bilder/Clips (${clips.length} Pixabay-Clips, ${eigene.length} eigene), Ø ${(dauerGesamt / plan.length).toFixed(1)} s je Bild, Kamerafahrt Ø-Abstand ${(diff / f1.length).toFixed(1)}`);
+    console.log(`Vollbild: ${szenen} Szenen, ${plan.length} Bilder/Clips (${clips.length} Pixabay-Clips, ${eigene.length} eigene Clips, ${fotos.length} eigene Fotos), Ø ${(dauerGesamt / plan.length).toFixed(1)} s je Bild, Kamerafahrt Ø-Abstand ${(diff / f1.length).toFixed(1)}`);
     const thumb = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path.join(ordner, "thumbnail.png")]).toString()) as { streams: { width: number; height: number }[] };
     expect([thumb.streams[0].width, thumb.streams[0].height]).toEqual([1280, 720]);
     const srt = readFileSync(path.join(ordner, "untertitel.srt"), "utf8");
@@ -360,8 +368,9 @@ test.describe("B36 Video-Pipeline", () => {
     expect(a.paket!.titel).toHaveLength(5);
     expect(a.paket!.beschreibung).toContain("Kapitel:\n0:00 Intro");
     expect(a.paket!.beschreibung).toContain("Quellen:");
-    expect(a.paket!.beschreibung).toMatch(/Videos: Pixabay \(pixabay\.com\) – Testfilmer \d/); // Filmer der Clips genannt
-    expect(a.paket!.beschreibung).toContain("Pexels (pexels.com) – Erika Muster"); // eigener Clip aus einem Pexels-Download
+    expect(a.paket!.beschreibung).toMatch(/Videos und Fotos: Pixabay \(pixabay\.com\) – Testfilmer \d/); // Filmer der Clips genannt
+    expect(a.paket!.beschreibung).toContain("Anna Beispiel"); // Fotograf des eigenen Pexels-Fotos
+    expect(a.paket!.beschreibung).toMatch(/Pexels \(pexels\.com\) – .*Erika Muster/); // eigener Clip aus einem Pexels-Download
     expect(a.paket!.kapitel.length).toBeGreaterThanOrEqual(3);
     expect(a.paket!.tags.length).toBeGreaterThanOrEqual(10);
     await page.reload();
@@ -374,7 +383,10 @@ test.describe("B36 Video-Pipeline", () => {
 
     // B36.12 Übersicht „Clip-Bibliothek“ (Seite Video): Vorschaubild, Beschreibung, Nutzung, Aussortiertes mit Grund; sperren
     const bibUi = page.getByTestId("vd-clips");
-    await expect(bibUi.getByTestId("vd-clips-anzahl")).toContainText("2 brauchbare Clips");
+    await expect(bibUi.getByTestId("vd-clips-anzahl")).toContainText("3 brauchbare Clips");
+    // B36.13 Selbsttest: der Worker meldet, was er im Ordner sieht
+    await expect(bibUi.getByTestId("vd-clipordner")).toHaveAttribute("data-zustand", "ok");
+    await expect(bibUi.getByTestId("vd-clipordner")).toContainText("Clip-Ordner verbunden: 4 Videos, 1 Fotos");
     await bibUi.locator("summary").click();
     const [{ clip_id: uhrId }] = await sql<{ clip_id: string }>("select clip_id from video_clips where tenant_id = $1 and pfad = $2", [T, `${slugK}/uhr-nahaufnahme.mp4`]);
     const uhrKarte = bibUi.getByTestId(`vd-clip-${uhrId}`);
@@ -391,7 +403,15 @@ test.describe("B36 Video-Pipeline", () => {
     await Promise.all([aktion(page), uhrKarte.getByTestId("vd-clip-speichern").click()]);
     await expect(page.getByTestId("vd-meldung")).toContainText("Clip gesperrt");
     expect((await sql<{ gesperrt: boolean; schlagwoerter_hand: string[] | null; beschreibung_hand: string | null }>("select gesperrt, schlagwoerter_hand, beschreibung_hand from video_clips where tenant_id = $1 and clip_id = $2", [T, uhrId]))[0]).toEqual({ gesperrt: true, schlagwoerter_hand: null, beschreibung_hand: null }); // unverändert = weiter „erkannt“
-    await expect(page.getByTestId("vd-clips-anzahl")).toContainText("1 brauchbarer Clip, 1 gesperrt");
+    await expect(page.getByTestId("vd-clips-anzahl")).toContainText("2 brauchbare Clips, 1 gesperrt");
+    await expect(bibUi.getByTestId("vd-clip-foto")).toHaveCount(1);
+    // „Jetzt prüfen“: neues Foto in den Ordner → der Worker meldet es beim nächsten Lebenszeichen
+    execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=1600x900", "-frames:v", "1", path.join(clipOrdner, "alle", "noch-ein-foto.jpg")]);
+    await Promise.all([aktion(page), page.getByTestId("vd-clipordner-pruefen").click()]);
+    await expect(page.getByTestId("vd-meldung")).toContainText("Clip-Ordner: Prüfung angefordert");
+    await expect.poll(async () => (await sql<{ fotos: number }>("select (clip_ordner->>'fotos')::int as fotos from video_worker where tenant_id = $1 and name = $2", [T, `Test-PC ${m}`]))[0]?.fotos, { timeout: 30_000 }).toBe(2);
+    await page.reload();
+    await expect(page.getByTestId("vd-clipordner")).toContainText("4 Videos, 2 Fotos");
 
     // Abnahme 5: YouTube verbinden, „Privat hochladen“ an, Vorschau freigeben → privates Video
     await page.getByTestId("vd-yt-verbinden").click();

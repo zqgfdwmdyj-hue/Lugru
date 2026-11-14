@@ -62,8 +62,8 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Lager & Versand › Lager | Paletten-Lager › Auswertung `/paletten/uebersicht` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Lager & Versand › Lager | Drucken (Etiketten) `/drucken` | ○ 0/4 Abläufe | – | 4 |
 | Lager & Versand › Lager | Scannen `/lager/scannen` | ○ 0/1 Abläufe | – | – |
-| Lager & Versand › Versand | Aufträge & Versand `/auftraege` | ○ 0/2 Abläufe | – | – |
-| Lager & Versand › Versand | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/4 Abläufe | – | – |
+| Lager & Versand › Versand | Aufträge & Versand `/auftraege` | ○ 0/3 Abläufe | – | – |
+| Lager & Versand › Versand | Labels: Warensendung & DHL `/auftraege/lieferschein` | ○ 0/5 Abläufe | – | – |
 | Lager & Versand › Versand | Label aus Chat (DHL) `/versand/label` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Lager & Versand › Versand | Abholung DHL/UPS `/versand/abholung` | ○ 0/3 Abläufe | – | 2 |
 | Lager & Versand › Versand | Prep Center: Versand je Monat `/auftraege/prep-center` | ○ 0/2 Abläufe | – | – |
@@ -101,7 +101,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Rechner `/marken/uhren/rechner` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Uhren: Buy & Flip › Deals `/marken/uhren/deals` | ○ 0/2 Abläufe | 👁 behoben, behoben | – |
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/18 Abläufe | – | 9 |
+| Marken & Content | Video (YouTube) `/marken/video` | ○ 0/19 Abläufe | – | 9 |
 | Team & Verwaltung | VA & Delegation `/delegation` | ○ 0/4 Abläufe | – | 1 |
 | Team & Verwaltung | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Team & Verwaltung | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
@@ -362,6 +362,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Labels kaufen und alle als versendet melden (Amazon, simuliert) | Versandbestätigung je Amazon-Auftrag an den Testdienst; eBay ohne Verbindung als Meldung | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
 | Ansicht „Meldung offen“ | fehlgeschlagene Meldungen sichtbar | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
+| Nachtrag 14.11. Temu: Warensendung mit Internetmarke als versendet markieren; Warensendung per CSV (ohne ID); DHL bei gestörtem Temu; Bestellung bei Temu schon versandt | Frankier-ID als Sendungsnummer mit „Deutsche Post“ an Temu; ohne ID Hinweis + „Nachtragen & melden“ (Leerzeichen entfernt); Störung → „1× versucht – wird alle 30 Min. automatisch wiederholt“, „Erneut melden“ → gemeldet; bei Temu „Versandt“ → offene Meldung geschlossen, keine zweite Meldung | ○ im letzten Lauf nicht gelaufen | `temu-meldung.spec.ts` |
 
 ### Lager & Versand › Versand › Labels: Warensendung & DHL (`/auftraege/lieferschein`)
 
@@ -369,6 +370,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 |---|---|---|---|
 | Falsche Datei hochladen | Fehler; Datei und Haken bleiben; Kanal bei „Offene Aufträge“ bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 | Vorschau mit lauter „bitte prüfen“ | Fehler; Auswahl je Bestellung bleibt | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
+| Nachtrag 14.11. Warensendung je SKU bei eBay/Temu (Land „DE“) | Artikel „bis N Stück“ → Vorschlag Warensendung auch bei Aufträgen mit Land „DE“ (vorher fälschlich „Ausland“ → DHL) | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
 | Gewichte pflegen | unklare Eingabe bleibt stehen, gültige Zeile zeigt gespeicherte Werte, neue Zeile leert sich | ○ im letzten Lauf nicht gelaufen | `formulare.spec.ts` |
 | Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) | 5 Labels, Kabel als DHL-Paket, keine echten Käufe | ○ im letzten Lauf nicht gelaufen | `labels.spec.ts` |
 
@@ -561,6 +563,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand | Hand (Hautton) in mehreren Einzelbildern der ersten Szenen und der Probeszene sichtbar; unterer Rand ohne Untertitel | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
 | Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel | gültig → „Schlüssel gültig. Videosuche funktioniert“; falsch → „Schlüssel abgelehnt“ bzw. HTTP 401, nie Teile des Schlüssels; ohne Schlüssel 424; Antwort im Pexels-Format (IDs pixabay-…, leere Größen weg), höchstens 15 Treffer, fremder Pfad 404; im Video (B36.7) alle Clips von Pixabay, Pexels nicht gefragt, Nachweis „Videos: Pixabay (pixabay.com) – …“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts`, `b36-video.spec.ts` |
 | Nachtrag 13.11. (4) Eigene Clip-Bibliothek: Clip-Ordner mit Kanal-Unterordner, Pexels-Download in „alle“, Clip mit Wasserzeichen und Hochformat-Clip; Vollbild-Video bis zur Vorschau; Seite Video → Clip-Bibliothek, einen Clip sperren | jeder neue Clip einmal angesehen (4 Standbilder, Hochformat ohne Claude); im Seller-System alle 4 mit Vorschaubild, Wasserzeichen/Hochformat „nicht brauchbar“ mit Grund; nur brauchbare im Bildplan; eigene Clips vor Pixabay, jeder höchstens einmal je Video, als 1920×1080-Ausschnitt; „1× benutzt“; Beschreibung nennt den Pexels-Filmer; Sperren → „Clip gesperrt“, Anzahl sinkt, Schlagwörter bleiben „erkannt“ | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
+| Nachtrag 14.11. Clip-Ordner prüfbar + Fotos: Ordner mit Videos und einem Pexels-Foto; Seite Video → Clip-Bibliothek; „Jetzt prüfen“ nach neuem Foto | „Clip-Ordner verbunden: 4 Videos, 1 Fotos“, nach „Jetzt prüfen“ in ≤ 30 s „2 Fotos“; nicht eingehängt (Docker-Ersatzordner) wird als Fehler mit dem -v-Befehl gezeigt; das Foto ersetzt ein KI-Bild (nicht bezahlt), Fotograf im Nachweis, Kennzeichen „Foto“ in der Bibliothek | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ | Status „wartet“ statt „Fehler“, neuer Versuch automatisch in 10 Min. (danach 30, 60), Hinweis „Störung beim Anbieter in „Skript“ … (1/3)“; „Jetzt neu versuchen“ holt nur den fehlenden Abschnitt und die danach; alle Claude-Aufrufe mit mindestens 16.000 Tokens Platz (Denken zählt mit) | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ | Abbrüche/529 nach 2, 4, 8, 16 s wiederholt (Log „neuer Versuch“); nach 5 Fehlversuchen Schritt-Fehler „Skript – Punkt 3: nach 5 Versuchen nicht geklappt“; fertige Abschnitte als Dateien im Projektordner; Wiederholen holt nur Punkt 3 bis CTA; Skript 1.500–1.700 Wörter, 5 Punkte, alle Studien in der Quellenliste; Sprache je Szene genau einmal bezahlt | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
 | B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel | Bilder mit gpt-image-2.5-flare, nie gpt-image-1; Wahl gespeichert und bei jedem Bild benutzt, Kosten-Zeile nennt das Modell; gesperrtes Modell einmal versucht, dann Flare; Test „Schlüssel gültig. Bildmodell für Videos: …“ bzw. „Schlüssel abgelehnt (HTTP 401)“; Brücke 401 „OpenAI-Schlüssel abgelehnt … neu eintragen“ ohne Schlüsselteile | ○ im letzten Lauf nicht gelaufen | `b36-video.spec.ts` |
@@ -756,7 +759,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (193 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 193 nicht gelaufen.
+**Automatisch** (196 Abläufe + Oberfläche auf 121 Seiten): 0 bestanden, 0 fehlgeschlagen, 196 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -824,8 +827,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Scannen: Druckagent Abnahme 4: Scanner-Arbeitsplatz – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Labels kaufen und alle als versendet melden (Amazon, simuliert) – im letzten Lauf nicht gelaufen
 - ○ Aufträge & Versand: Ansicht „Meldung offen“ – im letzten Lauf nicht gelaufen
+- ○ Aufträge & Versand: Nachtrag 14.11. Temu: Warensendung mit Internetmarke als versendet markieren; Warensendung per CSV (ohne ID); DHL bei gestörtem Temu; Bestellung bei Temu schon versandt – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Falsche Datei hochladen – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Vorschau mit lauter „bitte prüfen“ – im letzten Lauf nicht gelaufen
+- ○ Labels: Warensendung & DHL: Nachtrag 14.11. Warensendung je SKU bei eBay/Temu (Land „DE“) – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Gewichte pflegen – im letzten Lauf nicht gelaufen
 - ○ Labels: Warensendung & DHL: Offene Aufträge → Versandart → Labels kaufen (Post/DHL simuliert) – im letzten Lauf nicht gelaufen
 - ○ Abholung DHL/UPS: Abholung per Claude: „DHL-Abholung morgen 10–12 Uhr, 12 Pakete, <Abholort>“ (Abholort vorher unter Einstellungen → Abholung angelegt) – im letzten Lauf nicht gelaufen
@@ -888,6 +893,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Video (YouTube): Nachtrag 13.11. (2) Hand: Whiteboard-Video und Probeszene mit der Foto-Hand – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. (3) Pixabay statt Pexels: Anbindungen → Pixabay „Verbindung testen“ (gültig/falsch), Brücke /pixabay/videos ohne, mit falschem und mit gültigem Schlüssel – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11. (4) Eigene Clip-Bibliothek: Clip-Ordner mit Kanal-Unterordner, Pexels-Download in „alle“, Clip mit Wasserzeichen und Hochformat-Clip; Vollbild-Video bis zur Vorschau; Seite Video → Clip-Bibliothek, einen Clip sperren – im letzten Lauf nicht gelaufen
+- ○ Video (YouTube): Nachtrag 14.11. Clip-Ordner prüfbar + Fotos: Ordner mit Videos und einem Pexels-Foto; Seite Video → Clip-Bibliothek; „Jetzt prüfen“ nach neuem Foto – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): Nachtrag 13.11.: Störung beim Anbieter – „Skript – Punkt 3“ scheitert 5-mal (529), danach „Jetzt neu versuchen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Robustheit (12.11.): Recherche und Skript abschnittsweise; im Nachbau bricht der Hook einmal mitten im Stream ab, Quellen „Punkt 2“ einmal 529, „Punkt 3“ 5-mal Abbruch, ElevenLabs 2-mal Abbruch; danach „Schritt wiederholen“ – im letzten Lauf nicht gelaufen
 - ○ Video (YouTube): B36 Bildmodell (13.11.): Standard, Wahl auf der Seite (Sunburst), gewähltes Modell im Konto gesperrt; OpenAI „Verbindung testen“ mit gültigem und falschem Schlüssel (Pfad statt Schlüssel); Brücke mit falschem Schlüssel – im letzten Lauf nicht gelaufen

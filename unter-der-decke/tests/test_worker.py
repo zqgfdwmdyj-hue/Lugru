@@ -1300,7 +1300,7 @@ def test_vollbild_eigene_clips_angesehen_passend_ausgewaehlt_einmal_je_video(tmp
     assert (info["breite"], info["hoehe"]) == (1920, 1080)
     assert d["probe"]["clips"] >= 1
     assert any("Clip-Bibliothek: 4 neue Clips angesehen." in x for x in h)
-    assert any("eigene Clips eingesetzt" in x for x in h)
+    assert any("eigene Clips/Fotos eingesetzt" in x for x in h)
     benutzt = {e["pfad"]: e["benutzt"] for e in sch._clipbib(l).clips.values()}
     assert sum(benutzt.values()) == 1
     teil, voll = l.seller.clip_meldungen[-1]  # Nutzung nach dem Bebildern nachgemeldet (nur der benutzte Clip)
@@ -1317,3 +1317,104 @@ def test_vollbild_eigene_clips_angesehen_passend_ausgewaehlt_einmal_je_video(tmp
     cid = next(c["id"] for c in l.seller.gemeldet if c["pfad"] == "testkanal/uhr-nahaufnahme.mp4")
     l.a["clipKorrekturen"] = {cid: {"gesperrt": True, "schlagwoerter": None, "beschreibung": None}}
     assert cid not in {e["id"] for e in sch._clipbib_vorbereiten(l, [])}
+
+
+# ---- B36.13 Clip-Ordner-Selbsttest und eigene Fotos ---------------------------------------------------------------------
+
+
+def _testfoto(ziel: Path, breite: int, hoehe: int, farbe=(180, 120, 60)) -> Path:
+    from PIL import Image, ImageDraw
+
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    im = Image.new("RGB", (breite, hoehe), farbe)
+    d = ImageDraw.Draw(im)
+    for x in range(0, breite, 80):  # Muster, damit die Kamerafahrt sichtbar wäre
+        d.line([(x, 0), (x + hoehe // 2, hoehe)], fill=(250, 250, 250), width=6)
+    im.save(ziel, "PNG" if ziel.suffix.lower() == ".png" else "JPEG", quality=90)
+    return ziel
+
+
+def test_clip_ordner_selbsttest_verbunden_leer_nicht_eingehaengt(tmp_path):
+    from udd import clipbib
+
+    o = tmp_path / "clips"
+    mi = tmp_path / "mountinfo"
+    # nicht vorhanden / aus
+    assert clipbib.ordner_stand(o, mi)["zustand"] == "fehlt"
+    assert clipbib.ordner_stand(None, mi)["zustand"] == "aus"
+    # vorhanden, aber leer (nur eine Textdatei und ein verstecktes Video)
+    (o / ".versteckt").mkdir(parents=True)
+    (o / ".versteckt" / "x.mp4").write_bytes(b"x")
+    (o / "liesmich.txt").write_text("x")
+    leer = clipbib.ordner_stand(o, mi)
+    assert leer["zustand"] == "leer" and leer["videos"] == 0 and leer["andere"] == 1
+    # Videos, Fotos, HEIC (zählt, wird aber nicht gelesen); Docker-Desktop-Bind-Mount → Windows-Pfad
+    for rel in ["uhren/a.mp4", "b.MOV", "uhren/c.jpg", "d.png", "e.HEIC"]:
+        (o / rel).parent.mkdir(parents=True, exist_ok=True)
+        (o / rel).write_bytes(b"x")
+    mi.write_text(f"1 0 0:1 / / rw - overlay overlay rw\n2 1 0:2 /run/desktop/mnt/host/c/video/clips {o} rw - fakeowner grpcfuse rw\n")
+    ok = clipbib.ordner_stand(o, mi)
+    assert (ok["zustand"], ok["videos"], ok["fotos"], ok["heic"]) == ("ok", 2, 2, 1)
+    assert ok["quelle"] == "C:\\video\\clips"
+    assert len(ok["beispiele"]) == 5 and all(not b.startswith(".") for b in ok["beispiele"])
+    # docker run ohne -v: Docker legt ein anonymes Volume an → „nicht mit dem PC verbunden“
+    mi.write_text(f"2 1 0:2 /var/lib/docker/volumes/{'a' * 64}/_data {o} rw - ext4 /dev/vda1 rw\n")
+    assert clipbib.ordner_stand(o, mi)["zustand"] == "anonym"
+    # Fotos im Scan, mit Art
+    arten = {x["pfad"]: x["art"] for x in clipbib.scannen(o, set())}
+    assert arten == {"uhren/a.mp4": "video", "b.MOV": "video", "uhren/c.jpg": "foto", "d.png": "foto"}
+
+
+def test_vollbild_eigene_fotos_statt_ki_bild_mit_nachweis(tmp_path, monkeypatch):
+    """B36.13: Fotos im Clip-Ordner werden einmal angesehen (1 Bild), Hochformat/zu klein aussortiert, ein passendes Foto
+    ersetzt ein KI-Bild (gleiche Kamerafahrt), wird gezählt und im Nachweis genannt (Pexels-Dateiname)."""
+    import dataclasses
+
+    from PIL import Image
+
+    from udd import schritte as sch
+
+    l, gefragt, _geladen = _vb_lauf(tmp_path, monkeypatch, quellen=set(), probe={"szene": 1})
+    o = tmp_path / "clips"
+    l.k = dataclasses.replace(l.k, clipordner=o)
+    l.a["kanalOrdner"] = ["testkanal"]
+    _testfoto(o / "Uhren" / "pexels-anna-beispiel-99.jpg", 1600, 900)
+    _testfoto(o / "hochkant-foto.jpg", 900, 1600)
+    _testfoto(o / "klein.png", 800, 450)
+    (o / "iphone.heic").write_bytes(b"heic")
+    l.seller.anbieter = (lambda alt: lambda _id, a, p, k, **kw: _Antwort(_tts_antwort(k["text"], tmp_path, 0.3, 14.0, 0.4)) if a == "elevenlabs" else alt(_id, a, p, k, **kw))(l.seller.anbieter)
+    angesehen: list[str] = []
+
+    def fragen(_c, _m, prompt, **kw):
+        if isinstance(prompt, list):
+            text = prompt[0]["text"]
+            assert "(Foto)" in text and sum(1 for b in prompt if b["type"] == "image") == 1  # ein Bild statt 4 Standbilder
+            angesehen.append(re.search(r"Datei: (\S+)", text).group(1))
+            return json.dumps({"beschreibung": "Uhr auf Holztisch", "schlagwoerter": ["uhr", "watch", "tisch"], "einstellung": "detail", "brauchbar": True, "grund": "", "bestes_bild": 1}), {}
+        gefragt.append(prompt)
+        foto = re.search(r"^(E\d+): \[Foto\] ", prompt, re.M)
+        assert foto, "Foto fehlt in der Liste „Eigene Clips“"
+        szenen = []
+        for nr, n in re.findall(r"Szene (\d+) \(n=(\d+)", prompt):
+            szenen.append({"nr": int(nr), "bilder": [{"art": "eigen" if nr == "1" and k == 1 else "bild", "idee": f"Uhr {nr}.{k}", "suche": f"watch {nr}", "wort": "", "eigen": foto.group(1) if nr == "1" and k == 1 else ""} for k in range(int(n))]})
+        return json.dumps({"szenen": szenen}), {}
+
+    monkeypatch.setattr(sch.ki, "fragen", fragen)
+    d, h = sch.probe(l)
+    assert angesehen == ["Uhren/pexels-anna-beispiel-99.jpg"]  # Hochformat und zu klein: Technik reicht, HEIC nicht gelesen
+    gemeldet = {c["pfad"]: c for c in l.seller.gemeldet}
+    assert set(gemeldet) == {"Uhren/pexels-anna-beispiel-99.jpg", "hochkant-foto.jpg", "klein.png"}
+    assert all(c["art"] == "foto" for c in gemeldet.values())
+    assert gemeldet["hochkant-foto.jpg"]["grund"] == "Hochformat" and gemeldet["klein.png"]["grund"].startswith("Auflösung zu klein")
+    assert gemeldet["Uhren/pexels-anna-beispiel-99.jpg"]["abschnitt"] is None and gemeldet["Uhren/pexels-anna-beispiel-99.jpg"]["filmer"] == "Anna Beispiel"
+    assert len(l.seller.vorschauen) == 3
+    e = l.daten["skript"][0]["bilder"][1]
+    assert e["art"] == "bild" and e.get("foto") and e.get("eigen") and e["key"].startswith("foto-")
+    with Image.open(l.p.pfad(l.p.state["bilder"][e["key"]]["datei"])) as im:
+        assert im.format == "JPEG" and im.size == (1600, 900)
+    assert any("davon 1 Fotos" in x for x in h)
+    assert sch.clip_nachweis(l, l.daten["skript"]) == "Fotos: Pexels (pexels.com) – Anna Beispiel"
+    assert sum(x["benutzt"] for x in sch._clipbib(l).clips.values()) == 1
+    assert d["probe"]  # Probe mit dem Foto gerendert
+    sch.probe(l)
+    assert len(angesehen) == 1 and sum(x["benutzt"] for x in sch._clipbib(l).clips.values()) == 1

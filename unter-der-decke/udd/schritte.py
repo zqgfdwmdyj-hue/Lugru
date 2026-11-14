@@ -1010,7 +1010,7 @@ def _bildplan_holen(l: Lauf, auftrag: list[tuple[int, dict, int]], eigene: list[
                     "Eigene Clips (Bibliothek des Kanals – echte Aufnahmen, haben Vorrang vor Stock-Clips und Bildern): Passt einer "
                     "inhaltlich wirklich zum gesprochenen Satz, nimm ihn: art „eigen“, eigen = Kennung (z. B. „E3“). Jede Kennung "
                     "höchstens einmal. Passt keiner, nicht erzwingen – dann „clip“ oder „bild“ und eigen leer. Selten benutzte bevorzugen.\n"
-                    + "\n".join(f"{m}: {e.get('beschreibung') or ''} [{', '.join((e.get('schlagwoerter') or [])[:10])}] {float(e.get('dauer') or 0):.0f} s, {int(e.get('benutzt') or 0)}× benutzt" for m, e in zip(marken, kat))
+                    + "\n".join(_katalog_zeile(m, e) for m, e in zip(marken, kat))
                 ]
                 if kat
                 else []
@@ -1021,6 +1021,14 @@ def _bildplan_holen(l: Lauf, auftrag: list[tuple[int, dict, int]], eigene: list[
     text, _u = ki.fragen(l.claude, l.modell, prompt, was="Bildplan (Bilder und Clips je Szene)", schema=BILDPLAN_SCHEMA, effort="low")
     d = ki.json_aus(text)
     return {int(x.get("nr") or 0): [b for b in x.get("bilder") or [] if isinstance(b, dict)] for x in d.get("szenen") or [] if isinstance(x, dict)}, marken
+
+
+def _katalog_zeile(marke: str, e: dict) -> str:
+    """Eine Zeile der Liste „Eigene Clips“ im Bildplan: Kennung, (Foto), Beschreibung, Schlagwörter, Länge, Nutzung."""
+    foto = e.get("art") == "foto"
+    laenge = "Foto" if foto else f"{float(e.get('dauer') or 0):.0f} s"
+    tags = ", ".join((e.get("schlagwoerter") or [])[:10])
+    return f"{marke}: {'[Foto] ' if foto else ''}{e.get('beschreibung') or ''} [{tags}] {laenge}, {int(e.get('benutzt') or 0)}× benutzt"
 
 
 def _bildplan(l: Lauf, auswahl: list[tuple[int, dict]], sek: float, eigene: list[dict] | None = None) -> dict[int, list[dict]]:
@@ -1158,28 +1166,46 @@ def _clipbib(l: Lauf) -> clipbib.Bibliothek:
 def _clip_ansehen(l: Lauf, bib: clipbib.Bibliothek, cid: str, d: dict, hinweise: list[str]) -> dict | None:
     """Einen neuen Clip einmal ansehen: Technik prüfen, 4 Standbilder → Claude (Beschreibung, Schlagwörter, bestes Bild,
     brauchbar?), Vorschaubild fürs Seller-System. None = nicht geklappt (nächstes Mal neu)."""
-    info = clipbib.video_info(l.k.ffprobe, d["datei"])
+    foto = d.get("art") == "foto"
+    info = clipbib.foto_info(d["datei"]) if foto else clipbib.video_info(l.k.ffprobe, d["datei"])
     quelle, filmer = clipbib.quelle_aus_name(d["datei"].name)
     e: dict[str, Any] = {
-        "id": cid, "pfad": d["pfad"], "kanal": d["kanal"], "tags": d["tags"], "dauer": round(info["dauer"], 2), "breite": int(info["breite"]), "hoehe": int(info["hoehe"]),
+        "id": cid, "art": "foto" if foto else "video", "pfad": d["pfad"], "kanal": d["kanal"], "tags": d["tags"], "dauer": round(info["dauer"], 2), "breite": int(info["breite"]), "hoehe": int(info["hoehe"]),
         "quelle": quelle, "filmer": filmer, "benutzt": 0, "zuletzt": None, "analysiert": True, "beschreibung": "", "schlagwoerter": list(d["tags"]),
         "einstellung": None, "brauchbar": True, "grund": "", "abschnitt": None,
     }
-    technik = (
-        "zu kurz (unter 2 s)" if info["dauer"] < clipbib.MIN_DAUER
-        else "Hochformat" if info["hoehe"] > info["breite"]
-        else f"Auflösung zu klein ({int(info['breite'])} px breit)" if info["breite"] < clipbib.MIN_BREITE
-        else ""
-    )
+    if foto:
+        technik = (
+            "Datei nicht lesbar" if info["breite"] <= 0
+            else "Hochformat" if info["hoehe"] > info["breite"]
+            else f"Auflösung zu klein ({int(info['breite'])} px breit, mind. {clipbib.MIN_FOTO_BREITE})" if info["breite"] < clipbib.MIN_FOTO_BREITE
+            else ""
+        )
+    else:
+        technik = (
+            "zu kurz (unter 2 s)" if info["dauer"] < clipbib.MIN_DAUER
+            else "Hochformat" if info["hoehe"] > info["breite"]
+            else f"Auflösung zu klein ({int(info['breite'])} px breit)" if info["breite"] < clipbib.MIN_BREITE
+            else ""
+        )
     ordner = bib.ordner / cid
-    bilder = clipbib.standbilder(l.k.ffmpeg, d["datei"], info["dauer"], ordner) if info["dauer"] > 0 else []
-    if bilder:
-        clipbib.vorschau([b for _t, b in bilder], ordner / "vorschau.jpg")
+    if foto:
+        bilder = []
+        try:
+            clipbib.foto_vorschau(d["datei"], ordner / "vorschau.jpg")
+            bilder = [(0.0, d["datei"])]  # das Foto selbst (wird nicht gelöscht)
+        except Exception:
+            pass
+    else:
+        bilder = clipbib.standbilder(l.k.ffmpeg, d["datei"], info["dauer"], ordner) if info["dauer"] > 0 else []
+        if bilder:
+            clipbib.vorschau([b for _t, b in bilder], ordner / "vorschau.jpg")
     if technik or not bilder:
         e.update(brauchbar=False, grund=technik or "Datei nicht lesbar")
     else:
-        inhalt: list[dict[str, Any]] = [{"type": "text", "text": clipbib.analyse_prompt(d["pfad"], info["dauer"], [t for t, _b in bilder], d["tags"], l.kanal)}]
-        inhalt += [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(b.read_bytes()).decode()}} for _t, b in bilder]
+        inhalt: list[dict[str, Any]] = [{"type": "text", "text": clipbib.analyse_prompt(d["pfad"], info["dauer"], [t for t, _b in bilder], d["tags"], l.kanal, foto=foto)}]
+        bild_bytes = [clipbib.foto_jpeg(d["datei"], 1024)] if foto else [b.read_bytes() for _t, b in bilder]
+        inhalt += [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(x).decode()}} for x in bild_bytes]
         try:
             text, _u = ki.fragen(l.claude, l.modell, inhalt, was=f"Clip ansehen – {d['pfad']}", schema=clipbib.ANALYSE_SCHEMA, effort="low", max_tokens=2000)
             a = ki.json_aus(text)
@@ -1196,10 +1222,11 @@ def _clip_ansehen(l: Lauf, bib: clipbib.Bibliothek, cid: str, d: dict, hinweise:
             einstellung=a.get("einstellung"),
             brauchbar=ok,
             grund="" if ok else (str(a.get("grund") or "").strip()[:200] or "von Claude aussortiert"),
-            abschnitt={"start": start, "dauer": round(max(0.5, info["dauer"] - start), 2)},
+            abschnitt=None if foto else {"start": start, "dauer": round(max(0.5, info["dauer"] - start), 2)},
         )
-    for _t, b in bilder:
-        b.unlink(missing_ok=True)
+    if not foto:
+        for _t, b in bilder:
+            b.unlink(missing_ok=True)
     bib.clips[cid] = e
     bib.speichern()
     return e
@@ -1209,7 +1236,7 @@ def _clipbib_melden(l: Lauf, bib: clipbib.Bibliothek, ids: list[str], vollstaend
     """Abgleich mit dem Seller-System (nur Metadaten + Vorschaubilder – die Videos bleiben am PC). vollständig = alle
     Clips im Ordner (fehlende werden dort als „nicht mehr im Ordner“ markiert); sonst nur diese (z. B. Nutzung)."""
     felder = ("pfad", "kanal", "dauer", "breite", "hoehe", "beschreibung", "schlagwoerter", "einstellung", "brauchbar", "grund", "abschnitt", "quelle", "filmer", "benutzt", "zuletzt")
-    clips = [{"id": cid, **{f: bib.clips[cid].get(f) for f in felder}} for cid in ids]
+    clips = [{"id": cid, "art": bib.clips[cid].get("art") or "video", **{f: bib.clips[cid].get(f) for f in felder}} for cid in ids]
     try:
         r = l.seller.clips_melden(clips, vollstaendig=vollstaendig)
         for cid in r.get("vorschauFehlt") or []:
@@ -1297,6 +1324,26 @@ def _eigen_holen(l: Lauf, e: dict, dauer: float) -> str | None:
     return vid
 
 
+def _foto_holen(l: Lauf, e: dict) -> str | None:
+    """Eigenes Foto als Bild ins Projekt (aufrecht, höchstens 2400 px breit) → Schlüssel in state["bilder"]; bekommt
+    beim Rendern dieselbe Kamerafahrt wie die KI-Bilder."""
+    if not l.k.clipordner:
+        return None
+    quelle = l.k.clipordner / str(e.get("pfad") or "")
+    if not quelle.is_file():
+        return None
+    key = f"foto-{e['id']}"
+    if not l.p.datei_vorhanden("bilder", key):
+        rel = f"bilder/{key}.jpg"
+        try:
+            schreiben_atomar(l.p.pfad(rel), clipbib.foto_jpeg(quelle, 2400))
+        except Exception:
+            return None
+        l.p.datei_merken("bilder", key, rel, ersatz=False, quelle=e.get("quelle") or "eigen", fotograf=e.get("filmer") or "")
+        _clipbib(l).benutzt(e["id"])
+    return key
+
+
 def visuals(l: Lauf) -> tuple[dict, list[str]]:
     if l.whiteboard:
         return visuals_wb(l)
@@ -1324,6 +1371,7 @@ def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str])
     quellen_aus: set[str] = set()
     benutzt: set[str] = set()
     n_bilder = n_clips = n_eigen = 0
+    eigen_genutzt: list[str] = []
     for i, s in auswahl:
         dauer = float(s.get("dauer") or 0) or 8.0
         elemente = plan.get(i) or [{"art": "bild", "idee": s.get("bildidee") or "", "suche": "", "wort": ""}]
@@ -1333,15 +1381,27 @@ def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str])
             wo = f"Szene {i + 1}.{k + 1}"
             eintrag = {"art": "bild", "idee": (e.get("idee") or s.get("bildidee") or "")[:300], "suche": (e.get("suche") or "")[:80], "wort": (e.get("wort") or "")[:40], "start": start, "dauer": laenge}
             if e.get("art") == "eigen" and e.get("eigen_id") in eigen_nach_id:  # eigene Clips auch ohne Pixabay/Pexels
-                vid = _eigen_holen(l, eigen_nach_id[e["eigen_id"]], laenge + bewegt.UEBERGANG)
-                if vid:
-                    eintrag.update(art="clip", clip=vid, eigen=True)
-                    benutzt.add(vid)
-                    n_clips += 1
-                    n_eigen += 1
+                eigen = eigen_nach_id[e["eigen_id"]]
+                if eigen.get("art") == "foto":  # eigenes Foto statt KI-Bild (mit Kamerafahrt)
+                    key = _foto_holen(l, eigen)
+                    if key:
+                        eintrag.update(art="bild", key=key, eigen=True, foto=True, ersatz=False)
+                        eigen_genutzt.append(eigen["id"])
+                        n_bilder += 1
+                        n_eigen += 1
+                    else:
+                        hinweise.append(f"{wo}: eigenes Foto nicht mehr im Ordner – KI-Bild statt dessen.")
                 else:
-                    hinweise.append(f"{wo}: eigener Clip nicht mehr im Ordner – Stock-Clip/Bild statt dessen.")
-            if e.get("art") in ("clip", "eigen") and clips_an and eintrag["art"] == "bild":
+                    vid = _eigen_holen(l, eigen, laenge + bewegt.UEBERGANG)
+                    if vid:
+                        eintrag.update(art="clip", clip=vid, eigen=True)
+                        benutzt.add(vid)
+                        eigen_genutzt.append(eigen["id"])
+                        n_clips += 1
+                        n_eigen += 1
+                    else:
+                        hinweise.append(f"{wo}: eigener Clip nicht mehr im Ordner – Stock-Clip/Bild statt dessen.")
+            if e.get("art") in ("clip", "eigen") and clips_an and eintrag["art"] == "bild" and not eintrag.get("foto"):
                 try:
                     vid = _clip_holen(l, e.get("suche") or "", laenge + bewegt.UEBERGANG, benutzt, hinweise, wo, quellen_aus)
                 except _OhneClips as x:
@@ -1351,7 +1411,7 @@ def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str])
                 if vid:
                     eintrag.update(art="clip", clip=vid)
                     n_clips += 1
-            if eintrag["art"] == "bild":
+            if eintrag["art"] == "bild" and not eintrag.get("foto"):
                 eintrag["key"] = _vb_bild(l, eintrag["idee"], f"{i + 1:03d}-{k + 1}", s.get("einblendung") or "", hinweise, wo)
                 eintrag["ersatz"] = bool(l.p.state["bilder"][eintrag["key"]].get("ersatz"))
                 n_bilder += 1
@@ -1360,9 +1420,10 @@ def _vb_bebildern(l: Lauf, auswahl: list[tuple[int, dict]], hinweise: list[str])
         s["ersatzbild"] = any(x.get("ersatz") for x in aus)
         l.fortschritt("visuals", i + 1, len(l.daten.get("skript") or auswahl))
     if eigene:
-        hinweise.append(f"Clip-Bibliothek: {n_eigen} eigene Clips eingesetzt (von {len(eigene)} passenden im Ordner).")
+        n_fotos = sum(1 for e in eigene if e["id"] in eigen_genutzt and e.get("art") == "foto")
+        hinweise.append(f"Clip-Bibliothek: {n_eigen} eigene Clips/Fotos eingesetzt{f' (davon {n_fotos} Fotos)' if n_fotos else ''} (von {len(eigene)} passenden im Ordner).")
         bib = _clipbib(l)
-        genutzt = [v.removeprefix("eigen-") for v in benutzt if v.startswith("eigen-") and v.removeprefix("eigen-") in bib.clips]
+        genutzt = [cid for cid in dict.fromkeys(eigen_genutzt) if cid in bib.clips]
         if genutzt:  # Nutzung („k× benutzt“) gleich im Seller-System zeigen
             _clipbib_melden(l, bib, genutzt, vollstaendig=False)
     return n_bilder, n_clips
@@ -1591,21 +1652,33 @@ def clip_nachweis(l: Lauf, szenen: list[dict]) -> str:
     """Stock-Clips im Video: Nachweis je Quelle in der Beschreibung (Pixabay und Pexels verlangen es nicht, bitten aber
     darum), z. B. „Videos: Pixabay (pixabay.com) – A, B; Pexels (pexels.com) – C“."""
     namen: dict[str, list[str]] = {}
+    arten: set[str] = set()
     for s in szenen:
         for e in s.get("bilder") or []:
             if e.get("art") == "clip" and e.get("clip"):
                 info = l.p.state["stock"].get(str(e["clip"])) or {}
                 quelle = info.get("quelle") or ("pixabay" if str(e["clip"]).startswith("pixabay-") else "pexels")
-                liste = namen.setdefault(quelle, [])
-                f = info.get("fotograf") or ""
-                if f and f not in liste:
-                    liste.append(f)
+                art = "Videos"
+            elif e.get("foto") and e.get("key"):  # B36.13 eigenes Foto, z. B. von Pexels geladen
+                info = l.p.state["bilder"].get(str(e["key"])) or {}
+                quelle = info.get("quelle") or "eigen"
+                art = "Fotos"
+            else:
+                continue
+            if quelle not in {q for q, *_rest in CLIP_QUELLEN}:
+                continue  # eigene Aufnahme – keine Nennung
+            arten.add(art)
+            liste = namen.setdefault(quelle, [])
+            f = info.get("fotograf") or ""
+            if f and f not in liste:
+                liste.append(f)
     teile = []
     for quelle, name, domain, _p, _par in CLIP_QUELLEN:
         if quelle in namen:
             n = namen[quelle]
             teile.append(f"{name} ({domain})" + (f" – {', '.join(n[:12])}" + (" u. a." if len(n) > 12 else "") if n else ""))
-    return "Videos: " + "; ".join(teile) if teile else ""
+    titel = "Videos und Fotos" if len(arten) == 2 else (next(iter(arten)) if arten else "Videos")
+    return f"{titel}: " + "; ".join(teile) if teile else ""
 
 
 def package(l: Lauf) -> tuple[dict, list[str]]:

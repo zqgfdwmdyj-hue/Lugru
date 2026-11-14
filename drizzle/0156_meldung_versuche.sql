@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "tracking_upload_versuche" integer DEFAULT 0 NOT NULL;

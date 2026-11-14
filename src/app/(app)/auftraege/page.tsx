@@ -94,7 +94,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
                 )}
               </td>
               <td className="num right">{formatEuro(o.total)}</td>
-              <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" && <div className="small muted">{o.carrier}{o.shippedBy === "prep" ? " · Prep Center" : ""}</div>}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
+              <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" && <div className="small muted">{o.carrier}{o.shippedBy === "prep" ? " · Prep Center" : ""}</div>}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen{o.trackingUploadVersuche ? ` · ${o.trackingUploadVersuche}× versucht` : ""}</div>}</td>
               <td className="num small">{o.trackingNumber ?? (o.carrier === "Deutsche Post" ? "Warensendung" : "–")}</td>
             </tr>
           ))}

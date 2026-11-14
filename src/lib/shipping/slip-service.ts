@@ -308,7 +308,8 @@ async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; c
       const fileId = await storeFile(tenantId, `Warensendung_${res.shopOrderId}.pdf`, "application/pdf", res.pdf);
       postFileId = fileId;
       for (const [i, r] of post.entries()) {
-        const voucher = res.vouchers[i]?.voucherId || null;
+        // Frankier-ID (bei Produkten mit Sendungsverfolgung die trackId) – Temu verlangt sie als Sendungsnummer
+        const voucher = res.vouchers[i]?.trackId || res.vouchers[i]?.voucherId || null;
         await db.insert(schema.parcels).values({ tenantId, orderId: r.orderId, carrier: POST_CARRIER, product: `Warensendung ${settings.post.productCode}`, weightKg: String(r.weightKg), trackingNumber: voucher, labelFileId: fileId, status: "created" });
         // Warensendung hat keine Sendungsverfolgung: Versanddienst merken, Sendungsnummer bleibt leer.
         await db.update(schema.orders).set({ status: "label_created", carrier: POST_CARRIER, trackingNumber: null, updatedAt: new Date() }).where(and(eq(schema.orders.id, r.orderId), eq(schema.orders.tenantId, tenantId)));

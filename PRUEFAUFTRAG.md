@@ -1939,6 +1939,27 @@ automatisch anschaut und sich die passenden Videos rauszieht – nicht auf Zufal
 | Worker-Logik | ✅ automatisch (`test_clipbib_scannen_kanalordner_tags_und_herkunft`, `test_vollbild_eigene_clips_angesehen_passend_ausgewaehlt_einmal_je_video`): Kanal-/Tag-Ordner, Prüfsumme bleibt beim Umbenennen, Herkunft aus Dateinamen, Liste nach Treffern + Nutzung; gleicher Clip zweimal gewünscht → nur einmal; 2. Lauf: nichts neu angesehen, nichts doppelt gezählt; gesperrt → nicht mehr in der Liste; Ausschnitt 1920×1080 |
 | Meldung prüfen | ✅ automatisch (vitest „B36.12 Eigene Clip-Bibliothek“): ungültige ID / `..` im Pfad abgelehnt, Windows-Pfad vereinheitlicht, unbekannte Quelle = eigen, höchstens 25 Schlagwörter |
 
+**Nachtrag 14.11.: Clip-Ordner prüfbar, Fotos, Temu-Versandmeldung, Warensendung je SKU** (Rückmeldung: „prüfen, ob
+das Tool wirklich auf den Ordner zugreift“, „Temu wie bei eBay automatisch Sendungsnummern bzw. Briefsendungen“, „SKU
+mit Bücher-/Warensendung bis 1 Stück wird immer DHL-Paket“; Auswahl: Frankier-ID melden, Fotos auch).
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Warensendung je SKU | ❌ **Fehler**: eBay/Amazon/Temu liefern das Land als „DE“, die Prüfung verlangte „DEU“ → jede deutsche Bestellung galt als Ausland → immer DHL (nur Amazon-Lieferscheine mit „DEU“ gingen) | ✅ Land einheitlich (ISO-3) verglichen: „DE“, „DEU“, „Deutschland“, leer = Inland; Testdaten der eBay-Aufträge jetzt mit „DE“ wie in echt | `shipping/warensendung.ts › warensendungCheck`, `scripts/testdaten.ts` |
+| Temu: Briefsendung melden | ❌ Warensendung (ohne Nummer) wurde bei Temu nie gemeldet – „Meldung offen“ blieb | ✅ Temu verlangt eine Nummer: die **Frankier-ID** der Internetmarke geht als Sendungsnummer mit „Deutsche Post“ an Temu, automatisch beim „versendet“; beim CSV-Weg (keine ID im System) klare Meldung + Feld „Frankier-ID (Nummer unter dem Matrixcode)“ → „Nachtragen & melden“ | `orders/tracking.ts › untrackedPost, temuSendungsnummer`, `clients/temu.ts`, `orders/service.ts › frankierIdZuAuftrag, sendungsnummerNachtragen`, `auftraege/[id]/page.tsx` |
+| Meldung offen nachholen | ❌ nur von Hand („Erneut melden“) | ✅ alle 30 Min. automatisch neu (eBay, Temu, Amazon – je Auftrag höchstens 6×, Sendungen der letzten 14 Tage); Anzeige „k× versucht“ in Liste und Auftrag; steht die Bestellung bei Temu schon auf „Versandt“ (im Seller Center nachgetragen), wird die Meldung als erledigt geschlossen | `orders/service.ts › versandmeldungenNachholen`, `scheduler.ts`, `clients/temu.ts › pull`, `drizzle/0156` |
+| Clip-Ordner prüfbar | ❌ nicht sichtbar, ob der Worker den Ordner sieht | ✅ Worker meldet alle 5 Min. bzw. sofort auf **„Jetzt prüfen“**: verbunden (Anzahl Videos/Fotos, Pfad am PC, Beispiele) / leer / **nicht mit dem PC verbunden** (Docker-Ersatzordner erkannt → „-v C:\video\clips:/clips fehlt“) / fehlt; HEIC-Hinweis; Zeile auch im Worker-Protokoll beim Start | `clipbib.py › ordner_stand`, `worker.py › lebenszeichen`, `service.ts › workerMelden, clipOrdnerPruefenAnfordern`, `page.tsx › vd-clipordner`, `drizzle/0157` |
+| Eigene Fotos | ❌ nur Videos | ✅ Fotos (JPG/PNG/WEBP, Querformat ≥ 1.200 px) einmal angesehen (1 Bild), im Bildplan als „[Foto]“, ersetzen ein KI-Bild (nicht bezahlt, gleiche Kamerafahrt), Nutzung gezählt, Nachweis „Fotos: Pexels … – Name“; Hochformat/zu klein mit Grund aussortiert; in der Bibliothek mit Kennzeichen „Foto“ | `clipbib.py › foto_*`, `schritte.py › _clip_ansehen, _foto_holen, _vb_bebildern, clip_nachweis` |
+| Worker | 1.5.0 | **1.6.0** | `udd/__init__.py`, `logic.ts › WORKER_AB_ORDNER` |
+
+| Abnahme | Ergebnis |
+|---|---|
+| Warensendung mit „DE“ | ✅ automatisch (vitest „Inland unabhängig von der Schreibweise“; e2e Labels: eBay-Auftrag mit „DE“ → Vorschlag Warensendung, Internetmarke gekauft) |
+| Temu Frankier-ID | ✅ automatisch (e2e „Temu – Versand melden“): Warensendung mit gekaufter Internetmarke → an Temu mit Frankier-ID + Deutsche Post, „An Temu gemeldet“; ohne ID → Hinweis + Feld, nachgetragen „A0 TEST …“ → ohne Leerzeichen gemeldet; nichts ohne Nummer an Temu geschickt |
+| Störung + Nachholen | ✅ automatisch (e2e): Temu gestört → „1× versucht – wird alle 30 Min. automatisch wiederholt“, Liste „Meldung offen · 1× versucht“, „Erneut melden“ → gemeldet, Zähler 0; bei Temu schon „Versandt“ → keine zweite Meldung, offen geschlossen; Regeln (14 Tage, 6×, nicht bei von Hand geschlossenen/WhatsApp) in vitest |
+| Ordner-Selbsttest | ✅ automatisch (`test_clip_ordner_selbsttest_verbunden_leer_nicht_eingehaengt`: fehlt/leer/ok mit Docker-Desktop-Pfad „C:\video\clips“/anonymes Volume; e2e B36.7: „Clip-Ordner verbunden: 4 Videos, 1 Fotos“, „Jetzt prüfen“ → neues Foto nach ≤ 30 s gezählt) |
+| Fotos im Video | ✅ automatisch (`test_vollbild_eigene_fotos_statt_ki_bild_mit_nachweis`, e2e B36.7: 1 Foto statt KI-Bild, nicht bezahlt, „Anna Beispiel“ im Nachweis, Bibliothek mit Kennzeichen „Foto“) |
+
 ## B37 Instagram-Kanäle und automatische Stories (13.11.) – im Reiter „Video“
 
 Erster Kanal: der Prep-Center-Kanal (Business-Konto, täglich 12:00, keine Personen im Bild). Firmendaten, Preise und
@@ -3056,11 +3077,11 @@ nie in Chats oder Mails.
      Themenliste erzeugen“. Umfrage-Sticker setzt du beim Posten in der Instagram-App (die API kann keine Sticker).
 186. **Preis je Motiv** (B36.10/B37): auf der Seite Video unter „Kosten“ den Preis je Motiv eintragen, sonst fehlt er in
      der Kosten-Schätzung je Story und im Monatslimit wird nur der Claude-Anteil gezählt.
-187. **Worker auf v1.5.0 aktualisieren** (Nachträge 13.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
-     Bewegung, Clips von Pixabay, eigene Clip-Bibliothek): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den
+187. **Worker auf v1.6.0 aktualisieren** (Nachträge 13./14.11.: Sprechtempo, echtes Zeichnen, deine Hand, Vollbild in
+     Bewegung, Clips von Pixabay, eigene Clip-Bibliothek, Ordner-Selbsttest, Fotos): wie bei 180 – Ordner `unter-der-decke` neu holen (enthält den
      Unterordner `grafik/` mit deiner Hand und braucht `numpy`), in PowerShell im Ordner `C:\video\unter-der-decke`:
      `docker stop video-worker; docker rm video-worker; docker build -t video-worker .` und `docker run …` wie im README –
-     **neu mit `-v C:\video\clips:/clips`**. Auf der Seite Video steht danach `v1.5.0`.
+     **neu mit `-v C:\video\clips:/clips`**. Auf der Seite Video steht danach `v1.6.0`.
 188. **Kanalprofil „Unter der Decke“**: Sprechtempo **1,1** (Standard) und Motiv-Stil „Strichzeichnung“ prüfen, speichern.
 189. **Probeszene am Video „Vakuumpumpe“**: Seite Video → Video aufklappen → „Probeszene (20 s)“ → Szene wählen →
      „Probeszene erzeugen“. Nach 1–3 Min. erscheint das 20-s-Video mit Wörter/Min. Ansehen: Tempo, Striche, Hand.
@@ -3083,3 +3104,11 @@ nie in Chats oder Mails.
 194. **Clip-Bibliothek prüfen**: nach dem nächsten Vollbild-Video (oder der Probeszene) Seite Video → Uhren-Kanal →
      „Clip-Bibliothek“ aufklappen: Beschreibungen ansehen, falsche Schlagwörter korrigieren, unpassende Clips **sperren**.
      Im Video-Hinweis steht „Clip-Bibliothek: N eigene Clips eingesetzt (von M passenden im Ordner)“.
+195. **Clip-Ordner gegenprüfen**: Seite Video → Uhren-Kanal → „Clip-Bibliothek“ → **„Jetzt prüfen“**. Nach ≤ 30 s steht
+     dort „Clip-Ordner verbunden: N Videos, M Fotos (am PC: C:\video\clips)“. Steht „nicht mit dem PC verbunden“, den
+     `docker run` mit `-v C:\video\clips:/clips` wiederholen (Punkt 187). iPhone-Fotos (HEIC) vorher als JPG speichern.
+196. **Temu-Meldungen**: Aufträge → „Meldung offen“ ansehen. Temu-Warensendungen über die Internetmarke gehen jetzt mit
+     der Frankier-ID raus; bei CSV-Warensendungen die Nummer unter dem Matrixcode im Auftrag eintragen →
+     „Nachtragen & melden“. Bei Temu im Seller Center prüfen, ob die Frankier-ID als Sendungsnummer angenommen wird.
+197. **Warensendung prüfen**: einen eBay- oder Temu-Auftrag mit einer SKU „bis 1 Stück“ unter „Labels: Warensendung &
+     DHL“ laden – Vorschlag muss jetzt „Warensendung“ sein (vorher fälschlich „Ausland“ → DHL).

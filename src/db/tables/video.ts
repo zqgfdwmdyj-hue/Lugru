@@ -206,6 +206,7 @@ export const videoFotos = pgTable(
  * Korrekturen macht Ludwig hier; sie gehen mit jedem Auftrag an den Worker. ID = Prüfsumme der Datei (umbenennen ok).
  */
 export type VideoClipAbschnitt = { start: number; dauer: number };
+export type ClipOrdnerStand = { zustand: "ok" | "leer" | "fehlt" | "anonym" | "aus"; pfad: string; quelle: string | null; videos: number; fotos: number; andere: number; heic: number; beispiele: string[]; geprueft: number };
 export const videoClips = pgTable(
   "video_clips",
   {
@@ -223,6 +224,8 @@ export const videoClips = pgTable(
     brauchbar: boolean("brauchbar").notNull().default(true),
     grund: text("grund"),
     abschnitt: jsonb("abschnitt").$type<VideoClipAbschnitt | null>(),
+    /** video | foto (Fotos ab Worker 1.6.0: statt KI-Bild, mit Kamerafahrt) */
+    art: text("art").notNull().default("video"),
     quelle: text("quelle").notNull().default("eigen"),
     filmer: text("filmer"),
     benutzt: integer("benutzt").notNull().default(0),
@@ -255,6 +258,10 @@ export const videoWorker = pgTable(
     version: text("version"),
     freiGb: numeric("frei_gb", { precision: 8, scale: 1, mode: "number" }),
     info: jsonb("info").$type<{ os?: string; python?: string; ffmpeg?: string; laeuft?: string | null }>().notNull().default({}),
+    /** Selbsttest Clip-Ordner (ab Worker 1.6.0): eingehängt?, wie viele Videos/Fotos sieht der Worker. */
+    clipOrdner: jsonb("clip_ordner").$type<ClipOrdnerStand | null>(),
+    /** „Jetzt prüfen“ auf der Seite Video: der Worker prüft beim nächsten Lebenszeichen sofort. */
+    clipPruefenAb: timestamp("clip_pruefen_ab", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("video_worker_token").on(t.tokenHash)],

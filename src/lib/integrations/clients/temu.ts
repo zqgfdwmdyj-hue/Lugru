@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Address } from "@/db/tables/core";
-import { markShipped, registerTrackingUploader } from "@/lib/orders/service";
+import { frankierIdZuAuftrag, markShipped, registerTrackingUploader } from "@/lib/orders/service";
+import { temuSendungsnummer } from "@/lib/orders/tracking";
 import {
   TEMU_ACCESS_CODES,
   TEMU_APIS,
@@ -295,6 +296,13 @@ async function pull(c: Conn) {
     await db.update(schema.orders).set(set).where(and(eq(schema.orders.tenantId, t), eq(schema.orders.id, ex.id)));
     // Im Seller Center versandt → hier auch (Lager wird abgebucht, keine Meldung zurück).
     if ((state === "shipped" || state === "delivered") && pendingHere) await markShipped(t, ex.id, null);
+    // Temu zeigt die Bestellung als versandt → eine offene Meldung ist erledigt (z. B. im Seller Center nachgetragen).
+    else if (state === "shipped" || state === "delivered") {
+      await db
+        .update(schema.orders)
+        .set({ trackingUploadedAt: new Date(), trackingUploadError: null, trackingUploadVersuche: 0 })
+        .where(and(eq(schema.orders.tenantId, t), eq(schema.orders.id, ex.id), sql`${schema.orders.trackingUploadedAt} is null and ${schema.orders.trackingUploadError} is not null`));
+    }
   }
   return { orders: created };
 }
@@ -320,6 +328,9 @@ export async function syncTemuOrders(tenantId: string) {
 registerTrackingUploader("temu", async (tenantId, order) => {
   const c = await conn(tenantId);
   if (!c) throw new Error("Temu ist nicht verbunden (Anbindungen → Temu) – Sendungsnummer bitte im Seller Center eintragen.");
+  // Temu verlangt immer eine Nummer: bei der Warensendung (Deutsche Post) die Frankier-ID der Internetmarke.
+  const nummer = temuSendungsnummer(order, order.carrier === "Deutsche Post" && !order.trackingNumber ? await frankierIdZuAuftrag(tenantId, order.id) : null);
+  if (!nummer) throw new Error("Temu verlangt eine Sendungsnummer. Bei der Warensendung über die CSV-Datei gibt es keine Frankier-ID im System – die Nummer unter dem Matrixcode der Briefmarke hier eintragen und „Nachtragen & melden“ drücken.");
   const r = await call<{ pageItems?: TemuPageItem[] }>(c, LIST, { pageNumber: 1, pageSize: 10, parentOrderSnList: [order.externalId] });
   const it = r?.pageItems?.find((p) => p.parentOrderMap?.parentOrderSn === order.externalId);
   if (!it) throw new Error(`Temu kennt die Bestellung ${order.externalId} nicht.`);
@@ -332,7 +343,7 @@ registerTrackingUploader("temu", async (tenantId, order) => {
     const names = temuCarrierNames(carriers).slice(0, 12);
     throw new Error(`Temu kennt den Versanddienstleister „${order.carrier ?? "DHL"}“ nicht${names.length ? ` (möglich: ${names.join(", ")})` : ""}.`);
   }
-  const send = (warehouseId?: string) => call(c, "bg.logistics.shipment.v2.confirm", temuShipment(order.externalId, it.orderList, carrierId, order.trackingNumber ?? "", warehouseId));
+  const send = (warehouseId?: string) => call(c, "bg.logistics.shipment.v2.confirm", temuShipment(order.externalId, it.orderList, carrierId, nummer, warehouseId));
   try {
     await send();
   } catch (e) {

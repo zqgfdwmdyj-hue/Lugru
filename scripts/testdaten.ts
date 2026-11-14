@@ -143,7 +143,7 @@ const addr = (name: string, i: number) => ({ name1: name, street: "Musterweg", h
 const order = async (o: { ext: string; channel: "amazon" | "ebay"; status?: "open" | "shipped"; items: [string, string, number][]; name: string; date: Date; shippedAt?: Date; shippedBy?: "self" | "prep" }, i: number) => {
   const [row] = await db
     .insert(schema.orders)
-    .values({ tenantId: T, channel: o.channel, externalId: o.ext, orderDate: o.date, fulfillment: "FBM", status: o.status ?? "open", buyerName: o.name, shipTo: addr(o.name, i), total: 19.9, shipBy: at(2), shippedAt: o.shippedAt, shippedBy: o.shippedBy, carrier: o.shippedAt ? "DHL" : null })
+    .values({ tenantId: T, channel: o.channel, externalId: o.ext, orderDate: o.date, fulfillment: "FBM", status: o.status ?? "open", buyerName: o.name, shipTo: { ...addr(o.name, i), ...(o.channel === "ebay" ? { country: "DE" } : {}) }, total: 19.9, shipBy: at(2), shippedAt: o.shippedAt, shippedBy: o.shippedBy, carrier: o.shippedAt ? "DHL" : null })
     .returning();
   // Positions-IDs wie bei per Schnittstelle geladenen Aufträgen (Amazon braucht sie für die Versandmeldung)
   await db.insert(schema.orderItems).values(o.items.map(([sku, title, quantity], n) => ({ tenantId: T, orderId: row.id, externalItemId: `${o.ext}-POS${n + 1}`, sku, title, quantity, price: 9.95 })));

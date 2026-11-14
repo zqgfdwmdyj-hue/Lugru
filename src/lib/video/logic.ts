@@ -49,9 +49,11 @@ export const WORKER_MIN_FREI_GB = 3;
 /** Aktuelle Worker-Version (unter-der-decke/udd/__init__.py). Ab 1.2.0: Instagram-Stories (B37) und Whiteboard-Takt nach
  *  Wortzeiten (B36.10) – ältere Worker bekommen keine Stories. 1.2.1: mehr Platz für Claude-Antworten (abgeschnitten →
  *  ein neuer Versuch mit doppeltem Platz). */
-export const WORKER_VERSION_AKTUELL = "1.5.0";
+export const WORKER_VERSION_AKTUELL = "1.6.0";
 /** Ab 1.5.0 (B36.12): eigene Clip-Bibliothek (Ordner „clips“ am Worker-PC, von Claude angesehen, passend ausgewählt). */
 export const WORKER_AB_CLIPS = "1.5.0";
+/** Ab dieser Worker-Version: Selbsttest Clip-Ordner (eingehängt?, Anzahl Videos/Fotos) und eigene Fotos statt KI-Bildern. */
+export const WORKER_AB_ORDNER = "1.6.0";
 /** Ab 1.4.0 (B36.11): Stil „Vollbild“ in Bewegung – Bildwechsel alle ~6 s mit Kamerafahrt, weiche Übergänge, Clips (Pixabay/Pexels);
  *  Probeszene und „Neu bebildern & rendern“ auch für Vollbild. */
 export const WORKER_AB_BEWEGT = "1.4.0";
@@ -114,7 +116,7 @@ export function pixabayAlsVideos(hits: PixabayTreffer[] | null | undefined, nurH
   })).filter((v) => v.video_files.length > 0);
 }
 /** B36.12 Eigene Clip-Bibliothek: Eintrag vom Worker prüfen und kürzen (alles optional außer id/pfad). */
-export type ClipMeldung = { clipId: string; pfad: string; kanalSlug: string | null; dauer: number; breite: number; hoehe: number; beschreibung: string; schlagwoerter: string[]; einstellung: string | null; brauchbar: boolean; grund: string | null; abschnitt: { start: number; dauer: number } | null; quelle: string; filmer: string | null; benutzt: number; zuletztBenutzt: Date | null };
+export type ClipMeldung = { clipId: string; art: "video" | "foto"; pfad: string; kanalSlug: string | null; dauer: number; breite: number; hoehe: number; beschreibung: string; schlagwoerter: string[]; einstellung: string | null; brauchbar: boolean; grund: string | null; abschnitt: { start: number; dauer: number } | null; quelle: string; filmer: string | null; benutzt: number; zuletztBenutzt: Date | null };
 export function clipMeldungAus(x: unknown): ClipMeldung | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
@@ -128,6 +130,7 @@ export function clipMeldungAus(x: unknown): ClipMeldung | null {
   const zuletzt = typeof o.zuletzt === "string" || typeof o.zuletzt === "number" ? new Date(typeof o.zuletzt === "number" ? o.zuletzt * 1000 : o.zuletzt) : null;
   return {
     clipId: id,
+    art: o.art === "foto" ? "foto" : "video",
     pfad,
     kanalSlug: slug,
     dauer: Math.round(zahl(o.dauer, 36_000) * 10) / 10,
@@ -144,6 +147,43 @@ export function clipMeldungAus(x: unknown): ClipMeldung | null {
     benutzt: Math.round(zahl(o.benutzt, 100_000)),
     zuletztBenutzt: zuletzt && !Number.isNaN(zuletzt.getTime()) ? zuletzt : null,
   };
+}
+/** B36.13 Selbsttest Clip-Ordner vom Worker prüfen (Zahlen begrenzt, Pfade gekürzt). */
+export type ClipOrdnerMeldung = { zustand: "ok" | "leer" | "fehlt" | "anonym" | "aus"; pfad: string; quelle: string | null; videos: number; fotos: number; andere: number; heic: number; beispiele: string[]; geprueft: number };
+export function clipOrdnerAus(x: unknown): ClipOrdnerMeldung | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  const zustand = (["ok", "leer", "fehlt", "anonym", "aus"] as const).find((z) => z === o.zustand);
+  if (!zustand) return null;
+  const zahl = (v: unknown) => Math.min(1_000_000, Math.max(0, Math.round(Number(v) || 0)));
+  return {
+    zustand,
+    pfad: String(o.pfad ?? "").slice(0, 200),
+    quelle: o.quelle ? String(o.quelle).slice(0, 200) : null,
+    videos: zahl(o.videos),
+    fotos: zahl(o.fotos),
+    andere: zahl(o.andere),
+    heic: zahl(o.heic),
+    beispiele: (Array.isArray(o.beispiele) ? o.beispiele : []).slice(0, 5).map((b) => String(b).slice(0, 120)),
+    geprueft: zahl(o.geprueft) || Math.floor(Date.now() / 1000),
+  };
+}
+/** Klartext zum Ordnerzustand für die Seite Video. */
+export function clipOrdnerText(o: ClipOrdnerMeldung): { ton: "ok" | "warn" | "error"; text: string } {
+  const anzahl = `${o.videos.toLocaleString("de-DE")} Videos, ${o.fotos.toLocaleString("de-DE")} Fotos`;
+  const heic = o.heic ? ` · ${o.heic} HEIC-Fotos (iPhone) kann der Worker nicht lesen – als JPG speichern` : "";
+  switch (o.zustand) {
+    case "ok":
+      return { ton: o.heic ? "warn" : "ok", text: `Clip-Ordner verbunden: ${anzahl}${o.quelle ? ` (am PC: ${o.quelle})` : ""}${heic}` };
+    case "leer":
+      return { ton: "warn", text: `Clip-Ordner ist verbunden, aber leer – der Worker sieht dort keine Videos oder Fotos${o.quelle ? ` (am PC: ${o.quelle})` : ""}. Liegen die Dateien wirklich in diesem Ordner?${heic}` };
+    case "anonym":
+      return { ton: "error", text: "Clip-Ordner ist NICHT mit dem PC verbunden: Docker nutzt einen leeren Ersatzordner. Den Worker mit „-v C:\\video\\clips:/clips“ neu starten (Befehl siehe README)." };
+    case "fehlt":
+      return { ton: "error", text: `Clip-Ordner fehlt beim Worker (${o.pfad || "kein Pfad"}).` };
+    default:
+      return { ton: "warn", text: "Clip-Ordner ist beim Worker ausgeschaltet." };
+  }
 }
 /** Schlagwörter aus einem Eingabefeld („rolex, zifferblatt; nahaufnahme“) – klein, ohne Doppelte, höchstens 25. */
 export function schlagwoerterAus(text: string): string[] {

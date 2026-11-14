@@ -9,7 +9,7 @@ import { getSettings } from "@/lib/settings";
 import { syncSoon, wawiSku } from "@/lib/stock/channel-sync";
 import { adjustStock } from "@/lib/stock/sets";
 import { ohneMeldung } from "./bestaetigung-logic";
-import { untrackedPost } from "./tracking";
+import { meldungNachholen, MELDUNG_MAX_VERSUCHE, MELDUNG_NACHHOLEN_TAGE, untrackedPost } from "./tracking";
 
 export const PACKAGING_GRAMS = 150;
 
@@ -184,10 +184,72 @@ export async function uploadTracking(tenantId: string, orderId: string) {
   }
   try {
     await fn(tenantId, data.order, data.items.map((i) => i.item));
-    await db.update(schema.orders).set({ trackingUploadedAt: new Date(), trackingUploadManuell: false, trackingUploadError: null }).where(eq(schema.orders.id, orderId));
+    await db.update(schema.orders).set({ trackingUploadedAt: new Date(), trackingUploadManuell: false, trackingUploadError: null, trackingUploadVersuche: 0 }).where(eq(schema.orders.id, orderId));
   } catch (e) {
-    await db.update(schema.orders).set({ trackingUploadError: e instanceof Error ? e.message : String(e) }).where(eq(schema.orders.id, orderId));
+    await db
+      .update(schema.orders)
+      .set({ trackingUploadError: e instanceof Error ? e.message : String(e), trackingUploadVersuche: sql`${schema.orders.trackingUploadVersuche} + 1` })
+      .where(eq(schema.orders.id, orderId));
   }
+}
+
+/** Sendungsnummer bzw. Frankier-ID nachtragen (Auftrag schon versendet) und gleich an den Kanal melden. */
+export async function sendungsnummerNachtragen(tenantId: string, orderId: string, nummer: string, carrier: string) {
+  const nr = nummer.replace(/\s+/g, "").slice(0, 60);
+  if (!/^[A-Za-z0-9-]{6,60}$/.test(nr)) throw new Error("Sendungsnummer bitte ohne Sonderzeichen eingeben (6–60 Zeichen).");
+  const O = schema.orders;
+  await db
+    .update(O)
+    .set({ trackingNumber: nr, carrier: carrier.slice(0, 40) || "DHL", trackingUploadVersuche: 0, updatedAt: new Date() })
+    .where(and(eq(O.tenantId, tenantId), eq(O.id, orderId), inArray(O.status, ["shipped", "delivered"])));
+  await uploadTracking(tenantId, orderId);
+}
+
+/** Frankier-ID der zuletzt gekauften Warensendung eines Auftrags (Internetmarke) – für Kanäle, die eine Nummer verlangen. */
+export async function frankierIdZuAuftrag(tenantId: string, orderId: string): Promise<string | null> {
+  const P = schema.parcels;
+  const [p] = await db
+    .select({ nr: P.trackingNumber })
+    .from(P)
+    .where(and(eq(P.tenantId, tenantId), eq(P.orderId, orderId), eq(P.carrier, "Deutsche Post"), eq(P.status, "created"), sql`${P.trackingNumber} is not null`))
+    .orderBy(sql`${P.createdAt} desc`)
+    .limit(1);
+  return p?.nr ?? null;
+}
+
+/**
+ * Fehlgeschlagene Versandmeldungen automatisch nachholen (alle Kanäle mit Schnittstelle): je Auftrag höchstens
+ * MELDUNG_MAX_VERSUCHE-mal, nur Sendungen der letzten 14 Tage. Danach bleibt „Meldung offen“ mit dem letzten Fehler.
+ */
+export async function versandmeldungenNachholen(tenantId: string): Promise<{ versucht: number; gemeldet: number }> {
+  await import("@/lib/integrations/clients"); // Schnittstellen je Kanal anmelden
+  const O = schema.orders;
+  const kandidaten = await db
+    .select({ id: O.id, channel: O.channel, fulfillment: O.fulfillment, status: O.status, shippedAt: O.shippedAt, trackingUploadedAt: O.trackingUploadedAt, trackingUploadManuell: O.trackingUploadManuell, trackingUploadError: O.trackingUploadError, trackingUploadVersuche: O.trackingUploadVersuche })
+    .from(O)
+    .where(
+      and(
+        eq(O.tenantId, tenantId),
+        eq(O.fulfillment, "FBM"),
+        inArray(O.status, ["shipped", "delivered"]),
+        sql`${O.trackingUploadedAt} is null and ${O.trackingUploadError} is not null and not ${O.trackingUploadManuell}`,
+        sql`${O.trackingUploadVersuche} < ${MELDUNG_MAX_VERSUCHE} and ${O.shippedAt} > now() - make_interval(days => ${MELDUNG_NACHHOLEN_TAGE})`,
+      ),
+    )
+    .orderBy(O.shippedAt)
+    .limit(40);
+  let versucht = 0;
+  let gemeldet = 0;
+  for (const k of kandidaten) {
+    if (!meldungNachholen(k, ohneMeldung) || !uploaders.has(k.channel)) continue;
+    versucht++;
+    await uploadTracking(tenantId, k.id);
+    const [nach] = await db.select({ ok: O.trackingUploadedAt, versuche: O.trackingUploadVersuche }).from(O).where(eq(O.id, k.id));
+    if (nach?.ok) gemeldet++;
+    // nichts zu melden (z. B. zugestellt ohne Nummer) → trotzdem als Versuch zählen, sonst endlos
+    else if (nach && nach.versuche === k.trackingUploadVersuche) await db.update(O).set({ trackingUploadVersuche: k.trackingUploadVersuche + 1 }).where(eq(O.id, k.id));
+  }
+  return { versucht, gemeldet };
 }
 
 export async function openOrderIds(tenantId: string, ids: string[]) {
