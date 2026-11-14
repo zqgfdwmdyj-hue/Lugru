@@ -12,7 +12,7 @@ import type { Session } from "@/lib/auth/session";
 import { medienOrdner } from "@/lib/medien/ablage";
 import { openPii, sealPii } from "@/lib/pii";
 import { storySperre } from "./story-sperre";
-import { BILD_MODELL_STANDARD, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, autoNeuUm, PROBE_SEK, probeMoeglich, probeSzenen, sprechtempoAus, bildSekAus, bilderVollbild, workerAbProbe, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_AB_TAKT, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
+import { BILD_MODELL_STANDARD, clipOrdnerAus, FREIGABE_VOR, figurenAus, istBildModell, istVideoModell, istVideoStil, kostenSchaetzung, kostenSumme, laengeZiel, nachSchritt, SCHRITTE, slugAus, startAbAus, autoNeuUm, PROBE_SEK, probeMoeglich, probeSzenen, sprechtempoAus, bildSekAus, bilderVollbild, workerAbProbe, taktNeuMoeglich, taktNeuSchaetzung, titelTreffer, typischFuer, VIDEO_MODELL_STANDARD, VIDEO_PREISE_STANDARD, WORKER_AB_TAKT, WORKER_MIN_FREI_GB, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell, type VideoModell, type VideoPreise } from "./logic";
 
 // B36 Video-Pipeline: Steuerung im Seller-System. Der Worker am Arbeits-PC holt Aufträge ab, meldet Schritte, lädt
 // fertige Dateien hoch und ruft Claude/ElevenLabs/OpenAI über die Anbieter-Brücke auf (Schlüssel bleiben hier, Kosten
@@ -372,15 +372,28 @@ export async function workerPerToken(request: Request): Promise<Worker | null> {
   return w && !w.deaktiviertAm ? w : null;
 }
 
-export type Meldung = { version?: string; freiGb?: number; os?: string; python?: string; ffmpeg?: string; laeuft?: string | null; aufgeraeumt?: string[] };
+export type Meldung = { version?: string; freiGb?: number; os?: string; python?: string; ffmpeg?: string; laeuft?: string | null; aufgeraeumt?: string[]; clipOrdner?: unknown };
 
 /** Lebenszeichen: zuletzt gesehen, freie Platte; Antwort: welche Arbeitsordner gelöscht werden dürfen. */
 export async function workerMelden(w: Worker, m: Meldung) {
-  await db.update(W).set({ zuletztGesehen: jetzt(), version: m.version?.slice(0, 40) ?? w.version, freiGb: typeof m.freiGb === "number" && Number.isFinite(m.freiGb) ? Math.round(m.freiGb * 10) / 10 : w.freiGb, info: { os: m.os?.slice(0, 80), python: m.python?.slice(0, 40), ffmpeg: m.ffmpeg?.slice(0, 80), laeuft: m.laeuft ?? null } }).where(eq(W.id, w.id));
+  const ordner = clipOrdnerAus(m.clipOrdner);
+  await db
+    .update(W)
+    .set({ zuletztGesehen: jetzt(), version: m.version?.slice(0, 40) ?? w.version, freiGb: typeof m.freiGb === "number" && Number.isFinite(m.freiGb) ? Math.round(m.freiGb * 10) / 10 : w.freiGb, info: { os: m.os?.slice(0, 80), python: m.python?.slice(0, 40), ffmpeg: m.ffmpeg?.slice(0, 80), laeuft: m.laeuft ?? null }, ...(ordner ? { clipOrdner: ordner } : {}) })
+    .where(eq(W.id, w.id));
+  // „Jetzt prüfen“ auf der Seite Video: angefordert und seitdem noch nicht geprüft → Worker prüft sofort
+  const [stand] = await db.select({ ab: W.clipPruefenAb, ordner: W.clipOrdner }).from(W).where(eq(W.id, w.id));
+  const clipOrdnerPruefen = !!stand?.ab && (!stand.ordner?.geprueft || stand.ordner.geprueft * 1000 < stand.ab.getTime());
   const erledigt = (m.aufgeraeumt ?? []).filter((x) => /^[0-9a-f-]{36}$/.test(x));
   if (erledigt.length) await db.update(A).set({ aufraeumen: false }).where(and(eq(A.tenantId, w.tenantId), inArray(A.id, erledigt)));
   const frei = await db.select({ id: A.id }).from(A).where(and(eq(A.tenantId, w.tenantId), eq(A.aufraeumen, true))).limit(50);
-  return { ok: true, aufraeumen: frei.map((x) => x.id), minFreiGb: WORKER_MIN_FREI_GB };
+  return { ok: true, aufraeumen: frei.map((x) => x.id), minFreiGb: WORKER_MIN_FREI_GB, clipOrdnerPruefen };
+}
+
+/** „Jetzt prüfen“: alle aktiven Worker sehen beim nächsten Lebenszeichen (≤ 30 s) sofort in den Clip-Ordner. */
+export async function clipOrdnerPruefenAnfordern(s: Session) {
+  if (s.readOnly) throw new VideoFehler("Nur ansehen – nichts geändert.");
+  await db.update(W).set({ clipPruefenAb: jetzt() }).where(and(eq(W.tenantId, s.tenantId), isNull(W.deaktiviertAm)));
 }
 
 /** Was der Worker zum Auftrag braucht (Kanalprofil, Daten der vorigen Schritte, vidIQ, Anmerkung). */

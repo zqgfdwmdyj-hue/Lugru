@@ -1,5 +1,5 @@
 {
-  "id": "be6b1f88-3540-4cda-81ed-00ddee4b9f8b",
+  "id": "f55d440d-95aa-4c6c-9e09-d13bb497695d",
   "prevId": "fd16a36f-00a0-4d00-975d-ba5b4e29a012",
   "version": "7",
   "dialect": "postgresql",
@@ -5569,6 +5569,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "tracking_upload_versuche": {
+          "name": "tracking_upload_versuche",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "notes": {
           "name": "notes",
@@ -20641,8 +20648,309 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.profitguard_exporte": {
-      "name": "profitguard_exporte",
+    "public.bqool_berichte": {
+      "name": "bqool_berichte",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "art": {
+          "name": "art",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "land": {
+          "name": "land",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zeitraum_tage": {
+          "name": "zeitraum_tage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "stichtag": {
+          "name": "stichtag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "von": {
+          "name": "von",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bis": {
+          "name": "bis",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zeilen": {
+          "name": "zeilen",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "buybox_anteil": {
+          "name": "buybox_anteil",
+          "type": "numeric(6, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sales": {
+          "name": "sales",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profit": {
+          "name": "profit",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "datei": {
+          "name": "datei",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "via": {
+          "name": "via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'upload'"
+        },
+        "land_quelle": {
+          "name": "land_quelle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eingelesen_am": {
+          "name": "eingelesen_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bqool_berichte_uq": {
+          "name": "bqool_berichte_uq",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "art",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "land",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "zeitraum_tage",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stichtag",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bqool_berichte_tenant_idx": {
+          "name": "bqool_berichte_tenant_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "eingelesen_am",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bqool_berichte_tenant_id_tenants_id_fk": {
+          "name": "bqool_berichte_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_berichte",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_berichte_offen": {
+      "name": "bqool_berichte_offen",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "art": {
+          "name": "art",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "datei": {
+          "name": "datei",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zeitraum_tage": {
+          "name": "zeitraum_tage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "stichtag": {
+          "name": "stichtag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "daten": {
+          "name": "daten",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vorschlag": {
+          "name": "vorschlag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "begruendung": {
+          "name": "begruendung",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bqool_berichte_offen_tenant_idx": {
+          "name": "bqool_berichte_offen_tenant_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bqool_berichte_offen_tenant_id_tenants_id_fk": {
+          "name": "bqool_berichte_offen_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_berichte_offen",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_exporte": {
+      "name": "bqool_exporte",
       "schema": "",
       "columns": {
         "id": {
@@ -20689,14 +20997,8 @@
           "notNull": true,
           "default": "'{}'::jsonb"
         },
-        "importiert_am": {
-          "name": "importiert_am",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "importiert_von": {
-          "name": "importiert_von",
+        "uebertragung": {
+          "name": "uebertragung",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -20717,8 +21019,8 @@
         }
       },
       "indexes": {
-        "profitguard_exporte_tenant_idx": {
-          "name": "profitguard_exporte_tenant_idx",
+        "bqool_exporte_tenant_idx": {
+          "name": "bqool_exporte_tenant_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -20740,9 +21042,9 @@
         }
       },
       "foreignKeys": {
-        "profitguard_exporte_tenant_id_tenants_id_fk": {
-          "name": "profitguard_exporte_tenant_id_tenants_id_fk",
-          "tableFrom": "profitguard_exporte",
+        "bqool_exporte_tenant_id_tenants_id_fk": {
+          "name": "bqool_exporte_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_exporte",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -20760,175 +21062,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.profitguard_listings": {
-      "name": "profitguard_listings",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "marktplatz": {
-          "name": "marktplatz",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sku": {
-          "name": "sku",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asin": {
-          "name": "asin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "titel": {
-          "name": "titel",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "preis": {
-          "name": "preis",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "min": {
-          "name": "min",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max": {
-          "name": "max",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "strategie": {
-          "name": "strategie",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "im_repricing": {
-          "name": "im_repricing",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "buybox_preis": {
-          "name": "buybox_preis",
-          "type": "numeric(12, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "eigene_buybox": {
-          "name": "eigene_buybox",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "buybox_anteil": {
-          "name": "buybox_anteil",
-          "type": "numeric(6, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "bestand": {
-          "name": "bestand",
-          "type": "numeric(12, 0)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "zusatz": {
-          "name": "zusatz",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "datei": {
-          "name": "datei",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "eingelesen_am": {
-          "name": "eingelesen_am",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "strategie_seit": {
-          "name": "strategie_seit",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "profitguard_asin_idx": {
-          "name": "profitguard_asin_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "asin",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "profitguard_listings_tenant_id_tenants_id_fk": {
-          "name": "profitguard_listings_tenant_id_tenants_id_fk",
-          "tableFrom": "profitguard_listings",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "profitguard_listings_tenant_id_marktplatz_sku_pk": {
-          "name": "profitguard_listings_tenant_id_marktplatz_sku_pk",
-          "columns": [
-            "tenant_id",
-            "marktplatz",
-            "sku"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.repricing_gebuehren": {
-      "name": "repricing_gebuehren",
+    "public.bqool_gebuehren": {
+      "name": "bqool_gebuehren",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -20995,9 +21130,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "repricing_gebuehren_tenant_id_tenants_id_fk": {
-          "name": "repricing_gebuehren_tenant_id_tenants_id_fk",
-          "tableFrom": "repricing_gebuehren",
+        "bqool_gebuehren_tenant_id_tenants_id_fk": {
+          "name": "bqool_gebuehren_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_gebuehren",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -21010,8 +21145,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "repricing_gebuehren_tenant_id_land_sku_quelle_pk": {
-          "name": "repricing_gebuehren_tenant_id_land_sku_quelle_pk",
+        "bqool_gebuehren_tenant_id_land_sku_quelle_pk": {
+          "name": "bqool_gebuehren_tenant_id_land_sku_quelle_pk",
           "columns": [
             "tenant_id",
             "land",
@@ -21025,8 +21160,431 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.repricing_liquidationen": {
-      "name": "repricing_liquidationen",
+    "public.bqool_laeufe": {
+      "name": "bqool_laeufe",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ausloeser": {
+          "name": "ausloeser",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ist'"
+        },
+        "ist": {
+          "name": "ist",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "ist_am": {
+          "name": "ist_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "export_id": {
+          "name": "export_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zusammenfassung": {
+          "name": "zusammenfassung",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "freigabe": {
+          "name": "freigabe",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "freigabe_von": {
+          "name": "freigabe_von",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "freigabe_am": {
+          "name": "freigabe_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erinnert_am": {
+          "name": "erinnert_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upload": {
+          "name": "upload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upload_status": {
+          "name": "upload_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upload_am": {
+          "name": "upload_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kontrolle_faellig_am": {
+          "name": "kontrolle_faellig_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kontrolle_am": {
+          "name": "kontrolle_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kontrolle": {
+          "name": "kontrolle",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "protokoll": {
+          "name": "protokoll",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "fehler": {
+          "name": "fehler",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bqool_laeufe_tenant_idx": {
+          "name": "bqool_laeufe_tenant_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bqool_laeufe_tenant_id_tenants_id_fk": {
+          "name": "bqool_laeufe_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_laeufe",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_leistung": {
+      "name": "bqool_leistung",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "land": {
+          "name": "land",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku": {
+          "name": "sku",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "zeitraum_tage": {
+          "name": "zeitraum_tage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stichtag": {
+          "name": "stichtag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asin": {
+          "name": "asin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "titel": {
+          "name": "titel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regel": {
+          "name": "regel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sales": {
+          "name": "sales",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "orders": {
+          "name": "orders",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "units": {
+          "name": "units",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profit": {
+          "name": "profit",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bb_wins": {
+          "name": "bb_wins",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lowest_win": {
+          "name": "lowest_win",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at_min": {
+          "name": "at_min",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at_max": {
+          "name": "at_max",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "below_min": {
+          "name": "below_min",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_offers": {
+          "name": "avg_offers",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_position": {
+          "name": "avg_position",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reprice": {
+          "name": "reprice",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_up": {
+          "name": "price_up",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_down": {
+          "name": "price_down",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_changes": {
+          "name": "price_changes",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bb_lost_amazon": {
+          "name": "bb_lost_amazon",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bb_lost_fba": {
+          "name": "bb_lost_fba",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bb_lost_fbm": {
+          "name": "bb_lost_fbm",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zusatz": {
+          "name": "zusatz",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "eingelesen_am": {
+          "name": "eingelesen_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bqool_leistung_stichtag_idx": {
+          "name": "bqool_leistung_stichtag_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stichtag",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bqool_leistung_tenant_id_tenants_id_fk": {
+          "name": "bqool_leistung_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_leistung",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bqool_leistung_tenant_id_land_sku_zeitraum_tage_stichtag_pk": {
+          "name": "bqool_leistung_tenant_id_land_sku_zeitraum_tage_stichtag_pk",
+          "columns": [
+            "tenant_id",
+            "land",
+            "sku",
+            "zeitraum_tage",
+            "stichtag"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_liquidationen": {
+      "name": "bqool_liquidationen",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -21175,9 +21733,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "repricing_liquidationen_tenant_id_tenants_id_fk": {
-          "name": "repricing_liquidationen_tenant_id_tenants_id_fk",
-          "tableFrom": "repricing_liquidationen",
+        "bqool_liquidationen_tenant_id_tenants_id_fk": {
+          "name": "bqool_liquidationen_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_liquidationen",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -21190,8 +21748,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "repricing_liquidationen_tenant_id_land_sku_pk": {
-          "name": "repricing_liquidationen_tenant_id_land_sku_pk",
+        "bqool_liquidationen_tenant_id_land_sku_pk": {
+          "name": "bqool_liquidationen_tenant_id_land_sku_pk",
           "columns": [
             "tenant_id",
             "land",
@@ -21204,8 +21762,193 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.repricing_sku_pflege": {
-      "name": "repricing_sku_pflege",
+    "public.bqool_listings": {
+      "name": "bqool_listings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "marktplatz": {
+          "name": "marktplatz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku": {
+          "name": "sku",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asin": {
+          "name": "asin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "titel": {
+          "name": "titel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "versand": {
+          "name": "versand",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preis": {
+          "name": "preis",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "min": {
+          "name": "min",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max": {
+          "name": "max",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regel": {
+          "name": "regel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "buybox_preis": {
+          "name": "buybox_preis",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "buybox_gewinner": {
+          "name": "buybox_gewinner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eigene_buybox": {
+          "name": "eigene_buybox",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "niedrigster_preis": {
+          "name": "niedrigster_preis",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "angebote": {
+          "name": "angebote",
+          "type": "numeric(10, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bestand": {
+          "name": "bestand",
+          "type": "numeric(12, 0)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zusatz": {
+          "name": "zusatz",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "datei": {
+          "name": "datei",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eingelesen_am": {
+          "name": "eingelesen_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "regel_seit": {
+          "name": "regel_seit",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "bqool_asin_idx": {
+          "name": "bqool_asin_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "asin",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bqool_listings_tenant_id_tenants_id_fk": {
+          "name": "bqool_listings_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_listings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bqool_listings_tenant_id_marktplatz_sku_pk": {
+          "name": "bqool_listings_tenant_id_marktplatz_sku_pk",
+          "columns": [
+            "tenant_id",
+            "marktplatz",
+            "sku"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_sku_pflege": {
+      "name": "bqool_sku_pflege",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -21298,9 +22041,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "repricing_sku_pflege_tenant_id_tenants_id_fk": {
-          "name": "repricing_sku_pflege_tenant_id_tenants_id_fk",
-          "tableFrom": "repricing_sku_pflege",
+        "bqool_sku_pflege_tenant_id_tenants_id_fk": {
+          "name": "bqool_sku_pflege_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_sku_pflege",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -21313,8 +22056,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "repricing_sku_pflege_tenant_id_land_sku_pk": {
-          "name": "repricing_sku_pflege_tenant_id_land_sku_pk",
+        "bqool_sku_pflege_tenant_id_land_sku_pk": {
+          "name": "bqool_sku_pflege_tenant_id_land_sku_pk",
           "columns": [
             "tenant_id",
             "land",
@@ -21327,8 +22070,124 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.repricing_vorschlaege": {
-      "name": "repricing_vorschlaege",
+    "public.bqool_tageswerte": {
+      "name": "bqool_tageswerte",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "land": {
+          "name": "land",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tag": {
+          "name": "tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sales": {
+          "name": "sales",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sales_fba": {
+          "name": "sales_fba",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sales_fbm": {
+          "name": "sales_fbm",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "orders": {
+          "name": "orders",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "units": {
+          "name": "units",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "profit": {
+          "name": "profit",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bb_wins": {
+          "name": "bb_wins",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zusatz": {
+          "name": "zusatz",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "datei": {
+          "name": "datei",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "eingelesen_am": {
+          "name": "eingelesen_am",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "bqool_tageswerte_tenant_id_tenants_id_fk": {
+          "name": "bqool_tageswerte_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_tageswerte",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bqool_tageswerte_tenant_id_land_tag_pk": {
+          "name": "bqool_tageswerte_tenant_id_land_tag_pk",
+          "columns": [
+            "tenant_id",
+            "land",
+            "tag"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.bqool_vorschlaege": {
+      "name": "bqool_vorschlaege",
       "schema": "",
       "columns": {
         "id": {
@@ -21441,8 +22300,8 @@
         }
       },
       "indexes": {
-        "repricing_vorschlaege_offen_idx": {
-          "name": "repricing_vorschlaege_offen_idx",
+        "bqool_vorschlaege_offen_idx": {
+          "name": "bqool_vorschlaege_offen_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -21468,8 +22327,8 @@
           "method": "btree",
           "with": {}
         },
-        "repricing_vorschlaege_sku_idx": {
-          "name": "repricing_vorschlaege_sku_idx",
+        "bqool_vorschlaege_sku_idx": {
+          "name": "bqool_vorschlaege_sku_idx",
           "columns": [
             {
               "expression": "tenant_id",
@@ -21503,9 +22362,9 @@
         }
       },
       "foreignKeys": {
-        "repricing_vorschlaege_tenant_id_tenants_id_fk": {
-          "name": "repricing_vorschlaege_tenant_id_tenants_id_fk",
-          "tableFrom": "repricing_vorschlaege",
+        "bqool_vorschlaege_tenant_id_tenants_id_fk": {
+          "name": "bqool_vorschlaege_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_vorschlaege",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -21523,8 +22382,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.repricing_zuweisungen": {
-      "name": "repricing_zuweisungen",
+    "public.bqool_zuweisungen": {
+      "name": "bqool_zuweisungen",
       "schema": "",
       "columns": {
         "tenant_id": {
@@ -21592,9 +22451,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "repricing_zuweisungen_tenant_id_tenants_id_fk": {
-          "name": "repricing_zuweisungen_tenant_id_tenants_id_fk",
-          "tableFrom": "repricing_zuweisungen",
+        "bqool_zuweisungen_tenant_id_tenants_id_fk": {
+          "name": "bqool_zuweisungen_tenant_id_tenants_id_fk",
+          "tableFrom": "bqool_zuweisungen",
           "tableTo": "tenants",
           "columnsFrom": [
             "tenant_id"
@@ -21607,8 +22466,8 @@
         }
       },
       "compositePrimaryKeys": {
-        "repricing_zuweisungen_tenant_id_land_sku_pk": {
-          "name": "repricing_zuweisungen_tenant_id_land_sku_pk",
+        "bqool_zuweisungen_tenant_id_land_sku_pk": {
+          "name": "bqool_zuweisungen_tenant_id_land_sku_pk",
           "columns": [
             "tenant_id",
             "land",

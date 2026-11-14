@@ -43,6 +43,8 @@ export const orders = pgTable(
     trackingUploadError: text("tracking_upload_error"),
     /** Meldung von Hand geschlossen (im Kanal selbst eingetragen bzw. kein Kanal zum Melden) – nicht über die Schnittstelle. */
     trackingUploadManuell: boolean("tracking_upload_manuell").notNull().default(false),
+    /** Fehlgeschlagene Versandmeldungen: automatische Wiederholungen (alle 30 Min., höchstens 6). */
+    trackingUploadVersuche: integer("tracking_upload_versuche").notNull().default(0),
     notes: text("notes"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

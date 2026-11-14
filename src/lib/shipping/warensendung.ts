@@ -3,6 +3,8 @@
 // erlaubt). Die Maße kennt das System nicht – dafür je Artikel „passt bis N Stück“ (einmal festgelegt).
 // Reine Logik, testbar.
 
+import { toIso3 } from "./countries";
+
 export const WS_LIMITS = { lengthCm: 35.3, widthCm: 25, heightCm: 5, maxGrams: 1000 } as const;
 /** „35,3 × 25 × 5 cm“ */
 export const WS_SIZE = `${WS_LIMITS.lengthCm.toLocaleString("de-DE")} × ${WS_LIMITS.widthCm} × ${WS_LIMITS.heightCm} cm`;
@@ -14,7 +16,8 @@ const short = (t: string) => (t.length > 40 ? `${t.slice(0, 38)} …` : t);
 
 export function warensendungCheck(o: { country: string | undefined; items: WsItem[]; weightKg: number }): WsCheck {
   const items = o.items.filter((i) => i.quantity > 0);
-  if ((o.country ?? "DEU") !== "DEU") return { ok: false, reason: "Ausland – Warensendung nur innerhalb Deutschlands", needsSetup: false };
+  // Land kommt je Kanal verschieden: Lieferschein „DEU“, eBay/Amazon/Temu „DE“, CSV auch „Deutschland“ → einheitlich ISO-3
+  if (toIso3(o.country) !== "DEU") return { ok: false, reason: "Ausland – Warensendung nur innerhalb Deutschlands", needsSetup: false };
   if (!items.length) return { ok: false, reason: "keine Positionen", needsSetup: false };
   const unset = items.filter((i) => i.wsMax === null);
   if (unset.length) return { ok: false, reason: `Warensendung für „${short(unset[0].title)}“ noch nicht festgelegt`, needsSetup: true };

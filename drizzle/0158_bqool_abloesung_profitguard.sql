@@ -6,7 +6,7 @@
 --    Werte liegen als Sicherung in archiv_bqool_*_vorher (für den Rollback).
 -- 3. Einstellungen „bqool“ → „repricing“ (alter Stand bleibt als „archivBqool“), Zugangsdaten „bqool_web“ entfernt,
 --    System-Aufgaben umgeschlüsselt, Wissen mit BQool-Bezug als „veraltet“ markiert.
--- Rollback: deploy/rollback/0156_bqool_abloesung_profitguard_down.sql (Anleitung dort).
+-- Rollback: deploy/rollback/0158_bqool_abloesung_profitguard_down.sql (Anleitung dort).
 
 -- ---- 1. BQool-Daten archivieren (schreibgeschützt) ------------------------------------------------------------------
 ALTER TABLE "bqool_listings" RENAME TO "archiv_bqool_listings";--> statement-breakpoint

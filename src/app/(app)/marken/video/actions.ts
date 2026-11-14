@@ -151,6 +151,15 @@ export async function clipAendernAction(fd: FormData) {
   }, txt(fd, "kanal", 40) || null, "#clips");
 }
 
+export async function clipOrdnerPruefenAction(fd: FormData) {
+  const s = await requireArea("marken");
+  await mitFehler(async () => {
+    const { clipOrdnerPruefenAnfordern } = await import("@/lib/video/service");
+    await clipOrdnerPruefenAnfordern(s);
+    return "Clip-Ordner: Prüfung angefordert – der Worker sieht in ≤ 30 s nach. Seite gleich neu laden.";
+  }, txt(fd, "kanal", 40) || null, "#clips");
+}
+
 export async function neuVertonenAction(fd: FormData) {
   const s = await requireArea("marken");
   await mitFehler(async () => {

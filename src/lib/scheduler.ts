@@ -145,6 +145,8 @@ export async function runScheduledJobs(force = false) {
         // Per Excel-Vorlage oder Shop-Synchronisierung eingestellte Temu-Produkte über die SKU verknüpfen.
         if (force || due(`${t}:temu-link`, 359)) await step(t, "Temu-Produkte verknüpfen", () => linkTemuBySku(t));
       }
+      // Versandmeldungen: fehlgeschlagene an eBay/Temu/Amazon automatisch neu melden (je Auftrag höchstens 6×).
+      if (force || due(`${t}:meldungen`, 29)) await step(t, "Versandmeldungen nachholen", async () => (await import("@/lib/orders/service")).versandmeldungenNachholen(t));
       // eBay-Angebote übernehmen: liegengebliebene Aufträge (z. B. nach einem Neustart) fortsetzen.
       if (force || due(`${t}:ebay-transfers`, 5)) await step(t, "eBay-Übernahme", () => runTransfers(t));
       // Preislisten per Link (alle X Std je Feed), danach Amazon-Daten für Neues/Geändertes – im Keepa-Budget.

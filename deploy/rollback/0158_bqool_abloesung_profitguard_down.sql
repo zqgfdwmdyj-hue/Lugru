@@ -1,9 +1,9 @@
--- Rollback der Migration 0156 (BQool-Ablösung → ProfitGuard).
+-- Rollback der Migration 0158 (BQool-Ablösung → ProfitGuard).
 --
 -- Nur zusammen mit dem alten Code-Stand benutzen (Commit vor der BQool-Ablösung), sonst fehlen dem Code die Tabellen.
 -- Ablauf auf dem Server:
 --   1. Datenbank sichern:            bash /opt/seller-system/deploy/backup.sh
---   2. Rollback ausführen:           docker compose exec -T db psql -U seller -d seller -v ON_ERROR_STOP=1 < deploy/rollback/0156_bqool_abloesung_profitguard_down.sql
+--   2. Rollback ausführen:           docker compose exec -T db psql -U seller -d seller -v ON_ERROR_STOP=1 < deploy/rollback/0158_bqool_abloesung_profitguard_down.sql
 --   3. Alten Code-Stand einspielen und neu starten.
 --
 -- Nicht wiederherstellbar: die gelöschten BQool-Zugangsdaten (Anbindung „BQool – Anmeldung“) – bei Bedarf neu eintragen.

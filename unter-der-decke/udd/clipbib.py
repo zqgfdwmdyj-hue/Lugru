@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -19,11 +20,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ENDUNGEN = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
+FOTO_ENDUNGEN = {".jpg", ".jpeg", ".png", ".webp"}  # HEIC (iPhone) kann der Worker nicht lesen → als JPG speichern
 MIN_DAUER = 2.0
 MIN_BREITE = 960
+MIN_FOTO_BREITE = 1200  # Fotos bekommen eine Kamerafahrt (Zoom) – darunter wird es unscharf
 KATALOG_MAX = 40  # so viele Clips höchstens je Bildplan-Aufruf (die passendsten)
 ANALYSE_JE_LAUF = 40  # so viele neue Clips höchstens je Video ansehen (Rest beim nächsten)
 
@@ -47,13 +50,18 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:80]
 
 
+def ist_foto(p: Path | str) -> bool:
+    return Path(p).suffix.lower() in FOTO_ENDUNGEN
+
+
 def scannen(ordner: Path, kanal_ordner: set[str]) -> list[dict[str, Any]]:
-    """Alle Videodateien im Clip-Ordner (ohne versteckte Ordner/Dateien): relativer Pfad, Kanal (oder None), Ordner-Tags."""
+    """Alle Videos und Fotos im Clip-Ordner (ohne versteckte Ordner/Dateien): relativer Pfad, Art, Kanal (oder None),
+    Ordner-Tags."""
     if not ordner.is_dir():
         return []
     aus: list[dict[str, Any]] = []
     for p in sorted(ordner.rglob("*")):
-        if not p.is_file() or p.suffix.lower() not in ENDUNGEN:
+        if not p.is_file() or p.suffix.lower() not in ENDUNGEN | FOTO_ENDUNGEN:
             continue
         rel = p.relative_to(ordner)
         if any(t.startswith(".") for t in rel.parts):
@@ -61,8 +69,108 @@ def scannen(ordner: Path, kanal_ordner: set[str]) -> list[dict[str, Any]]:
         teile = list(rel.parts[:-1])
         kanal = slug(teile[0]) if teile and slug(teile[0]) in kanal_ordner else None
         tags = [slug(t).replace("-", " ") for t in teile if slug(t) not in kanal_ordner and slug(t) not in ("alle", "clips")]
-        aus.append({"datei": p, "pfad": rel.as_posix(), "kanal": kanal, "tags": [t for t in tags if t]})
+        aus.append({"datei": p, "pfad": rel.as_posix(), "art": "foto" if ist_foto(p) else "video", "kanal": kanal, "tags": [t for t in tags if t]})
     return aus
+
+
+# ---- Selbsttest: sieht der Worker den Ordner am PC? ----------------------------------------------------------------------
+
+_ANONYM = re.compile(r"/volumes/[0-9a-f]{64}/_data/?$")
+
+
+def _mount_quelle(ordner: Path, mountinfo: Path) -> tuple[str | None, bool]:
+    """(Quelle laut /proc/self/mountinfo, anonymes Docker-Volume?) – ohne Docker (None, False)."""
+    try:
+        zeilen = mountinfo.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None, False
+    ziel = str(ordner).rstrip("/") or "/"
+    for z in zeilen:
+        teile = z.split(" ")
+        if len(teile) > 4 and teile[4].replace("\\040", " ") == ziel:
+            root = teile[3].replace("\\040", " ")
+            return root, bool(_ANONYM.search(root))
+    return None, False
+
+
+def windows_pfad(root: str | None) -> str | None:
+    """„/run/desktop/mnt/host/c/video/clips“ (Docker Desktop) → „C:\\video\\clips“; sonst unverändert."""
+    if not root:
+        return None
+    m = re.search(r"/(?:host|mnt)/([a-z])/(.*)$", root)
+    return f"{m.group(1).upper()}:\\" + m.group(2).replace("/", "\\") if m else root
+
+
+def ordner_stand(ordner: Path | None, mountinfo: Path = Path("/proc/self/mountinfo"), grenze: int = 20000) -> dict[str, Any]:
+    """Was der Worker im Clip-Ordner sieht – für die Anzeige im Seller-System („verbunden“, „leer“, „nicht eingehängt“)."""
+    stand: dict[str, Any] = {"pfad": str(ordner or ""), "quelle": None, "videos": 0, "fotos": 0, "andere": 0, "heic": 0, "beispiele": [], "geprueft": int(time.time())}
+    if not ordner:
+        return {**stand, "zustand": "aus"}
+    if not ordner.is_dir():
+        return {**stand, "zustand": "fehlt"}
+    root, anonym = _mount_quelle(ordner, mountinfo)
+    stand["quelle"] = windows_pfad(root)
+    n = 0
+    for p in ordner.rglob("*"):
+        n += 1
+        if n > grenze:
+            break
+        if not p.is_file() or any(t.startswith(".") for t in p.relative_to(ordner).parts):
+            continue
+        endung = p.suffix.lower()
+        if endung in ENDUNGEN:
+            stand["videos"] += 1
+        elif endung in FOTO_ENDUNGEN:
+            stand["fotos"] += 1
+        elif endung in (".heic", ".heif"):
+            stand["heic"] += 1
+        else:
+            stand["andere"] += 1
+            continue
+        if len(stand["beispiele"]) < 5:
+            stand["beispiele"].append(p.relative_to(ordner).as_posix()[:120])
+    if anonym:
+        zustand = "anonym"  # Docker hat einen leeren Ersatzordner angelegt: -v C:\\video\\clips:/clips fehlt
+    elif stand["videos"] + stand["fotos"] == 0:
+        zustand = "leer"
+    else:
+        zustand = "ok"
+    return {**stand, "zustand": zustand}
+
+
+# ---- Fotos ---------------------------------------------------------------------------------------------------------------
+
+
+def foto_info(p: Path) -> dict[str, float]:
+    """Größe nach EXIF-Drehung (Handyfotos stehen oft nur per EXIF aufrecht)."""
+    try:
+        with Image.open(p) as im:
+            im = ImageOps.exif_transpose(im)
+            return {"dauer": 0.0, "breite": float(im.width), "hoehe": float(im.height)}
+    except Exception:
+        return {"dauer": 0.0, "breite": 0.0, "hoehe": 0.0}
+
+
+def foto_jpeg(p: Path, breite: int) -> bytes:
+    """Foto aufrecht, RGB, höchstens `breite` px breit, als JPEG."""
+    with Image.open(p) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        if im.width > breite:
+            im = im.resize((breite, max(1, round(im.height * breite / im.width))), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=88)
+        return buf.getvalue()
+
+
+def foto_vorschau(p: Path, ziel: Path) -> None:
+    """Vorschaubild 640×360 (eingepasst) – für die Clip-Bibliothek im Seller-System."""
+    raster = Image.new("RGB", (640, 360), (20, 20, 20))
+    with Image.open(p) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        im.thumbnail((640, 360))
+        raster.paste(im, ((640 - im.width) // 2, (360 - im.height) // 2))
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    raster.save(ziel, "JPEG", quality=78)
 
 
 def clip_id(p: Path) -> str:
@@ -129,13 +237,15 @@ def vorschau(bilder: list[Path], ziel: Path) -> None:
     raster.save(ziel, "JPEG", quality=78)
 
 
-def analyse_prompt(pfad: str, dauer: float, zeiten: list[float], tags: list[str], kanal: dict) -> str:
+def analyse_prompt(pfad: str, dauer: float, zeiten: list[float], tags: list[str], kanal: dict, foto: bool = False) -> str:
     return "\n".join(
         [
             "[video:clipanalyse]",
-            f"Datei: {pfad} ({dauer:.1f} s). Ordner-Stichwörter: {', '.join(tags) or '–'}.",
+            (f"Datei: {pfad} (Foto)." if foto else f"Datei: {pfad} ({dauer:.1f} s).") + f" Ordner-Stichwörter: {', '.join(tags) or '–'}.",
             f"Kanal: {kanal.get('name') or ''} – Thema: {kanal.get('themenbereich') or ''}.",
-            f"Die {len(zeiten)} Bilder stammen aus dem Clip bei " + ", ".join(f"{t:.1f} s" for t in zeiten) + ".",
+            "Das Bild ist ein Foto (kommt mit langsamer Kamerafahrt ins Video); bestes_bild = 1."
+            if foto
+            else f"Die {len(zeiten)} Bilder stammen aus dem Clip bei " + ", ".join(f"{t:.1f} s" for t in zeiten) + ".",
             "Beschreibe auf Deutsch in einem Satz, was zu sehen ist (konkret: Gegenstände, Marke/Modell wenn eindeutig erkennbar, "
             "Handlung, Ort). Schlagwörter: 5–12, deutsch und englisch gemischt, klein geschrieben (z. B. „uhr“, „watch“, "
             "„rolex“, „zifferblatt“, „nahaufnahme“, „hand“). einstellung: detail/nah/halbtotale/totale/luftbild. "

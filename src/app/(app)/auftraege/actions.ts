@@ -9,7 +9,7 @@ import { CHANNELS } from "@/db/schema";
 import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
-import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
+import { cancelLabel, createLabel, loadOrder, markShipped, sendungsnummerNachtragen, uploadTracking } from "@/lib/orders/service";
 import { orderShipWeight, saveSkuShipping } from "@/lib/shipping/weights-service";
 import { ensureShipper } from "@/lib/shipping/slip-service";
 import { parseWsMax } from "@/lib/shipping/warensendung";
@@ -86,6 +86,18 @@ export async function markAllLabeledShipped() {
   const rows = await db.select({ id: schema.orders.id }).from(schema.orders).where(and(eq(schema.orders.tenantId, session.tenantId), eq(schema.orders.status, "label_created")));
   for (const r of rows) await markShipped(session.tenantId, r.id, session.userId);
   revalidatePath("/", "layout");
+}
+
+export async function trackingNachtragenAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const id = uuid.parse(fd.get("orderId"));
+  const carrier = ["DHL", "Deutsche Post", "DPD", "Hermes", "GLS", "UPS"].includes(String(fd.get("carrier"))) ? String(fd.get("carrier")) : "DHL";
+  try {
+    await sendungsnummerNachtragen(session.tenantId, id, String(fd.get("trackingNumber") ?? ""), carrier);
+  } catch (e) {
+    await db.update(schema.orders).set({ trackingUploadError: e instanceof Error ? e.message : String(e) }).where(and(eq(schema.orders.tenantId, session.tenantId), eq(schema.orders.id, id)));
+  }
+  revalidatePath("/auftraege", "layout");
 }
 
 export async function retryTracking(fd: FormData) {

@@ -3,7 +3,7 @@ import { tenantId } from "./core";
 
 // Repricing ohne festen Anbieter: Soll-Strategie je SKU und Land (Seller-System) und Ist-Stand aus ProfitGuard
 // (ProfitPath) per Datei-Import. Die früheren BQool-Tabellen liegen schreibgeschützt als „archiv_bqool_*“ in der
-// Datenbank (Migration 0156) und werden vom Code nicht mehr gelesen.
+// Datenbank (Migration 0158) und werden vom Code nicht mehr gelesen.
 
 const geld = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
 

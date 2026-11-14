@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_AB_TAKT, WORKER_AB_CLIPS, clipMeldungAus, schlagwoerterAus, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
+import { anzeigeStatus, BILD_MODELL_STANDARD, bildModellFehlt, bildModellReihenfolge, bildTreffer, schluesselAbgelehnt, claudeNutzung, claudePreis, ERSATZ_BILDIDEE, fortschrittProzent, kostenPosition, kostenSchaetzung, kostenSumme, nachSchritt, freigabeAktiv, figurenAus, MOTIVE_JE_SZENE, NEUE_MOTIVE_JE_SZENE, slugAus, startAbAus, titelTreffer, TYPISCH, typischFuer, laengeZiel, SKRIPT_WOERTER, VIDEO_MODELL_STANDARD, WORKER_AB_TAKT, WORKER_AB_CLIPS, clipMeldungAus, clipOrdnerAus, clipOrdnerText, schlagwoerterAus, WORKER_VERSION_AKTUELL, workerVeraltet, VIDEO_PREISE_STANDARD, workerStand } from "@/lib/video/logic";
 
 // B36 Video-Pipeline: Schrittfolge mit Freigaben, Upload nur mit Schalter, Worker-Stand, Start „heute Nacht“, Kosten aus
 // Claude-Antworten (JSON und Stream), Filter (gleiche Liste wie der Python-Worker).
@@ -122,7 +122,7 @@ describe("Kosten (B36.3)", () => {
     expect(schluesselAbgelehnt("anthropic")).toContain("Claude-Schlüssel abgelehnt (HTTP 401)");
   });
   it("Worker-Version: ältere Worker werden als veraltet erkannt", () => {
-    expect(WORKER_VERSION_AKTUELL).toBe("1.5.0");
+    expect(WORKER_VERSION_AKTUELL).toBe("1.6.0");
     expect(workerVeraltet("1.0.0")).toBe(true);
     expect(workerVeraltet(null)).toBe(true);
     expect(workerVeraltet("1.1.2")).toBe(true);
@@ -131,7 +131,9 @@ describe("Kosten (B36.3)", () => {
     expect(workerVeraltet("1.3.0")).toBe(true); // 1.4.0: Vollbild in Bewegung (Bildwechsel, Kamerafahrt, Pexels)
     expect(workerVeraltet("1.4.0")).toBe(true); // 1.4.1: Clips von Pixabay (Pexels vergibt keine Schlüssel)
     expect(workerVeraltet("1.4.1")).toBe(true); // 1.5.0: eigene Clip-Bibliothek (Ordner clips)
-    expect(workerVeraltet("1.5.0")).toBe(false);
+    expect(workerVeraltet("1.5.0")).toBe(true); // 1.6.0: Ordner-Selbsttest + eigene Fotos
+    expect(workerVeraltet("1.6.0")).toBe(false);
+    expect(workerVeraltet("1.5.0", WORKER_AB_CLIPS)).toBe(false);
     expect(workerVeraltet("1.4.1", WORKER_AB_CLIPS)).toBe(true);
     expect(workerVeraltet("2.0")).toBe(false);
     // Stories und „Im neuen Takt“ gehen schon ab 1.2.0
@@ -338,5 +340,28 @@ describe("B36.12 Eigene Clip-Bibliothek – Meldung vom Worker", () => {
   it("Schlagwörter aus dem Eingabefeld: klein, ohne Doppelte", () => {
     expect(schlagwoerterAus("Rolex, Zifferblatt; rolex\nNahaufnahme, ")).toEqual(["rolex", "zifferblatt", "nahaufnahme"]);
     expect(schlagwoerterAus("  ")).toEqual([]);
+  });
+});
+
+describe("B36.13 Clip-Ordner-Selbsttest und Fotos", () => {
+  const stand = { zustand: "ok", pfad: "/clips", quelle: "C:\\video\\clips", videos: 12, fotos: 5, andere: 1, heic: 0, beispiele: ["uhren/a.mp4"], geprueft: 1_763_100_000 };
+  it("Meldung prüfen: unbekannter Zustand → null, Zahlen begrenzt, höchstens 5 Beispiele", () => {
+    expect(clipOrdnerAus(stand)).toMatchObject({ zustand: "ok", videos: 12, fotos: 5, quelle: "C:\\video\\clips" });
+    expect(clipOrdnerAus({ ...stand, zustand: "kaputt" })).toBeNull();
+    expect(clipOrdnerAus(null)).toBeNull();
+    expect(clipOrdnerAus({ ...stand, videos: -3, beispiele: Array.from({ length: 9 }, (_, i) => `b${i}`) })).toMatchObject({ videos: 0, beispiele: ["b0", "b1", "b2", "b3", "b4"] });
+  });
+  it("Klartext: verbunden / leer / nicht eingehängt / HEIC-Hinweis", () => {
+    expect(clipOrdnerText(clipOrdnerAus(stand)!)).toEqual({ ton: "ok", text: "Clip-Ordner verbunden: 12 Videos, 5 Fotos (am PC: C:\\video\\clips)" });
+    expect(clipOrdnerText(clipOrdnerAus({ ...stand, zustand: "leer", videos: 0, fotos: 0 })!).text).toContain("aber leer");
+    const anonym = clipOrdnerText(clipOrdnerAus({ ...stand, zustand: "anonym" })!);
+    expect(anonym.ton).toBe("error");
+    expect(anonym.text).toContain("-v C:\\video\\clips:/clips");
+    expect(clipOrdnerText(clipOrdnerAus({ ...stand, heic: 3 })!)).toMatchObject({ ton: "warn" });
+  });
+  it("Clip-Meldung: Art foto/video", () => {
+    const basis = { id: "0123456789abcdef0123", pfad: "a.jpg" };
+    expect(clipMeldungAus({ ...basis, art: "foto" })?.art).toBe("foto");
+    expect(clipMeldungAus({ ...basis, art: "irgendwas" })?.art).toBe("video");
   });
 });

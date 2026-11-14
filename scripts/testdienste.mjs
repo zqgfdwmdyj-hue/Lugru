@@ -934,7 +934,7 @@ async function route(req, url, body) {
   if (p.startsWith("/ebay/identity/")) return json({ access_token: "test-ebay-token", expires_in: 7200, token_type: "User Access Token" });
   if (p.startsWith("/ebay/")) return req.method === "GET" ? json({ total: 0, orders: [], inventoryItems: [], offers: [], href: url.href }) : json({ simuliert: true });
   // Temu, Keepa, EZB
-  if (p.startsWith("/temu/")) return json({ success: true, result: {} });
+  if (p.startsWith("/temu/")) return temuNbRoute(parsed());
   if (p.startsWith("/keepa/product") && url.searchParams.get("code")) {
     // EAN → ASIN: erfundene ASIN aus den letzten Ziffern; mit Marktdaten wie bei der ASIN-Abfrage
     const asins = url.searchParams.get("code").split(",").map((c) => `B0EAN${c.slice(-5)}`);
@@ -1588,6 +1588,15 @@ http
     }
     if (url.pathname === "/__briefe") return send(200, [...briefe.jobs.values()].map((j) => ({ id: j.id, anbieter: j.anbieter, mode: j.mode, status: j.status, seiten: j.seiten, amount: j.amount })));
     if (url.pathname === "/__gesund") return send(200, { ok: true });
+    if (url.pathname === "/__temu" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) Object.assign(temuNb, { status: {}, versand: [], stoerung: 0 });
+      for (const sn of b.bestellungen ?? []) temuNb.status[sn] = 2;
+      for (const [sn, st] of Object.entries(b.status ?? {})) temuNb.status[sn] = Number(st);
+      if (typeof b.stoerung === "number") temuNb.stoerung = b.stoerung;
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__temu") return send(200, temuNb);
     if (url.pathname === "/__video" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       if (b.zuruecksetzen) Object.assign(videoNb, { eleven: [], bilder: [], youtube: [], untertitel: [], sitzungen: new Map(), n: 0, claude: [], maxTokens: [], stoerungen: {}, modellFehler: [], bildModelleGesperrt: [], bildplaene: [], pexels: [], pexelsDateien: 0, pixabay: [], pixabayDateien: 0, clipanalysen: [] });
@@ -1699,6 +1708,33 @@ function videoStoerungRoh(req, res, url, body) {
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(schluessel === "eleven" ? { detail: { status: "busy", message: "Testdienst: vorübergehend nicht verfügbar" } } : { type: "error", error: { type: code === 429 ? "rate_limit_error" : "overloaded_error", message: "Testdienst: vorübergehend überlastet" } }));
   return true;
+}
+
+/** Temu-Nachbau (Open API): Bestellungen nur, wenn ein Test sie anmeldet (POST /__temu {bestellungen}); Versanddienstleister
+ *  DHL/Deutsche Post/DPD; „Versand melden“ wird mitgeschrieben – ohne Sendungsnummer abgelehnt wie bei Temu, auf Wunsch
+ *  einmal gestört. Danach steht die Bestellung bei Temu auf „Versandt“. */
+var temuNb = { status: {}, versand: [], stoerung: 0 };
+function temuNbRoute(b) {
+  const ok = (result) => [200, { success: true, result }];
+  if (b.type === "bg.order.list.v2.get") {
+    const sns = Array.isArray(b.parentOrderSnList) ? b.parentOrderSnList.filter((sn) => sn in temuNb.status) : [];
+    const pageItems = sns.map((sn) => ({ parentOrderMap: { parentOrderSn: sn, parentOrderStatus: temuNb.status[sn], regionId: 76, updateTime: 1 }, orderList: [{ orderSn: `${sn}-1`, goodsId: 1001, skuId: 2001, goodsName: "Testsocken", quantity: 1, orderStatus: temuNb.status[sn] }] }));
+    return ok({ totalItemNum: pageItems.length, pageItems });
+  }
+  if (b.type === "bg.logistics.companies.get") return ok({ logisticsServiceProviderList: [{ logisticsServiceProviderId: 11, logisticsServiceProviderName: "DHL" }, { logisticsServiceProviderId: 22, logisticsServiceProviderName: "Deutsche Post" }, { logisticsServiceProviderId: 33, logisticsServiceProviderName: "DPD" }] });
+  if (b.type === "bg.logistics.shipment.v2.confirm") {
+    const req = (b.sendRequestList ?? [])[0] ?? {};
+    const sn = (req.orderSendInfoList ?? [])[0]?.parentOrderSn ?? "";
+    temuNb.versand.push({ sn, carrierId: req.carrierId ?? null, trackingNumber: req.trackingNumber ?? "" });
+    if (temuNb.stoerung > 0) {
+      temuNb.stoerung--;
+      return [200, { success: false, errorCode: 120011001, errorMsg: "Testdienst: Temu vorübergehend nicht erreichbar" }];
+    }
+    if (!String(req.trackingNumber ?? "").trim()) return [200, { success: false, errorCode: 120011086, errorMsg: "trackingNumber is required" }];
+    if (sn in temuNb.status) temuNb.status[sn] = 4;
+    return ok({});
+  }
+  return ok({});
 }
 
 function crc32(buf) {

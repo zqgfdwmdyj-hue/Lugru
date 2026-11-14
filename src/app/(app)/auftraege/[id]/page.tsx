@@ -9,7 +9,8 @@ import { orderShipWeight, skuShippingMap } from "@/lib/shipping/weights-service"
 import { WS_OPTIONS, warensendungCheck } from "@/lib/shipping/warensendung";
 import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { cancelLabelAction, cancelOrder, markShippedAction, meldungenErledigtAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
+import { MELDUNG_MAX_VERSUCHE } from "@/lib/orders/tracking";
+import { cancelLabelAction, cancelOrder, markShippedAction, meldungenErledigtAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction, trackingNachtragenAction } from "../actions";
 import { LabelForm } from "./label-form";
 import { PostFormatHint } from "../post-format-hint";
 import { postFormatInfo } from "@/lib/shipping/internetmarke";
@@ -175,8 +176,19 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 </div>
               )}
               {order.trackingUploadError && (
-                <div className="notice notice-warn small">
+                <div className="notice notice-warn small" data-testid="meldung-fehler">
                   {order.trackingUploadError}
+                  {order.trackingUploadVersuche > 0 && <div className="muted" data-testid="meldung-versuche">{order.trackingUploadVersuche}× versucht{order.trackingUploadVersuche >= MELDUNG_MAX_VERSUCHE ? " – automatisch nicht mehr, bitte von Hand" : " – wird alle 30 Min. automatisch wiederholt"}</div>}
+                  {(order.status === "shipped" || order.status === "delivered") && (
+                    <form action={trackingNachtragenAction} className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "end", marginTop: 6 }} data-testid="meldung-nachtragen">
+                      <input type="hidden" name="orderId" value={order.id} />
+                      <label className="stack" style={{ gap: 2 }}>{order.carrier === "Deutsche Post" ? "Frankier-ID (Nummer unter dem Matrixcode)" : "Sendungsnummer"}<input className="input num" name="trackingNumber" defaultValue={order.trackingNumber ?? ""} required data-testid="meldung-nummer" /></label>
+                      <select className="select" name="carrier" defaultValue={order.carrier ?? "DHL"} aria-label="Versanddienstleister">
+                        {["DHL", "Deutsche Post", "DPD", "Hermes", "GLS", "UPS"].map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <button className="btn btn-small" type="submit" data-testid="meldung-nachtragen-los">Nachtragen & melden</button>
+                    </form>
+                  )}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                     <form action={retryTracking}><input type="hidden" name="orderId" value={order.id} /><button className="btn btn-small" type="submit">Erneut melden</button></form>
                     {order.channel !== "amazon" && (

@@ -6,6 +6,14 @@ import { parseWsMax, warensendungCheck } from "@/lib/shipping/warensendung";
 const item = (quantity: number, wsMax: number | null, title = "Testsocken") => ({ quantity, wsMax, title });
 
 describe("Warensendung – passt oder nicht", () => {
+  it("Inland unabhängig von der Schreibweise des Landes (eBay/Amazon/Temu „DE“, Lieferschein „DEU“, CSV „Deutschland“)", () => {
+    for (const country of ["DEU", "DE", "de", "Deutschland", "", undefined]) {
+      expect(warensendungCheck({ country, items: [item(1, 1)], weightKg: 0.3 }), String(country)).toMatchObject({ ok: true });
+    }
+    for (const country of ["AT", "AUT", "NL", "Österreich"]) {
+      expect(warensendungCheck({ country, items: [item(1, 1)], weightKg: 0.3 }).reason, country).toContain("Ausland");
+    }
+  });
   it("Artikel passt bis 1 Stück: 1 Stück ja, 2 Stück nein", () => {
     expect(warensendungCheck({ country: "DEU", items: [item(1, 1)], weightKg: 0.3 })).toMatchObject({ ok: true });
     const two = warensendungCheck({ country: "DEU", items: [item(2, 1)], weightKg: 0.6 });

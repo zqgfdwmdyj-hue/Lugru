@@ -6,10 +6,10 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { requireArea } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { WB_SZENEN, TEMPO_SEK } from "@/lib/video/logic";
-import { anzeigeStatus, AUTO_NEU_MIN, probeMoeglich, PROBE_SEK, SPRECHTEMPO, BILD_SEK, bildSekAus, workerAbProbe, WORKER_AB_PROBE, woerterProMinute, WPM, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_AB_TAKT, WORKER_AB_CLIPS, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
+import { anzeigeStatus, AUTO_NEU_MIN, probeMoeglich, PROBE_SEK, SPRECHTEMPO, BILD_SEK, bildSekAus, workerAbProbe, WORKER_AB_PROBE, woerterProMinute, WPM, BILD_MODELLE, claudePreis, dauerText, taktNeuMoeglich, taktNeuSchaetzung, FREIGABE_TEXT, fortschrittProzent, freigabeAktiv, kapitelZeile, kostenSchaetzung, laengeZiel, SCHRITT_TEXT, VIDEO_STILE, SCHRITTE, typischFuer, usd, VIDEO_MODELLE, WORKER_AB_TAKT, WORKER_AB_CLIPS, WORKER_AB_ORDNER, clipOrdnerText, WORKER_VERSION_AKTUELL, workerStand, workerVeraltet, type BildModell } from "@/lib/video/logic";
 import { auftraege, kanaele, kostenUebersicht, serverFreiGb, videoEinstellungen, workerListe, workerZuletzt } from "@/lib/video/service";
 import { clipsListe } from "@/lib/video/clips";
-import { abbrechenAction, ablageAction, auftragAction, clipAendernAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, neuVertonenAction, preiseAction, probeAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
+import { abbrechenAction, ablageAction, auftragAction, clipAendernAction, clipOrdnerPruefenAction, driveEinfuegenAction, driveTrennenAction, freigebenAction, hochladenAction, kanalSpeichernAction, loeschenAction, motiveNeuAction, neuAction, neuVertonenAction, preiseAction, probeAction, referenzAction, referenzLoeschenAction, taktNeuAction, vidiqAction, wiederholenAction, workerDeaktivierenAction, youtubeEinfuegenAction, youtubeTrennenAction, instagramTrennenAction } from "./actions";
 import { WorkerAnlegen } from "./worker-anlegen";
 import { StoriesBereich } from "./stories";
 import { FREIGABE_MODI, profilMitVorgaben, STORY_ARTEN, tokenStand } from "@/lib/video/story-logic";
@@ -100,7 +100,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
       </div>
       {worker && worker.zuletztGesehen && workerVeraltet(worker.version) && (
         <div className="notice notice-warn small" data-testid="vd-worker-alt">
-          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): {workerVeraltet(worker.version, WORKER_AB_TAKT) ? "Er kennt keine Instagram-Stories und zeichnet Whiteboard-Motive noch nicht im Takt der Sprache (B36.10)." : workerVeraltet(worker.version, WORKER_AB_PROBE) ? "Er zeichnet Motive noch nicht Strich für Strich mit fester Hand, kennt kein Sprechtempo und keine Probeszene (Nachtrag 13.11.)." : "Er kennt die eigene Clip-Bibliothek (Ordner „clips“) noch nicht und bringt Vollbild-Videos ohne die neuesten Clip-Quellen."} Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
+          Der Worker am PC ist veraltet ({worker.version ? `v${worker.version}` : "Version unbekannt"}, aktuell v{WORKER_VERSION_AKTUELL}): {workerVeraltet(worker.version, WORKER_AB_TAKT) ? "Er kennt keine Instagram-Stories und zeichnet Whiteboard-Motive noch nicht im Takt der Sprache (B36.10)." : workerVeraltet(worker.version, WORKER_AB_PROBE) ? "Er zeichnet Motive noch nicht Strich für Strich mit fester Hand, kennt kein Sprechtempo und keine Probeszene (Nachtrag 13.11.)." : workerVeraltet(worker.version, WORKER_AB_CLIPS) ? "Er kennt die eigene Clip-Bibliothek (Ordner „clips“) noch nicht und bringt Vollbild-Videos ohne die neuesten Clip-Quellen." : "Er prüft den Clip-Ordner noch nicht selbst (verbunden/leer) und nutzt keine eigenen Fotos (B36.13)."} Bitte den Ordner <code>unter-der-decke</code> neu holen und den Worker neu bauen (README, Abschnitt „Aktualisieren“), dann „Schritt wiederholen“.
         </div>
       )}
       {fehlend.length > 0 && (
@@ -480,13 +480,39 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
 
       {kanal && clipBib && (
         <section className="card card-pad stack" style={{ gap: 8 }} id="clips" data-testid="vd-clips">
-          <details open={sp.meldung?.startsWith("Clip") || undefined}>
+          <details open={sp.meldung?.startsWith("Clip") || (!!worker?.clipOrdner && worker.clipOrdner.zustand !== "ok") || undefined}>
             <summary><strong>Clip-Bibliothek</strong> <span className="muted small" data-testid="vd-clips-anzahl">– {clipBib.anzahl.brauchbar === 1 ? "1 brauchbarer Clip" : `${clipBib.anzahl.brauchbar} brauchbare Clips`}{clipBib.anzahl.gesperrt ? `, ${clipBib.anzahl.gesperrt} gesperrt` : ""}{clipBib.anzahl.fehlt ? `, ${clipBib.anzahl.fehlt} nicht mehr im Ordner` : ""}</span></summary>
             <div className="stack small" style={{ gap: 8, marginTop: 6 }}>
               <span className="muted">
-                Eigene Videos in den Ordner <code>C:\video\clips</code> am Worker-PC legen (z. B. von pexels.com von Hand geladene Clips). Unterordner <code>{kanal.slug}</code> = nur für diesen Kanal, alles andere für alle Kanäle; Ordnernamen zählen als Schlagwort. Beim nächsten Video schaut Claude jeden neuen Clip einmal an (ca. 1 Cent je Clip) und wählt beim Bebildern den passenden zum gesprochenen Satz – erst eigene Clips, dann Pixabay/Pexels, dann KI-Bilder. Gilt, wenn im Kanalprofil „Echte Videoclips einbauen“ an ist{kanal.stockClips ? "" : " (zurzeit aus)"}.
+                Eigene Videos und Fotos (JPG/PNG) in den Ordner <code>C:\video\clips</code> am Worker-PC legen (z. B. von pexels.com von Hand geladene Clips und Fotos). Unterordner <code>{kanal.slug}</code> = nur für diesen Kanal, alles andere für alle Kanäle; Ordnernamen zählen als Schlagwort. Beim nächsten Video schaut Claude jeden neuen Clip einmal an (ca. 1 Cent je Clip) und wählt beim Bebildern den passenden zum gesprochenen Satz – erst eigene Clips, dann Pixabay/Pexels, dann KI-Bilder. Gilt, wenn im Kanalprofil „Echte Videoclips einbauen“ an ist{kanal.stockClips ? "" : " (zurzeit aus)"}.
               </span>
               {worker && workerVeraltet(worker.version, WORKER_AB_CLIPS) && <span className="notice notice-warn small">Erst den Worker am PC auf v{WORKER_VERSION_AKTUELL} aktualisieren – ältere Worker kennen den Clip-Ordner nicht.</span>}
+              {/* B36.13 Selbsttest: sieht der Worker den Ordner am PC wirklich? */}
+              <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {worker?.clipOrdner ? (
+                  (() => {
+                    const t = clipOrdnerText(worker.clipOrdner);
+                    const vor = Math.max(0, Math.round((Date.now() / 1000 - worker.clipOrdner.geprueft) / 60));
+                    return (
+                      <span className={`notice small notice-${t.ton}`} data-testid="vd-clipordner" data-zustand={worker.clipOrdner.zustand}>
+                        {t.text} · geprüft {vor < 1 ? "gerade eben" : `vor ${vor} Min.`}
+                        {worker.clipOrdner.beispiele.length > 0 && <span className="muted"> · z. B. {worker.clipOrdner.beispiele.slice(0, 3).join(", ")}</span>}
+                      </span>
+                    );
+                  })()
+                ) : (
+                  <span className="notice small notice-warn" data-testid="vd-clipordner" data-zustand="unbekannt">
+                    {worker && workerVeraltet(worker.version, WORKER_AB_ORDNER) ? `Den Ordner prüft der Worker erst ab v${WORKER_AB_ORDNER} – bitte aktualisieren.` : "Noch keine Rückmeldung vom Worker zum Clip-Ordner."}
+                  </span>
+                )}
+                {worker && !s.readOnly && (
+                  <form action={clipOrdnerPruefenAction}>
+                    <input type="hidden" name="kanal" value={kanal.id} />
+                    <button className="btn btn-sm" type="submit" data-testid="vd-clipordner-pruefen">Jetzt prüfen</button>
+                  </form>
+                )}
+                {worker?.clipPruefenAb && (!worker.clipOrdner || worker.clipOrdner.geprueft * 1000 < worker.clipPruefenAb.getTime()) && <span className="muted small" data-testid="vd-clipordner-angefordert">Prüfung angefordert – Antwort in ≤ 30 s</span>}
+              </div>
               {clipBib.clips.length === 0 && <span className="muted" data-testid="vd-clips-leer">Noch keine Clips gemeldet. Ordner anlegen, Videos hineinlegen – der Worker meldet sie beim nächsten Vollbild-Video.</span>}
               <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "stretch" }}>
                 {clipBib.clips.map((c) => {
@@ -497,7 +523,7 @@ export default async function VideoPage({ searchParams }: { searchParams: Promis
                       <input type="hidden" name="kanal" value={kanal.id} />
                       {c.vorschau ? <img src={`/api/video/clips/${c.clipId}/vorschau`} alt={c.beschreibungHand ?? c.beschreibung} width={280} height={158} style={{ width: "100%", height: "auto", borderRadius: 4 }} loading="lazy" /> : <div className="muted" style={{ height: 80 }}>kein Vorschaubild</div>}
                       <strong style={{ wordBreak: "break-all" }}>{c.pfad}</strong>
-                      <span className="muted">{c.dauer.toLocaleString("de-DE", { maximumFractionDigits: 1 })} s · {c.breite}×{c.hoehe}{c.kanalSlug ? ` · nur ${c.kanalSlug}` : " · alle Kanäle"} · {c.benutzt}× benutzt{c.quelle !== "eigen" ? ` · ${c.quelle === "pexels" ? "Pexels" : "Pixabay"}${c.filmer ? ` (${c.filmer})` : ""}` : ""}</span>
+                      <span className="muted">{c.art === "foto" ? <span className="tag" data-testid="vd-clip-foto">Foto</span> : `${c.dauer.toLocaleString("de-DE", { maximumFractionDigits: 1 })} s`} · {c.breite}×{c.hoehe}{c.kanalSlug ? ` · nur ${c.kanalSlug}` : " · alle Kanäle"} · {c.benutzt}× benutzt{c.quelle !== "eigen" ? ` · ${c.quelle === "pexels" ? "Pexels" : "Pixabay"}${c.filmer ? ` (${c.filmer})` : ""}` : ""}</span>
                       <span data-testid="vd-clip-beschreibung">{c.beschreibungHand ?? c.beschreibung}</span>
                       {c.fehlt && <span className="notice notice-warn small">nicht mehr im Ordner</span>}
                       {!c.brauchbar && <span className="notice notice-warn small" data-testid="vd-clip-unbrauchbar">nicht brauchbar: {c.grund ?? "unbekannt"}</span>}

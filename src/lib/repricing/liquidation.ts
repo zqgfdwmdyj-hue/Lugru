@@ -14,7 +14,7 @@ import { ablaufStand, fruehereRueckkehr, istGebraucht, liquidationBis, plusTage,
 const LQ = schema.repricingLiquidationen;
 const PG = schema.profitguardListings;
 const A = schema.verlustAusnahmen;
-/** Anfang des Ausnahme-Texts im Verlust-Stopp (alte Einträge „BQool-Liquidation …“ hat Migration 0156 umbenannt). */
+/** Anfang des Ausnahme-Texts im Verlust-Stopp (alte Einträge „BQool-Liquidation …“ hat Migration 0158 umbenannt). */
 export const AUSNAHME_PREFIX = "Repricing-Liquidation";
 const TASK_RUECKKEHR = "repricing-rueckkehr";
 const TASK_ABLAUF = "repricing-liquidation-ablauf";

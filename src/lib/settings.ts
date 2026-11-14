@@ -289,7 +289,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
 }
 
 /**
- * Repricing-Einstellungen auflösen. Alte BQool-Einstellungen (Migration 0156 hat „bqool“ nach „repricing“ verschoben)
+ * Repricing-Einstellungen auflösen. Alte BQool-Einstellungen (Migration 0158 hat „bqool“ nach „repricing“ verschoben)
  * werden übernommen: Staffeln aus dem früheren Regel-Katalog („ia“ bzw. „Abverkauf“), Regelnamen neutral.
  */
 function repricingAufloesen(d: (typeof DEFAULT_SETTINGS)["repricing"], roh: TenantSettings["repricing"]): (typeof DEFAULT_SETTINGS)["repricing"] {
